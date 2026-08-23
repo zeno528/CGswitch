@@ -90,10 +90,16 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::list_plugins,
+            commands::list_skills,
+            commands::list_plugin_skills,
+            commands::list_plugin_marketplaces,
+            commands::list_marketplace_plugins,
+            commands::add_plugin_marketplace,
+            commands::remove_plugin_marketplace,
+            commands::install_marketplace_plugin,
             commands::preview_plugin,
             commands::install_plugin,
             commands::uninstall_plugin,
-            commands::set_plugin_enabled,
             commands::open_path,
         ])
         .setup(|app| {

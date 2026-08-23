@@ -16,12 +16,17 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
+
+#[cfg(test)]
+use serde_json::json;
+
+use crate::codex::config::parse_document;
 
 use super::plugin_net::{
     fetch_raw_file, fetch_repo_tree, parse_github_url, preview_file_limit, TreeEntry,
 };
-use super::{app_err, atomic_write, backup_file, now_ms, AppContext, AppResult};
+use super::{app_err, now_ms, AppContext, AppResult};
 
 /// 前端展示用的已安装插件摘要。
 #[derive(Debug, Clone, Serialize, Default)]
@@ -34,14 +39,51 @@ pub struct PluginSummary {
     pub capabilities: Vec<String>,
     pub contains: Vec<String>,
     pub enabled: bool,
-    /// cgswitch=本应用安装；codex=用户自装第三方市场；official=openai 官方市场（只读）；
-    /// skill=Skill 注册表（只读）；personal/claude/cursor=家目录 local 条目。
+    /// official=OpenAI 官方市场（只读）；codex=Codex 管理的第三方市场。
     pub origin: String,
     /// 来自 `codex plugin list` 的市场名（卸载选择器要用）。
     pub marketplace: Option<String>,
     pub store_path: String,
     pub source_url: Option<String>,
-    pub installed_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PluginSkill {
+    pub name: String,
+    pub path: String,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PluginMarketplace {
+    pub name: String,
+    pub root: String,
+    pub kind: String,
+    pub source_url: Option<String>,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct MarketplacePlugin {
+    pub plugin_id: String,
+    pub name: String,
+    pub version: Option<String>,
+    pub installed: bool,
+    pub auth_policy: String,
+    pub source: Option<String>,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct SkillSummary {
+    pub name: String,
+    pub description: Option<String>,
+    pub source_url: Option<String>,
+    pub store_path: String,
 }
 
 /// 预览阶段的候选插件（一个仓库可能包含多个插件根目录）。
@@ -84,27 +126,13 @@ struct PluginInterface {
     #[serde(default)]
     display_name: Option<String>,
     #[serde(default)]
+    short_description: Option<String>,
+    #[serde(default)]
+    long_description: Option<String>,
+    #[serde(default)]
     category: Option<String>,
     #[serde(default)]
     capabilities: Vec<String>,
-}
-
-/// CGswitch 自管：经 CLI 安装的插件标记（plugin-state.json）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PluginOrigin {
-    source_url: String,
-    marketplace: String,
-    #[serde(default)]
-    version: Option<String>,
-    installed_at: i64,
-}
-
-/// 被摘除的外部条目暂存（禁用/移除后可恢复）。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StashedEntry {
-    /// 所属 marketplace 的布局相对路径（如 `.claude-plugin/marketplace.json`）。
-    marketplace: String,
-    entry: Value,
 }
 
 /// `~/.agents/.skill-lock.json` 的解析结构（Codex 的 Skill 安装注册表）。
@@ -122,8 +150,6 @@ struct SkillLockEntry {
     source: Option<String>,
     #[serde(default)]
     source_url: Option<String>,
-    #[serde(default)]
-    installed_at: Option<String>,
 }
 
 const MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
@@ -133,15 +159,6 @@ const SKILL_LOCK_RELATIVE_PATH: &str = ".agents/.skill-lock.json";
 /// Codex marketplace 插件的物化缓存（相对 codex home，CLI 缺席时的回退数据源）。
 const PLUGIN_CACHE_RELATIVE_PATH: &str = "plugins/cache";
 
-/// 家目录下的四套 marketplace 布局（顺序即 Codex 的发现顺序）。
-/// (布局相对路径, 该布局下外部条目的 origin 标签, 是否可编辑)。
-const HOME_MARKETPLACE_LAYOUTS: &[(&str, &str, bool)] = &[
-    (".agents/plugins/marketplace.json", "personal", true),
-    (".agents/plugins/api_marketplace.json", "official", false),
-    (".claude-plugin/marketplace.json", "claude", true),
-    (".cursor-plugin/marketplace.json", "cursor", true),
-];
-
 impl PluginSummary {
     fn from_parts(
         name: &str,
@@ -149,18 +166,15 @@ impl PluginSummary {
         contains: Vec<String>,
         origin: &str,
         store_path: &Path,
-        plugin_origin: Option<&PluginOrigin>,
     ) -> Self {
         let interface = manifest.and_then(|item| item.interface.as_ref());
         Self {
             name: manifest
                 .map(|item| item.name.clone())
                 .unwrap_or_else(|| name.to_string()),
-            version: manifest
-                .and_then(|item| item.version.clone())
-                .or(plugin_origin.and_then(|origin| origin.version.clone())),
+            version: manifest.and_then(|item| item.version.clone()),
             display_name: interface.and_then(|item| item.display_name.clone()),
-            description: manifest.and_then(|item| item.description.clone()),
+            description: manifest.and_then(manifest_description),
             category: interface.and_then(|item| item.category.clone()),
             capabilities: interface
                 .map(|item| item.capabilities.clone())
@@ -168,10 +182,9 @@ impl PluginSummary {
             contains,
             enabled: false,
             origin: origin.to_string(),
-            marketplace: plugin_origin.map(|item| item.marketplace.clone()),
+            marketplace: None,
             store_path: store_path.display().to_string(),
-            source_url: plugin_origin.map(|item| item.source_url.clone()),
-            installed_at: plugin_origin.map(|item| item.installed_at),
+            source_url: None,
         }
     }
 }
@@ -286,6 +299,237 @@ fn parse_plugin_list_output(text: &str) -> Vec<(String, String, bool, Option<Str
     items
 }
 
+fn parse_marketplace_list_output(text: &str) -> Vec<PluginMarketplace> {
+    text.lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with("MARKETPLACE") {
+                return None;
+            }
+            let (name, root) = trimmed.split_once(char::is_whitespace)?;
+            let name = name.trim();
+            let root = root.trim();
+            if name.is_empty() || root.is_empty() {
+                return None;
+            }
+            Some(PluginMarketplace {
+                name: name.to_string(),
+                root: root.to_string(),
+                kind: if name.starts_with("openai") {
+                    "official".into()
+                } else {
+                    "third-party".into()
+                },
+                source_url: None,
+                display_name: None,
+                description: None,
+            })
+        })
+        .collect()
+}
+
+fn marketplace_sources(home: &Path) -> BTreeMap<String, String> {
+    let Ok(text) = std::fs::read_to_string(home.join(".codex/config.toml")) else {
+        return BTreeMap::new();
+    };
+    let Ok(document) = parse_document(&text) else {
+        return BTreeMap::new();
+    };
+    let Some(marketplaces) = document
+        .as_table()
+        .get("marketplaces")
+        .and_then(|item| item.as_table())
+    else {
+        return BTreeMap::new();
+    };
+    marketplaces
+        .iter()
+        .filter_map(|(name, item)| {
+            let source = item.as_table()?.get("source")?.as_str()?;
+            (source.starts_with("http://")
+                || source.starts_with("https://")
+                || source.starts_with("ssh://")
+                || source.starts_with("git@"))
+            .then(|| (name.to_string(), source.to_string()))
+        })
+        .collect()
+}
+
+fn read_marketplace_document(root: &Path) -> Option<Value> {
+    [
+        root.join(".agents/plugins/marketplace.json"),
+        root.join(".claude-plugin/marketplace.json"),
+        root.join("marketplace.json"),
+    ]
+    .into_iter()
+    .find_map(|path| std::fs::read_to_string(path).ok())
+    .and_then(|text| serde_json::from_str(&text).ok())
+}
+
+fn marketplace_metadata(root: &Path) -> (Option<String>, Option<String>) {
+    let document = read_marketplace_document(root);
+    let interface = document.as_ref().and_then(|item| item.get("interface"));
+    let display_name = interface
+        .and_then(|item| item.get("displayName"))
+        .and_then(Value::as_str)
+        .map(String::from);
+    let description = document
+        .as_ref()
+        .and_then(|item| item.get("metadata"))
+        .and_then(|item| item.get("description"))
+        .and_then(Value::as_str)
+        .or_else(|| {
+            interface
+                .and_then(|item| item.get("longDescription"))
+                .and_then(Value::as_str)
+        })
+        .or_else(|| {
+            interface
+                .and_then(|item| item.get("shortDescription"))
+                .and_then(Value::as_str)
+        })
+        .map(String::from)
+        .or_else(|| read_manifest(root).as_ref().and_then(manifest_description));
+    (display_name, description)
+}
+
+fn enrich_marketplace_metadata(
+    items: &mut [PluginMarketplace],
+    sources: &BTreeMap<String, String>,
+) {
+    for item in items {
+        let (display_name, description) = marketplace_metadata(Path::new(&item.root));
+        item.source_url = sources.get(&item.name).cloned();
+        item.display_name = display_name;
+        item.description = description;
+    }
+}
+
+#[derive(Default)]
+struct MarketplaceEntryMetadata {
+    display_name: Option<String>,
+    description: Option<String>,
+    category: Option<String>,
+    capabilities: Vec<String>,
+    version: Option<String>,
+}
+
+fn marketplace_entry_metadata(root: Option<&Path>, name: &str) -> MarketplaceEntryMetadata {
+    let Some(root) = root else {
+        return MarketplaceEntryMetadata::default();
+    };
+    let Some(document) = read_marketplace_document(root) else {
+        return MarketplaceEntryMetadata::default();
+    };
+    let Some(entry) = document
+        .get("plugins")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item.get("name").and_then(Value::as_str) == Some(name))
+        })
+    else {
+        return MarketplaceEntryMetadata::default();
+    };
+    let interface = entry.get("interface");
+    let local_manifest = entry_local_path(entry)
+        .and_then(|raw| resolve_local_path(root, &raw))
+        .and_then(|path| read_manifest(&path));
+    let manifest_interface = local_manifest
+        .as_ref()
+        .and_then(|item| item.interface.as_ref());
+    MarketplaceEntryMetadata {
+        display_name: interface
+            .and_then(|item| item.get("displayName"))
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or_else(|| manifest_interface.and_then(|item| item.display_name.clone())),
+        description: entry
+            .get("description")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or_else(|| local_manifest.as_ref().and_then(manifest_description)),
+        category: entry
+            .get("category")
+            .and_then(Value::as_str)
+            .map(String::from)
+            .or_else(|| manifest_interface.and_then(|item| item.category.clone())),
+        capabilities: manifest_interface
+            .map(|item| item.capabilities.clone())
+            .unwrap_or_default(),
+        version: local_manifest
+            .as_ref()
+            .and_then(|item| item.version.clone()),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginCatalogEntry {
+    plugin_id: String,
+    name: String,
+    marketplace_name: String,
+    #[serde(default)]
+    version: Option<String>,
+    #[serde(default)]
+    installed: bool,
+    #[serde(default)]
+    auth_policy: String,
+    #[serde(default)]
+    source: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PluginCatalogOutput {
+    #[serde(default)]
+    installed: Vec<PluginCatalogEntry>,
+    #[serde(default)]
+    available: Vec<PluginCatalogEntry>,
+}
+
+fn plugin_source_label(source: Option<&Value>) -> Option<String> {
+    let object = source?.as_object()?;
+    ["url", "repo", "path"]
+        .iter()
+        .find_map(|key| object.get(*key).and_then(Value::as_str).map(String::from))
+}
+
+fn parse_marketplace_plugins_output(
+    text: &str,
+    marketplace: &str,
+    root: Option<&Path>,
+) -> AppResult<Vec<MarketplacePlugin>> {
+    let output: PluginCatalogOutput = serde_json::from_str(text)
+        .map_err(|error| app_err!("codex plugin list JSON 无效: {error}"))?;
+    let mut seen = Vec::new();
+    Ok(output
+        .installed
+        .into_iter()
+        .chain(output.available)
+        .filter(|item| item.marketplace_name == marketplace)
+        .filter_map(|item| {
+            if seen.iter().any(|id| id == &item.plugin_id) {
+                return None;
+            }
+            seen.push(item.plugin_id.clone());
+            let metadata = marketplace_entry_metadata(root, &item.name);
+            Some(MarketplacePlugin {
+                plugin_id: item.plugin_id,
+                name: item.name,
+                version: item.version.or(metadata.version),
+                installed: item.installed,
+                auth_policy: item.auth_policy,
+                source: plugin_source_label(item.source.as_ref()),
+                display_name: metadata.display_name,
+                description: metadata.description,
+                category: metadata.category,
+                capabilities: metadata.capabilities,
+            })
+        })
+        .collect())
+}
+
 /// 从 `marketplace add` 的输出里解析市场名（如 “Marketplace `ponytail`”），失败回退仓库名。
 fn parse_marketplace_name(output: &str, fallback: &str) -> String {
     if let Some(start) = output.find('`') {
@@ -299,131 +543,41 @@ fn parse_marketplace_name(output: &str, fallback: &str) -> String {
     fallback.to_string()
 }
 
-// ==================== marketplace.json（Value 级操作，保留用户手写字段） ====================
-
-fn read_marketplace_json(path: &Path) -> AppResult<Value> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => serde_json::from_str(&text).map_err(|error| {
-            app_err!(
-                "marketplace.json 不是有效 JSON（{}）: {error}",
-                path.display()
-            )
-        }),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(json!({})),
-        Err(error) => Err(app_err!("无法读取 {}: {error}", path.display())),
+/// Codex 官方支持的 marketplace add 来源：GitHub 简写、Git URL、SSH URL 或本地目录。
+fn parse_marketplace_source(input: &str) -> AppResult<(String, String)> {
+    let text = input.trim();
+    if text.is_empty() || text.starts_with('-') {
+        return Err(app_err!("插件市场地址不能为空，且不能以 - 开头"));
     }
-}
-
-fn marketplace_plugins_mut(document: &mut Value) -> AppResult<&mut Vec<Value>> {
-    if document.is_null() {
-        *document = json!({});
-    }
-    let object = document
-        .as_object_mut()
-        .ok_or_else(|| app_err!("marketplace.json 顶层必须是 JSON 对象"))?;
-    if !object.contains_key("name") {
-        object.insert("name".into(), json!("cgswitch"));
-    }
-    if !object.contains_key("plugins") {
-        object.insert("plugins".into(), json!([]));
-    }
-    object
-        .get_mut("plugins")
-        .and_then(Value::as_array_mut)
-        .ok_or_else(|| app_err!("marketplace.json 的 plugins 字段必须是数组"))
-}
-
-fn write_marketplace(path: &Path, document: &Value) -> AppResult<()> {
-    let text =
-        serde_json::to_string_pretty(document).map_err(|_| app_err!("marketplace 序列化失败"))?;
-    atomic_write(path, text.as_bytes())
-}
-
-/// 从指定 marketplace 摘除条目（文件必须已存在），返回被摘除的条目供暂存恢复。
-fn take_entry_from(context: &AppContext, path: &Path, name: &str) -> AppResult<Option<Value>> {
-    if !path.is_file() {
-        return Ok(None);
-    }
-    let mut document = read_marketplace_json(path)?;
-    let plugins = marketplace_plugins_mut(&mut document)?;
-    let mut removed = None;
-    plugins.retain(|entry| {
-        if entry.get("name").and_then(Value::as_str) == Some(name) {
-            removed = Some(entry.clone());
-            false
-        } else {
-            true
-        }
-    });
-    if removed.is_some() {
-        backup_file(path, &context.paths.plugin_backup, "marketplace")?;
-        write_marketplace(path, &document)?;
-    }
-    Ok(removed)
-}
-
-/// 把暂存的条目放回其所属 marketplace。
-fn restore_entry_to(context: &AppContext, path: &Path, entry: Value) -> AppResult<()> {
-    let name = entry
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let mut document = read_marketplace_json(path)?;
-    let plugins = marketplace_plugins_mut(&mut document)?;
-    plugins.retain(|item| item.get("name").and_then(Value::as_str) != Some(name.as_str()));
-    plugins.push(entry);
-    if path.is_file() {
-        backup_file(path, &context.paths.plugin_backup, "marketplace")?;
-    }
-    write_marketplace(path, &document)
-}
-
-// ==================== plugin-state.json（CGswitch 自管） ====================
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-struct PluginSidecar {
-    #[serde(default)]
-    origins: BTreeMap<String, PluginOrigin>,
-    #[serde(default)]
-    disabled: BTreeMap<String, StashedEntry>,
-}
-
-fn load_sidecar(path: &Path) -> PluginSidecar {
-    std::fs::read_to_string(path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-fn save_sidecar(path: &Path, sidecar: &PluginSidecar) -> AppResult<()> {
-    let text = serde_json::to_string_pretty(sidecar).map_err(|_| app_err!("插件状态序列化失败"))?;
-    atomic_write(path, text.as_bytes())
-}
-
-// ==================== 发现逻辑 ====================
-
-struct DiscoveredMarketplace {
-    label: &'static str,
-    document: Value,
-}
-
-fn discover_marketplaces(home: &Path) -> Vec<DiscoveredMarketplace> {
-    let mut found = Vec::new();
-    for (layout, label, _editable) in HOME_MARKETPLACE_LAYOUTS {
-        let path = home.join(layout);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
+    if let Ok(source) = parse_github_url(text) {
+        let argument = match source.ref_name {
+            Some(reference) => format!("{}/{}@{reference}", source.owner, source.repo),
+            None => format!("{}/{}", source.owner, source.repo),
         };
-        let Ok(document) = serde_json::from_str::<Value>(&text) else {
-            continue;
-        };
-        found.push(DiscoveredMarketplace { label, document });
+        return Ok((argument, source.repo));
     }
-    found
+    let accepted = text.starts_with("http://")
+        || text.starts_with("https://")
+        || text.starts_with("ssh://")
+        || text.starts_with("git@")
+        || Path::new(text).is_absolute()
+        || text.starts_with("./")
+        || text.starts_with("../");
+    if !accepted {
+        return Err(app_err!(
+            "无法识别插件市场来源，请使用 owner/repo、Git URL、SSH URL 或本地目录"
+        ));
+    }
+    let last = text
+        .trim_matches(['/', '\\'])
+        .rsplit(['/', '\\', ':'])
+        .find(|part| !part.is_empty())
+        .unwrap_or("third-party-marketplace");
+    let fallback = last.strip_suffix(".git").unwrap_or(last).to_string();
+    Ok((text.to_string(), fallback))
 }
 
-/// 条目的 local 源路径（兼容官方两种写法：字符串形式与 `{source:"local", path}` 对象形式）。
+/// 市场条目的 local 源路径（兼容两种写法）。
 fn entry_local_path(entry: &Value) -> Option<String> {
     match entry.get("source")? {
         Value::String(path) => Some(path.clone()),
@@ -463,17 +617,19 @@ fn parse_manifest_text(text: &str) -> AppResult<PluginManifest> {
     serde_json::from_str(text).map_err(|error| app_err!("plugin.json 不是有效 JSON: {error}"))
 }
 
+fn manifest_description(manifest: &PluginManifest) -> Option<String> {
+    manifest
+        .description
+        .clone()
+        .or_else(|| manifest.interface.as_ref()?.long_description.clone())
+        .or_else(|| manifest.interface.as_ref()?.short_description.clone())
+}
+
 fn read_manifest(plugin_root: &Path) -> Option<PluginManifest> {
     let text = std::fs::read_to_string(plugin_root.join(MANIFEST_RELATIVE_PATH))
         .or_else(|_| std::fs::read_to_string(plugin_root.join(CLAUDE_MANIFEST_RELATIVE_PATH)))
         .ok()?;
     parse_manifest_text(&text).ok()
-}
-
-fn parse_rfc3339_ms(text: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(text)
-        .ok()
-        .map(|time| time.timestamp_millis())
 }
 
 /// 插件名做选择器/目录名：拒绝路径分隔与目录穿越，其余保留官方命名。
@@ -550,28 +706,65 @@ fn derive_contains(files: &[&str]) -> Vec<String> {
     contains
 }
 
-/// 相对路径安全落盘：只允许普通路径段，拒绝绝对路径与 `..` 穿越。
-/// （CLI 通道不再需要；保留供将来本地缓存路径校验复用）
-#[cfg(test)]
-fn safe_join(base: &Path, relative: &str) -> Option<PathBuf> {
-    let relative_path = Path::new(relative);
-    if !relative_path.is_relative() {
-        return None;
-    }
-    let mut destination = base.to_path_buf();
-    for component in relative_path.components() {
-        match component {
-            std::path::Component::Normal(part) => destination.push(part),
-            _ => return None,
-        }
-    }
-    Some(destination)
-}
-
 fn store_contains(plugin_dir: &Path) -> Vec<String> {
     let files = walk_files(plugin_dir);
     let relative: Vec<&str> = files.iter().map(|path| path.as_str()).collect();
     derive_contains(&relative)
+}
+
+/// 读取插件内的 Skill 清单；Codex 插件约定为 `skills/<name>/SKILL.md`。
+fn store_skills(plugin_dir: &Path) -> Vec<PluginSkill> {
+    walk_files(plugin_dir)
+        .into_iter()
+        .filter_map(|path| {
+            let name = if path == "SKILL.md" {
+                plugin_dir
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("SKILL")
+                    .to_string()
+            } else {
+                let skill_path = path.strip_prefix("skills/")?;
+                let name = skill_path.strip_suffix("/SKILL.md")?;
+                if name.is_empty() {
+                    return None;
+                }
+                name.to_string()
+            };
+            let description = read_skill_description(&plugin_dir.join(&path));
+            Some(PluginSkill {
+                name,
+                path,
+                description,
+            })
+        })
+        .collect()
+}
+
+// ponytail: 只读 SKILL.md frontmatter 的单行 description；多行 YAML 描述暂不展开。
+fn read_skill_description(path: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut frontmatter = false;
+    for (index, line) in text.lines().enumerate().take(40) {
+        let trimmed = line.trim();
+        if index == 0 && trimmed == "---" {
+            frontmatter = true;
+            continue;
+        }
+        if frontmatter && trimmed == "---" {
+            break;
+        }
+        if frontmatter {
+            let Some(value) = trimmed.strip_prefix("description:") else {
+                continue;
+            };
+            let value = value.trim().trim_matches(['"', '\'']);
+            if !value.is_empty() && value != "|" && value != ">" {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// 列出插件目录内全部文件的目录内相对路径（插件体量小，直接递归）。
@@ -595,7 +788,7 @@ fn walk_files(root: &Path) -> Vec<String> {
 }
 
 /// 读取 `~/.agents/.skill-lock.json`（Codex 的 Skill 安装注册表，实测布局）。
-fn read_skill_lock(home: &Path) -> Vec<PluginSummary> {
+fn read_skill_lock(home: &Path) -> Vec<SkillSummary> {
     let Ok(text) = std::fs::read_to_string(home.join(SKILL_LOCK_RELATIVE_PATH)) else {
         return Vec::new();
     };
@@ -604,19 +797,18 @@ fn read_skill_lock(home: &Path) -> Vec<PluginSummary> {
     };
     lock.skills
         .into_iter()
-        .map(|(name, entry)| PluginSummary {
-            name: name.clone(),
-            contains: vec!["skills".into()],
-            enabled: true,
-            origin: "skill".into(),
-            store_path: home.join(".agents/skills").join(name).display().to_string(),
-            source_url: match (entry.source_url, entry.source) {
-                (Some(url), _) => Some(url),
-                (None, Some(source)) => Some(format!("https://github.com/{source}")),
-                (None, None) => None,
-            },
-            installed_at: entry.installed_at.as_deref().and_then(parse_rfc3339_ms),
-            ..PluginSummary::default()
+        .map(|(name, entry)| {
+            let store_path = home.join(".agents/skills").join(&name);
+            SkillSummary {
+                name: name.clone(),
+                description: read_skill_description(&store_path.join("SKILL.md")),
+                source_url: match (entry.source_url, entry.source) {
+                    (Some(url), _) => Some(url),
+                    (None, Some(source)) => Some(format!("https://github.com/{source}")),
+                    (None, None) => None,
+                },
+                store_path: store_path.display().to_string(),
+            }
         })
         .collect()
 }
@@ -658,7 +850,6 @@ fn scan_codex_plugin_cache(codex_home: &Path) -> Vec<PluginSummary> {
                 store_contains(&version_dir),
                 "codex",
                 &version_dir,
-                None,
             );
             summary.version = Some(version_dir_name).or(summary.version);
             summary.marketplace = Some(marketplace_name.clone());
@@ -669,23 +860,245 @@ fn scan_codex_plugin_cache(codex_home: &Path) -> Vec<PluginSummary> {
     summaries
 }
 
+/// Codex 有时在列表中返回 Git 源而非已物化的插件目录；此时读取实际缓存。
+fn plugin_store_path(
+    codex_home: &Path,
+    marketplace: &str,
+    name: &str,
+    version: Option<&str>,
+    reported_path: &str,
+) -> PathBuf {
+    let reported = Path::new(reported_path);
+    if reported.is_dir() {
+        return reported.to_path_buf();
+    }
+    let cache_root = codex_home
+        .join(PLUGIN_CACHE_RELATIVE_PATH)
+        .join(marketplace)
+        .join(name);
+    if let Some(version) = version {
+        let version_dir = cache_root.join(version);
+        if version_dir.is_dir() {
+            return version_dir;
+        }
+    }
+    std::fs::read_dir(&cache_root)
+        .ok()
+        .and_then(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .max_by_key(|entry| entry.file_name())
+        })
+        .map(|entry| entry.path())
+        .unwrap_or(cache_root)
+}
+
 // ==================== AppContext 服务 ====================
 
 impl AppContext {
-    /// 已安装列表：`codex plugin list`（主源，含启停）→ 插件缓存（CLI 缺席回退）
-    /// → Skill 注册表 → 家目录 local 条目 → 暂存条目。
+    /// 已安装插件列表：`codex plugin list`（主源，含启停）→ 插件缓存（CLI 缺席回退）。
     pub async fn list_plugins(&self) -> AppResult<Vec<PluginSummary>> {
-        let Some(home) = self.paths.agents_home.parent().map(Path::to_path_buf) else {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Ok(Vec::new());
         };
         let codex_home = self.paths.codex_home.clone();
-        let state_path = self.paths.plugin_state.clone();
-        let summaries = tauri::async_runtime::spawn_blocking(move || {
-            list_plugins_sync(&home, &codex_home, &state_path)
+        let summaries =
+            tauri::async_runtime::spawn_blocking(move || list_plugins_sync(&home, &codex_home))
+                .await
+                .map_err(|error| app_err!("插件列表任务失败: {error}"))??;
+        Ok(summaries)
+    }
+
+    /// Codex Skill 注册表中的独立 Skill 列表。
+    pub async fn list_skills(&self) -> AppResult<Vec<SkillSummary>> {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Ok(Vec::new());
+        };
+        tauri::async_runtime::spawn_blocking(move || read_skill_lock(&home))
+            .await
+            .map_err(|error| app_err!("Skill 列表任务失败: {error}"))
+    }
+
+    /// 进入插件详情时再读取该插件内的 Skill 明细，避免列表阶段扫描所有插件目录。
+    pub async fn list_plugin_skills(&self, name: &str) -> AppResult<Vec<PluginSkill>> {
+        validate_plugin_name(name)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let codex_home = self.paths.codex_home.clone();
+        let name = name.to_string();
+        tauri::async_runtime::spawn_blocking(move || {
+            let plugins = list_plugins_sync(&home, &codex_home)?;
+            let Some(plugin) = plugins.into_iter().find(|item| item.name == name) else {
+                return Err(app_err!("没有找到名为「{name}」的插件"));
+            };
+            let store_path = Path::new(&plugin.store_path);
+            if !store_path.is_dir() {
+                return Ok(Vec::new());
+            }
+            Ok(store_skills(store_path))
         })
         .await
-        .map_err(|error| app_err!("插件列表任务失败: {error}"))??;
-        Ok(summaries)
+        .map_err(|error| app_err!("插件 Skill 读取任务失败: {error}"))?
+    }
+
+    /// 读取 Codex 当前配置中的插件市场，包含官方与第三方市场。
+    pub async fn list_plugin_marketplaces(&self) -> AppResult<Vec<PluginMarketplace>> {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Ok(Vec::new());
+        };
+        tauri::async_runtime::spawn_blocking(move || {
+            let output = run_codex_plugin(&home, &["marketplace", "list"])?;
+            let mut items = parse_marketplace_list_output(&output);
+            enrich_marketplace_metadata(&mut items, &marketplace_sources(&home));
+            Ok(items)
+        })
+        .await
+        .map_err(|error| app_err!("插件市场列表任务失败: {error}"))?
+    }
+
+    /// 读取 Codex 已配置市场的官方目录快照；available 同时包含已装与未装条目。
+    pub async fn list_marketplace_plugins(
+        &self,
+        marketplace: &str,
+        root: Option<&str>,
+    ) -> AppResult<Vec<MarketplacePlugin>> {
+        validate_plugin_name(marketplace)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Ok(Vec::new());
+        };
+        let marketplace = marketplace.to_string();
+        let root = root
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from);
+        tauri::async_runtime::spawn_blocking(move || {
+            let output = run_codex_plugin(
+                &home,
+                &[
+                    "list",
+                    "--marketplace",
+                    &marketplace,
+                    "--available",
+                    "--json",
+                ],
+            )?;
+            parse_marketplace_plugins_output(&output, &marketplace, root.as_deref())
+        })
+        .await
+        .map_err(|error| app_err!("插件市场目录任务失败: {error}"))?
+    }
+
+    /// 按 Codex 官方选择器安装已配置市场中的插件，并继承当前 live config.toml 的供应商配置。
+    pub async fn install_marketplace_plugin(
+        &self,
+        marketplace: &str,
+        name: &str,
+    ) -> AppResult<PluginSummary> {
+        validate_plugin_name(marketplace)?;
+        validate_plugin_name(name)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let marketplace = marketplace.to_string();
+        let name = name.to_string();
+        tauri::async_runtime::spawn_blocking({
+            let home = home.clone();
+            let marketplace = marketplace.clone();
+            let name = name.clone();
+            move || run_codex_plugin(&home, &["add", &name, "--marketplace", &marketplace])
+        })
+        .await
+        .map_err(|error| app_err!("安装插件任务失败: {error}"))??;
+
+        let _ = self.database.record_event(
+            None,
+            "plugin",
+            "install",
+            Some(&format!("{name}@{marketplace}")),
+            &now_ms().to_string(),
+        );
+
+        self.list_plugins()
+            .await?
+            .into_iter()
+            .find(|plugin| plugin.name == name)
+            .ok_or_else(|| app_err!("插件「{name}」已执行安装，但列表中尚未出现"))
+    }
+
+    /// 添加 Git 插件市场，并返回 Codex 识别到的市场名。
+    pub async fn add_plugin_marketplace(&self, url: &str) -> AppResult<PluginMarketplace> {
+        let (source_arg, fallback_name) = parse_marketplace_source(url)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        tauri::async_runtime::spawn_blocking(move || {
+            let output = match run_codex_plugin(&home, &["marketplace", "add", &source_arg]) {
+                Ok(output) => output,
+                Err(error)
+                    if error
+                        .to_string()
+                        .to_ascii_lowercase()
+                        .contains("already added from a different source") =>
+                {
+                    let list_output = run_codex_plugin(&home, &["marketplace", "list"])?;
+                    let mut marketplaces = parse_marketplace_list_output(&list_output);
+                    enrich_marketplace_metadata(&mut marketplaces, &marketplace_sources(&home));
+                    return marketplaces
+                        .into_iter()
+                        .find(|marketplace| marketplace.name == fallback_name)
+                        .ok_or(error);
+                }
+                Err(error) => return Err(error),
+            };
+            let name = parse_marketplace_name(&output, &fallback_name);
+            let list_output = run_codex_plugin(&home, &["marketplace", "list"])?;
+            let mut marketplaces = parse_marketplace_list_output(&list_output);
+            enrich_marketplace_metadata(&mut marketplaces, &marketplace_sources(&home));
+            Ok(marketplaces
+                .into_iter()
+                .find(|marketplace| marketplace.name == name)
+                .unwrap_or(PluginMarketplace {
+                    name,
+                    root: String::new(),
+                    kind: "third-party".into(),
+                    source_url: None,
+                    display_name: None,
+                    description: None,
+                }))
+        })
+        .await
+        .map_err(|error| app_err!("添加插件市场任务失败: {error}"))?
+    }
+
+    /// 移除第三方插件市场来源；遵循 Codex CLI 语义，不自动删除该市场下已安装的插件。
+    pub async fn remove_plugin_marketplace(&self, name: &str) -> AppResult<()> {
+        validate_plugin_name(name)?;
+        let marketplaces = self.list_plugin_marketplaces().await?;
+        let Some(marketplace) = marketplaces.iter().find(|item| item.name == name) else {
+            return Err(app_err!("没有找到插件市场「{name}」"));
+        };
+        if marketplace.kind == "official" {
+            return Err(app_err!("「{name}」属于 Codex 官方市场，不能在这里移除"));
+        }
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let name = name.to_string();
+        let command_name = name.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            run_codex_plugin(&home, &["marketplace", "remove", &command_name])
+        })
+        .await
+        .map_err(|error| app_err!("移除插件市场任务失败: {error}"))??;
+        let _ = self.database.record_event(
+            None,
+            "plugin",
+            "marketplace-remove",
+            Some(&name),
+            &now_ms().to_string(),
+        );
+        Ok(())
     }
 
     /// 预览：仓库元数据 + 每个插件根的清单与文件列表（不落盘）。
@@ -723,7 +1136,7 @@ impl AppContext {
                     .interface
                     .as_ref()
                     .and_then(|item| item.display_name.clone()),
-                description: manifest.description.clone(),
+                description: manifest_description(&manifest),
                 capabilities: manifest
                     .interface
                     .as_ref()
@@ -782,7 +1195,7 @@ impl AppContext {
         let manifest = parse_manifest_text(&String::from_utf8_lossy(&manifest_bytes))?;
         validate_plugin_name(&manifest.name)?;
 
-        let Some(home) = self.paths.agents_home.parent().map(Path::to_path_buf) else {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Err(app_err!("无法定位用户主目录"));
         };
         let source_arg = match &source.ref_name {
@@ -823,31 +1236,13 @@ impl AppContext {
         .await
         .map_err(|error| app_err!("安装任务失败: {error}"))??;
 
-        {
-            let _guard = self
-                .operation
-                .lock()
-                .map_err(|_| app_err!("操作锁已损坏"))?;
-            let mut sidecar = load_sidecar(&self.paths.plugin_state);
-            sidecar.disabled.remove(&manifest.name);
-            sidecar.origins.insert(
-                manifest.name.clone(),
-                PluginOrigin {
-                    source_url: format!("https://github.com/{}/{}", source.owner, source.repo),
-                    marketplace: marketplace_name.clone(),
-                    version: manifest.version.clone(),
-                    installed_at: now_ms() as i64,
-                },
-            );
-            save_sidecar(&self.paths.plugin_state, &sidecar)?;
-            let _ = self.database.record_event(
-                None,
-                "plugin",
-                "install",
-                Some(&format!("{selector}@{}", tree.reference)),
-                &now_ms().to_string(),
-            );
-        }
+        let _ = self.database.record_event(
+            None,
+            "plugin",
+            "install",
+            Some(&format!("{selector}@{}", tree.reference)),
+            &now_ms().to_string(),
+        );
 
         // 从列表里取回安装后的真实状态（版本/路径由 Codex 维护）
         let plugins = self.list_plugins().await?;
@@ -862,20 +1257,30 @@ impl AppContext {
             })
     }
 
-    /// 卸载：codex/cgswitch 来源走 `codex plugin remove`；外部条目只摘条目（文件不动）。
+    /// 卸载：由 Codex CLI 管理的第三方插件走 `codex plugin remove`。
     pub async fn uninstall_plugin(&self, name: &str) -> AppResult<()> {
         validate_plugin_name(name)?;
+        if self
+            .list_skills()
+            .await?
+            .iter()
+            .any(|skill| skill.name == name)
+        {
+            return Err(app_err!(
+                "「{name}」属于 Codex Skill 注册表，请在 Codex 内管理它"
+            ));
+        }
         let plugins = self.list_plugins().await?;
         let Some(plugin) = plugins.iter().find(|item| item.name == name) else {
             return Err(app_err!("没有找到名为「{name}」的插件"));
         };
-        if plugin.origin == "official" || plugin.origin == "skill" {
+        if plugin.origin == "official" {
             return Err(app_err!(
-                "「{name}」属于 Codex 官方市场 / Skill 注册表，请在 Codex 内管理它"
+                "「{name}」属于 Codex 官方市场，请在 Codex 内管理它"
             ));
         }
-        if plugin.origin == "codex" || plugin.origin == "cgswitch" {
-            let Some(home) = self.paths.agents_home.parent().map(Path::to_path_buf) else {
+        if plugin.origin == "codex" {
+            let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
                 return Err(app_err!("无法定位用户主目录"));
             };
             let marketplace = plugin
@@ -890,14 +1295,6 @@ impl AppContext {
             })
             .await
             .map_err(|error| app_err!("卸载任务失败: {error}"))??;
-            let _guard = self
-                .operation
-                .lock()
-                .map_err(|_| app_err!("操作锁已损坏"))?;
-            let mut sidecar = load_sidecar(&self.paths.plugin_state);
-            sidecar.origins.remove(name);
-            sidecar.disabled.remove(name);
-            save_sidecar(&self.paths.plugin_state, &sidecar)?;
             let _ = self.database.record_event(
                 None,
                 "plugin",
@@ -907,115 +1304,25 @@ impl AppContext {
             );
             return Ok(());
         }
-        // personal / claude / cursor：摘条目并暂存
-        let _guard = self
-            .operation
-            .lock()
-            .map_err(|_| app_err!("操作锁已损坏"))?;
-        self.detach_external_entry(name)?;
-        let _ = self.database.record_event(
-            None,
-            "plugin",
-            "uninstall",
-            Some(name),
-            &now_ms().to_string(),
-        );
-        Ok(())
-    }
-
-    /// 禁用/启用：仅家目录条目支持（Codex CLI 未提供启停命令，缓存类插件请在 Codex 内操作）。
-    pub fn set_plugin_enabled(&self, name: &str, enabled: bool) -> AppResult<()> {
-        let _guard = self
-            .operation
-            .lock()
-            .map_err(|_| app_err!("操作锁已损坏"))?;
-        validate_plugin_name(name)?;
-        if enabled {
-            self.restore_stashed_entry(name)
-        } else {
-            self.detach_external_entry(name)
-        }
-    }
-
-    // ==================== 外部条目操作 ====================
-
-    /// 摘除外部条目并暂存（文件不动，可经 set_plugin_enabled 恢复）。
-    fn detach_external_entry(&self, name: &str) -> AppResult<()> {
-        let Some(home) = self.paths.agents_home.parent() else {
-            return Err(app_err!("无法定位用户主目录"));
-        };
-        for (layout, _, _) in HOME_MARKETPLACE_LAYOUTS {
-            let path = home.join(layout);
-            if !path.is_file() {
-                continue;
-            }
-            if let Some(entry) = take_entry_from(self, &path, name)? {
-                let mut sidecar = load_sidecar(&self.paths.plugin_state);
-                sidecar.disabled.insert(
-                    name.to_string(),
-                    StashedEntry {
-                        marketplace: (*layout).to_string(),
-                        entry,
-                    },
-                );
-                save_sidecar(&self.paths.plugin_state, &sidecar)?;
-                return Ok(());
-            }
-        }
-        Err(app_err!(
-            "「{name}」不是家目录 local 条目；Codex 市场插件的启停请在 Codex 内操作"
-        ))
-    }
-
-    /// 从暂存恢复外部条目到其原属 marketplace。
-    fn restore_stashed_entry(&self, name: &str) -> AppResult<()> {
-        let Some(home) = self.paths.agents_home.parent() else {
-            return Err(app_err!("无法定位用户主目录"));
-        };
-        let mut sidecar = load_sidecar(&self.paths.plugin_state);
-        let Some(stashed) = sidecar.disabled.remove(name) else {
-            return Err(app_err!("没有找到「{name}」的可恢复登记条目"));
-        };
-        let marketplace_path = home.join(&stashed.marketplace);
-        if let Some(parent) = marketplace_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|error| app_err!("无法创建目录 {}: {error}", parent.display()))?;
-        }
-        restore_entry_to(self, &marketplace_path, stashed.entry)?;
-        save_sidecar(&self.paths.plugin_state, &sidecar)
+        Err(app_err!("不支持的插件来源"))
     }
 }
 
 /// list_plugins 的同步实现（跑在 blocking 线程池）。
-fn list_plugins_sync(
-    home: &Path,
-    codex_home: &Path,
-    state_path: &Path,
-) -> AppResult<Vec<PluginSummary>> {
-    let sidecar = load_sidecar(state_path);
-    let marketplaces = discover_marketplaces(home);
+fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSummary>> {
     let mut summaries: Vec<PluginSummary> = Vec::new();
-    let mut seen_names: Vec<String> = Vec::new();
 
-    // 1) `codex plugin list`（主源）：覆盖运行时/捆绑/第三方市场，含启停状态
+    // 1) `codex plugin list`（主源）：覆盖运行时、捆绑和第三方市场，含启停状态
     if find_codex_cli(home).is_some() {
         if let Ok(output) = run_codex_plugin(home, &["list"]) {
             for (name, marketplace, enabled, version, path) in parse_plugin_list_output(&output) {
-                let origin = if sidecar.origins.contains_key(&name) {
-                    "cgswitch"
-                } else if marketplace.starts_with("openai") {
+                let origin = if marketplace.starts_with("openai") {
                     "official"
                 } else {
                     "codex"
                 };
-                let plugin_path = if path.is_empty() {
-                    codex_home
-                        .join(PLUGIN_CACHE_RELATIVE_PATH)
-                        .join(&marketplace)
-                        .join(&name)
-                } else {
-                    PathBuf::from(&path)
-                };
+                let plugin_path =
+                    plugin_store_path(codex_home, &marketplace, &name, version.as_deref(), &path);
                 let manifest = read_manifest(&plugin_path);
                 summaries.push(PluginSummary {
                     version: version.or(manifest.as_ref().and_then(|item| item.version.clone())),
@@ -1023,7 +1330,7 @@ fn list_plugins_sync(
                         .as_ref()
                         .and_then(|item| item.interface.as_ref())
                         .and_then(|item| item.display_name.clone()),
-                    description: manifest.as_ref().and_then(|item| item.description.clone()),
+                    description: manifest.as_ref().and_then(manifest_description),
                     category: manifest
                         .as_ref()
                         .and_then(|item| item.interface.as_ref())
@@ -1042,14 +1349,9 @@ fn list_plugins_sync(
                     origin: origin.to_string(),
                     marketplace: Some(marketplace),
                     store_path: plugin_path.display().to_string(),
-                    source_url: sidecar
-                        .origins
-                        .get(&name)
-                        .map(|item| item.source_url.clone()),
-                    installed_at: sidecar.origins.get(&name).map(|item| item.installed_at),
+                    source_url: None,
                     name,
                 });
-                seen_names.push(summaries.last().unwrap().name.clone());
             }
         } else {
             // CLI 在但 list 失败：回退缓存扫描
@@ -1058,82 +1360,6 @@ fn list_plugins_sync(
     } else {
         summaries.extend(scan_codex_plugin_cache(codex_home));
     }
-    for summary in &summaries {
-        seen_names.push(summary.name.clone());
-    }
-
-    // 2) Skill 注册表（只读）
-    for mut skill in read_skill_lock(home) {
-        if seen_names.contains(&skill.name) {
-            continue;
-        }
-        seen_names.push(skill.name.clone());
-        skill.marketplace = None;
-        summaries.push(skill);
-    }
-
-    // 3) 家目录 local 条目（不在 Codex 市场里的手动登记）
-    for marketplace in &marketplaces {
-        let Some(plugins) = marketplace
-            .document
-            .get("plugins")
-            .and_then(Value::as_array)
-        else {
-            continue;
-        };
-        for entry in plugins {
-            let Some(name) = entry.get("name").and_then(Value::as_str) else {
-                continue;
-            };
-            if seen_names.iter().any(|seen| seen == name) {
-                continue;
-            }
-            let Some(raw_path) = entry_local_path(entry) else {
-                continue;
-            };
-            let Some(path) = resolve_local_path(home, &raw_path) else {
-                continue;
-            };
-            seen_names.push(name.to_string());
-            let manifest = read_manifest(&path);
-            let mut summary = PluginSummary::from_parts(
-                name,
-                manifest.as_ref(),
-                store_contains(&path),
-                marketplace.label,
-                &path,
-                None,
-            );
-            summary.enabled = true;
-            summaries.push(summary);
-        }
-    }
-
-    // 4) 暂存的外部条目：文件仍在原处，条目已摘除
-    for (name, stashed) in &sidecar.disabled {
-        if seen_names.contains(name) {
-            continue;
-        }
-        let label = HOME_MARKETPLACE_LAYOUTS
-            .iter()
-            .find(|(layout, _, _)| layout == &stashed.marketplace)
-            .map(|(_, label, _)| *label)
-            .unwrap_or("personal");
-        let path = entry_local_path(&stashed.entry).and_then(|raw| resolve_local_path(home, &raw));
-        let manifest = path.as_deref().and_then(read_manifest);
-        let contains = path.as_deref().map(store_contains).unwrap_or_default();
-        let mut summary = PluginSummary::from_parts(
-            name,
-            manifest.as_ref(),
-            contains,
-            label,
-            path.as_deref().unwrap_or(Path::new("")),
-            None,
-        );
-        summary.enabled = false;
-        summaries.push(summary);
-    }
-
     summaries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(summaries)
 }
@@ -1184,11 +1410,44 @@ mod tests {
     }
 
     #[test]
-    fn safe_join_rejects_traversal() {
-        assert!(safe_join(Path::new("/base"), "skills/a.md").is_some());
-        assert!(safe_join(Path::new("/base"), "../escape").is_none());
-        assert!(safe_join(Path::new("/base"), "a/../../escape").is_none());
-        assert!(safe_join(Path::new("/base"), "/absolute").is_none());
+    fn store_skills_reads_names_and_descriptions() {
+        let root = tempfile::tempdir().unwrap();
+        let skill_dir = root.path().join("skills").join("session-summary");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\ndescription: Summarize sessions\n---\n# Session summary\n",
+        )
+        .unwrap();
+
+        let skills = store_skills(root.path());
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "session-summary");
+        assert_eq!(skills[0].path, "skills/session-summary/SKILL.md");
+        assert_eq!(skills[0].description.as_deref(), Some("Summarize sessions"));
+    }
+
+    #[test]
+    fn plugin_store_path_falls_back_to_cached_version_for_git_source() {
+        let codex_home = tempfile::tempdir().unwrap();
+        let cached = codex_home
+            .path()
+            .join(PLUGIN_CACHE_RELATIVE_PATH)
+            .join("ponytail")
+            .join("ponytail")
+            .join("4.9.0");
+        std::fs::create_dir_all(&cached).unwrap();
+
+        assert_eq!(
+            plugin_store_path(
+                codex_home.path(),
+                "ponytail",
+                "ponytail",
+                Some("4.9.0"),
+                "https://github.com/DietrichGebert/ponytail.git, ref `main`",
+            ),
+            cached
+        );
     }
 
     #[test]
@@ -1280,10 +1539,152 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
     }
 
     #[test]
+    fn marketplace_list_output_parses_third_party_marketplaces() {
+        let output = "MARKETPLACE             ROOT\nopenai-bundled          C:\\bundled\nponytail                C:\\marketplaces\\ponytail\n";
+        let items = parse_marketplace_list_output(output);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].name, "openai-bundled");
+        assert_eq!(items[0].kind, "official");
+        assert_eq!(items[1].name, "ponytail");
+        assert_eq!(items[1].kind, "third-party");
+        assert_eq!(items[1].root, "C:\\marketplaces\\ponytail");
+    }
+
+    #[test]
+    fn marketplace_sources_read_git_source_from_codex_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex = temp.path().join(".codex");
+        std::fs::create_dir_all(&codex).unwrap();
+        std::fs::write(
+            codex.join("config.toml"),
+            "[marketplaces.youmind]\nsource_type = \"git\"\nsource = \"https://github.com/YouMind-OpenLab/plugin-marketplace.git\"\n\n[marketplaces.local]\nsource_type = \"local\"\nsource = \"C:/plugins/local\"\n",
+        )
+        .unwrap();
+
+        let sources = marketplace_sources(temp.path());
+        assert_eq!(
+            sources.get("youmind").map(String::as_str),
+            Some("https://github.com/YouMind-OpenLab/plugin-marketplace.git")
+        );
+        assert!(!sources.contains_key("local"));
+    }
+
+    #[test]
+    fn marketplace_plugin_json_keeps_installed_and_available_entries() {
+        let output = r#"{
+          "installed": [{
+            "pluginId": "ponytail@ponytail",
+            "name": "ponytail",
+            "marketplaceName": "ponytail",
+            "version": "4.9.0",
+            "installed": true,
+            "enabled": true,
+            "installPolicy": "AVAILABLE",
+            "authPolicy": "ON_INSTALL",
+            "source": {"source": "git", "url": "https://github.com/DietrichGebert/ponytail.git"}
+          }],
+          "available": [{
+            "pluginId": "grill@other",
+            "name": "grill",
+            "marketplaceName": "other",
+            "version": "1.3.0",
+            "installed": false,
+            "enabled": false,
+            "installPolicy": "AVAILABLE",
+            "authPolicy": "ON_USE",
+            "source": {"source": "url", "url": "https://example.com/grill.git"}
+          }]
+        }"#;
+        let items = parse_marketplace_plugins_output(output, "ponytail", None).unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].plugin_id, "ponytail@ponytail");
+        assert!(items[0].installed);
+        assert_eq!(
+            items[0].source.as_deref(),
+            Some("https://github.com/DietrichGebert/ponytail.git")
+        );
+    }
+
+    #[test]
+    fn marketplace_plugin_metadata_reads_catalog_and_local_manifest() {
+        let root = tempfile::tempdir().unwrap();
+        let marketplace_dir = root.path().join(".agents/plugins");
+        let plugin_dir = root.path().join("plugins/local-tool/.codex-plugin");
+        std::fs::create_dir_all(&marketplace_dir).unwrap();
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(
+            marketplace_dir.join("marketplace.json"),
+            r#"{
+              "name": "fixture",
+              "interface": {"displayName": "Fixture Market"},
+              "metadata": {"description": "Fixture market description"},
+              "plugins": [{
+                "name": "local-tool",
+                "description": "Catalog description",
+                "category": "Productivity",
+                "keywords": ["local", "fixture"],
+                "source": "./plugins/local-tool"
+              }]
+            }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            plugin_dir.join("plugin.json"),
+            r#"{
+              "name": "local-tool",
+              "version": "2.0.0",
+              "interface": {
+                "displayName": "Local Tool",
+                "capabilities": ["Read", "Write"]
+              }
+            }"#,
+        )
+        .unwrap();
+        let output = r#"{
+          "available": [{
+            "pluginId": "local-tool@fixture",
+            "name": "local-tool",
+            "marketplaceName": "fixture",
+            "installed": false,
+            "enabled": false,
+            "installPolicy": "AVAILABLE",
+            "authPolicy": "ON_USE",
+            "source": "./plugins/local-tool"
+          }]
+        }"#;
+
+        let items = parse_marketplace_plugins_output(output, "fixture", Some(root.path())).unwrap();
+        assert_eq!(items[0].display_name.as_deref(), Some("Local Tool"));
+        assert_eq!(items[0].description.as_deref(), Some("Catalog description"));
+        assert_eq!(items[0].category.as_deref(), Some("Productivity"));
+        assert_eq!(
+            items[0].capabilities,
+            vec!["Read".to_string(), "Write".to_string()]
+        );
+        assert_eq!(items[0].version.as_deref(), Some("2.0.0"));
+    }
+
+    #[test]
     fn plugin_name_rejects_selector_characters() {
         assert!(validate_plugin_name("memory-bank").is_ok());
         assert!(validate_plugin_name("a@b").is_err());
         assert!(validate_plugin_name("../x").is_err());
+    }
+
+    #[test]
+    fn marketplace_source_accepts_codex_supported_forms() {
+        assert_eq!(
+            parse_marketplace_source("owner/repo@main").unwrap().0,
+            "owner/repo@main"
+        );
+        assert_eq!(
+            parse_marketplace_source("https://git.example.com/plugins.git").unwrap(),
+            (
+                "https://git.example.com/plugins.git".into(),
+                "plugins".into()
+            )
+        );
+        assert!(parse_marketplace_source("not-a-marketplace").is_err());
     }
 
     fn context() -> (tempfile::TempDir, AppContext) {
@@ -1294,39 +1695,17 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         (home, context)
     }
 
-    fn write_external_plugin(home: &Path, name: &str) -> PathBuf {
-        let dir = home.join("my-plugins").join(name).join(".codex-plugin");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("plugin.json"),
-            format!(r#"{{"name":"{name}","version":"2.0.0","description":"外部插件"}}"#),
-        )
-        .unwrap();
-        dir.parent().unwrap().to_path_buf()
-    }
-
-    fn write_marketplace(home: &Path, layout: &str, plugins_json: &str) {
-        let path = home.join(layout);
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(
-            &path,
-            format!(r#"{{"name":"m","plugins":[{plugins_json}]}}"#),
-        )
-        .unwrap();
-    }
-
-    fn relative_posix(home: &Path, path: &Path) -> String {
-        path.strip_prefix(home)
-            .unwrap()
-            .to_string_lossy()
-            .replace('\\', "/")
-    }
-
     #[tokio::test]
     async fn list_plugins_reads_skill_lock_and_cache_fallback() {
         let (home, context) = context();
         // 无 codex CLI 的环境（CI）：走缓存回退
-        std::fs::create_dir_all(home.path().join(".agents/skills/lark-base")).unwrap();
+        let skill_dir = home.path().join(".agents/skills/lark-base");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\ndescription: 飞书多维表格操作\n---\n",
+        )
+        .unwrap();
         std::fs::write(
             home.path().join(".agents/.skill-lock.json"),
             r#"{"version":3,"skills":{"lark-base":{"source":"larksuite/cli","sourceType":"github","sourceUrl":"https://github.com/larksuite/cli.git","skillPath":"skills/lark-base/SKILL.md","skillFolderHash":"abc","installedAt":"2026-05-09T10:06:04.288Z"}}}"#,
@@ -1347,23 +1726,36 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
             r#"{"name":"ponytail","description":"Ponytail 插件"}"#,
         )
         .unwrap();
+        let skill_dir = cache_dir
+            .parent()
+            .unwrap()
+            .join("skills")
+            .join("plugin-skill");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\ndescription: 插件内的 Skill\n---\n",
+        )
+        .unwrap();
 
-        let plugins = context.list_plugins().await.unwrap();
-        let skill = plugins
-            .iter()
-            .find(|item| item.name == "lark-base")
-            .unwrap();
-        assert_eq!(skill.origin, "skill");
-        assert!(skill.enabled);
+        let skills = context.list_skills().await.unwrap();
+        let skill = skills.iter().find(|item| item.name == "lark-base").unwrap();
+        assert_eq!(skill.name, "lark-base");
+        assert_eq!(skill.description.as_deref(), Some("飞书多维表格操作"));
         assert_eq!(
             skill.source_url.as_deref(),
             Some("https://github.com/larksuite/cli.git")
         );
 
+        let plugins = context.list_plugins().await.unwrap();
+        assert!(plugins.iter().all(|item| item.name != "lark-base"));
         let ponytail = plugins.iter().find(|item| item.name == "ponytail").unwrap();
         assert_eq!(ponytail.origin, "codex");
         assert_eq!(ponytail.marketplace.as_deref(), Some("ponytail"));
         assert_eq!(ponytail.version.as_deref(), Some("4.9.0"));
+        let plugin_skills = context.list_plugin_skills("ponytail").await.unwrap();
+        assert_eq!(plugin_skills.len(), 1);
+        assert_eq!(plugin_skills[0].name, "plugin-skill");
     }
 
     #[tokio::test]
@@ -1376,74 +1768,6 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         )
         .unwrap();
         let error = context.uninstall_plugin("lark-base").await.unwrap_err();
-        assert!(error.0.contains("官方市场 / Skill 注册表"));
-    }
-
-    #[tokio::test]
-    async fn list_plugins_discovers_external_entries_across_layouts() {
-        let (home, context) = context();
-        let external_dir = write_external_plugin(home.path(), "handmade");
-        write_marketplace(
-            home.path(),
-            ".agents/plugins/marketplace.json",
-            &format!(
-                r#"{{"name":"a","source":{{"source":"local","path":"./{}"}}}}"#,
-                relative_posix(home.path(), &external_dir)
-            ),
-        );
-        let claude_dir = write_external_plugin(home.path(), "claude-plugin");
-        write_marketplace(
-            home.path(),
-            ".claude-plugin/marketplace.json",
-            &format!(
-                r#"{{"name":"c","source":"./{}"}}"#,
-                relative_posix(home.path(), &claude_dir)
-            ),
-        );
-
-        let plugins = context.list_plugins().await.unwrap();
-        let handmade = plugins.iter().find(|item| item.name == "handmade").unwrap();
-        assert_eq!(handmade.origin, "personal");
-        assert!(handmade.enabled);
-        assert_eq!(handmade.version.as_deref(), Some("2.0.0"));
-        let claude = plugins
-            .iter()
-            .find(|item| item.name == "claude-plugin")
-            .unwrap();
-        assert_eq!(claude.origin, "claude");
-    }
-
-    #[test]
-    fn external_disable_stashes_and_enable_restores() {
-        let (home, context) = context();
-        let external_dir = write_external_plugin(home.path(), "handmade");
-        let relative = relative_posix(home.path(), &external_dir);
-        write_marketplace(
-            home.path(),
-            ".claude-plugin/marketplace.json",
-            &format!(r#"{{"name":"handmade","source":"./{relative}"}}"#),
-        );
-
-        context.set_plugin_enabled("handmade", false).unwrap();
-        // 文件必须原地保留
-        assert!(external_dir
-            .join(".codex-plugin")
-            .join("plugin.json")
-            .is_file());
-        let marketplace_text =
-            std::fs::read_to_string(home.path().join(".claude-plugin/marketplace.json")).unwrap();
-        assert!(!marketplace_text.contains("handmade"));
-
-        context.set_plugin_enabled("handmade", true).unwrap();
-        let marketplace_text =
-            std::fs::read_to_string(home.path().join(".claude-plugin/marketplace.json")).unwrap();
-        assert!(marketplace_text.contains("handmade"));
-    }
-
-    #[test]
-    fn set_enabled_rejects_marketplace_plugins_without_entry() {
-        let (_home, context) = context();
-        let error = context.set_plugin_enabled("whatever", false).unwrap_err();
-        assert!(error.0.contains("家目录 local 条目"));
+        assert!(error.0.contains("Skill 注册表"));
     }
 }

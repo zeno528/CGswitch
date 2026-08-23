@@ -1116,9 +1116,19 @@ fn mcp_delete_removes_only_target() {
 
 #[test]
 fn apply_raw_profile_carries_live_mcp_section() {
-    let (context, _home) =
-        mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
-    let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[mcp_servers.stale]\ncommand = \"old\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
+    let (context, _home) = mcp_test_context(concat!(
+        "[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n\n",
+        "[marketplaces.ponytail]\nsource = \"https://github.com/DietrichGebert/ponytail.git\"\n\n",
+        "[plugins.\"ponytail@ponytail\"]\nenabled = true\n\n",
+        "[hooks.state]\nponytail = true\n",
+    ));
+    let raw = concat!(
+        "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n",
+        "[mcp_servers.stale]\ncommand = \"old\"\n\n",
+        "[marketplaces.stale]\nsource = \"old\"\n\n",
+        "[plugins.\"stale@stale\"]\nenabled = true\n\n",
+        "[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n",
+    );
     let profile = context
         .add_custom_profile("智谱", raw, None, None, None, None, None)
         .unwrap();
@@ -1129,6 +1139,11 @@ fn apply_raw_profile_carries_live_mcp_section() {
     // live 的 MCP 段被携带进快照供应商；快照里的陈旧段被替换
     assert!(config.contains("mcp_servers.tavily"), "{config}");
     assert!(!config.contains("mcp_servers.stale"), "{config}");
+    assert!(config.contains("marketplaces.ponytail"), "{config}");
+    assert!(config.contains("ponytail@ponytail"), "{config}");
+    assert!(config.contains("ponytail = true"), "{config}");
+    assert!(!config.contains("marketplaces.stale"), "{config}");
+    assert!(!config.contains("stale@stale"), "{config}");
     assert!(config.contains("model = \"glm-5.3\""), "{config}");
 }
 

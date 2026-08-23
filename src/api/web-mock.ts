@@ -3,8 +3,12 @@ import type {
   AppState,
   DatabaseBackupInfo,
   McpServerSpec,
+  MarketplacePlugin,
+  PluginMarketplace,
   PluginPreview,
+  PluginSkill,
   PluginSummary,
+  SkillSummary,
   ProfileBalanceInfo,
   ProfileDetail,
   ProfileSummary,
@@ -95,8 +99,8 @@ function patchSystemProxyForWeb(text: string, enabled: boolean): string {
   return lines.join(newline);
 }
 
-// 与后端一致：安装/卸载驱动 codex plugin CLI；列表读 codex plugin list（含启停）、
-// Skill 注册表与家目录 local 条目，origin 区分来源（official/skill 只读）
+// 与后端一致：安装/卸载驱动 codex plugin CLI；列表读 codex plugin list、
+// 插件列表与 Codex Skill 注册表分开；插件 origin 只描述插件来源
 let webPlugins: PluginSummary[] = [
   {
     name: "memory-bank",
@@ -107,11 +111,10 @@ let webPlugins: PluginSummary[] = [
     capabilities: ["read", "write"],
     contains: ["skills", "mcp"],
     enabled: true,
-    origin: "cgswitch",
+    origin: "codex",
     marketplace: "example-plugins",
     store_path: "C:\\Users\\<user>\\.codex\\plugins\\cache\\example-plugins\\memory-bank\\1.2.0",
     source_url: "https://github.com/example/plugins",
-    installed_at: 1755800000000,
   },
   {
     name: "code-reviewer",
@@ -122,26 +125,10 @@ let webPlugins: PluginSummary[] = [
     capabilities: [],
     contains: ["skills"],
     enabled: false,
-    origin: "cgswitch",
+    origin: "codex",
     marketplace: "example-plugins",
     store_path: "C:\\Users\\<user>\\.codex\\plugins\\cache\\example-plugins\\code-reviewer\\0.4.1",
     source_url: null,
-    installed_at: null,
-  },
-  {
-    name: "handmade",
-    version: "2.0.0",
-    display_name: "Handmade",
-    description: "手写 local 条目的外部插件示例",
-    category: null,
-    capabilities: [],
-    contains: ["skills"],
-    enabled: true,
-    origin: "personal",
-    marketplace: null,
-    store_path: "C:\\Users\\<user>\\my-plugins\\handmade",
-    source_url: null,
-    installed_at: null,
   },
   {
     name: "documents",
@@ -156,22 +143,6 @@ let webPlugins: PluginSummary[] = [
     marketplace: "openai-primary-runtime",
     store_path: "C:\\Users\\<user>\\.cache\\codex-runtimes\\plugins\\documents",
     source_url: null,
-    installed_at: null,
-  },
-  {
-    name: "lark-base",
-    version: null,
-    display_name: null,
-    description: "Skill 注册表里的已装技能（只读示例）",
-    category: null,
-    capabilities: [],
-    contains: ["skills"],
-    enabled: true,
-    origin: "skill",
-    marketplace: null,
-    store_path: "C:\\Users\\<user>\\.agents\\skills\\lark-base",
-    source_url: "https://github.com/larksuite/cli.git",
-    installed_at: null,
   },
   {
     name: "ponytail",
@@ -186,9 +157,109 @@ let webPlugins: PluginSummary[] = [
     marketplace: "ponytail",
     store_path: "C:\\Users\\<user>\\.codex\\plugins\\cache\\ponytail\\ponytail\\4.9.0",
     source_url: null,
-    installed_at: null,
   },
 ];
+
+const webPluginSkills: Record<string, PluginSkill[]> = {
+  "memory-bank": [{ name: "session-summary", path: "skills/session-summary/SKILL.md", description: "整理跨会话摘要" }],
+  ponytail: [{ name: "ponytail", path: "skills/ponytail/SKILL.md", description: "精简实现工作流" }],
+};
+
+const webSkills: SkillSummary[] = [
+  {
+    name: "lark-base",
+    description: "Skill 注册表里的已装技能（只读示例）",
+    source_url: "https://github.com/larksuite/cli.git",
+    store_path: "C:\\Users\\<user>\\.agents\\skills\\lark-base",
+  },
+];
+
+let webMarketplaces: PluginMarketplace[] = [
+  {
+    name: "openai-bundled",
+    root: "C:\\Users\\<user>\\.codex\\.tmp\\bundled-marketplaces\\openai-bundled",
+    kind: "official",
+    source_url: null,
+    display_name: "OpenAI Bundled",
+    description: "Codex 官方捆绑插件市场。",
+  },
+  {
+    name: "ponytail",
+    root: "C:\\Users\\<user>\\.codex\\.tmp\\marketplaces\\ponytail",
+    kind: "third-party",
+    source_url: "https://github.com/DietrichGebert/ponytail.git",
+    display_name: "Ponytail",
+    description: "社区插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流。",
+  },
+  {
+    name: "youmind",
+    root: "C:\\Users\\<user>\\.codex\\.tmp\\marketplaces\\youmind",
+    kind: "third-party",
+    source_url: "https://github.com/YouMind-OpenLab/plugin-marketplace.git",
+    display_name: "YouMind",
+    description: "YouMind 社区插件市场，收录创作、设计和内容工作流插件。",
+  },
+];
+
+let webMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
+  ponytail: [
+    {
+      plugin_id: "ponytail@ponytail",
+      name: "ponytail",
+      version: "4.9.0",
+      installed: true,
+      auth_policy: "ON_INSTALL",
+      source: "https://github.com/DietrichGebert/ponytail.git",
+      display_name: "Ponytail",
+      description: "Prefer YAGNI, the standard library, native platform features, and the smallest correct implementation.",
+      category: "Productivity",
+      capabilities: ["Instructions", "Lifecycle hooks"],
+    },
+  ],
+};
+
+const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
+  xiaolai: [
+    {
+      plugin_id: "grill@xiaolai",
+      name: "grill",
+      version: "1.3.0",
+      installed: false,
+      auth_policy: "ON_USE",
+      source: "https://github.com/xiaolai/grill-for-claude.git",
+      display_name: "Grill",
+      description: "用于代码工作流与开发辅助的社区插件。",
+      category: "Development",
+      capabilities: ["Instructions"],
+    },
+    {
+      plugin_id: "xros@xiaolai",
+      name: "xros",
+      version: "0.3.0",
+      installed: false,
+      auth_policy: "ON_USE",
+      source: "https://github.com/xiaolai/xros.git",
+      display_name: "XROS",
+      description: "面向终端工作流的社区插件。",
+      category: "Productivity",
+      capabilities: ["Instructions"],
+    },
+  ],
+  youmind: [
+    {
+      plugin_id: "hyperframes@youmind",
+      name: "hyperframes",
+      version: null,
+      installed: false,
+      auth_policy: "ON_INSTALL",
+      source: "./plugins/hyperframes",
+      display_name: "HyperFrames by HeyGen",
+      description: "Write HTML, render video, and create interactive motion graphics with HeyGen's HyperFrames.",
+      category: "Design",
+      capabilities: ["Read", "Write"],
+    },
+  ],
+};
 
 const webPluginPreview: PluginPreview = {
   repo: "openai/plugins",
@@ -713,6 +784,61 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       ) as T;
     case "list_plugins":
       return webPlugins.map((plugin) => ({ ...plugin })) as T;
+    case "list_skills":
+      return webSkills.map((skill) => ({ ...skill })) as T;
+    case "list_plugin_skills":
+      return (webPluginSkills[String(args?.name ?? "")] ?? []).map((skill) => ({ ...skill })) as T;
+    case "list_plugin_marketplaces":
+      return webMarketplaces.map((marketplace) => ({ ...marketplace })) as T;
+    case "list_marketplace_plugins":
+      return (webMarketplacePlugins[String(args?.marketplace ?? "")] ?? []).map((plugin) => ({ ...plugin })) as T;
+    case "add_plugin_marketplace": {
+      const source = String(args?.url ?? "");
+      const name = source.includes("ponytail") ? "ponytail" : source.includes("xiaolai") ? "xiaolai" : "third-party-marketplace";
+      const marketplace: PluginMarketplace = {
+        name,
+        root: `C:\\Users\\<user>\\.codex\\.tmp\\marketplaces\\${name}`,
+        kind: "third-party",
+        source_url: source,
+        display_name: name === "xiaolai" ? "xiaolai (Codex)" : name,
+        description: name === "xiaolai"
+          ? "社区 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件。"
+          : "第三方 Codex 插件市场。",
+      };
+      webMarketplaces = [...webMarketplaces.filter((item) => item.name !== name), marketplace];
+      webMarketplacePlugins[name] ??= (webRecommendedMarketplacePlugins[name] ?? []).map((plugin) => ({ ...plugin }));
+      return marketplace as T;
+    }
+    case "remove_plugin_marketplace": {
+      const name = String(args?.name ?? "");
+      if (name.startsWith("openai")) throw new Error("官方市场不能移除");
+      webMarketplaces = webMarketplaces.filter((marketplace) => marketplace.name !== name);
+      return undefined as T;
+    }
+    case "install_marketplace_plugin": {
+      const marketplace = String(args?.marketplace ?? "");
+      const name = String(args?.name ?? "");
+      const catalog = webMarketplacePlugins[marketplace] ?? [];
+      const item = catalog.find((plugin) => plugin.name === name);
+      if (!item) throw new Error("没有找到可安装的插件");
+      item.installed = true;
+      const summary: PluginSummary = {
+        name: item.name,
+        version: item.version,
+        display_name: item.display_name,
+        description: item.description ?? `来自 ${marketplace} 市场的插件`,
+        category: item.category,
+        capabilities: item.capabilities,
+        contains: ["skills"],
+        enabled: true,
+        origin: "codex",
+        marketplace,
+        store_path: `C:\\Users\\<user>\\.codex\\plugins\\cache\\${marketplace}\\${item.name}\\${item.version ?? "latest"}`,
+        source_url: item.source,
+      };
+      webPlugins = [...webPlugins.filter((plugin) => plugin.name !== name), summary].sort((a, b) => a.name.localeCompare(b.name));
+      return summary as T;
+    }
     case "preview_plugin": {
       // 与后端一致：预览需要真实 GitHub 网络；浏览器环境仅对示例地址返回 fixture，其余抛错
       const url = String(args?.url ?? "");
@@ -730,33 +856,31 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         capabilities: candidate.capabilities,
         contains: candidate.contains,
         enabled: true,
-        origin: "cgswitch",
+        origin: "codex",
         marketplace: "openai-plugins",
         store_path: `C:\\Users\\<user>\\.codex\\plugins\\cache\\openai-plugins\\${candidate.name}\\${candidate.version ?? "latest"}`,
         source_url: "https://github.com/openai/plugins",
-        installed_at: Date.now(),
       };
       webPlugins = [...webPlugins.filter((plugin) => plugin.name !== summary.name), summary].sort((a, b) => a.name.localeCompare(b.name));
       return summary as T;
     }
     case "uninstall_plugin": {
-      // 与后端一致：官方市场 / Skill 注册表拒绝卸载
+      // 与后端一致：官方市场拒绝卸载；Skill 在独立页面展示
       const target = webPlugins.find((plugin) => plugin.name === args?.name);
-      if (target && ["official", "skill"].includes(target.origin)) {
-        throw new Error("该插件属于 Codex 官方市场 / Skill 注册表，请在 Codex 内管理它");
+      if (webSkills.some((skill) => skill.name === args?.name)) {
+        throw new Error("该 Skill 属于 Codex Skill 注册表，请在 Codex 内管理它");
+      }
+      if (target?.origin === "official") {
+        throw new Error("该插件属于 Codex 官方市场，请在 Codex 内管理它");
       }
       webPlugins = webPlugins.filter((plugin) => plugin.name !== args?.name);
-      return undefined as T;
-    }
-    case "set_plugin_enabled": {
-      // 与后端一致：启停只支持家目录条目类来源；市场插件 CLI 未提供启停命令
-      const target = webPlugins.find((plugin) => plugin.name === args?.name);
-      if (target && !["personal", "claude", "cursor"].includes(target.origin)) {
-        throw new Error("该插件的启停请在 Codex 内操作");
-      }
-      webPlugins = webPlugins.map((plugin) =>
-        plugin.name === args?.name ? { ...plugin, enabled: Boolean(args?.enabled) } : plugin,
-      );
+      Object.values(webMarketplacePlugins).forEach((plugins) => {
+        plugins.forEach((plugin) => {
+          if (plugin.name === args?.name) {
+            plugin.installed = false;
+          }
+        });
+      });
       return undefined as T;
     }
     case "delete_profile": {

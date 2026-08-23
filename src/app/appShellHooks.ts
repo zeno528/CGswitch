@@ -3,7 +3,7 @@ import type { MutableRefObject } from "react";
 import { api, isTauri } from "../api";
 import type { AppState, CodexAppStatus, Settings } from "../types";
 
-export type AppView = "profiles" | "mcp" | "plugins" | "settings";
+export type AppView = "profiles" | "mcp" | "plugins" | "skills" | "settings";
 
 export function indicatorTop(targetRect: { top: number }, navRect: { top: number }) {
   return targetRect.top - navRect.top + 8;
@@ -149,12 +149,13 @@ export function useSidebarIndicator(view: AppView) {
   const profileNavRef = useRef<HTMLButtonElement>(null);
   const mcpNavRef = useRef<HTMLButtonElement>(null);
   const pluginsNavRef = useRef<HTMLButtonElement>(null);
+  const skillsNavRef = useRef<HTMLButtonElement>(null);
   const settingsNavRef = useRef<HTMLButtonElement>(null);
   const sidebarNavRef = useRef<HTMLElement>(null);
   const previousViewRef = useRef<AppView>(view);
 
   const updateIndicator = useCallback(() => {
-    const target = view === "profiles" ? profileNavRef.current : view === "mcp" ? mcpNavRef.current : view === "plugins" ? pluginsNavRef.current : settingsNavRef.current;
+    const target = view === "profiles" ? profileNavRef.current : view === "mcp" ? mcpNavRef.current : view === "plugins" ? pluginsNavRef.current : view === "skills" ? skillsNavRef.current : settingsNavRef.current;
     const nav = sidebarNavRef.current;
     if (!target || !nav) return;
     setIndicator((current) => ({
@@ -202,6 +203,7 @@ export function useSidebarIndicator(view: AppView) {
     profileNavRef,
     mcpNavRef,
     pluginsNavRef,
+    skillsNavRef,
     settingsNavRef,
     sidebarNavRef,
   };

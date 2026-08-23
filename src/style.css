@@ -25,6 +25,7 @@
   --success-text: #248a3d;
   --chip-success: #30d158;
   --profile-chip-bg: rgb(0 0 0 / 0.04);
+  --input-bg: #f5f5f5;
   --profile-meta-text: rgba(60, 60, 67, 0.68);
   /* 功能强调紫（静默启动等）：iOS 系统紫，深色主题换亮紫 */
   --lavender: #af52de;
@@ -74,17 +75,18 @@
   /* linguagram 深色配色：抬升暖灰画布（不纯黑）+ 表面抬一档 + 白底 hairline */
   --accent: #5e9cff;
   --success: #3fb950;
-  --app-bg: #1a1d1f;
-  --panel-bg: #24242a;
-  --panel-border: rgba(255, 255, 255, 0.10);
+  --app-bg: #202124;
+  --panel-bg: #252526;
+  --panel-border: rgba(255, 255, 255, 0.08);
   --panel-ring: rgba(255, 255, 255, 0.06);
-  --panel-divider: rgba(255, 255, 255, 0.08);
-  --text-secondary: #ffffff;
-  --sidebar-bg: #15151a;
-  --selection-bg: rgba(94, 156, 255, 0.18);
+  --panel-divider: rgba(255, 255, 255, 0.06);
+  --text-secondary: rgba(255, 255, 255, 0.68);
+  --sidebar-bg: #333333;
+  --selection-bg: rgba(94, 156, 255, 0.16);
   --success-text: #6ee7a0;
   --chip-success: #63e68a;
   --profile-chip-bg: #1e1e1e;
+  --input-bg: #1e1e1e;
   --profile-meta-text: rgba(255, 255, 255, 0.62);
   --lavender: #bf5af2;
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 25%, transparent);
@@ -659,6 +661,12 @@ body.drag-settling .profile-card-actions {
   padding-inline: var(--gap-main);
 }
 
+/* 页头右侧固定槽位在长标题页面可收缩，避免切页时操作区换行造成上下跳动 */
+.apple-page-bar > .w-full.max-w-md {
+  flex: 1 1 0%;
+  min-width: 0;
+}
+
 .apple-page-bar--sticky {
   position: sticky;
   /* 与 .apple-page-bar 的负上边距共用 --main-top-inset，sticky 顶点始终贴住 main 顶部 */
@@ -702,7 +710,7 @@ body.drag-settling .profile-card-actions {
 }
 
 .apple-edit-toolbar--footer .apple-action-button:not(.app-button--primary):hover {
-  background: var(--sidebar-bg);
+  background: var(--profile-chip-bg);
 }
 
 /* 首卡片与页头的间距统一由 .apple-edit-content 的 padding-top（--gap-page）承担，
@@ -823,7 +831,7 @@ body.drag-settling .profile-card-actions {
 }
 
 .apple-action-button:hover {
-  background: var(--sidebar-bg);
+  background: var(--profile-chip-bg);
 }
 
 .apple-action-button--quaternary {
@@ -860,7 +868,25 @@ body.drag-settling .profile-card-actions {
 }
 
 :where(.apple-icon-button:hover:not(:disabled), .apple-icon-button:focus-visible:not(:disabled)) {
-  background: var(--sidebar-bg);
+  background: var(--profile-chip-bg);
+}
+
+.apple-toolbar-group {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.125rem;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--profile-chip-bg) 45%, transparent);
+}
+
+.apple-toolbar-group > .apple-action-button {
+  height: var(--icon-button-size);
+}
+
+.apple-toolbar-group > :is(.apple-action-button, .apple-icon-button):is(:hover, :focus-visible):not(:disabled) {
+  background: var(--tile-bg);
 }
 
 .mcp-sync-confirm {
@@ -1076,7 +1102,7 @@ button:focus-visible {
 }
 
 .app-dialog-close:hover {
-  background: var(--sidebar-bg);
+  background: var(--profile-chip-bg);
   color: inherit;
 }
 
@@ -1199,7 +1225,7 @@ button:focus-visible {
   gap: 0.5rem;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
-  background: var(--panel-bg);
+  background: var(--input-bg);
   padding: 0.5rem 0.75rem;
   color: inherit;
   font: inherit;
@@ -1433,7 +1459,7 @@ button:focus-visible {
   min-height: var(--control-height);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
-  background: var(--panel-bg);
+  background: var(--input-bg);
   padding: 0.5rem 0.75rem;
   color: inherit;
   font: inherit;

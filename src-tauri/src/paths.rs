@@ -10,12 +10,7 @@ pub struct AppPaths {
     pub config_backup: PathBuf,
     pub database_backup: PathBuf,
     pub codex_files_backup: PathBuf,
-    pub plugin_backup: PathBuf,
     pub codex_home: PathBuf,
-    /// Codex 插件生态的公共根（个人 marketplace 与插件 store 都在其下），创建交给插件安装流程。
-    pub agents_home: PathBuf,
-    /// CGswitch 自管数据：已装插件来源 + 被移除外部条目的暂存（marketplace.json 是 Codex 的文件，不塞私有字段）。
-    pub plugin_state: PathBuf,
 }
 
 impl AppPaths {
@@ -29,7 +24,6 @@ impl AppPaths {
             &self.config_backup,
             &self.database_backup,
             &self.codex_files_backup,
-            &self.plugin_backup,
         ] {
             std::fs::create_dir_all(dir)
                 .map_err(|error| err(format!("无法创建目录 {}: {error}", dir.display())))?;
@@ -44,17 +38,13 @@ pub fn app_paths() -> AppResult<AppPaths> {
 
 pub fn from_home(home: &Path) -> AppResult<AppPaths> {
     let root = home.join(".cgswitch");
-    let agents_home = home.join(".agents");
     Ok(AppPaths {
         database: root.join("cgswitch.db"),
         settings: root.join("settings.json"),
         config_backup: root.join("backups").join("config"),
         database_backup: root.join("backups").join("database"),
         codex_files_backup: root.join("backups").join("codex-files"),
-        plugin_backup: root.join("backups").join("plugins"),
-        plugin_state: root.join("plugin-state.json"),
         codex_home: home.join(".codex"),
-        agents_home,
         root,
     })
 }

@@ -275,7 +275,23 @@ export default function ProfilesView({ state, activationEpoch, onRefresh }: Prof
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-sm"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${state.codex.running ? "border-success/25 bg-success/10 text-[var(--success-text)] dark:border-success/30 dark:bg-success/10" : "border-[var(--panel-border)] bg-black/4 muted dark:bg-white/6"}`}><span className="relative flex h-2 w-2"><span className={`relative inline-flex h-2 w-2 rounded-full ${state.codex.running ? "bg-success shadow-[0_0_6px_1px_rgba(52,199,89,0.45)]" : "bg-black/40 dark:bg-white/40"}`} /></span>Codex {state.codex.running ? "运行中" : "未运行"}</span></div>
-        <div className="flex flex-wrap items-center gap-2"><button type="button" className="apple-action-button apple-action-button--quaternary" disabled={busy || (restartStage !== "idle" && restartStage !== "success" && restartStage !== "error")} title="重启 Codex" onClick={() => void restart(false)}><RefreshCw className="h-4 w-4" strokeWidth={2} />重启 Codex</button><button type="button" className="apple-icon-button text-accent hover:bg-[var(--sidebar-bg)]" disabled={busy} title="捕获当前配置" aria-label="捕获当前配置" onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} /></button><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => setCreatingProfile(true)}><Plus className="h-4 w-4" strokeWidth={2} />添加供应商</button></div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="apple-toolbar-group">
+            <button type="button" className="apple-action-button apple-action-button--quaternary"
+              disabled={busy || (restartStage !== "idle" && restartStage !== "success" && restartStage !== "error")}
+              title="重启 Codex" onClick={() => void restart(false)}>
+              <RefreshCw className="h-4 w-4" strokeWidth={2} />重启 Codex
+            </button>
+            <button type="button" className="apple-icon-button text-accent" disabled={busy}
+              title="捕获当前配置" aria-label="捕获当前配置" onClick={openCapture}>
+              <Camera className="h-4 w-4" strokeWidth={2} />
+            </button>
+          </div>
+          <button type="button" className="apple-action-button app-button--primary" disabled={busy}
+            onClick={() => setCreatingProfile(true)}>
+            <Plus className="h-4 w-4" strokeWidth={2} />添加供应商
+          </button>
+        </div>
       </header>
       <div className="apple-edit-content">
         {restartCardMounted ? <RestartProgressCard stage={restartCardStage} message={restartMessage} visible={restartCardVisible} onHidden={onRestartCardHidden} /> : null}

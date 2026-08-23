@@ -1,12 +1,10 @@
-import { Download, Blocks, Search } from "lucide-react";
+import { ArrowLeft, Download, Blocks, ChevronRight, ExternalLink, Plus, Search, Store } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { AppDialog } from "../../components/AppDialog";
-import { AppSwitch } from "../../components/AppSwitch";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { TrashIcon } from "../../components/TrashIcon";
-import type { PluginCandidate, PluginPreview, PluginSummary } from "../../types";
+import type { MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill, PluginSummary } from "../../types";
 
 const containsLabels: Record<string, string> = {
   skills: "Skills",
@@ -18,31 +16,37 @@ const containsLabels: Record<string, string> = {
 };
 
 const originLabels: Partial<Record<PluginSummary["origin"], string>> = {
-  personal: "本地登记",
-  claude: "Claude",
-  cursor: "Cursor",
   official: "官方目录",
-  skill: "Skill 安装",
   codex: "Codex 安装",
 };
 
-/** 可启停的条目类来源（摘/回 marketplace 条目） */
-const entryOrigins: readonly PluginSummary["origin"][] = ["personal", "claude", "cursor"];
 /** 可卸载的来源（官方市场与 Skill 注册表除外） */
-const removableOrigins: readonly PluginSummary["origin"][] = [
-  "cgswitch",
-  "codex",
-  "personal",
-  "claude",
-  "cursor",
-];
+const removableOrigins: readonly PluginSummary["origin"][] = ["codex"];
 
 const originHints: Partial<Record<PluginSummary["origin"], string>> = {
   official: "官方市场，由 Codex 管理",
-  skill: "记录在 Codex Skill 注册表",
   codex: "启停请在 Codex 内操作",
-  cgswitch: "启停请在 Codex 内操作",
 };
+
+const marketplaceKindLabels: Record<PluginMarketplace["kind"], string> = {
+  official: "官方市场",
+  "third-party": "第三方市场",
+};
+
+const recommendedMarketplaces = [
+  {
+    name: "openai-curated",
+    displayName: "OpenAI Plugins",
+    source: "openai/plugins",
+    description: "OpenAI 官方 Codex 插件市场，提供可安装的应用集成与开发工作流。",
+  },
+  {
+    name: "ponytail",
+    displayName: "Ponytail",
+    source: "DietrichGebert/ponytail",
+    description: "偏向最小实现的开发工作流，强调 YAGNI、标准库和原生能力。",
+  },
+] as const;
 
 function ContainsChips({ items }: { items: string[] }) {
   if (!items.length) return null;
@@ -57,33 +61,416 @@ function ContainsChips({ items }: { items: string[] }) {
   );
 }
 
-export default function PluginsView() {
+function sourceUrl(source: string): string | null {
+  const value = source.trim();
+  if (/^https?:\/\//i.test(value)) return value.replace(/\.git$/i, "");
+  const githubSsh = value.match(/^(?:git@github\.com:|ssh:\/\/git@github\.com\/)(.+?)(?:\.git)?$/i);
+  if (githubSsh) return `https://github.com/${githubSsh[1]}`;
+  if (/^[^/\s]+\/[^/\s]+(?:@[^/\s]+)?$/.test(value)) {
+    const [repository, reference] = value.split("@", 2);
+    return `https://github.com/${repository}${reference ? `/tree/${reference}` : ""}`;
+  }
+  return null;
+}
+
+function GithubMark() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+      <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.729.084-.729 1.205.084 1.84 1.236 1.84 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.23 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.435.375.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.624-5.373-12-12-12" />
+    </svg>
+  );
+}
+
+function SourceLink({ source }: { source: string }) {
   const feedback = useFeedback();
-  const [plugins, setPlugins] = useState<PluginSummary[]>([]);
+  const url = sourceUrl(source);
+  if (!url) return <span className="mono muted meta-xs break-all">{source}</span>;
+  const isGithub = /github\.com/i.test(url);
+  return (
+    <button
+      type="button"
+      className="apple-inline-btn shrink-0"
+      title={`打开来源：${url}`}
+      aria-label={`打开${isGithub ? " GitHub" : "来源"}`}
+      onClick={() => void api.openUrl(url).catch((error) => feedback.error(String(error)))}
+    >
+      {isGithub ? <GithubMark /> : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
+      {isGithub ? "GitHub" : "打开来源"}
+    </button>
+  );
+}
+
+function PluginDetailView({ plugin, onBack }: { plugin: PluginSummary; onBack: () => void }) {
+  const [skills, setSkills] = useState<PluginSkill[]>([]);
+  const [skillsLoaded, setSkillsLoaded] = useState(false);
+  const [skillsError, setSkillsError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setSkills([]);
+    setSkillsLoaded(false);
+    setSkillsError("");
+    void api.listPluginSkills(plugin.name)
+      .then((items) => {
+        if (!cancelled) setSkills(items);
+      })
+      .catch((error) => {
+        if (!cancelled) setSkillsError(String(error));
+      })
+      .finally(() => {
+        if (!cancelled) setSkillsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plugin.name]);
+
+  return (
+    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
+      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
+        <button type="button" className="apple-page-header apple-back-button" aria-label="返回插件" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <span className="apple-title">{plugin.display_name ?? plugin.name}</span>
+        </button>
+      </div>
+      <div className="apple-edit-content">
+        <div className="apple-group">
+          <div className="apple-panel-section">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="title-md">{plugin.display_name ?? plugin.name}</span>
+              {plugin.version ? <span className="apple-chip">v{plugin.version}</span> : null}
+              {plugin.enabled ? null : <span className="apple-chip chip-warn">已禁用</span>}
+            </div>
+            <p className="muted mt-2 text-sm">{plugin.description ?? "这个插件没有提供文字介绍。"}</p>
+          </div>
+          <div className="apple-panel-section">
+            <div className="field-label mb-2">插件介绍</div>
+            <p className="muted text-sm">{plugin.description ?? "这个插件没有提供文字介绍。"}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {plugin.category ? <span className="apple-chip">分类：{plugin.category}</span> : null}
+              {plugin.capabilities.length ? <ContainsChips items={plugin.capabilities} /> : null}
+            </div>
+          </div>
+          <div className="apple-panel-section">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <div className="field-label mb-1.5">插件名</div>
+                <div className="mono text-sm">{plugin.name}</div>
+              </div>
+              <div>
+                <div className="field-label mb-1.5">来源</div>
+                <div className="text-sm">{originLabels[plugin.origin] ?? plugin.origin}</div>
+              </div>
+              <div>
+                <div className="field-label mb-1.5">市场</div>
+                <div className="mono text-sm">{plugin.marketplace ?? "本地"}</div>
+              </div>
+              <div>
+                <div className="field-label mb-1.5">安装位置</div>
+                <div className="mono muted break-all text-sm">{plugin.store_path}</div>
+              </div>
+              {plugin.source_url ? (
+                <div>
+                  <div className="field-label mb-1.5">来源地址</div>
+                  <SourceLink source={plugin.source_url} />
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div className="apple-panel-section">
+            <div className="field-label mb-2">插件组成</div>
+            {plugin.contains.length ? <ContainsChips items={plugin.contains} /> : <p className="muted text-sm">未识别到组成内容</p>}
+          </div>
+          <div className="apple-panel-section">
+            <div className="flex items-center justify-between gap-3">
+              <div className="field-label">Skills</div>
+              {skillsLoaded ? <span className="apple-chip" aria-label={`${skills.length} 个 Skill`}>{skills.length}</span> : null}
+            </div>
+            {!skillsLoaded ? (
+              <div className="muted mt-3 flex items-center gap-2 text-sm"><LoadingSpinner />加载 Skill 明细…</div>
+            ) : skillsError ? (
+              <p className="muted mt-2 text-sm">{skillsError}</p>
+            ) : skills.length ? (
+              <div className="mt-3 space-y-2">
+                {skills.map((skill) => (
+                  <div key={skill.path} className="rounded-[var(--radius-control)] bg-black/3 p-3 shadow-[0_0_0_1px_var(--panel-ring)] dark:bg-white/4">
+                    <div className="font-semibold">{skill.name}</div>
+                    <div className="mono muted meta-xs mt-1 break-all">{skill.path}</div>
+                    {skill.description ? <div className="muted mt-1.5 text-sm">{skill.description}</div> : null}
+                  </div>
+                ))}
+              </div>
+            ) : <p className="muted mt-2 text-sm">这个插件没有可读取的 Skill 明细。</p>}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MarketplaceDetailView({
+  marketplace,
+  activeProvider,
+  onBack,
+  onInstalled,
+  onMarketplaceRemoved,
+}: {
+  marketplace: PluginMarketplace;
+  activeProvider: string | null;
+  onBack: () => void;
+  onInstalled: () => Promise<void>;
+  onMarketplaceRemoved: () => Promise<void>;
+}) {
+  const feedback = useFeedback();
+  const [plugins, setPlugins] = useState<MarketplacePlugin[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [loadError, setLoadError] = useState("");
+  const [error, setError] = useState("");
+  const [installing, setInstalling] = useState("");
+  const [uninstalling, setUninstalling] = useState("");
+  const [removing, setRemoving] = useState(false);
+  const installedPluginCount = plugins.filter((plugin) => plugin.installed).length;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    setError("");
+    void api.listMarketplacePlugins(marketplace.name, marketplace.root)
+      .then((items) => {
+        if (!cancelled) setPlugins(items);
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(String(reason));
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [marketplace.name]);
+
+  const install = async (plugin: MarketplacePlugin) => {
+    if (installing || uninstalling) return;
+    setInstalling(plugin.name);
+    try {
+      await api.installMarketplacePlugin(marketplace.name, plugin.name);
+      setPlugins((items) => items.map((item) => item.plugin_id === plugin.plugin_id ? { ...item, installed: true, enabled: true } : item));
+      feedback.success(`已安装 ${plugin.name}，重启 Codex 后生效`);
+      await onInstalled();
+    } catch (reason) {
+      feedback.error(String(reason));
+    } finally {
+      setInstalling("");
+    }
+  };
+
+  const uninstall = async (plugin: MarketplacePlugin) => {
+    if (uninstalling || installing) return;
+    const confirmed = await feedback.confirm({
+      title: "卸载插件",
+      description: `确定卸载「${plugin.name}」吗？将通过 Codex CLI 移除插件文件。`,
+      confirmText: "卸载",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setUninstalling(plugin.name);
+    try {
+      await api.uninstallPlugin(plugin.name);
+      setPlugins((items) => items.map((item) => item.plugin_id === plugin.plugin_id ? { ...item, installed: false, enabled: false } : item));
+      feedback.success(`已卸载 ${plugin.name}`);
+      await onInstalled();
+    } catch (reason) {
+      feedback.error(String(reason));
+    } finally {
+      setUninstalling("");
+    }
+  };
+
+  const removeMarketplace = async () => {
+    if (removing || marketplace.kind === "official") return;
+    const confirmed = await feedback.confirm({
+      title: "卸载第三方市场",
+      description: `确定移除「${marketplace.name}」吗？只会移除市场来源，不会自动卸载其中已经安装的插件。`,
+      confirmText: "卸载市场",
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setRemoving(true);
+    try {
+      await api.removePluginMarketplace(marketplace.name);
+      feedback.success(`已卸载插件市场「${marketplace.name}」`);
+      await onMarketplaceRemoved();
+      onBack();
+    } catch (reason) {
+      feedback.error(String(reason));
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
+      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
+        <button type="button" className="apple-page-header apple-back-button" aria-label="返回插件市场" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <span className="apple-title">{marketplace.display_name ?? marketplace.name}</span>
+          {loaded ? <span className="apple-chip" aria-label={`${installedPluginCount} 个已安装插件`}>{installedPluginCount} 个已安装</span> : null}
+        </button>
+        {marketplace.kind === "third-party" ? (
+          <button type="button" className="apple-action-button text-[var(--danger)]/80 hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]" disabled={removing} onClick={() => void removeMarketplace()}>
+            {removing ? <LoadingSpinner /> : <TrashIcon />}
+            卸载市场
+          </button>
+        ) : null}
+      </div>
+      <div className="apple-edit-content">
+        <div className="space-y-4">
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="title-md">{marketplace.display_name ?? marketplace.name}</span>
+                <span className="apple-chip">{marketplaceKindLabels[marketplace.kind]}</span>
+                {loaded ? <span className="apple-chip">{plugins.length} 个插件</span> : <LoadingSpinner />}
+              </div>
+              <div className="mono muted meta-xs mt-2 break-all">{marketplace.root}</div>
+              <p className="muted mt-3 text-sm">
+                安装和运行都由 Codex 官方 CLI 处理，使用当前已应用的供应商配置：
+                <span className="apple-chip ml-1">{activeProvider ?? "当前 live config.toml"}</span>
+              </p>
+            </div>
+          </div>
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <div className="field-label mb-2">市场介绍</div>
+              <p className="muted text-sm">{marketplace.description ?? "这个市场没有提供文字介绍。"}</p>
+              {marketplace.source_url ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <SourceLink source={marketplace.source_url} />
+                  <span className="mono muted meta-xs break-all">{marketplace.source_url}</span>
+                </div>
+              ) : null}
+              <div className="mono muted meta-xs mt-2 break-all">市场标识：{marketplace.name}</div>
+            </div>
+          </div>
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <div className="flex items-center gap-2">
+                <div className="field-label">可浏览插件</div>
+                {loaded ? <span className="apple-chip" aria-label={`${plugins.length} 个可浏览插件`}>{plugins.length}</span> : <LoadingSpinner />}
+              </div>
+              {error ? <p className="muted mt-2 text-sm">{error}</p> : null}
+              {loaded && !plugins.length && !error ? <p className="muted mt-2 text-sm">这个市场暂时没有可安装插件。</p> : null}
+            </div>
+            {plugins.map((plugin) => (
+              <div key={plugin.plugin_id} className="apple-panel-section">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-semibold">{plugin.display_name ?? plugin.name}</span>
+                      {plugin.version ? <span className="apple-chip">v{plugin.version}</span> : null}
+                      {plugin.installed ? <span className="apple-chip">已安装</span> : null}
+                    </div>
+                    <div className="muted mt-2 break-words text-sm">{plugin.description ?? "这个插件没有提供文字介绍。"}</div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {plugin.category ? <span className="apple-chip">分类：{plugin.category}</span> : null}
+                      {plugin.capabilities.length ? <ContainsChips items={plugin.capabilities} /> : null}
+                    </div>
+                    <div className="muted meta-xs mt-1">认证：{plugin.auth_policy === "ON_INSTALL" ? "安装时" : "使用时"}</div>
+                    {plugin.source ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <SourceLink source={plugin.source} />
+                        <span className="mono muted meta-xs break-all">{plugin.source}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={`apple-action-button shrink-0 ${plugin.installed && marketplace.kind === "third-party" ? "text-[var(--danger)]/80 hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]" : "app-button--primary"}`}
+                    disabled={Boolean(installing) || Boolean(uninstalling) || (plugin.installed && marketplace.kind === "official")}
+                    onClick={() => void (plugin.installed ? uninstall(plugin) : install(plugin))}
+                  >
+                    {installing === plugin.name || uninstalling === plugin.name ? <LoadingSpinner /> : plugin.installed ? <TrashIcon /> : <Download className="h-4 w-4" strokeWidth={2} />}
+                    {plugin.installed ? "卸载" : "安装"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AddMarketplaceView({ onBack, onAdded }: { onBack: () => void; onAdded: (marketplace: PluginMarketplace) => void | Promise<void> }) {
+  const feedback = useFeedback();
+  const [url, setUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+
+  const addMarketplace = async () => {
+    if (adding) return;
+    if (!url.trim()) {
+      feedback.warning("请先填写第三方插件市场地址");
+      return;
+    }
+    setAdding(true);
+    try {
+      const marketplace = await api.addPluginMarketplace(url.trim());
+      feedback.success(`已添加插件市场「${marketplace.name}」`);
+      await onAdded(marketplace);
+    } catch (error) {
+      feedback.error(String(error));
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
+      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
+        <button type="button" className="apple-page-header apple-back-button" aria-label="返回插件市场" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <span className="apple-title">添加插件市场</span>
+        </button>
+      </div>
+      <div className="apple-edit-content">
+        <div className="apple-group">
+          <div className="apple-panel-section">
+            <div className="title-md">添加市场来源</div>
+            <p className="muted mt-2 text-sm">支持 GitHub 简写、Git/SSH 地址和本地市场目录；添加后由 Codex 识别并管理。</p>
+            <div className="mt-4 flex w-full flex-wrap items-center gap-2">
+              <input
+                className="app-input min-w-0 flex-1"
+                placeholder="owner/repo、https://...git 或本地市场目录"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) void addMarketplace();
+                }}
+              />
+              <button type="button" className="apple-action-button app-button--primary" disabled={adding} onClick={() => void addMarketplace()}>
+                {adding ? <LoadingSpinner /> : <Plus className="h-4 w-4" strokeWidth={2} />}
+                添加插件市场
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function RepositoryPluginInstallView({ onBack, onInstalled }: { onBack: () => void; onInstalled: () => Promise<void> }) {
+  const feedback = useFeedback();
   const [url, setUrl] = useState("");
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<PluginPreview | null>(null);
   const [installing, setInstalling] = useState("");
-  const [toggling, setToggling] = useState("");
-
-  const refresh = async () => {
-    try {
-      setPlugins(await api.listPlugins());
-      setLoadError("");
-    } catch (error) {
-      setLoadError(String(error));
-    } finally {
-      setLoaded(true);
-    }
-  };
-  useEffect(() => { void refresh(); }, []);
 
   const openPreview = async () => {
     if (previewing) return;
     if (!url.trim()) {
-      feedback.warning("请先填写 GitHub 插件地址");
+      feedback.warning("请先填写 GitHub 插件仓库地址");
       return;
     }
     setPreviewing(true);
@@ -104,7 +491,7 @@ export default function PluginsView() {
       const summary = await api.installPlugin(url.trim(), candidate.sub_path || null);
       feedback.success(`已安装 ${summary.display_name ?? summary.name}，重启 Codex 后生效`);
       setPreview(null);
-      await refresh();
+      await onInstalled();
     } catch (error) {
       feedback.error(String(error));
     } finally {
@@ -112,38 +499,287 @@ export default function PluginsView() {
     }
   };
 
-  const toggle = async (plugin: PluginSummary, value: boolean) => {
-    if (toggling) return;
-    setToggling(plugin.name);
+  return (
+    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
+      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
+        <button type="button" className="apple-page-header apple-back-button" aria-label="返回插件市场" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <span className="apple-title">从仓库安装插件</span>
+        </button>
+      </div>
+      <div className="apple-edit-content">
+        <div className="space-y-4">
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <div className="title-md">GitHub 插件仓库</div>
+              <p className="muted mt-2 text-sm">输入单个插件仓库地址；这不会添加市场来源。</p>
+              <div className="mt-4 flex w-full flex-wrap items-center gap-2">
+                <input
+                  className="app-input min-w-0 flex-1"
+                  placeholder="https://github.com/&lt;owner&gt;/&lt;repo&gt;（可带 /tree/&lt;分支&gt;/&lt;子目录&gt;）"
+                  value={url}
+                  onChange={(event) => setUrl(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.nativeEvent.isComposing) void openPreview();
+                  }}
+                />
+                <button type="button" className="apple-action-button app-button--primary" disabled={previewing} onClick={() => void openPreview()}>
+                  {previewing ? <LoadingSpinner /> : <Search className="h-4 w-4" strokeWidth={2} />}
+                  获取插件列表
+                </button>
+              </div>
+            </div>
+          </div>
+          {preview ? (
+            <div className="apple-group">
+              <div className="apple-panel-section">
+                <div className="field-label">可安装插件</div>
+                <p className="muted mt-1.5 text-sm">
+                  仓库 <span className="mono">{preview.repo}</span> · 分支 <span className="mono">{preview.reference}</span>
+                  {preview.reference !== preview.default_branch ? `（默认分支为 ${preview.default_branch}）` : ""}
+                </p>
+              </div>
+              <div className="space-y-3">
+                {preview.candidates.map((candidate) => (
+                  <div key={candidate.sub_path || candidate.name} className="apple-panel-section">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate font-semibold">{candidate.display_name ?? candidate.name}</span>
+                          {candidate.version ? <span className="apple-chip">v{candidate.version}</span> : null}
+                        </div>
+                        <div className="muted meta-xs truncate">{candidate.description ?? (candidate.sub_path || "仓库根目录")}</div>
+                      </div>
+                      <button type="button" className="apple-action-button app-button--primary" disabled={installing !== ""} onClick={() => void install(candidate)}>
+                        {installing === candidate.name ? <LoadingSpinner /> : <Download className="h-4 w-4" strokeWidth={2} />}
+                        安装
+                      </button>
+                    </div>
+                    <div className="mt-2"><ContainsChips items={candidate.contains} /></div>
+                    <details className="mt-2">
+                      <summary className="muted meta-xs cursor-pointer select-none">文件清单（{candidate.files.length} 项）</summary>
+                      <ul className="mono muted mt-1.5 flex flex-col gap-0.5">
+                        {candidate.files.slice(0, 40).map((file) => <li key={file} className="truncate">{file}</li>)}
+                        {candidate.files.length > 40 ? <li>…其余 {candidate.files.length - 40} 个文件</li> : null}
+                      </ul>
+                    </details>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PluginMarketplaceView({
+  activeProvider,
+  onBack,
+  onInstalled,
+}: {
+  activeProvider: string | null;
+  onBack: () => void;
+  onInstalled: () => Promise<void>;
+}) {
+  const feedback = useFeedback();
+  const [marketplaces, setMarketplaces] = useState<PluginMarketplace[]>([]);
+  const [marketplacesLoaded, setMarketplacesLoaded] = useState(false);
+  const [marketplacesError, setMarketplacesError] = useState("");
+  const [adding, setAdding] = useState("");
+  const [selectedMarketplace, setSelectedMarketplace] = useState<PluginMarketplace | null>(null);
+  const [showAddMarketplace, setShowAddMarketplace] = useState(false);
+  const [showRepositoryInstall, setShowRepositoryInstall] = useState(false);
+
+  const refreshMarketplaces = async () => {
     try {
-      await api.setPluginEnabled(plugin.name, value);
-      await refresh();
+      setMarketplaces(await api.listPluginMarketplaces());
+      setMarketplacesError("");
     } catch (error) {
-      feedback.error(String(error));
+      setMarketplacesError(String(error));
     } finally {
-      setToggling("");
+      setMarketplacesLoaded(true);
     }
   };
 
+  useEffect(() => { void refreshMarketplaces(); }, []);
+
+  const browseRecommended = async (recommended: typeof recommendedMarketplaces[number]) => {
+    const existing = marketplaces.find((marketplace) => marketplace.name === recommended.name);
+    if (existing) {
+      setSelectedMarketplace(existing);
+      return;
+    }
+    if (adding) return;
+    setAdding(recommended.name);
+    try {
+      const marketplace = await api.addPluginMarketplace(recommended.source);
+      feedback.success(`已进入插件市场「${marketplace.name}」`);
+      await refreshMarketplaces();
+      setSelectedMarketplace(marketplace);
+    } catch (error) {
+      feedback.error(String(error));
+    } finally {
+      setAdding("");
+    }
+  };
+
+  if (selectedMarketplace) {
+    return <MarketplaceDetailView marketplace={selectedMarketplace} activeProvider={activeProvider} onBack={() => setSelectedMarketplace(null)} onInstalled={onInstalled} onMarketplaceRemoved={refreshMarketplaces} />;
+  }
+  if (showAddMarketplace) {
+    return <AddMarketplaceView onBack={() => setShowAddMarketplace(false)} onAdded={async (marketplace) => { await refreshMarketplaces(); setShowAddMarketplace(false); setSelectedMarketplace(marketplace); }} />;
+  }
+  if (showRepositoryInstall) {
+    return <RepositoryPluginInstallView onBack={() => setShowRepositoryInstall(false)} onInstalled={onInstalled} />;
+  }
+
+  return (
+    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
+      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
+        <button type="button" className="apple-page-header apple-back-button" aria-label="返回插件" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <span className="apple-title">插件市场</span>
+        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="apple-action-button" onClick={() => setShowRepositoryInstall(true)}>
+            <Download className="h-4 w-4" strokeWidth={2} />
+            从仓库安装
+          </button>
+          <button type="button" className="apple-action-button app-button--primary" onClick={() => setShowAddMarketplace(true)}>
+            <Plus className="h-4 w-4" strokeWidth={2} />
+            添加市场
+          </button>
+        </div>
+      </div>
+      <div className="apple-edit-content">
+        <div className="space-y-4">
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <div className="field-label">推荐市场</div>
+              <p className="muted mt-2 text-sm">这些市场采用 Codex 官方 marketplace.json 规范，添加后进入目录即可浏览和安装。</p>
+              <div className="mt-3 space-y-2">
+                {recommendedMarketplaces.map((recommended) => {
+                  const configured = marketplaces.find((marketplace) => marketplace.name === recommended.name);
+                  return (
+                    <div key={recommended.name} className="rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{recommended.displayName}</span>
+                            {configured ? <span className="apple-chip">已安装</span> : null}
+                          </div>
+                          <div className="muted mt-1 break-words text-sm">{recommended.description}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <SourceLink source={recommended.source} />
+                            <span className="mono muted meta-xs break-all">{recommended.source}</span>
+                          </div>
+                        </div>
+                        <button type="button" className="apple-action-button app-button--primary shrink-0" disabled={Boolean(adding) || !marketplacesLoaded} onClick={() => void browseRecommended(recommended)}>
+                          {adding === recommended.name ? <LoadingSpinner /> : <ChevronRight className="h-4 w-4" strokeWidth={2} />}
+                          {configured ? "浏览插件" : "添加并浏览"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <div className="flex items-center gap-2">
+                <div className="field-label">已添加的插件市场</div>
+                {marketplacesLoaded ? <span className="apple-chip" aria-label={`${marketplaces.length} 个已添加插件市场`}>{marketplaces.length}</span> : <LoadingSpinner />}
+              </div>
+              {marketplacesError ? <p className="muted mt-2 text-sm">{marketplacesError}</p> : null}
+              {marketplaces.length ? (
+                <div className="mt-3 space-y-2">
+                  {marketplaces.map((marketplace) => (
+                    <div key={marketplace.name} className="rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
+                            <span className="apple-chip">{marketplaceKindLabels[marketplace.kind]}</span>
+                          </div>
+                          <div className="muted mt-1 break-words text-sm">{marketplace.description ?? "这个市场没有提供文字介绍。"}</div>
+                        </div>
+                        <button type="button" className="apple-action-button shrink-0" onClick={() => setSelectedMarketplace(marketplace)}>
+                          <ChevronRight className="h-4 w-4" strokeWidth={2} />
+                          浏览插件
+                        </button>
+                      </div>
+                      {marketplace.source_url ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          <SourceLink source={marketplace.source_url} />
+                          <span className="mono muted meta-xs break-all">{marketplace.source_url}</span>
+                        </div>
+                      ) : null}
+                      <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : marketplacesLoaded && !marketplacesError ? <p className="muted mt-2 text-sm">暂未添加 Codex 插件市场。</p> : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function PluginsView({ activeProvider = null }: { activeProvider?: string | null }) {
+  const feedback = useFeedback();
+  const [plugins, setPlugins] = useState<PluginSummary[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [selectedPlugin, setSelectedPlugin] = useState<PluginSummary | null>(null);
+  const [addingMarketplace, setAddingMarketplace] = useState(false);
+
+  const refresh = async () => {
+    try {
+      const items = await api.listPlugins();
+      setPlugins(items);
+      setLoadError("");
+    } catch (error) {
+      setLoadError(String(error));
+    } finally {
+      setLoaded(true);
+    }
+  };
+  useEffect(() => { void refresh(); }, []);
+
   const remove = async (plugin: PluginSummary) => {
-    const entryLike = entryOrigins.includes(plugin.origin);
     const confirmed = await feedback.confirm({
-      title: plugin.origin === "cgswitch" ? "卸载插件" : entryLike ? "移除插件登记" : "卸载插件",
-      description: entryLike
-        ? `确定移除「${plugin.display_name ?? plugin.name}」的登记条目吗？该插件不是 CGswitch 安装的，文件会保留在原处，重新启用即可恢复。`
-        : `确定卸载「${plugin.display_name ?? plugin.name}」吗？将通过 codex CLI 卸载（${plugin.marketplace ? `市场源 ${plugin.marketplace} 保留` : "市场源保留"}），之后可在 Codex 或这里重新安装。`,
-      confirmText: entryLike ? "移除" : "卸载",
+      title: "卸载插件",
+      description: `确定卸载「${plugin.display_name ?? plugin.name}」吗？将通过 codex CLI 卸载（${plugin.marketplace ? `市场源 ${plugin.marketplace} 保留` : "市场源保留"}），之后可在 Codex 或这里重新安装。`,
+      confirmText: "卸载",
       destructive: true,
     });
     if (!confirmed) return;
     try {
       await api.uninstallPlugin(plugin.name);
-      feedback.success(entryLike ? "登记已移除，文件保留" : "插件已卸载");
+      feedback.success("插件已卸载");
       await refresh();
     } catch (error) {
       feedback.error(String(error));
     }
   };
+
+  if (selectedPlugin) {
+    return <PluginDetailView plugin={selectedPlugin} onBack={() => setSelectedPlugin(null)} />;
+  }
+  if (addingMarketplace) {
+    return (
+      <PluginMarketplaceView
+        activeProvider={activeProvider}
+        onBack={() => setAddingMarketplace(false)}
+        onInstalled={refresh}
+      />
+    );
+  }
 
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
@@ -153,41 +789,37 @@ export default function PluginsView() {
             <Blocks className="h-[18px] w-[18px]" strokeWidth={2} />
           </span>
           <div className="flex items-center gap-2">
-            <div className="apple-title">插件市场</div>
+            <div className="apple-title">插件</div>
             {loaded ? (
-              <span className="apple-chip" aria-label={`${plugins.length} 个插件`}>{plugins.length}</span>
+              <span className="apple-chip" aria-label={`${plugins.length} 个已安装插件`}>{plugins.length} 个已安装</span>
             ) : null}
           </div>
         </div>
-        <div className="flex w-full max-w-md items-center gap-2">
-          <input
-            className="app-input min-w-0 flex-1"
-            placeholder="https://github.com/<owner>/<repo>（可带 /tree/<分支>/<子目录>）"
-            value={url}
-            onChange={(event) => setUrl(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.nativeEvent.isComposing) void openPreview();
-            }}
-          />
-          <button type="button" className="apple-action-button app-button--primary" disabled={previewing} onClick={() => void openPreview()}>
-            {previewing ? <LoadingSpinner /> : <Search className="h-4 w-4" strokeWidth={2} />}
-            获取预览
-          </button>
-        </div>
+        <button type="button" className="apple-action-button app-button--primary" onClick={() => setAddingMarketplace(true)}>
+          <Store className="h-4 w-4" strokeWidth={2} />
+          插件市场
+          <span className="rounded-md bg-white/95 px-1.5 py-px font-bold tracking-wide text-accent meta-xs">Beta</span>
+        </button>
       </header>
       <div className="apple-edit-content">
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
         {loaded && plugins.length === 0 ? (
           <div className="apple-group py-14 text-center">
-            <p className="muted">还没有安装插件。粘贴 GitHub 插件仓库地址并点「获取预览」，确认内容后安装。</p>
+            <p className="muted">还没有安装插件。点击右上角「插件市场」添加第三方市场。</p>
           </div>
         ) : plugins.length ? (
           <div className="space-y-2">
             {plugins.map((plugin) => (
               <div key={plugin.name} className="apple-list-row">
-                <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  className="group min-w-0 flex-1 cursor-pointer text-left"
+                  aria-label={`查看 ${plugin.display_name ?? plugin.name} 详情`}
+                  title="点击查看详情"
+                  onClick={() => setSelectedPlugin(plugin)}
+                >
                   <div className="flex items-center gap-2">
-                    <span className="min-w-0 truncate font-semibold">{plugin.display_name ?? plugin.name}</span>
+                    <span className="min-w-0 truncate font-semibold transition-colors group-hover:text-accent">{plugin.display_name ?? plugin.name}</span>
                     {plugin.version ? (
                       <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">v{plugin.version}</span>
                     ) : null}
@@ -196,111 +828,35 @@ export default function PluginsView() {
                     ) : null}
                     {plugin.enabled ? null : <span className="apple-chip chip-warn shrink-0">已禁用</span>}
                   </div>
-                  <div className="muted meta-xs truncate">
+                  <div className="muted meta-xs break-words">
                     {plugin.description ?? plugin.name}
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <ContainsChips items={plugin.contains} />
-                    {plugin.source_url ? <span className="muted meta-xs truncate">{plugin.source_url}</span> : null}
-                  </div>
                 </div>
+                <div className="mt-1 flex items-center gap-2">
+                  <ContainsChips items={plugin.contains} />
+                </div>
+                </button>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  {entryOrigins.includes(plugin.origin) ? (
-                    <>
-                      <AppSwitch
-                        size="sm"
-                        checked={plugin.enabled}
-                        label={`启用 ${plugin.name}`}
-                        disabled={toggling === plugin.name}
-                        onCheckedChange={(value) => void toggle(plugin, value)}
-                      />
-                      <button
-                        type="button"
-                        className="apple-icon-button text-[var(--danger)]/70 hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
-                        title="移除登记"
-                        aria-label={`移除登记 ${plugin.name}`}
-                        onClick={() => void remove(plugin)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {originHints[plugin.origin] ? (
-                        <span className="muted meta-xs">{originHints[plugin.origin]}</span>
-                      ) : null}
-                      {removableOrigins.includes(plugin.origin) ? (
-                        <button
-                          type="button"
-                          className="apple-icon-button text-[var(--danger)]/70 hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
-                          title="卸载"
-                          aria-label={`卸载 ${plugin.name}`}
-                          onClick={() => void remove(plugin)}
-                        >
-                          <TrashIcon />
-                        </button>
-                      ) : null}
-                    </>
-                  )}
+                  {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
+                  {originHints[plugin.origin] ? (
+                    <span className="muted meta-xs">{originHints[plugin.origin]}</span>
+                  ) : null}
+                  {removableOrigins.includes(plugin.origin) ? (
+                    <button
+                      type="button"
+                      className="apple-icon-button text-[var(--danger)]/70 hover:bg-[var(--danger)]/10 hover:text-[var(--danger)]"
+                      title="卸载"
+                      aria-label={`卸载 ${plugin.name}`}
+                      onClick={() => void remove(plugin)}
+                    >
+                      <TrashIcon />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ))}
           </div>
         ) : null}
       </div>
-      <AppDialog
-        open={preview !== null}
-        onOpenChange={(open) => { if (!open) setPreview(null); }}
-        title="安装插件"
-        footer={
-          <button type="button" className="apple-action-button" onClick={() => setPreview(null)}>
-            关闭
-          </button>
-        }
-      >
-        {preview ? (
-          <div className="flex flex-col gap-3">
-            <p className="muted text-sm">
-              仓库 <span className="mono">{preview.repo}</span> · 分支 <span className="mono">{preview.reference}</span>
-              {preview.reference !== preview.default_branch ? `（默认分支为 ${preview.default_branch}）` : ""}
-            </p>
-            {preview.candidates.map((candidate) => (
-              <div key={candidate.sub_path || candidate.name} className="rounded-[var(--radius-card)] bg-black/3 p-3.5 shadow-[0_0_0_1px_var(--panel-ring)] dark:bg-white/4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate font-semibold">{candidate.display_name ?? candidate.name}</span>
-                      {candidate.version ? (
-                        <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">v{candidate.version}</span>
-                      ) : null}
-                    </div>
-                    <div className="muted meta-xs truncate">{candidate.description ?? (candidate.sub_path || "仓库根目录")}</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="apple-action-button app-button--primary"
-                    disabled={installing !== ""}
-                    onClick={() => void install(candidate)}
-                  >
-                    {installing === candidate.name ? <LoadingSpinner /> : <Download className="h-4 w-4" strokeWidth={2} />}
-                    安装
-                  </button>
-                </div>
-                <div className="mt-2"><ContainsChips items={candidate.contains} /></div>
-                <details className="mt-2">
-                  <summary className="muted meta-xs cursor-pointer select-none">文件清单（{candidate.files.length} 项）</summary>
-                  <ul className="mono muted mt-1.5 flex flex-col gap-0.5">
-                    {candidate.files.slice(0, 40).map((file) => (
-                      <li key={file} className="truncate">{file}</li>
-                    ))}
-                    {candidate.files.length > 40 ? <li>…其余 {candidate.files.length - 40} 个文件</li> : null}
-                  </ul>
-                </details>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </AppDialog>
     </section>
   );
 }

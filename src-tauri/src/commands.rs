@@ -11,8 +11,8 @@ use crate::models::{
     ProfileSummary, Settings,
 };
 use crate::services::{
-    AppContext, DatabaseBackupInfo, PluginPreview, PluginSummary, ProfileBalance,
-    ProfileConnectionResult,
+    AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
+    PluginSkill, PluginSummary, ProfileBalance, ProfileConnectionResult, SkillSummary,
 };
 
 async fn unmanaged_external_codex_auth(
@@ -93,6 +93,62 @@ pub async fn list_plugins(state: State<'_, AppContext>) -> AppResult<Vec<PluginS
 }
 
 #[tauri::command]
+pub async fn list_skills(state: State<'_, AppContext>) -> AppResult<Vec<SkillSummary>> {
+    state.list_skills().await
+}
+
+#[tauri::command]
+pub async fn list_plugin_skills(
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<Vec<PluginSkill>> {
+    state.list_plugin_skills(&name).await
+}
+
+#[tauri::command]
+pub async fn list_plugin_marketplaces(
+    state: State<'_, AppContext>,
+) -> AppResult<Vec<PluginMarketplace>> {
+    state.list_plugin_marketplaces().await
+}
+
+#[tauri::command]
+pub async fn list_marketplace_plugins(
+    marketplace: String,
+    root: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<Vec<MarketplacePlugin>> {
+    state
+        .list_marketplace_plugins(&marketplace, root.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn add_plugin_marketplace(
+    url: String,
+    state: State<'_, AppContext>,
+) -> AppResult<PluginMarketplace> {
+    state.add_plugin_marketplace(&url).await
+}
+
+#[tauri::command]
+pub async fn remove_plugin_marketplace(
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.remove_plugin_marketplace(&name).await
+}
+
+#[tauri::command]
+pub async fn install_marketplace_plugin(
+    marketplace: String,
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<PluginSummary> {
+    state.install_marketplace_plugin(&marketplace, &name).await
+}
+
+#[tauri::command]
 pub async fn preview_plugin(url: String, state: State<'_, AppContext>) -> AppResult<PluginPreview> {
     state.preview_plugin(&url).await
 }
@@ -109,15 +165,6 @@ pub async fn install_plugin(
 #[tauri::command]
 pub async fn uninstall_plugin(name: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.uninstall_plugin(&name).await
-}
-
-#[tauri::command]
-pub fn set_plugin_enabled(
-    name: String,
-    enabled: bool,
-    state: State<'_, AppContext>,
-) -> AppResult<()> {
-    state.set_plugin_enabled(&name, enabled)
 }
 
 #[tauri::command]

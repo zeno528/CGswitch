@@ -29,7 +29,10 @@ mod settings;
 mod storage;
 
 pub use connections::{test_provider_connection, ProfileBalance, ProfileConnectionResult};
-pub use plugins::{PluginCandidate, PluginPreview, PluginSummary};
+pub use plugins::{
+    MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill,
+    PluginSummary, SkillSummary,
+};
 pub use storage::DatabaseBackupInfo;
 
 #[derive(Debug)]

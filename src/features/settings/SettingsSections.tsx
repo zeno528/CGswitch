@@ -34,7 +34,7 @@ export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPat
   const [renameTarget, setRenameTarget] = useState<DatabaseBackupInfo | null>(null);
   const [renameText, setRenameText] = useState("");
   const [renaming, setRenaming] = useState(false);
-  const [backupOpen, setBackupOpen] = useState(true);
+  const [backupOpen, setBackupOpen] = useState(false);
 
   const loadBackups = async () => { try { setBackups(await api.listDatabaseBackups()); } catch { setBackups([]); } };
   useEffect(() => { void loadBackups(); }, [backupsEpoch]);

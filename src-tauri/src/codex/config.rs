@@ -411,12 +411,36 @@ pub fn replace_mcp_section(target: &mut DocumentMut, source: &DocumentMut) {
     }
 }
 
-/// 应用供应商时使用：把 live 的 MCP 段合并进即将写回的原文；
+/// 把 source（live）的插件运行时段整体搬到 target。
+/// 插件市场、已安装插件和插件 hooks 都是全局 Codex 状态，不属于供应商配置，
+/// 切换供应商时必须跟随 live 配置；live 没有时移除 target 的陈旧状态。
+pub fn replace_plugin_sections(target: &mut DocumentMut, source: &DocumentMut) {
+    for section in ["marketplaces", "plugins", "hooks"] {
+        match source
+            .as_table()
+            .get(section)
+            .and_then(Item::as_table)
+            .filter(|table| !table.is_empty())
+        {
+            Some(table) => {
+                target
+                    .as_table_mut()
+                    .insert(section, Item::Table(table.clone()));
+            }
+            None => {
+                target.as_table_mut().remove(section);
+            }
+        }
+    }
+}
+
+/// 应用供应商时使用：把 live 的 MCP 和插件运行时段合并进即将写回的原文；
 /// 原文解析失败时原样返回（保持旧的整文件回退行为）。
 pub fn merge_mcp_section(raw: &str, live: &DocumentMut) -> String {
     match parse_document(raw) {
         Ok(mut incoming) => {
             replace_mcp_section(&mut incoming, live);
+            replace_plugin_sections(&mut incoming, live);
             consolidate_mcp_blocks(&incoming.to_string())
         }
         Err(_) => raw.to_string(),
@@ -1143,6 +1167,26 @@ A = "1"
     }
 
     #[test]
+    fn replace_plugin_sections_carries_global_plugin_state() {
+        let live = parse_document(
+            "[marketplaces.ponytail]\nsource = \"https://github.com/DietrichGebert/ponytail.git\"\n\n[plugins.\"ponytail@ponytail\"]\nenabled = true\n\n[hooks.state]\n\n",
+        )
+        .unwrap();
+        let mut target = parse_document(
+            "[marketplaces.stale]\nsource = \"old\"\n\n[plugins.\"stale@stale\"]\nenabled = true\n\n[hooks.state]\nold = true\n",
+        )
+        .unwrap();
+
+        replace_plugin_sections(&mut target, &live);
+        let text = target.to_string();
+        assert!(text.contains("marketplaces.ponytail"), "{text}");
+        assert!(text.contains("ponytail@ponytail"), "{text}");
+        assert!(!text.contains("marketplaces.stale"), "{text}");
+        assert!(!text.contains("stale@stale"), "{text}");
+        assert!(!text.contains("old = true"), "{text}");
+    }
+
+    #[test]
     fn merge_mcp_section_falls_back_to_verbatim_on_invalid_raw() {
         let live = parse_document("[mcp_servers.tavily]\nurl = \"x\"\n").unwrap();
         let raw = "not [ valid";
@@ -1155,6 +1199,14 @@ A = "1"
             !merged.contains("[mcp_servers]\n"),
             "合并隐式 MCP 父表时不能额外写出显式根表：\n{merged}"
         );
+
+        let live = parse_document(
+            "[marketplaces.ponytail]\nsource = \"https://github.com/DietrichGebert/ponytail.git\"\n\n[plugins.\"ponytail@ponytail\"]\nenabled = true\n",
+        )
+        .unwrap();
+        let merged = merge_mcp_section("model = \"gpt-5.6\"\n", &live);
+        assert!(merged.contains("marketplaces.ponytail"), "{merged}");
+        assert!(merged.contains("ponytail@ponytail"), "{merged}");
     }
 
     #[test]

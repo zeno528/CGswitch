@@ -180,7 +180,6 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
               <div className="mt-4">
                 <div className="field-label mb-1.5">Bearer Token 环境变量名（可选）</div>
                 <input className="app-input mono" placeholder="例如：TAVILY_API_KEY" value={bearer} onChange={(event) => setBearer(event.target.value)} />
-                <p className="muted mt-1.5 text-xs">Codex 启动时从该环境变量读取令牌放入 Authorization 头；留空则不携带。</p>
               </div>
             </>}
           </div>
@@ -223,7 +222,6 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
               {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label="有未保存的改动" title="有未保存的改动" /> : null}
             </div>
             <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder="编辑 [mcp_servers.*] 片段，与上方表单双向同步。" onChange={setTomlText} onDiagnostics={setDiagnostics} />
-            <p className="muted mt-2 text-xs">表单与 TOML 会实时同步；未显示的设置和注释会保留。</p>
           </div>
         </div>
       </div>
