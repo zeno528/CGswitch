@@ -2,7 +2,7 @@
   "name": "cgswitch",
   "packageManager": "pnpm@11.9.0",
   "private": true,
-  "version": "0.5.4",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "sync-version": "node scripts/sync-version.mjs",
