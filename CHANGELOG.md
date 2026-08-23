@@ -1,5 +1,32 @@
 # CHANGELOG
 
+## [0.7.1] - 2026-08-24
+
+### 新增
+
+- 本地 Skill 管理：扫描家目录未托管 Skill，按同名冲突 / 已托管更新分类展示，支持预览 SKILL.md 后一键导入
+- 导入流程在覆盖前自动备份原文件，避免目录被破坏；可手动删除本地 Skill（含回退备份）
+- Skills 视图重构为列表 + 详情 + 导入向导三段式，支持 markdown 预览与目录去重
+- 插件市场与 Skill 视图共享 `managementDataCache`，跨视图缓存复用，进入页面无需重新请求
+
+### 修复
+
+- 写回 `config.toml` 时统一收拢 `[marketplaces.*]` → `[plugins.*]` → `[hooks.*]` 的连续顺序：所有 CGswitch 写入路径（MCP 增删改、镜像写回）以及 Codex CLI 直写（插件安装 / 升级 / 市场增删）后都会规范化；未变化则不落盘
+- MCP 列表接入共享缓存，增删改与同步差异后强制刷新，避免本地状态与数据库短暂不一致
+
+### 界面与样式
+
+- 新增 `EmptyStateCard` 组件统一空 / 加载占位
+- 第三方市场文案统一为「外部市场」，插件来源注释同步更新
+
+### 如何选择安装包
+
+**Windows**：默认下载 `CGswitch-v0.7.1-Windows-setup.exe`，双击安装即可。需要批量部署、静默安装等场景可选用 `.msi` 版本。
+
+**macOS**：
+- Apple 芯片（M 系列）→ `CGswitch-v0.7.1-macOS-arm64.dmg`
+- Intel 芯片 → `CGswitch-v0.7.1-macOS-x64.dmg`
+
 ## [0.6.0] - 2026-08-23
 
 ### 新增
