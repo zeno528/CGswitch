@@ -4,16 +4,18 @@
 //! - 安装 = `codex plugin marketplace add <git 源>` + `codex plugin add <插件@市场>`；
 //!   卸载 = `codex plugin remove <插件@市场>`——官方路径，状态由 Codex 自己维护；
 //! - 预览走 CGswitch 自己的 GitHub 拉取（清单、文件列表、内容类型，不落盘）；
-//! - 列表以 `codex plugin list` 为主源（覆盖官方运行时/捆绑/第三方市场，含启停状态），
+//! - 列表以 `codex plugin list` 为主源（覆盖官方运行时/捆绑/外部市场，含启停状态），
 //!   CLI 不在时回退扫 `~/.codex/plugins/cache/`；Skill 注册表 `~/.agents/.skill-lock.json`
 //!   与家目录四套 marketplace 布局的 local 条目也在列；
-//! - origin 语义：cgswitch=本应用经 CLI 安装；codex=用户自装的第三方市场插件（可卸载）；
+//! - origin 语义：cgswitch=本应用经 CLI 安装；codex=用户自装的外部市场插件（可卸载）；
 //!   official=openai 运行时/捆绑市场（只读）；skill=Skill 注册表（只读）；
 //!   personal/claude/cursor=家目录 local 条目（可禁用/移除，条目暂存可恢复）。
 
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -39,7 +41,7 @@ pub struct PluginSummary {
     pub capabilities: Vec<String>,
     pub contains: Vec<String>,
     pub enabled: bool,
-    /// official=OpenAI 官方市场（只读）；codex=Codex 管理的第三方市场。
+    /// official=OpenAI 官方市场（只读）；codex=Codex 管理的外部市场。
     pub origin: String,
     /// 来自 `codex plugin list` 的市场名（卸载选择器要用）。
     pub marketplace: Option<String>,
@@ -78,7 +80,7 @@ pub struct MarketplacePlugin {
     pub capabilities: Vec<String>,
 }
 
-/// 第三方市场快照更新后，已安装插件的可升级项。
+/// 外部市场快照更新后，已安装插件的可升级项。
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct PluginUpdate {
     pub name: String,
@@ -92,6 +94,20 @@ pub struct SkillSummary {
     pub description: Option<String>,
     pub source_url: Option<String>,
     pub store_path: String,
+    pub source_path: Option<String>,
+    pub update_available: bool,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct SkillCandidate {
+    pub name: String,
+    pub description: Option<String>,
+    pub store_path: String,
+    pub source: String,
+    pub has_content_conflict: bool,
+    pub is_update: bool,
+    pub modified_at: u64,
 }
 
 /// 预览阶段的候选插件（一个仓库可能包含多个插件根目录）。
@@ -143,27 +159,11 @@ struct PluginInterface {
     capabilities: Vec<String>,
 }
 
-/// `~/.agents/.skill-lock.json` 的解析结构（Codex 的 Skill 安装注册表）。
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SkillLock {
-    #[serde(default)]
-    skills: BTreeMap<String, SkillLockEntry>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SkillLockEntry {
-    #[serde(default)]
-    source: Option<String>,
-    #[serde(default)]
-    source_url: Option<String>,
-}
-
 const MANIFEST_RELATIVE_PATH: &str = ".codex-plugin/plugin.json";
 /// Claude 布局的清单回退路径（多 Agent 插件两种都有，如 ponytail）。
 const CLAUDE_MANIFEST_RELATIVE_PATH: &str = ".claude-plugin/plugin.json";
-const SKILL_LOCK_RELATIVE_PATH: &str = ".agents/.skill-lock.json";
+const SKILL_SOURCE_FILE: &str = ".sources.json";
+const SKILL_BACKUP_DIRECTORY: &str = ".backups";
 /// Codex marketplace 插件的物化缓存（相对 codex home，CLI 缺席时的回退数据源）。
 const PLUGIN_CACHE_RELATIVE_PATH: &str = "plugins/cache";
 
@@ -369,6 +369,15 @@ fn marketplace_sources(home: &Path) -> BTreeMap<String, String> {
             .then(|| (name.to_string(), source.to_string()))
         })
         .collect()
+}
+
+fn enrich_plugin_sources(items: &mut [PluginSummary], sources: &BTreeMap<String, String>) {
+    for item in items {
+        item.source_url = item
+            .marketplace
+            .as_ref()
+            .and_then(|name| sources.get(name).cloned());
+    }
 }
 
 fn read_marketplace_document(root: &Path) -> Option<Value> {
@@ -831,29 +840,157 @@ fn walk_files(root: &Path) -> Vec<String> {
 }
 
 /// 读取 `~/.agents/.skill-lock.json`（Codex 的 Skill 安装注册表，实测布局）。
-fn read_skill_lock(home: &Path) -> Vec<SkillSummary> {
-    let Ok(text) = std::fs::read_to_string(home.join(SKILL_LOCK_RELATIVE_PATH)) else {
-        return Vec::new();
-    };
-    let Ok(lock) = serde_json::from_str::<SkillLock>(&text) else {
-        return Vec::new();
-    };
-    lock.skills
-        .into_iter()
-        .map(|(name, entry)| {
-            let store_path = home.join(".agents/skills").join(&name);
-            SkillSummary {
-                name: name.clone(),
-                description: read_skill_description(&store_path.join("SKILL.md")),
-                source_url: match (entry.source_url, entry.source) {
-                    (Some(url), _) => Some(url),
-                    (None, Some(source)) => Some(format!("https://github.com/{source}")),
-                    (None, None) => None,
-                },
-                store_path: store_path.display().to_string(),
+fn read_managed_skills(repository: &Path, home: &Path) -> Vec<SkillSummary> {
+    let sources = read_skill_sources(repository);
+    let mut skills = Vec::new();
+    if let Ok(entries) = fs::read_dir(repository) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if path.join("SKILL.md").is_file() {
+                let source_path = sources.get(&name).cloned();
+                let enabled = home.join(".codex/skills").join(&name).is_dir();
+                skills.push(SkillSummary {
+                    name,
+                    description: read_skill_description(&path.join("SKILL.md")),
+                    source_url: None,
+                    store_path: path.display().to_string(),
+                    update_available: source_path
+                        .as_ref()
+                        .map(|source| {
+                            Path::new(source).is_dir()
+                                && !directories_equal(Path::new(source), &path)
+                        })
+                        .unwrap_or(false),
+                    source_path,
+                    enabled,
+                });
             }
-        })
-        .collect()
+        }
+    }
+    skills.sort_by(|left, right| left.name.cmp(&right.name));
+    skills
+}
+
+fn skill_repository(root: &Path) -> PathBuf {
+    root.join("skills")
+}
+
+fn same_skill_path(left: &Path, right: &Path) -> bool {
+    fs::canonicalize(left).ok() == fs::canonicalize(right).ok()
+}
+
+fn is_registered_skill(home: &Path, name: &str) -> bool {
+    fs::read_to_string(home.join(".agents/.skill-lock.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|lock| lock.get("skills").and_then(Value::as_object).cloned())
+        .is_some_and(|skills| skills.contains_key(name))
+}
+
+fn skill_io<T>(result: std::io::Result<T>) -> AppResult<T> {
+    result.map_err(|error| app_err!("Skill 文件操作失败: {error}"))
+}
+
+fn read_skill_sources(repository: &Path) -> BTreeMap<String, String> {
+    fs::read_to_string(repository.join(SKILL_SOURCE_FILE))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+fn write_skill_sources(repository: &Path, sources: &BTreeMap<String, String>) -> AppResult<()> {
+    let path = repository.join(SKILL_SOURCE_FILE);
+    let text = serde_json::to_string_pretty(sources)
+        .map_err(|error| app_err!("Skill 来源记录序列化失败: {error}"))?;
+    skill_io(fs::create_dir_all(
+        path.parent().expect("Skill 来源文件有父目录"),
+    ))?;
+    skill_io(fs::write(path, text))?;
+    Ok(())
+}
+
+fn copy_skill(source: &Path, target: &Path) -> AppResult<()> {
+    if !source.join("SKILL.md").is_file() {
+        return Err(app_err!("所选目录不是 Skill：缺少 SKILL.md"));
+    }
+    copy_skill_directory(source, target)
+}
+
+fn copy_skill_directory(source: &Path, target: &Path) -> AppResult<()> {
+    skill_io(fs::create_dir_all(target))?;
+    for entry in skill_io(fs::read_dir(source))? {
+        let entry = skill_io(entry)?;
+        let destination = target.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_skill_directory(&entry.path(), &destination)?;
+        } else {
+            skill_io(fs::copy(entry.path(), destination))?;
+        }
+    }
+    Ok(())
+}
+
+fn directories_equal(left: &Path, right: &Path) -> bool {
+    if !left.is_dir() || !right.is_dir() {
+        return false;
+    }
+    let mut left_files = walk_files(left);
+    let mut right_files = walk_files(right);
+    left_files.sort();
+    right_files.sort();
+    if left_files.len() != right_files.len() {
+        return false;
+    }
+    left_files
+        .into_iter()
+        .all(|relative| fs::read(left.join(&relative)).ok() == fs::read(right.join(&relative)).ok())
+}
+
+fn skill_modified_at(path: &Path) -> u64 {
+    fs::metadata(path.join("SKILL.md"))
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
+}
+
+fn backup_skill(repository: &Path, name: &str) -> AppResult<Option<PathBuf>> {
+    let source = repository.join(name);
+    if !source.is_dir() {
+        return Ok(None);
+    }
+    let destination = repository
+        .join(SKILL_BACKUP_DIRECTORY)
+        .join(name)
+        .join(now_ms().to_string());
+    copy_skill_directory(&source, &destination)?;
+    Ok(Some(destination))
+}
+
+fn distribute_skill(home: &Path, repository: &Path, name: &str) -> AppResult<()> {
+    replace_skill(
+        &repository.join(name),
+        &home.join(".codex/skills").join(name),
+    )
+}
+
+fn replace_skill(source: &Path, target: &Path) -> AppResult<()> {
+    let staged = target.with_extension(format!("cgswitch-{}", now_ms()));
+    if staged.exists() {
+        skill_io(fs::remove_dir_all(&staged))?;
+    }
+    copy_skill(source, &staged)?;
+    if !directories_equal(source, &staged) {
+        let _ = fs::remove_dir_all(&staged);
+        return Err(app_err!("Skill 文件校验失败"));
+    }
+    if target.exists() {
+        skill_io(fs::remove_dir_all(target))?;
+    }
+    skill_io(fs::rename(staged, target))?;
+    Ok(())
 }
 
 /// CLI 缺席时的回退：扫 `~/.codex/plugins/cache/<marketplace>/<plugin>/<version>/`。
@@ -937,6 +1074,31 @@ fn plugin_store_path(
         .unwrap_or(cache_root)
 }
 
+fn trusted_plugin_store_path(
+    home: &Path,
+    codex_home: &Path,
+    name: &str,
+    raw_path: &str,
+) -> Option<PathBuf> {
+    let path = fs::canonicalize(raw_path).ok()?;
+    let roots = [
+        codex_home.join("plugins"),
+        home.join(".cache/codex-runtimes/plugins"),
+        home.join(".cache/codex/plugins"),
+    ];
+    if !roots.iter().any(|root| {
+        fs::canonicalize(root)
+            .map(|root| path.starts_with(root))
+            .unwrap_or(false)
+    }) {
+        return None;
+    }
+    (read_manifest(&path)
+        .as_ref()
+        .is_some_and(|manifest| manifest.name == name))
+    .then_some(path)
+}
+
 // ==================== AppContext 服务 ====================
 
 impl AppContext {
@@ -955,38 +1117,228 @@ impl AppContext {
 
     /// Codex Skill 注册表中的独立 Skill 列表。
     pub async fn list_skills(&self) -> AppResult<Vec<SkillSummary>> {
+        let repository = skill_repository(&self.paths.root);
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Ok(Vec::new());
         };
-        tauri::async_runtime::spawn_blocking(move || read_skill_lock(&home))
+        tauri::async_runtime::spawn_blocking(move || read_managed_skills(&repository, &home))
             .await
             .map_err(|error| app_err!("Skill 列表任务失败: {error}"))
     }
 
+    pub async fn get_skill_content(&self, name: &str) -> AppResult<String> {
+        validate_plugin_name(name)?;
+        let path = skill_repository(&self.paths.root)
+            .join(name)
+            .join("SKILL.md");
+        tauri::async_runtime::spawn_blocking(move || skill_io(fs::read_to_string(path)))
+            .await
+            .map_err(|error| app_err!("Skill 内容读取任务失败: {error}"))?
+    }
+
+    pub async fn get_import_skill_content(&self, source_path: &str) -> AppResult<String> {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let source = PathBuf::from(source_path);
+        tauri::async_runtime::spawn_blocking(move || {
+            let source = skill_io(fs::canonicalize(source))?;
+            let allowed = [home.join(".agents/skills"), home.join(".codex/skills")]
+                .into_iter()
+                .filter_map(|root| fs::canonicalize(root).ok())
+                .any(|root| source.parent() == Some(root.as_path()));
+            if !allowed {
+                return Err(app_err!("只能预览已扫描到的本地 Skill"));
+            }
+            skill_io(fs::read_to_string(source.join("SKILL.md")))
+        })
+        .await
+        .map_err(|error| app_err!("Skill 内容读取任务失败: {error}"))?
+    }
+
+    pub async fn scan_unmanaged_skills(&self) -> AppResult<Vec<SkillCandidate>> {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Ok(Vec::new());
+        };
+        let repository = skill_repository(&self.paths.root);
+        let sources = read_skill_sources(&repository);
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut candidates = Vec::new();
+            for (root, source) in [
+                (home.join(".codex/skills"), "Codex"),
+                (home.join(".agents/skills"), "Agent"),
+            ] {
+                let Ok(entries) = fs::read_dir(root) else {
+                    continue;
+                };
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if !path.join("SKILL.md").is_file() {
+                        continue;
+                    }
+                    let managed = repository.join(&name);
+                    if managed.is_dir() {
+                        // 已管理 Skill 只认导入时记录的外部本源，避免把另一边的旧分发副本误报成更新。
+                        if let Some(source_path) = sources.get(&name).map(PathBuf::from) {
+                            if !same_skill_path(&source_path, &path) {
+                                continue;
+                            }
+                        }
+                        if directories_equal(&managed, &path) {
+                            continue;
+                        }
+                    }
+                    if candidates.iter().any(|candidate: &SkillCandidate| {
+                        candidate.name == name
+                            && directories_equal(Path::new(&candidate.store_path), &path)
+                    }) {
+                        continue;
+                    }
+                    candidates.push(SkillCandidate {
+                        name,
+                        description: read_skill_description(&path.join("SKILL.md")),
+                        store_path: path.display().to_string(),
+                        source: source.to_string(),
+                        has_content_conflict: false,
+                        is_update: managed.is_dir(),
+                        modified_at: skill_modified_at(&path),
+                    });
+                }
+            }
+            for index in 0..candidates.len() {
+                let name = candidates[index].name.clone();
+                let path = PathBuf::from(&candidates[index].store_path);
+                candidates[index].has_content_conflict =
+                    candidates.iter().enumerate().any(|(other_index, other)| {
+                        other_index != index
+                            && other.name == name
+                            && !directories_equal(&path, Path::new(&other.store_path))
+                    });
+            }
+            candidates.sort_by(|left, right| {
+                left.name
+                    .cmp(&right.name)
+                    .then_with(|| left.source.cmp(&right.source))
+            });
+            Ok(candidates)
+        })
+        .await
+        .map_err(|error| app_err!("Skill 扫描任务失败: {error}"))?
+    }
+
+    pub async fn import_skill(&self, source_path: &str) -> AppResult<()> {
+        let repository = skill_repository(&self.paths.root);
+        let source = PathBuf::from(source_path);
+        tauri::async_runtime::spawn_blocking(move || {
+            let name = source
+                .file_name()
+                .and_then(|item| item.to_str())
+                .ok_or_else(|| app_err!("无法识别 Skill 名称"))?;
+            validate_plugin_name(name)?;
+            let target = repository.join(name);
+            if source == target {
+                return Err(app_err!("该 Skill 已在管理目录中"));
+            }
+            backup_skill(&repository, name)?;
+            replace_skill(&source, &target)?;
+            let mut sources = read_skill_sources(&repository);
+            sources.insert(name.to_string(), source.display().to_string());
+            write_skill_sources(&repository, &sources)?;
+            Ok(())
+        })
+        .await
+        .map_err(|error| app_err!("Skill 导入任务失败: {error}"))?
+    }
+
+    pub async fn enable_skill(&self, name: &str) -> AppResult<()> {
+        validate_plugin_name(name)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let repository = skill_repository(&self.paths.root);
+        let name = name.to_string();
+        tauri::async_runtime::spawn_blocking(move || distribute_skill(&home, &repository, &name))
+            .await
+            .map_err(|error| app_err!("Skill 启用任务失败: {error}"))?
+    }
+
+    pub async fn disable_skill(&self, name: &str) -> AppResult<()> {
+        validate_plugin_name(name)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let name = name.to_string();
+        tauri::async_runtime::spawn_blocking(move || {
+            let distributed = home.join(".codex/skills").join(&name);
+            if distributed.is_dir() {
+                skill_io(fs::remove_dir_all(distributed))?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|error| app_err!("Skill 停用任务失败: {error}"))?
+    }
+
+    pub async fn delete_skill(&self, name: &str) -> AppResult<()> {
+        validate_plugin_name(name)?;
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let repository = skill_repository(&self.paths.root);
+        let name = name.to_string();
+        tauri::async_runtime::spawn_blocking(move || {
+            let stored = repository.join(&name);
+            if !stored.is_dir() {
+                return Err(app_err!("Skill 不存在"));
+            }
+            skill_io(fs::remove_dir_all(&stored))?;
+            let distributed = home.join(".codex/skills").join(&name);
+            if distributed.is_dir() {
+                skill_io(fs::remove_dir_all(distributed))?;
+            }
+            let mut sources = read_skill_sources(&repository);
+            sources.remove(&name);
+            write_skill_sources(&repository, &sources)
+        })
+        .await
+        .map_err(|error| app_err!("Skill 删除任务失败: {error}"))?
+    }
+
     /// 进入插件详情时再读取该插件内的 Skill 明细，避免列表阶段扫描所有插件目录。
-    pub async fn list_plugin_skills(&self, name: &str) -> AppResult<Vec<PluginSkill>> {
+    pub async fn list_plugin_skills(
+        &self,
+        name: &str,
+        requested_store_path: Option<&str>,
+    ) -> AppResult<Vec<PluginSkill>> {
         validate_plugin_name(name)?;
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Err(app_err!("无法定位用户主目录"));
         };
         let codex_home = self.paths.codex_home.clone();
         let name = name.to_string();
+        let requested_store_path = requested_store_path.map(str::to_owned);
         tauri::async_runtime::spawn_blocking(move || {
-            let plugins = list_plugins_sync(&home, &codex_home)?;
-            let Some(plugin) = plugins.into_iter().find(|item| item.name == name) else {
-                return Err(app_err!("没有找到名为「{name}」的插件"));
-            };
-            let store_path = Path::new(&plugin.store_path);
+            let mut store_path = requested_store_path
+                .as_deref()
+                .and_then(|path| trusted_plugin_store_path(&home, &codex_home, &name, path));
+            if store_path.is_none() {
+                store_path = list_plugins_sync(&home, &codex_home)?
+                    .into_iter()
+                    .find(|item| item.name == name)
+                    .map(|item| PathBuf::from(item.store_path));
+            }
+            let store_path = store_path.ok_or_else(|| app_err!("没有找到名为「{name}」的插件"))?;
             if !store_path.is_dir() {
                 return Ok(Vec::new());
             }
-            Ok(store_skills(store_path))
+            Ok(store_skills(&store_path))
         })
         .await
         .map_err(|error| app_err!("插件 Skill 读取任务失败: {error}"))?
     }
 
-    /// 读取 Codex 当前配置中的插件市场，包含官方与第三方市场。
+    /// 读取 Codex 当前配置中的插件市场，包含官方与外部市场。
     pub async fn list_plugin_marketplaces(&self) -> AppResult<Vec<PluginMarketplace>> {
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Ok(Vec::new());
@@ -1104,7 +1456,7 @@ impl AppContext {
         Ok(updates)
     }
 
-    /// 用已刷新的第三方市场快照重新安装指定插件。
+    /// 用已刷新的外部市场快照重新安装指定插件。
     pub async fn upgrade_marketplace_plugin(&self, marketplace: &str, name: &str) -> AppResult<()> {
         validate_plugin_name(marketplace)?;
         validate_plugin_name(name)?;
@@ -1113,7 +1465,7 @@ impl AppContext {
             .iter()
             .any(|item| item.name == marketplace && item.kind == "third-party")
         {
-            return Err(app_err!("只能升级第三方插件市场中的插件"));
+            return Err(app_err!("只能升级外部插件市场中的插件"));
         }
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Err(app_err!("无法定位用户主目录"));
@@ -1359,12 +1711,10 @@ impl AppContext {
     /// 卸载：由 Codex CLI 管理的第三方插件走 `codex plugin remove`。
     pub async fn uninstall_plugin(&self, name: &str) -> AppResult<()> {
         validate_plugin_name(name)?;
-        if self
-            .list_skills()
-            .await?
-            .iter()
-            .any(|skill| skill.name == name)
-        {
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        if is_registered_skill(&home, name) {
             return Err(app_err!(
                 "「{name}」属于 Codex Skill 注册表，请在 Codex 内管理它"
             ));
@@ -1379,9 +1729,6 @@ impl AppContext {
             ));
         }
         if plugin.origin == "codex" {
-            let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
-                return Err(app_err!("无法定位用户主目录"));
-            };
             let marketplace = plugin
                 .marketplace
                 .clone()
@@ -1409,9 +1756,10 @@ impl AppContext {
 
 /// list_plugins 的同步实现（跑在 blocking 线程池）。
 fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSummary>> {
+    let sources = marketplace_sources(home);
     let mut summaries: Vec<PluginSummary> = Vec::new();
 
-    // 1) `codex plugin list`（主源）：覆盖运行时、捆绑和第三方市场，含启停状态
+    // 1) `codex plugin list`（主源）：覆盖运行时、捆绑和外部市场，含启停状态
     if find_codex_cli(home).is_some() {
         if let Ok(output) = run_codex_plugin(home, &["list"]) {
             for (name, marketplace, enabled, version, path) in parse_plugin_list_output(&output) {
@@ -1459,6 +1807,7 @@ fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSumm
     } else {
         summaries.extend(scan_codex_plugin_cache(codex_home));
     }
+    enrich_plugin_sources(&mut summaries, &sources);
     summaries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(summaries)
 }
@@ -1903,15 +2252,13 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
             "---\ndescription: 插件内的 Skill\n---\n",
         )
         .unwrap();
+        std::fs::write(
+            home.path().join(".codex/config.toml"),
+            "[marketplaces.ponytail]\nsource = \"https://github.com/DietrichGebert/ponytail.git\"\n",
+        )
+        .unwrap();
 
-        let skills = context.list_skills().await.unwrap();
-        let skill = skills.iter().find(|item| item.name == "lark-base").unwrap();
-        assert_eq!(skill.name, "lark-base");
-        assert_eq!(skill.description.as_deref(), Some("飞书多维表格操作"));
-        assert_eq!(
-            skill.source_url.as_deref(),
-            Some("https://github.com/larksuite/cli.git")
-        );
+        assert!(context.list_skills().await.unwrap().is_empty());
 
         let plugins = context.list_plugins().await.unwrap();
         assert!(plugins.iter().all(|item| item.name != "lark-base"));
@@ -1919,7 +2266,14 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         assert_eq!(ponytail.origin, "codex");
         assert_eq!(ponytail.marketplace.as_deref(), Some("ponytail"));
         assert_eq!(ponytail.version.as_deref(), Some("4.9.0"));
-        let plugin_skills = context.list_plugin_skills("ponytail").await.unwrap();
+        assert_eq!(
+            ponytail.source_url.as_deref(),
+            Some("https://github.com/DietrichGebert/ponytail.git")
+        );
+        let plugin_skills = context
+            .list_plugin_skills("ponytail", Some(&ponytail.store_path))
+            .await
+            .unwrap();
         assert_eq!(plugin_skills.len(), 1);
         assert_eq!(plugin_skills[0].name, "plugin-skill");
     }
@@ -1935,5 +2289,182 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         .unwrap();
         let error = context.uninstall_plugin("lark-base").await.unwrap_err();
         assert!(error.0.contains("Skill 注册表"));
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_deduplicates_identical_skills() {
+        let (home, context) = context();
+        for root in [".agents/skills", ".codex/skills"] {
+            let skill = home.path().join(root).join("same-skill");
+            std::fs::create_dir_all(&skill).unwrap();
+            std::fs::write(skill.join("SKILL.md"), "---\ndescription: 相同内容\n---\n").unwrap();
+        }
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        assert_eq!(
+            candidates
+                .iter()
+                .filter(|candidate| candidate.name == "same-skill")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_marks_same_name_with_different_content() {
+        let (home, context) = context();
+        for (root, content) in [
+            (".agents/skills", "---\ndescription: 版本 A\n---\n"),
+            (".codex/skills", "---\ndescription: 版本 B\n---\n"),
+        ] {
+            let skill = home.path().join(root).join("different-skill");
+            std::fs::create_dir_all(&skill).unwrap();
+            std::fs::write(skill.join("SKILL.md"), content).unwrap();
+        }
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        let matches: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| candidate.name == "different-skill")
+            .collect();
+        assert_eq!(matches.len(), 2);
+        assert!(matches
+            .iter()
+            .all(|candidate| candidate.has_content_conflict));
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_reports_auxiliary_changes() {
+        let (home, context) = context();
+        for root in [".agents/skills", ".codex/skills"] {
+            let skill = home.path().join(root).join("matching-skill");
+            std::fs::create_dir_all(skill.join("logs")).unwrap();
+            std::fs::write(skill.join("SKILL.md"), "---\ndescription: 相同内容\n---\n").unwrap();
+            std::fs::write(skill.join("logs/source.md"), root).unwrap();
+        }
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        let matches: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| candidate.name == "matching-skill")
+            .collect();
+        assert_eq!(matches.len(), 2);
+        assert!(matches
+            .iter()
+            .all(|candidate| candidate.has_content_conflict));
+        assert!(matches.iter().all(|candidate| !candidate.is_update));
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_reports_managed_updates() {
+        let (home, context) = context();
+        let repository_root = skill_repository(&context.paths.root);
+        let repository = repository_root.join("managed-skill");
+        std::fs::create_dir_all(&repository).unwrap();
+        std::fs::write(
+            repository.join("SKILL.md"),
+            "---\ndescription: 旧版本\n---\n",
+        )
+        .unwrap();
+
+        let agent_skill = home.path().join(".agents/skills/managed-skill");
+        let codex_skill = home.path().join(".codex/skills/managed-skill");
+        for (skill, description) in [
+            (&agent_skill, "Agent 旧副本"),
+            (&codex_skill, "Codex 新版本"),
+        ] {
+            std::fs::create_dir_all(skill).unwrap();
+            std::fs::write(
+                skill.join("SKILL.md"),
+                format!("---\ndescription: {description}\n---\n"),
+            )
+            .unwrap();
+        }
+        write_skill_sources(
+            &repository_root,
+            &BTreeMap::from([(
+                "managed-skill".to_string(),
+                codex_skill.display().to_string(),
+            )]),
+        )
+        .unwrap();
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        let matches: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| candidate.name == "managed-skill")
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].is_update);
+        assert!(!matches[0].has_content_conflict);
+        assert_eq!(matches[0].source, "Codex");
+    }
+
+    #[tokio::test]
+    async fn local_skill_import_and_update_keep_plugin_skills_separate() {
+        let (home, context) = context();
+        let source = home.path().join("Downloads/local-skill");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "---\ndescription: 初始版本\n---\n").unwrap();
+
+        context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap();
+        let initial = context.list_skills().await.unwrap();
+        assert_eq!(
+            initial
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .description
+                .as_deref(),
+            Some("初始版本")
+        );
+        let codex_skill = home.path().join(".codex/skills/local-skill");
+        std::fs::create_dir_all(&codex_skill).unwrap();
+        std::fs::write(
+            codex_skill.join("SKILL.md"),
+            "---\ndescription: Codex 中已修改\n---\n",
+        )
+        .unwrap();
+        assert!(
+            context
+                .list_skills()
+                .await
+                .unwrap()
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .enabled
+        );
+
+        std::fs::write(source.join("SKILL.md"), "---\ndescription: 更新版本\n---\n").unwrap();
+        assert!(
+            context
+                .list_skills()
+                .await
+                .unwrap()
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .update_available
+        );
+        context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            context
+                .list_skills()
+                .await
+                .unwrap()
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .description
+                .as_deref(),
+            Some("更新版本")
+        );
     }
 }

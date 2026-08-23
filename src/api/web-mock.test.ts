@@ -21,14 +21,19 @@ describe("web mock", () => {
     await expect(webInvoke("format_toml", { text })).resolves.toBe(text);
   });
 
+  it("returns managed Skill content for preview", async () => {
+    await expect(webInvoke<string>("get_skill_content", { name: "lark-base" })).resolves.toContain("# lark-base");
+  });
+
   it("keeps plugins and Codex skills in separate lists", async () => {
     const plugins = await webInvoke<PluginSummary[]>("list_plugins");
     const skills = await webInvoke<SkillSummary[]>("list_skills");
-    const pluginSkills = await webInvoke<PluginSkill[]>("list_plugin_skills", { name: "memory-bank" });
+    const pluginSkills = await webInvoke<PluginSkill[]>("list_plugin_skills", { name: "memory-bank", storePath: "C:\\Users\\<user>\\.codex\\plugins\\cache\\memory-bank" });
     const marketplaces = await webInvoke<PluginMarketplace[]>("list_plugin_marketplaces");
     const marketplacePlugins = await webInvoke<MarketplacePlugin[]>("list_marketplace_plugins", { marketplace: "ponytail" });
 
     expect(plugins.every((plugin) => plugin.name !== "lark-base")).toBe(true);
+    expect(plugins.find((plugin) => plugin.name === "ponytail")?.source_url).toBe("https://github.com/DietrichGebert/ponytail.git");
     expect(marketplaces.find((marketplace) => marketplace.name === "youmind")?.source_url).toBe("https://github.com/YouMind-OpenLab/plugin-marketplace.git");
     expect(skills.map((skill) => skill.name)).toContain("lark-base");
     expect(pluginSkills.map((skill) => skill.name)).toContain("session-summary");

@@ -14,6 +14,8 @@ const LABELS: Record<string, string> = {
   opencode: "OpenCode",
 };
 
+const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo"]);
+
 export interface ProviderIcon {
   id: string;
   label: string;
@@ -32,4 +34,8 @@ export const providerIcons: ProviderIcon[] = Object.entries(files)
 
 export function providerIconUrl(id: string | null | undefined): string | null {
   return id ? (files[`./assets/providers/${id}.svg`] ?? null) : null;
+}
+
+export function providerIconThemeClass(id: string | null | undefined): string {
+  return id && THEME_INVERTED_IDS.has(id) ? "dark:invert" : "";
 }

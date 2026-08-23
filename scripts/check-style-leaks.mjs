@@ -11,6 +11,7 @@ const WHITELIST = [
   { file: "features/profiles/ProfileEdit.tsx", class: "text-[13px]", reason: "编辑页 tab：介于 setting-title 与 field-label 之间的既有字号" },
   { file: "app/AppShell.tsx", class: "overflow-y-auto", reason: "<main> 本身：AGENTS.md 钦定的普通页唯一纵向滚动容器" },
   { file: "features/mcp/McpSyncDialog.tsx", class: "overflow-y-auto", reason: "Radix 弹窗 body 内部滚动（max-h-50vh）：弹窗不在页面流内" },
+  { file: "features/skills/SkillsView.tsx", class: "overflow-auto", reason: "Skill 内容预览弹窗的长文本滚动：弹窗不在页面流内" },
 ];
 
 const RULES = [

@@ -10,6 +10,8 @@
 :root {
   color-scheme: light;
   --accent: #007aff;
+  --primary-button-bg: var(--accent);
+  --primary-button-hover-bg: color-mix(in srgb, var(--accent) 88%, black);
   --success: #34c759;
   --warning: #ff9f0a;
   --danger: #ff3b30;
@@ -34,7 +36,7 @@
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 25%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
   /* 全局间距参数：页头/标题到首个内容区块，以及相邻卡片/分区之间 */
-  --gap-page: 1rem;
+  --gap-page: 0.75rem;
   --gap-section: 1rem;
   /* 卡片内边距（上下左右统一） */
   --gap-card: 1.25rem;
@@ -56,6 +58,7 @@
   --main-top-inset: 1rem;
   --edit-page-offset: 2.75rem;
   --edit-footer-bleed: 1.75rem;
+  --edit-no-footer-gap: var(--gap-page);
   --edit-footer-padding-right: var(--gap-main);
   --motion-fast: 150ms;
   --motion-sidebar: 240ms;
@@ -72,17 +75,19 @@
 
 :root.dark {
   color-scheme: dark;
-  /* linguagram 深色配色：抬升暖灰画布（不纯黑）+ 表面抬一档 + 白底 hairline */
-  --accent: #5e9cff;
+  /* VS Code Dark+：编辑区/侧栏/标题栏/输入框/选中项/主按钮 */
+  --accent: #007aff;
+  --primary-button-bg: var(--accent);
+  --primary-button-hover-bg: color-mix(in srgb, var(--accent) 88%, black);
   --success: #3fb950;
-  --app-bg: #202124;
-  --panel-bg: #252526;
-  --panel-border: rgba(255, 255, 255, 0.08);
-  --panel-ring: rgba(255, 255, 255, 0.06);
-  --panel-divider: rgba(255, 255, 255, 0.06);
+  --app-bg: #1a1d1f;
+  --panel-bg: #292b30;
+  --panel-border: #42434a;
+  --panel-ring: rgba(255, 255, 255, 0.14);
+  --panel-divider: rgba(255, 255, 255, 0.1);
   --text-secondary: rgba(255, 255, 255, 0.68);
-  --sidebar-bg: #333333;
-  --selection-bg: rgba(94, 156, 255, 0.16);
+  --sidebar-bg: #25282b;
+  --selection-bg: rgba(0, 122, 255, 0.16);
   --success-text: #6ee7a0;
   --chip-success: #63e68a;
   --profile-chip-bg: #1e1e1e;
@@ -182,6 +187,7 @@ textarea::placeholder {
 
 .profile-card-meta {
   color: var(--profile-meta-text);
+  min-height: 18px;
 }
 
 /* 余额/用量胶囊数据变色（全局统一；cc-switch 同款阈值，后续供应商直接复用）。
@@ -203,6 +209,58 @@ textarea::placeholder {
 
 .mono {
   font-family: Consolas, "Cascadia Mono", monospace;
+}
+
+.skill-markdown-preview {
+  line-height: 1.65;
+}
+
+.skill-markdown-preview > * + * {
+  margin-top: 0.75rem;
+}
+
+.skill-markdown-preview h1,
+.skill-markdown-preview h2,
+.skill-markdown-preview h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.skill-markdown-preview h1 { font-size: 16px; }
+.skill-markdown-preview h2 { font-size: 15px; }
+.skill-markdown-preview h3 { font-size: 14px; }
+
+.skill-markdown-preview ul,
+.skill-markdown-preview ol {
+  padding-left: 1.25rem;
+}
+
+.skill-markdown-preview ul { list-style: disc; }
+.skill-markdown-preview ol { list-style: decimal; }
+
+.skill-markdown-preview a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.skill-markdown-preview code {
+  border-radius: 5px;
+  background: rgb(0 0 0 / 0.05);
+  padding: 1px 5px;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+}
+
+.skill-markdown-preview pre {
+  overflow: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.skill-markdown-preview pre code {
+  background: transparent;
+  padding: 0;
 }
 
 /* 行内代码 token：文案中把路径/段名/服务器名等关键变量从正文里分出来。
@@ -344,6 +402,12 @@ main:has(.apple-scroll-page) {
   overflow: hidden;
 }
 
+/* 无底部操作栏的独立滚动页与详情页统一保留底部间距。 */
+main:has(.settings-page),
+main:has(.apple-scroll-page) {
+  padding-bottom: var(--edit-no-footer-gap);
+}
+
 .apple-scroll-page {
   display: flex;
   min-height: 0;
@@ -353,6 +417,11 @@ main:has(.apple-scroll-page) {
 
 .apple-edit-page {
   height: calc(100vh - var(--window-chrome-height) - var(--edit-page-offset));
+}
+
+/* 无底部操作栏的页面仍保留间距，但不预留整段底部工具栏空间。 */
+.apple-edit-page:not(:has(.apple-edit-toolbar--footer)) {
+  height: calc(100vh - var(--window-chrome-height) - var(--edit-page-offset) + var(--edit-footer-bleed) - var(--edit-no-footer-gap));
 }
 
 /* 设置页占满 main 剩余高度：flex 填充而非 100vh 换算——换算值在 DPI 缩放/取整下
@@ -816,6 +885,8 @@ body.drag-settling .profile-card-actions {
   box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
+.apple-segmented-control { background: var(--input-bg); }
+
 .apple-action-button {
   align-items: center;
   border: 1px solid var(--panel-ring);
@@ -1111,13 +1182,13 @@ button:focus-visible {
 }
 
 .app-button--primary {
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  background: var(--accent);
+  border-color: color-mix(in srgb, var(--primary-button-bg) 60%, transparent);
+  background: var(--primary-button-bg);
   color: white;
 }
 
 .app-button--primary:hover {
-  background: color-mix(in srgb, var(--accent) 88%, black);
+  background: var(--primary-button-hover-bg);
 }
 
 .app-button--danger {
@@ -1159,7 +1230,7 @@ button:focus-visible {
   overflow: hidden;
   border: 0;
   border-radius: 10px;
-  background: var(--panel-bg);
+  background: color-mix(in srgb, var(--panel-bg) 88%, white);
   box-shadow: 0 3px 6px -4px rgb(0 0 0 / 0.12), 0 6px 16px 0 rgb(0 0 0 / 0.08), 0 9px 28px 8px rgb(0 0 0 / 0.05);
   padding: 10px 20px;
   color: inherit;

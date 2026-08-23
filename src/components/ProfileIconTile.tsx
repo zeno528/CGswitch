@@ -1,4 +1,4 @@
-import { providerIconUrl } from "../icons";
+import { providerIconThemeClass, providerIconUrl } from "../icons";
 
 interface ProfileIconTileProps {
   name: string;
@@ -18,7 +18,7 @@ export function ProfileIconTile({ name, icon, size = "sm" }: ProfileIconTileProp
   const iconUrl = providerIconUrl(icon);
   return (
     <span className={`grid shrink-0 place-items-center bg-[var(--tile-bg)] ${current.tile}`} aria-hidden="true">
-      {iconUrl ? <img src={iconUrl} alt="" className={current.image} /> : <span className={`font-bold text-accent ${current.text}`}>{name.charAt(0)}</span>}
+      {iconUrl ? <img src={iconUrl} alt="" className={`${current.image} ${providerIconThemeClass(icon)}`} /> : <span className={`font-bold text-accent ${current.text}`}>{name.charAt(0)}</span>}
     </span>
   );
 }

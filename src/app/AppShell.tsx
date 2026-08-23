@@ -5,11 +5,13 @@ import { isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebarIndicator, useThemeMode, type AppView } from "./appShellHooks";
+import { loadPlugins, loadSkills } from "./managementDataCache";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
 import SettingsView from "../features/settings/SettingsView";
+import type { SkillSummary } from "../types";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
 
@@ -17,7 +19,7 @@ export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
   const [profilesReset, setProfilesReset] = useState(0);
   const [mcpReset, setMcpReset] = useState(0);
-  const [skillsReset, setSkillsReset] = useState(0);
+  const [skillCache, setSkillCache] = useState<SkillSummary[] | null>(null);
   const { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
@@ -48,6 +50,24 @@ export default function AppShell() {
       stopPolling();
     };
   }, [refresh, refreshAuthStatus, startPolling, stopPolling]);
+
+  const appReady = state !== null;
+  useEffect(() => {
+    if (!appReady) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void loadSkills()
+        .then((items) => {
+          if (!cancelled) setSkillCache(items);
+        })
+        .catch(() => undefined);
+      void loadPlugins().catch(() => undefined);
+    }, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [appReady]);
 
   useEffect(() => {
     const onActive = () => {
@@ -95,7 +115,6 @@ export default function AppShell() {
   };
 
   const goSkills = () => {
-    setSkillsReset((value) => value + 1);
     setView("skills");
   };
 
@@ -188,7 +207,7 @@ export default function AppShell() {
             ) : view === "plugins" ? (
               <PluginsView />
             ) : view === "skills" ? (
-              <SkillsView key={skillsReset} />
+              <SkillsView cachedSkills={skillCache} onSkillsChange={setSkillCache} />
             ) : (
               <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
             )}

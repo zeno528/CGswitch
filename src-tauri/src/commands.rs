@@ -99,11 +99,52 @@ pub async fn list_skills(state: State<'_, AppContext>) -> AppResult<Vec<SkillSum
 }
 
 #[tauri::command]
+pub async fn get_skill_content(name: String, state: State<'_, AppContext>) -> AppResult<String> {
+    state.get_skill_content(&name).await
+}
+
+#[tauri::command]
+pub async fn get_import_skill_content(
+    source_path: String,
+    state: State<'_, AppContext>,
+) -> AppResult<String> {
+    state.get_import_skill_content(&source_path).await
+}
+
+#[tauri::command]
+pub async fn scan_unmanaged_skills(
+    state: State<'_, AppContext>,
+) -> AppResult<Vec<super::services::SkillCandidate>> {
+    state.scan_unmanaged_skills().await
+}
+
+#[tauri::command]
+pub async fn import_skill(source_path: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.import_skill(&source_path).await
+}
+
+#[tauri::command]
+pub async fn enable_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.enable_skill(&name).await
+}
+
+#[tauri::command]
+pub async fn disable_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.disable_skill(&name).await
+}
+
+#[tauri::command]
+pub async fn delete_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.delete_skill(&name).await
+}
+
+#[tauri::command]
 pub async fn list_plugin_skills(
     name: String,
+    store_path: Option<String>,
     state: State<'_, AppContext>,
 ) -> AppResult<Vec<PluginSkill>> {
-    state.list_plugin_skills(&name).await
+    state.list_plugin_skills(&name, store_path.as_deref()).await
 }
 
 #[tauri::command]

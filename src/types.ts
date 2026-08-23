@@ -200,6 +200,19 @@ export interface SkillSummary {
   description: string | null;
   source_url: string | null;
   store_path: string;
+  source_path: string | null;
+  update_available: boolean;
+  enabled: boolean;
+}
+
+export interface SkillCandidate {
+  name: string;
+  description: string | null;
+  store_path: string;
+  source: string;
+  has_content_conflict: boolean;
+  is_update: boolean;
+  modified_at: number;
 }
 
 export interface PluginSummary {
@@ -211,7 +224,7 @@ export interface PluginSummary {
   capabilities: string[];
   contains: string[];
   enabled: boolean;
-  /** official=官方市场；codex=第三方市场。 */
+  /** official=官方市场；codex=外部市场。 */
   origin: "official" | "codex";
   marketplace: string | null;
   store_path: string;

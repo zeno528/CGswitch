@@ -337,6 +337,8 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
         feedback.success("自定义供应商已添加");
       } else if (create) {
         const created = await api.addBuiltinProfile(presetKind, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
+        const customName = name.trim();
+        if (customName && customName !== selectedPreset?.name) await api.renameProfile(created.id, customName);
         if (configTouched || catalogTouched) await api.updateProfileConfig(created.id, configText, liveCatalogPath ? catalogText || null : null, null);
         feedback.success("内置供应商已添加");
       } else {
