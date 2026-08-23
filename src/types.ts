@@ -189,6 +189,12 @@ export interface MarketplacePlugin {
   capabilities: string[];
 }
 
+export interface PluginUpdate {
+  name: string;
+  marketplace: string;
+  version: string;
+}
+
 export interface SkillSummary {
   name: string;
   description: string | null;

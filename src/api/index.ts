@@ -14,6 +14,7 @@ import type {
   PluginSkill,
   PluginPreview,
   PluginSummary,
+  PluginUpdate,
   SkillSummary,
   ProfileBalance,
   ProfileBalanceInfo,
@@ -112,6 +113,9 @@ export const api = {
   removePluginMarketplace: (name: string) => call<void>("remove_plugin_marketplace", { name }),
   installMarketplacePlugin: (marketplace: string, name: string) =>
     call<PluginSummary>("install_marketplace_plugin", { marketplace, name }),
+  checkPluginUpdates: () => call<PluginUpdate[]>("check_plugin_updates"),
+  upgradeMarketplacePlugin: (marketplace: string, name: string) =>
+    call<void>("upgrade_marketplace_plugin", { marketplace, name }),
   previewPlugin: (url: string) => call<PluginPreview>("preview_plugin", { url }),
   installPlugin: (url: string, subPath: string | null) =>
     call<PluginSummary>("install_plugin", { url, subPath }),

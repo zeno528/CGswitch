@@ -953,6 +953,10 @@ body.drag-settling .profile-card-actions {
   padding: var(--gap-card);
 }
 
+.apple-panel-section--compact {
+  padding-block: var(--gap-section);
+}
+
 .apple-panel-section + .apple-panel-section {
   border-top: 1px solid var(--panel-divider);
 }

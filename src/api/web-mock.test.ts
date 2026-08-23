@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { webInvoke } from "./web-mock";
-import type { MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, SkillSummary } from "../types";
+import type { MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, SkillSummary } from "../types";
 
 describe("web mock", () => {
   it("round-trips MCP env entries", async () => {
@@ -36,5 +36,15 @@ describe("web mock", () => {
     expect(marketplaces.find((marketplace) => marketplace.name === "ponytail")?.description).toContain("YAGNI");
     expect(marketplacePlugins.find((plugin) => plugin.name === "ponytail")?.installed).toBe(true);
     expect(marketplacePlugins.find((plugin) => plugin.name === "ponytail")?.description).toContain("smallest correct implementation");
+  });
+
+  it("checks and upgrades only a third-party marketplace plugin", async () => {
+    const updates = await webInvoke<PluginUpdate[]>("check_plugin_updates");
+
+    expect(updates).toEqual([{ name: "ponytail", marketplace: "ponytail", version: "5.0.0" }]);
+
+    await expect(webInvoke<void>("upgrade_marketplace_plugin", { marketplace: "ponytail", name: "ponytail" })).resolves.toBeUndefined();
+
+    expect((await webInvoke<PluginSummary[]>("list_plugins")).find((plugin) => plugin.name === "ponytail")?.version).toBe("5.0.0");
   });
 });

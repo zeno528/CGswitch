@@ -31,7 +31,7 @@ mod storage;
 pub use connections::{test_provider_connection, ProfileBalance, ProfileConnectionResult};
 pub use plugins::{
     MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill,
-    PluginSummary, SkillSummary,
+    PluginSummary, PluginUpdate, SkillSummary,
 };
 pub use storage::DatabaseBackupInfo;
 

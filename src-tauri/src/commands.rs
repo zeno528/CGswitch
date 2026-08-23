@@ -12,7 +12,8 @@ use crate::models::{
 };
 use crate::services::{
     AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
-    PluginSkill, PluginSummary, ProfileBalance, ProfileConnectionResult, SkillSummary,
+    PluginSkill, PluginSummary, PluginUpdate, ProfileBalance, ProfileConnectionResult,
+    SkillSummary,
 };
 
 async fn unmanaged_external_codex_auth(
@@ -146,6 +147,20 @@ pub async fn install_marketplace_plugin(
     state: State<'_, AppContext>,
 ) -> AppResult<PluginSummary> {
     state.install_marketplace_plugin(&marketplace, &name).await
+}
+
+#[tauri::command]
+pub async fn check_plugin_updates(state: State<'_, AppContext>) -> AppResult<Vec<PluginUpdate>> {
+    state.check_plugin_updates().await
+}
+
+#[tauri::command]
+pub async fn upgrade_marketplace_plugin(
+    marketplace: String,
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.upgrade_marketplace_plugin(&marketplace, &name).await
 }
 
 #[tauri::command]

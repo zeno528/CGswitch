@@ -78,6 +78,14 @@ pub struct MarketplacePlugin {
     pub capabilities: Vec<String>,
 }
 
+/// 第三方市场快照更新后，已安装插件的可升级项。
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PluginUpdate {
+    pub name: String,
+    pub marketplace: String,
+    pub version: String,
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct SkillSummary {
     pub name: String,
@@ -328,6 +336,14 @@ fn parse_marketplace_list_output(text: &str) -> Vec<PluginMarketplace> {
         .collect()
 }
 
+fn sort_marketplaces(items: &mut [PluginMarketplace]) {
+    items.sort_by(|left, right| {
+        (left.kind != "official")
+            .cmp(&(right.kind != "official"))
+            .then_with(|| left.name.cmp(&right.name))
+    });
+}
+
 fn marketplace_sources(home: &Path) -> BTreeMap<String, String> {
     let Ok(text) = std::fs::read_to_string(home.join(".codex/config.toml")) else {
         return BTreeMap::new();
@@ -528,6 +544,33 @@ fn parse_marketplace_plugins_output(
             })
         })
         .collect())
+}
+
+fn find_plugin_updates(
+    installed: &[PluginSummary],
+    available: &[MarketplacePlugin],
+) -> Vec<PluginUpdate> {
+    available
+        .iter()
+        .filter(|plugin| plugin.installed)
+        .filter_map(|plugin| {
+            let (name, marketplace) = plugin.plugin_id.rsplit_once('@')?;
+            let version = plugin.version.as_deref()?;
+            installed
+                .iter()
+                .find(|item| {
+                    item.origin == "codex"
+                        && item.name == name
+                        && item.marketplace.as_deref() == Some(marketplace)
+                })
+                .filter(|item| item.version.as_deref() != Some(version))
+                .map(|_| PluginUpdate {
+                    name: name.to_string(),
+                    marketplace: marketplace.to_string(),
+                    version: version.to_string(),
+                })
+        })
+        .collect()
 }
 
 /// 从 `marketplace add` 的输出里解析市场名（如 “Marketplace `ponytail`”），失败回退仓库名。
@@ -952,6 +995,7 @@ impl AppContext {
             let output = run_codex_plugin(&home, &["marketplace", "list"])?;
             let mut items = parse_marketplace_list_output(&output);
             enrich_marketplace_metadata(&mut items, &marketplace_sources(&home));
+            sort_marketplaces(&mut items);
             Ok(items)
         })
         .await
@@ -1024,6 +1068,61 @@ impl AppContext {
             .into_iter()
             .find(|plugin| plugin.name == name)
             .ok_or_else(|| app_err!("插件「{name}」已执行安装，但列表中尚未出现"))
+    }
+
+    /// 刷新第三方 Git 市场快照，并找出版本变化的已安装插件。
+    pub async fn check_plugin_updates(&self) -> AppResult<Vec<PluginUpdate>> {
+        let marketplaces = self.list_plugin_marketplaces().await?;
+        let third_party: Vec<_> = marketplaces
+            .into_iter()
+            .filter(|marketplace| marketplace.kind == "third-party")
+            .collect();
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Ok(Vec::new());
+        };
+        let names: Vec<_> = third_party
+            .iter()
+            .map(|marketplace| marketplace.name.clone())
+            .collect();
+        tauri::async_runtime::spawn_blocking(move || {
+            for name in names {
+                run_codex_plugin(&home, &["marketplace", "upgrade", &name])?;
+            }
+            Ok(())
+        })
+        .await
+        .map_err(|error| app_err!("检查插件更新任务失败: {error}"))??;
+
+        let installed = self.list_plugins().await?;
+        let mut updates = Vec::new();
+        for marketplace in third_party {
+            let available = self
+                .list_marketplace_plugins(&marketplace.name, Some(&marketplace.root))
+                .await?;
+            updates.extend(find_plugin_updates(&installed, &available));
+        }
+        Ok(updates)
+    }
+
+    /// 用已刷新的第三方市场快照重新安装指定插件。
+    pub async fn upgrade_marketplace_plugin(&self, marketplace: &str, name: &str) -> AppResult<()> {
+        validate_plugin_name(marketplace)?;
+        validate_plugin_name(name)?;
+        let marketplaces = self.list_plugin_marketplaces().await?;
+        if !marketplaces
+            .iter()
+            .any(|item| item.name == marketplace && item.kind == "third-party")
+        {
+            return Err(app_err!("只能升级第三方插件市场中的插件"));
+        }
+        let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
+            return Err(app_err!("无法定位用户主目录"));
+        };
+        let selector = format!("{name}@{marketplace}");
+        tauri::async_runtime::spawn_blocking(move || run_codex_plugin(&home, &["add", &selector]))
+            .await
+            .map_err(|error| app_err!("升级插件任务失败: {error}"))??;
+        Ok(())
     }
 
     /// 添加 Git 插件市场，并返回 Codex 识别到的市场名。
@@ -1548,6 +1647,73 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         assert_eq!(items[1].name, "ponytail");
         assert_eq!(items[1].kind, "third-party");
         assert_eq!(items[1].root, "C:\\marketplaces\\ponytail");
+    }
+
+    #[test]
+    fn marketplaces_sort_official_before_third_party_then_name() {
+        let mut items = vec![
+            PluginMarketplace {
+                name: "zeta".into(),
+                kind: "third-party".into(),
+                ..Default::default()
+            },
+            PluginMarketplace {
+                name: "beta".into(),
+                kind: "official".into(),
+                ..Default::default()
+            },
+            PluginMarketplace {
+                name: "alpha".into(),
+                kind: "official".into(),
+                ..Default::default()
+            },
+            PluginMarketplace {
+                name: "agent".into(),
+                kind: "third-party".into(),
+                ..Default::default()
+            },
+        ];
+
+        sort_marketplaces(&mut items);
+
+        assert_eq!(
+            items.into_iter().map(|item| item.name).collect::<Vec<_>>(),
+            ["alpha", "beta", "agent", "zeta"]
+        );
+    }
+
+    #[test]
+    fn plugin_updates_ignore_official_and_match_newer_third_party_versions() {
+        let updates = find_plugin_updates(
+            &[
+                PluginSummary {
+                    name: "official-plugin".into(),
+                    version: Some("1.0.0".into()),
+                    origin: "official".into(),
+                    marketplace: Some("openai-bundled".into()),
+                    ..Default::default()
+                },
+                PluginSummary {
+                    name: "ponytail".into(),
+                    version: Some("4.9.0".into()),
+                    origin: "codex".into(),
+                    marketplace: Some("ponytail".into()),
+                    ..Default::default()
+                },
+            ],
+            &[MarketplacePlugin {
+                plugin_id: "ponytail@ponytail".into(),
+                name: "ponytail".into(),
+                version: Some("5.0.0".into()),
+                installed: true,
+                ..Default::default()
+            }],
+        );
+
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0].name, "ponytail");
+        assert_eq!(updates[0].marketplace, "ponytail");
+        assert_eq!(updates[0].version, "5.0.0");
     }
 
     #[test]

@@ -218,6 +218,8 @@ let webMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
   ],
 };
 
+const webPluginUpdates = [{ name: "ponytail", marketplace: "ponytail", version: "5.0.0" }];
+
 const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
   xiaolai: [
     {
@@ -789,7 +791,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "list_plugin_skills":
       return (webPluginSkills[String(args?.name ?? "")] ?? []).map((skill) => ({ ...skill })) as T;
     case "list_plugin_marketplaces":
-      return webMarketplaces.map((marketplace) => ({ ...marketplace })) as T;
+      return [...webMarketplaces]
+        .sort((left, right) => Number(left.kind !== "official") - Number(right.kind !== "official") || left.name.localeCompare(right.name))
+        .map((marketplace) => ({ ...marketplace })) as T;
     case "list_marketplace_plugins":
       return (webMarketplacePlugins[String(args?.marketplace ?? "")] ?? []).map((plugin) => ({ ...plugin })) as T;
     case "add_plugin_marketplace": {
@@ -838,6 +842,26 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       };
       webPlugins = [...webPlugins.filter((plugin) => plugin.name !== name), summary].sort((a, b) => a.name.localeCompare(b.name));
       return summary as T;
+    }
+    case "check_plugin_updates":
+      return webPluginUpdates.filter((update) => {
+        const marketplace = webMarketplaces.find((item) => item.name === update.marketplace);
+        const plugin = webPlugins.find((item) => item.name === update.name && item.marketplace === update.marketplace);
+        return marketplace?.kind === "third-party" && plugin?.version !== update.version;
+      }) as T;
+    case "upgrade_marketplace_plugin": {
+      const marketplace = String(args?.marketplace ?? "");
+      const name = String(args?.name ?? "");
+      const update = webPluginUpdates.find((item) => item.name === name && item.marketplace === marketplace);
+      const target = webPlugins.find((item) => item.name === name && item.marketplace === marketplace);
+      if (!update || !target || webMarketplaces.find((item) => item.name === marketplace)?.kind !== "third-party") {
+        throw new Error("只能升级第三方插件市场中的插件");
+      }
+      target.version = update.version;
+      (webMarketplacePlugins[marketplace] ?? []).forEach((plugin) => {
+        if (plugin.name === name) plugin.version = update.version;
+      });
+      return undefined as T;
     }
     case "preview_plugin": {
       // 与后端一致：预览需要真实 GitHub 网络；浏览器环境仅对示例地址返回 fixture，其余抛错

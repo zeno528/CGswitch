@@ -17,7 +17,6 @@ export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
   const [profilesReset, setProfilesReset] = useState(0);
   const [mcpReset, setMcpReset] = useState(0);
-  const [pluginsReset, setPluginsReset] = useState(0);
   const [skillsReset, setSkillsReset] = useState(0);
   const { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
@@ -92,7 +91,6 @@ export default function AppShell() {
   };
 
   const goPlugins = () => {
-    setPluginsReset((value) => value + 1);
     setView("plugins");
   };
 
@@ -188,12 +186,7 @@ export default function AppShell() {
             ) : view === "mcp" ? (
               <McpView key={mcpReset} />
             ) : view === "plugins" ? (
-              <PluginsView
-                key={pluginsReset}
-                activeProvider={state.profiles.find((profile) => profile.id === state.active_profile_id)?.provider
-                  ?? state.profiles.find((profile) => profile.id === state.active_profile_id)?.name
-                  ?? null}
-              />
+              <PluginsView />
             ) : view === "skills" ? (
               <SkillsView key={skillsReset} />
             ) : (

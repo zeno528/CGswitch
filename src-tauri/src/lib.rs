@@ -97,6 +97,8 @@ pub fn run() {
             commands::add_plugin_marketplace,
             commands::remove_plugin_marketplace,
             commands::install_marketplace_plugin,
+            commands::check_plugin_updates,
+            commands::upgrade_marketplace_plugin,
             commands::preview_plugin,
             commands::install_plugin,
             commands::uninstall_plugin,
