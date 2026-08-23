@@ -441,10 +441,90 @@ pub fn merge_mcp_section(raw: &str, live: &DocumentMut) -> String {
         Ok(mut incoming) => {
             replace_mcp_section(&mut incoming, live);
             replace_plugin_sections(&mut incoming, live);
-            consolidate_mcp_blocks(&incoming.to_string())
+            normalize_global_section_order(&incoming.to_string())
         }
         Err(_) => raw.to_string(),
     }
+}
+
+/// 统一收拢 config.toml 中的全局运行时段，供所有 CGswitch 写入路径复用。
+pub fn normalize_global_section_order(text: &str) -> String {
+    consolidate_plugin_blocks(&consolidate_mcp_blocks(text))
+}
+
+fn is_toml_header(line: &str) -> bool {
+    line.starts_with('[')
+        && line[1..]
+            .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '"' || c == '\'')
+}
+
+fn toml_blocks(text: &str) -> Vec<Vec<&str>> {
+    let mut blocks = Vec::new();
+    for line in text.lines() {
+        if is_toml_header(line) {
+            blocks.push(Vec::new());
+        }
+        match blocks.last_mut() {
+            Some(lines) => lines.push(line),
+            None => blocks.push(vec![line]),
+        }
+    }
+    blocks
+}
+
+/// 把渲染后散落的插件全局段收拢为连续块，并固定为市场、插件、hooks 的顺序。
+/// 与 MCP 相同，锚定在原本最后一个插件全局块的位置，其他配置表的相对顺序不变。
+fn consolidate_plugin_blocks(text: &str) -> String {
+    let blocks: Vec<_> = toml_blocks(text)
+        .into_iter()
+        .map(|lines| {
+            let section = match lines.first().copied() {
+                Some(line) if line.starts_with("[marketplaces.") || line == "[marketplaces]" => {
+                    Some(0)
+                }
+                Some(line) if line.starts_with("[plugins.") || line == "[plugins]" => Some(1),
+                Some(line) if line.starts_with("[hooks.") || line == "[hooks]" => Some(2),
+                _ => None,
+            };
+            (section, lines)
+        })
+        .collect();
+    if blocks
+        .iter()
+        .filter(|(section, _)| section.is_some())
+        .count()
+        <= 1
+    {
+        return text.to_string();
+    }
+
+    let anchor = blocks
+        .iter()
+        .rposition(|(section, _)| section.is_some())
+        .expect("插件块数量大于一时必有锚点");
+    let mut sections = [Vec::new(), Vec::new(), Vec::new()];
+    for (section, lines) in &blocks {
+        if let Some(section) = section {
+            sections[*section].extend(lines.iter().copied());
+        }
+    }
+
+    let mut out = Vec::new();
+    for (index, (section, lines)) in blocks.iter().enumerate() {
+        if index == anchor {
+            for section in &sections {
+                out.extend(section.iter().copied());
+            }
+        }
+        if section.is_none() {
+            out.extend(lines.iter().copied());
+        }
+    }
+    let mut result = out.join("\n");
+    if text.ends_with('\n') {
+        result.push('\n');
+    }
+    result
 }
 
 /// 把渲染后的 TOML 文本中散落各处的 [mcp_servers.*] 块收拢成一个连续块，
@@ -454,24 +534,19 @@ pub fn merge_mcp_section(raw: &str, live: &DocumentMut) -> String {
 /// 块内容（注释、空行、键值）逐字保留，只搬动块的位置，让 mcp 段模块化。
 pub fn consolidate_mcp_blocks(text: &str) -> String {
     // 按表头行切块：(\[\[ 开头的数组表也算)。首个表头之前的根级键值归入无名首块
-    let mut blocks: Vec<(bool, Option<String>, Vec<&str>)> = Vec::new();
-    for line in text.lines() {
-        let is_header = line.starts_with('[')
-            && line[1..].starts_with(|c: char| {
-                c.is_ascii_alphanumeric() || c == '_' || c == '"' || c == '\''
-            });
-        if is_header {
-            blocks.push((
-                line.starts_with("[mcp_servers.") || line == "[mcp_servers]",
-                mcp_server_name_from_header(line),
-                Vec::new(),
-            ));
-        }
-        match blocks.last_mut() {
-            Some((_, _, lines)) => lines.push(line),
-            None => blocks.push((false, None, vec![line])),
-        }
-    }
+    let blocks: Vec<_> = toml_blocks(text)
+        .into_iter()
+        .map(|lines| {
+            let header = lines.first().copied().filter(|line| is_toml_header(line));
+            (
+                header.is_some_and(|line| {
+                    line.starts_with("[mcp_servers.") || line == "[mcp_servers]"
+                }),
+                header.and_then(mcp_server_name_from_header),
+                lines,
+            )
+        })
+        .collect();
     let mcp_count = blocks.iter().filter(|(is_mcp, _, _)| *is_mcp).count();
     // 没有 mcp，或只有一块（已连续）：无需整理
     if mcp_count <= 1 {
@@ -1207,6 +1282,42 @@ A = "1"
         let merged = merge_mcp_section("model = \"gpt-5.6\"\n", &live);
         assert!(merged.contains("marketplaces.ponytail"), "{merged}");
         assert!(merged.contains("ponytail@ponytail"), "{merged}");
+    }
+
+    #[test]
+    fn merge_mcp_section_groups_plugin_sections_for_existing_and_new_config() {
+        let live = parse_document(
+            "[marketplaces.live]\nsource = \"https://example.com/market.git\"\n\n[plugins.\"live@market\"]\nenabled = true\n\n[hooks.state]\nversion = 1\n",
+        )
+        .unwrap();
+        let assert_grouped = |text: &str| {
+            let pos = |needle: &str| {
+                text.find(needle)
+                    .unwrap_or_else(|| panic!("缺少 {needle}：\n{text}"))
+            };
+            let marketplaces = pos("[marketplaces.live]");
+            let plugins = pos("[plugins.\"live@market\"]");
+            let hooks = pos("[hooks.state]");
+            assert!(marketplaces < plugins && plugins < hooks, "{text}");
+            assert!(
+                !text[marketplaces..hooks].contains("[desktop]"),
+                "插件全局段之间不能混入其他表：\n{text}"
+            );
+        };
+
+        // 旧配置中的三个全局段已被 Codex 散插：合并后仍必须连续且按固定顺序。
+        assert_grouped(&merge_mcp_section(
+            "[marketplaces.stale]\nsource = \"old\"\n\n[desktop]\nlocale = \"zh-CN\"\n\n[plugins.\"stale@market\"]\nenabled = false\n\n[features]\nflag = true\n\n[hooks.state]\nversion = 0\n",
+            &live,
+        ));
+
+        // 新建快照没有上述全局段时，也应以同一顺序追加。
+        assert_grouped(&merge_mcp_section("model = \"gpt-5.6\"\n", &live));
+
+        // MCP 组件和插件 CLI 的直写路径同样通过全局规范化入口。
+        assert_grouped(&normalize_global_section_order(
+            "[marketplaces.live]\nsource = \"https://example.com/market.git\"\n\n[desktop]\nlocale = \"zh-CN\"\n\n[plugins.\"live@market\"]\nenabled = true\n\n[hooks.state]\nversion = 1\n",
+        ));
     }
 
     #[test]

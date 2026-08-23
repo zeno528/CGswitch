@@ -64,7 +64,7 @@ impl AppContext {
         backup_file(&config_path, &self.paths.config_backup, "config")?;
         atomic_write(
             &config_path,
-            codex_config::consolidate_mcp_blocks(&document.to_string()).as_bytes(),
+            codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
         )?;
         Ok(())
     }
@@ -360,7 +360,7 @@ impl AppContext {
         backup_file(&config_path, &self.paths.config_backup, "config")?;
         atomic_write(
             &config_path,
-            codex_config::consolidate_mcp_blocks(&document.to_string()).as_bytes(),
+            codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
         )?;
         self.replace_mcp_mirror(&codex_config::mcp_server_fragments_from_document(&document))?;
         Ok(())
@@ -383,7 +383,7 @@ impl AppContext {
         backup_file(&config_path, &self.paths.config_backup, "config")?;
         atomic_write(
             &config_path,
-            codex_config::consolidate_mcp_blocks(&document.to_string()).as_bytes(),
+            codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
         )?;
         self.replace_mcp_mirror(&codex_config::mcp_server_fragments_from_document(&document))?;
         Ok(())

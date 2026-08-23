@@ -28,7 +28,7 @@ use crate::codex::config::parse_document;
 use super::plugin_net::{
     fetch_raw_file, fetch_repo_tree, parse_github_url, preview_file_limit, TreeEntry,
 };
-use super::{app_err, now_ms, AppContext, AppResult};
+use super::{app_err, atomic_write, backup_file, codex_config, now_ms, AppContext, AppResult};
 
 /// 前端展示用的已安装插件摘要。
 #[derive(Debug, Clone, Serialize, Default)]
@@ -1102,6 +1102,18 @@ fn trusted_plugin_store_path(
 // ==================== AppContext 服务 ====================
 
 impl AppContext {
+    /// Codex CLI 直接写 config.toml 后，收拢 CGswitch 管理的全局段；无变化不落盘。
+    fn normalize_plugin_config_order(&self) -> AppResult<()> {
+        let config_path = self.paths.codex_config();
+        let text = self.read_live_config()?;
+        let normalized = codex_config::normalize_global_section_order(&text);
+        if normalized != text {
+            backup_file(&config_path, &self.paths.config_backup, "config")?;
+            atomic_write(&config_path, normalized.as_bytes())?;
+        }
+        Ok(())
+    }
+
     /// 已安装插件列表：`codex plugin list`（主源，含启停）→ 插件缓存（CLI 缺席回退）。
     pub async fn list_plugins(&self) -> AppResult<Vec<PluginSummary>> {
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
@@ -1406,6 +1418,7 @@ impl AppContext {
         })
         .await
         .map_err(|error| app_err!("安装插件任务失败: {error}"))??;
+        self.normalize_plugin_config_order()?;
 
         let _ = self.database.record_event(
             None,
@@ -1444,6 +1457,7 @@ impl AppContext {
         })
         .await
         .map_err(|error| app_err!("检查插件更新任务失败: {error}"))??;
+        self.normalize_plugin_config_order()?;
 
         let installed = self.list_plugins().await?;
         let mut updates = Vec::new();
@@ -1474,6 +1488,7 @@ impl AppContext {
         tauri::async_runtime::spawn_blocking(move || run_codex_plugin(&home, &["add", &selector]))
             .await
             .map_err(|error| app_err!("升级插件任务失败: {error}"))??;
+        self.normalize_plugin_config_order()?;
         Ok(())
     }
 
@@ -1483,7 +1498,7 @@ impl AppContext {
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Err(app_err!("无法定位用户主目录"));
         };
-        tauri::async_runtime::spawn_blocking(move || {
+        let marketplace = tauri::async_runtime::spawn_blocking(move || {
             let output = match run_codex_plugin(&home, &["marketplace", "add", &source_arg]) {
                 Ok(output) => output,
                 Err(error)
@@ -1519,7 +1534,9 @@ impl AppContext {
                 }))
         })
         .await
-        .map_err(|error| app_err!("添加插件市场任务失败: {error}"))?
+        .map_err(|error| app_err!("添加插件市场任务失败: {error}"))??;
+        self.normalize_plugin_config_order()?;
+        Ok(marketplace)
     }
 
     /// 移除第三方插件市场来源；遵循 Codex CLI 语义，不自动删除该市场下已安装的插件。
@@ -1542,6 +1559,7 @@ impl AppContext {
         })
         .await
         .map_err(|error| app_err!("移除插件市场任务失败: {error}"))??;
+        self.normalize_plugin_config_order()?;
         let _ = self.database.record_event(
             None,
             "plugin",
@@ -1686,6 +1704,7 @@ impl AppContext {
         })
         .await
         .map_err(|error| app_err!("安装任务失败: {error}"))??;
+        self.normalize_plugin_config_order()?;
 
         let _ = self.database.record_event(
             None,
@@ -1741,6 +1760,7 @@ impl AppContext {
             })
             .await
             .map_err(|error| app_err!("卸载任务失败: {error}"))??;
+            self.normalize_plugin_config_order()?;
             let _ = self.database.record_event(
                 None,
                 "plugin",

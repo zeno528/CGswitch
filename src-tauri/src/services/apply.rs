@@ -38,7 +38,7 @@ impl AppContext {
             )?;
         } else {
             codex_config::apply_to_document(&mut document, &payload)?;
-            let updated = document.to_string();
+            let updated = codex_config::normalize_global_section_order(&document.to_string());
 
             backup_file(&config_path, &self.paths.config_backup, "config")?;
             atomic_write(&config_path, updated.as_bytes())?;

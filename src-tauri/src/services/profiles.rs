@@ -499,7 +499,10 @@ impl AppContext {
         if self.is_active_profile(id)? {
             let config_path = self.paths.codex_config();
             backup_file(&config_path, &self.paths.config_backup, "config")?;
-            atomic_write(&config_path, config_text.as_bytes())?;
+            atomic_write(
+                &config_path,
+                codex_config::normalize_global_section_order(config_text).as_bytes(),
+            )?;
             if catalog_text.is_some() {
                 self.write_raw_catalog(&payload)?;
             }

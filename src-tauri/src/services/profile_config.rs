@@ -86,8 +86,9 @@ pub(super) fn write_live_provider_update(
         .map_err(|error| app_err!("无法读取 {}: {error}", config_path.display()))?;
     let mut document = codex_config::parse_document(&original)?;
     codex_config::update_provider_in_document(&mut document, provider_id, base_url, api_key)?;
+    let updated = codex_config::normalize_global_section_order(&document.to_string());
     backup_file(&config_path, &context.paths.config_backup, "config")?;
-    atomic_write(&config_path, document.to_string().as_bytes())?;
+    atomic_write(&config_path, updated.as_bytes())?;
     context.database.record_event(
         Some(profile_id),
         "update",
