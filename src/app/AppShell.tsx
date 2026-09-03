@@ -14,6 +14,8 @@ import SettingsView from "../features/settings/SettingsView";
 import type { SkillSummary } from "../types";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
+// macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
+const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
@@ -131,41 +133,41 @@ export default function AppShell() {
 
   return (
     <FeedbackProvider>
-      <div className="flex h-full min-h-0 flex-col">
+      <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
         <div className="apple-window-chrome">
-          <div
-            data-tauri-drag-region
-            className={`apple-sidebar-shell ${sidebar.sidebarCollapsed ? "apple-sidebar--collapsed" : ""}`}
-          >
-            <div
-              className="apple-sidebar-brand flex h-full w-fit cursor-pointer items-center"
-              role="button"
-              tabIndex={0}
-              aria-label="CGswitch"
-              onClick={sidebar.toggleSidebar}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") sidebar.toggleSidebar();
-              }}
-              onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}
-              onMouseLeave={() => sidebar.setSidebarFlyoutArmed(false)}
-            >
-              <img src="/logo.svg" alt="CGswitch" className="dark:invert" draggable="false" />
-              <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">CGswitch</span>
-            </div>
-            {sidebar.sidebarFlyoutArmed ? (
-              <span className="apple-sidebar-flyout" aria-hidden="true">{sidebar.sidebarCollapsed ? "展开侧边栏" : "收缩侧边栏"}</span>
-            ) : null}
-          </div>
+          {isMacWindow ? <div className="apple-chrome-inset" data-tauri-drag-region aria-hidden="true" /> : null}
           <div data-tauri-drag-region className="min-w-0 flex-1 self-stretch" />
-          <div className="flex h-full items-center">
-            <button type="button" className="window-control-button" aria-label="最小化" onClick={() => void appWindow?.minimize()}><Minus strokeWidth={2} aria-hidden="true" /></button>
-            <button type="button" className="window-control-button" aria-label="最大化" onClick={() => void appWindow?.toggleMaximize()}><Square strokeWidth={2} aria-hidden="true" /></button>
-            <button type="button" className="window-control-button window-control-button--close" aria-label="关闭" onClick={() => void appWindow?.close()}><X strokeWidth={2} aria-hidden="true" /></button>
-          </div>
+          {!isMacWindow ? (
+            <div className="flex h-full items-center">
+              <button type="button" className="window-control-button" aria-label="最小化" onClick={() => void appWindow?.minimize()}><Minus strokeWidth={2} aria-hidden="true" /></button>
+              <button type="button" className="window-control-button" aria-label="最大化" onClick={() => void appWindow?.toggleMaximize()}><Square strokeWidth={2} aria-hidden="true" /></button>
+              <button type="button" className="window-control-button window-control-button--close" aria-label="关闭" onClick={() => void appWindow?.close()}><X strokeWidth={2} aria-hidden="true" /></button>
+            </div>
+          ) : null}
         </div>
 
-        <div className="flex min-h-0 flex-1">
+        <div className="apple-workspace flex min-h-0 flex-1">
           <aside className={`apple-sidebar relative h-full shrink-0 ${sidebar.sidebarCollapsed ? "apple-sidebar--collapsed" : ""}`}>
+            <div className="apple-sidebar-brand-row" data-tauri-drag-region>
+              <div
+                className="apple-sidebar-brand flex w-fit cursor-pointer items-center"
+                role="button"
+                tabIndex={0}
+                aria-label="CGswitch"
+                onClick={sidebar.toggleSidebar}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") sidebar.toggleSidebar();
+                }}
+                onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}
+                onMouseLeave={() => sidebar.setSidebarFlyoutArmed(false)}
+              >
+                <img src="/logo.svg" alt="CGswitch" className="dark:invert" draggable="false" />
+                <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">CGswitch</span>
+              </div>
+              {sidebar.sidebarFlyoutArmed ? (
+                <span className="apple-sidebar-flyout" aria-hidden="true">{sidebar.sidebarCollapsed ? "展开侧边栏" : "收缩侧边栏"}</span>
+              ) : null}
+            </div>
             <nav ref={sidebar.sidebarNavRef} className="relative mx-1.5 mt-3 space-y-1">
               <span className={`apple-sidebar-indicator ${sidebar.indicator.instant ? "apple-sidebar-indicator--instant" : ""}`} style={{ top: `${sidebar.indicator.top}px`, left: `${sidebar.indicator.left}px` }} aria-hidden="true" />
               <button ref={sidebar.profileNavRef} type="button" className={navClass(view === "profiles")} aria-label="供应商配置" onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
@@ -198,7 +200,7 @@ export default function AppShell() {
             </div>
           </aside>
 
-          <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden bg-(--app-bg) pt-4">
+          <main className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
             {!state ? (
               <div className="startup-skeleton" aria-busy="true">
                 <div className="startup-skeleton__title" />

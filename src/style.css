@@ -58,9 +58,6 @@
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
   --main-top-inset: 1rem;
-  --edit-page-offset: 2.75rem;
-  --edit-footer-bleed: 1.75rem;
-  --edit-no-footer-gap: var(--gap-page);
   --edit-footer-padding-right: var(--gap-main);
   --motion-fast: 150ms;
   --motion-sidebar: 240ms;
@@ -410,12 +407,6 @@ main:has(.apple-scroll-page) {
   overflow: hidden;
 }
 
-/* 无底部操作栏的独立滚动页与详情页统一保留底部间距。 */
-main:has(.settings-page),
-main:has(.apple-scroll-page) {
-  padding-bottom: var(--edit-no-footer-gap);
-}
-
 .apple-scroll-page {
   display: flex;
   min-height: 0;
@@ -423,13 +414,16 @@ main:has(.apple-scroll-page) {
   flex-direction: column;
 }
 
-.apple-edit-page {
-  height: calc(100vh - var(--window-chrome-height) - var(--edit-page-offset));
+/* 编辑页占满 main 卡片剩余高度：flex 填充而非 100vh 换算——卡片自带 margin 与边框，
+   换算值不随卡片变化，会把底部操作栏挤出卡片圆角 */
+main:has(.apple-edit-page) {
+  display: flex;
+  flex-direction: column;
 }
 
-/* 无底部操作栏的页面仍保留间距，但不预留整段底部工具栏空间。 */
-.apple-edit-page:not(:has(.apple-edit-toolbar--footer)) {
-  height: calc(100vh - var(--window-chrome-height) - var(--edit-page-offset) + var(--edit-footer-bleed) - var(--edit-no-footer-gap));
+.apple-edit-page {
+  flex: 1;
+  min-height: 0;
 }
 
 /* 设置页占满 main 剩余高度：flex 填充而非 100vh 换算——换算值在 DPI 缩放/取整下
@@ -451,7 +445,23 @@ main:has(.apple-scroll-page) {
 .apple-window-chrome {
   height: var(--window-chrome-height);
   flex-shrink: 0;
+  background: var(--sidebar-bg);
+}
+
+/* VS Code 式工作区：主视图为一张圆角卡片浮在窗口底色上 */
+.apple-workspace {
+  background: var(--sidebar-bg);
+}
+
+.apple-main-card {
+  margin: 0.5rem 0.625rem 0.625rem 0.375rem;
+  border: 1px solid rgb(0 0 0 / 0.07);
+  border-radius: 0.75rem;
   background: var(--app-bg);
+}
+
+:root.dark .apple-main-card {
+  border-color: rgb(255 255 255 / 0.09);
 }
 
 .window-control-button {
@@ -481,7 +491,13 @@ main:has(.apple-scroll-page) {
   color: #ffffff;
 }
 
-.apple-sidebar-shell,
+/* macOS 原生交通灯（titleBarStyle: Overlay）占位：顶栏左侧空白由系统渲染窗口按钮 */
+.apple-chrome-inset {
+  align-self: stretch;
+  flex-shrink: 0;
+  width: 4.75rem;
+}
+
 .apple-sidebar {
   background: var(--sidebar-bg);
   width: var(--sidebar-width-expanded);
@@ -490,15 +506,6 @@ main:has(.apple-scroll-page) {
   -webkit-user-select: none;
 }
 
-.apple-sidebar-shell {
-  display: flex;
-  height: 100%;
-  flex-shrink: 0;
-  align-items: center;
-  position: relative;
-}
-
-.apple-sidebar-shell.apple-sidebar--collapsed,
 .apple-sidebar.apple-sidebar--collapsed {
   width: var(--sidebar-width-collapsed);
 }
@@ -622,11 +629,10 @@ body.drag-active * {
   transform: translate(0, -50%);
 }
 
-/* 标题栏品牌按钮浮标：锚定标题栏左侧色块（随侧边栏宽度自适应），
+/* 侧边栏品牌按钮浮标：锚定品牌行（宽度随侧边栏自适应），
    展开时浮标在侧边栏右缘外、收缩时在栏外右侧；两种状态悬停都显示动作提示 */
 .apple-sidebar-brand + .apple-sidebar-flyout {
-  /* 标题栏为 34px，浮标保持在品牌区垂直中心 */
-  top: calc(50% + 6px);
+  /* 品牌行高 36px，浮标保持在行垂直中心（基类 top: 50%） */
   /* 与其他按钮浮标一致：距侧边栏右缘 3.6px（导航按钮 mx-1.5 内缩 6px + 0.6rem 间距） */
   left: calc(100% + 0.225rem);
 }
@@ -679,10 +685,19 @@ body.drag-active * {
   padding-right: var(--sidebar-nav-padding);
 }
 
-/* 标题栏品牌（logo+名字）：复用导航按钮的固定图标锚点，收缩时只保留 Logo */
+/* 侧边栏品牌行：容纳 logo+名字与悬停浮标，宽度随侧边栏自适应 */
+.apple-sidebar-brand-row {
+  flex-shrink: 0;
+  padding: 0.25rem 0 0.125rem;
+  position: relative;
+}
+
+/* 品牌按钮（logo+名字）：复用导航按钮的固定图标锚点，收缩时只保留 Logo */
 .apple-sidebar-brand {
   gap: 0.5rem;
-  padding-left: 0.75rem;
+  height: 2.25rem;
+  /* 与导航按钮图标对齐：mx-1.5(6px) + --sidebar-nav-padding(9px) */
+  padding-left: calc(0.375rem + var(--sidebar-nav-padding));
   transition:
     gap var(--motion-sidebar) cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -748,8 +763,8 @@ body.drag-active * {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+  /* 负水平外边距让操作栏全宽贴卡片边缘；底部由卡片圆角裁切收口 */
   margin-inline: calc(-1 * var(--gap-main));
-  margin-bottom: calc(-1 * var(--edit-footer-bleed));
   background: var(--app-bg);
   padding-left: var(--gap-main);
   padding-right: var(--edit-footer-padding-right);

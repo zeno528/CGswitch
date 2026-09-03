@@ -1,0 +1,22 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "CGswitch",
+        "width": 1080,
+        "height": 720,
+        "minWidth": 900,
+        "minHeight": 620,
+        "center": true,
+        "visible": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 11
+        }
+      }
+    ]
+  }
+}
