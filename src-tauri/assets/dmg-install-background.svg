@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1840" height="1000" viewBox="0 0 1840 1000">
+  <defs>
+    <linearGradient id="background" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fafbfe" />
+      <stop offset="1" stop-color="#f4f7fc" />
+    </linearGradient>
+    <radialGradient id="top-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#dce9ff" stop-opacity="0.56" />
+      <stop offset="1" stop-color="#edf4ff" stop-opacity="0" />
+    </radialGradient>
+    <filter id="arrow-shadow" x="-10%" y="-40%" width="120%" height="180%">
+      <feDropShadow dx="0" dy="3" flood-color="#2563eb" flood-opacity="0.16" stdDeviation="3" />
+    </filter>
+  </defs>
+  <rect width="1840" height="1000" fill="url(#background)" />
+  <circle cx="80" cy="-40" r="430" fill="url(#top-glow)" />
+  <text x="920" y="188" fill="#1f2937" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="52" font-weight="600" letter-spacing="1" text-anchor="middle">将 CGswitch 拖入 Applications 文件夹</text>
+  <path d="M770 520 C840 485 1000 485 1070 520" fill="none" filter="url(#arrow-shadow)" stroke="#2563eb" stroke-linecap="round" stroke-width="15" />
+  <path d="M1040 472 L1100 520 L1040 568" fill="none" filter="url(#arrow-shadow)" stroke="#2563eb" stroke-linecap="round" stroke-linejoin="round" stroke-width="15" />
+</svg>

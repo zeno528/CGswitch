@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "CGswitch",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "identifier": "com.zeno528.cgswitch",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -48,6 +48,23 @@
         "headerImage": "icons/installer-header.bmp",
         "sidebarImage": "icons/installer-sidebar.bmp",
         "uninstallerHeaderImage": "icons/installer-header.bmp"
+      }
+    },
+    "macOS": {
+      "dmg": {
+        "background": "assets/dmg-install-background.png",
+        "windowSize": {
+          "width": 920,
+          "height": 500
+        },
+        "appPosition": {
+          "x": 280,
+          "y": 260
+        },
+        "applicationFolderPosition": {
+          "x": 640,
+          "y": 260
+        }
       }
     }
   }

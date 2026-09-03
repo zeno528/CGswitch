@@ -1,5 +1,19 @@
 # CHANGELOG
 
+## [0.10.0] - 2026-09-03
+
+### 界面与样式
+- macOS 窗口启用原生交通灯标题栏，主界面调整为一体化工作区布局，侧边栏与内容区的层级更清晰
+- macOS DMG 安装窗口新增拖拽引导：将 CGswitch 拖入 Applications 文件夹即可完成安装
+
+### 如何选择安装包
+
+**Windows**：默认下载 `CGswitch-v0.10.0-Windows-setup.exe`，双击安装即可。需要批量部署、静默安装等场景可选用 `.msi` 版本。
+
+**macOS**：
+- Apple 芯片（M 系列）→ `CGswitch-v0.10.0-macOS-arm64.dmg`
+- Intel 芯片 → `CGswitch-v0.10.0-macOS-x64.dmg`
+
 ## [0.9.0] - 2026-08-27
 
 ### 新增

@@ -43,7 +43,7 @@
   /* 卡片内边距（上下左右统一） */
   --gap-card: 1.25rem;
   /* 主内容区左右间距基准（卡片到侧边栏/窗口边缘的视觉间距） */
-  --gap-main: 2rem;
+  --gap-main: 1rem;
   /* 全局控件与窗口几何：页面、编辑页和侧边栏只从这里取尺寸 */
   --font-size-base: 0.875rem;
   --sidebar-width-expanded: 8rem;
@@ -454,7 +454,7 @@ main:has(.apple-edit-page) {
 }
 
 .apple-main-card {
-  margin: 0.5rem 0.625rem 0.625rem 0.375rem;
+  margin: 0.5rem 0.3125rem 0.3125rem 0.375rem;
   border: 1px solid rgb(0 0 0 / 0.07);
   border-radius: 0.75rem;
   background: var(--app-bg);
