@@ -98,7 +98,7 @@ export function UpdateNotice() {
         <div className="update-notice-popover">
           <div className="text-sm font-semibold">发现新版本 v{update.version}</div>
           <p className="muted meta-xs mt-1">下载并安装新版本，完成后自动重启</p>
-          <div className="mt-2.5 flex gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-2">
             <button type="button" className="apple-action-button" onClick={openChangelog}>更新日志</button>
             <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => void install()}>
               {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
