@@ -31,6 +31,7 @@ export function AppSelect<T extends string | number>({
   renderLabel,
 }: AppSelectProps<T>) {
   const selected = options.find((option) => String(option.value) === String(value));
+  const hasOptions = options.length > 0;
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<"bottom" | "top">("bottom");
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
@@ -136,10 +137,10 @@ export function AppSelect<T extends string | number>({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={placeholder}
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => hasOptions && setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === "Escape") setOpen(false);
-          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          if (hasOptions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
             event.preventDefault();
             setOpen(true);
           }
