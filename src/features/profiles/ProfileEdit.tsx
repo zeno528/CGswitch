@@ -597,7 +597,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                     </label>
                     <label className={`flex h-8 items-center gap-2 rounded-[10px] border px-2.5 text-xs transition-colors ${systemProxyEnabled ? "border-accent/30 bg-accent/10 text-accent" : "border-[var(--panel-ring)]"}`} title="让 Codex 的网络请求遵循操作系统代理设置，重启 Codex 后生效。">
                       <input type="checkbox" checked={systemProxyEnabled} disabled={patchingSystemProxy || saving} onChange={(event) => void toggleSystemProxy(event.target.checked)} />
-                      <span className="whitespace-nowrap font-medium">遵循系统代理</span>
+                      <span className="whitespace-nowrap font-medium">使用系统代理</span>
                     </label>
                   </div>
                 ) : null}
