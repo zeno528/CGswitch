@@ -326,9 +326,17 @@ fn scutil_value(text: &str, key: &str) -> Option<String> {
 /// CLI 报错文本是否呈现为网络不可达（用于追加友好提示）。
 fn looks_like_network_error(detail: &str) -> bool {
     let detail = detail.to_ascii_lowercase();
-    ["unable to access", "could not resolve", "failed to connect", "connection refused", "timed out", "ssl", "terminated"]
-        .iter()
-        .any(|needle| detail.contains(needle))
+    [
+        "unable to access",
+        "could not resolve",
+        "failed to connect",
+        "connection refused",
+        "timed out",
+        "ssl",
+        "terminated",
+    ]
+    .iter()
+    .any(|needle| detail.contains(needle))
 }
 
 /// 跑 `codex plugin <args>`，返回 stdout；失败时把 CLI 的报错带出来，
@@ -347,7 +355,12 @@ fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> {
         .stderr(Stdio::piped());
     if let Some(proxy) = detect_system_proxy() {
         for key in [
-            "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+            "ALL_PROXY",
+            "all_proxy",
         ] {
             command.env(key, &proxy);
         }
@@ -2421,7 +2434,10 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
             super::scutil_value(text, "HTTPSProxy").as_deref(),
             Some("127.0.0.1")
         );
-        assert_eq!(super::scutil_value(text, "HTTPSPort").as_deref(), Some("20080"));
+        assert_eq!(
+            super::scutil_value(text, "HTTPSPort").as_deref(),
+            Some("20080")
+        );
         assert_eq!(super::scutil_value(text, "NoSuchKey"), None);
         assert_eq!(
             super::plugin_cli_timeout(&["marketplace", "add", "o/r"]).as_secs(),
@@ -2434,7 +2450,9 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         assert!(super::looks_like_network_error(
             "fatal: unable to access 'https://github.com/': Failed to connect"
         ));
-        assert!(!super::looks_like_network_error("marketplace already added"));
+        assert!(!super::looks_like_network_error(
+            "marketplace already added"
+        ));
     }
 
     fn context() -> (tempfile::TempDir, AppContext) {

@@ -903,7 +903,7 @@ export default function PluginsView({ state }: { state: AppState }) {
                     ) : null}
                     {plugin.enabled ? null : <span className="apple-chip chip-warn shrink-0">已禁用</span>}
                   </div>
-                  <div className="muted meta-xs break-words">
+                  <div className="muted meta-xs truncate">
                     {plugin.description ?? plugin.name}
                 </div>
                 <div className="mt-1 flex items-center gap-2">
