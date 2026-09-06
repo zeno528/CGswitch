@@ -238,11 +238,12 @@ pub fn get_builtin_catalog(
     state.get_builtin_catalog(&kind)
 }
 
-// 内置供应商的 config.toml 模板原文：前端创建页预览的唯一来源（单源，避免与前端 fragment 双份维护）
+// 内置供应商的 config.toml 渲染结果（与创建/应用一致）：前端创建页预览的唯一来源。
+// minimax 的 model_catalog_json 行由 render_config 插入，返回原文会让预览缺该行、模型目录 tab 不显示。
 #[tauri::command]
 pub fn get_builtin_config(kind: String) -> AppResult<String> {
     let template = builtin::template(&kind)?;
-    Ok(String::from_utf8_lossy(template.config).into_owned())
+    Ok(String::from_utf8_lossy(&template.render_config(None)?).into_owned())
 }
 
 #[tauri::command]
