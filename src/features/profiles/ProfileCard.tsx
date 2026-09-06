@@ -40,7 +40,7 @@ interface ProfileCardProps {
 interface ProfileCardContentProps {
   profile: ProfileSummary;
   subscriptionAuthed: boolean;
-  balanceInfo: ProfileBalanceInfo | null;
+  balanceInfos: ProfileBalanceInfo[];
   balanceError: string;
   onRefreshBalance?: () => void;
   onOpenAdmin?: () => void;
@@ -50,12 +50,13 @@ interface ProfileCardContentProps {
 export function ProfileCardContent({
   profile,
   subscriptionAuthed,
-  balanceInfo,
+  balanceInfos,
   balanceError,
   onRefreshBalance,
   onOpenAdmin,
   onRename,
 }: ProfileCardContentProps) {
+  const balanceInfo = balanceInfos[0] ?? null;
   const isSubscriptionProfile = profile.kind === "official";
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
@@ -84,7 +85,7 @@ export function ProfileCardContent({
           {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span className="apple-chip">{profile.reasoning_effort}</span></> : null}
           {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? "查询失败（点击重试）" : "点击刷新"} aria-label={isSubscriptionProfile ? "ChatGPT额度" : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
             <Wallet className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-            {balanceError ? <span className="chip-danger">查询失败</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>余额: </span><span className={balanceChipClass(null, false, balanceInfo.total_balance)}>{balanceInfo.total_balance.startsWith("-") ? "-" : ""}{balanceInfo.currency === "USD" ? "$" : "¥"}{balanceInfo.total_balance.replace(/^-/, "")}</span><span> {balanceInfo.currency}</span></> : <span>{`${balanceLabel} --`}</span>}
+            {balanceError ? <span className="chip-danger">查询失败</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>余额: </span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
           {profile.admin_url ? <button type="button" className="grid h-4 w-4 place-items-center rounded-full text-accent transition-colors hover:bg-(--profile-chip-bg)" title="打开官网" aria-label="打开官网" onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
         </div>
@@ -134,7 +135,7 @@ export default function ProfileCard({
   const feedback = useFeedback();
   const [testing, setTesting] = useState(false);
   const [connectionState, setConnectionState] = useState<"unknown" | "ok" | "fail">("unknown");
-  const [balanceInfo, setBalanceInfo] = useState<ProfileBalanceInfo | null>(null);
+  const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>([]);
   const [balanceError, setBalanceError] = useState("");
   const balanceFetchingRef = useRef(false);
   const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
@@ -142,7 +143,7 @@ export default function ProfileCard({
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
 
   const invalidateBalance = (message: string) => {
-    setBalanceInfo(null);
+    setBalanceInfos([]);
     balanceInfoCache.delete(profile.id);
     setBalanceError(message);
     balanceErrorCache.set(profile.id, message);
@@ -157,13 +158,13 @@ export default function ProfileCard({
     balanceFetchingRef.current = true;
     try {
       const result = await api.getProfileBalance(profile.id);
-      const info = result.balance_infos[0];
-      if (!info) throw new Error("查询未返回余额/用量数据");
+      const infos = result.balance_infos;
+      if (!infos[0]) throw new Error("查询未返回余额/用量数据");
       setBalanceError("");
       balanceErrorCache.delete(profile.id);
-      setBalanceInfo(info);
-      balanceInfoCache.set(profile.id, info);
-      void api.setProfileBalance(profile.id, info);
+      setBalanceInfos(infos);
+      balanceInfoCache.set(profile.id, infos[0]);
+      void api.setProfileBalance(profile.id, infos[0]);
     } catch (error) {
       invalidateBalance(String(error));
     } finally {
@@ -174,7 +175,8 @@ export default function ProfileCard({
   useEffect(() => {
     if (!supportsBalance) return;
     const cachedError = getCachedProfileBalanceError(profile.id);
-    setBalanceInfo(cachedError ? null : balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null);
+    const cachedInfo = balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null;
+    setBalanceInfos(cachedError || !cachedInfo ? [] : [cachedInfo]);
     setBalanceError(cachedError);
     void fetchBalance();
     // The root owns the single activation listener; cards only react to its epoch.
@@ -240,7 +242,7 @@ export default function ProfileCard({
       <ProfileCardContent
         profile={profile}
         subscriptionAuthed={subscriptionAuthed}
-        balanceInfo={balanceInfo}
+        balanceInfos={balanceInfos}
         balanceError={balanceError}
         onRefreshBalance={fetchBalance}
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}

@@ -29,14 +29,29 @@ struct DeepSeekBalanceResponse {
     balance_infos: Vec<ProfileBalanceInfo>,
 }
 
-fn preferred_deepseek_balance(mut balances: Vec<ProfileBalanceInfo>) -> Option<ProfileBalanceInfo> {
+/// 过滤掉 0 余额币种，有几个非 0 显示几个；全部为 0 时保底返回原列表（CNY 优先）。
+fn preferred_deepseek_balance(mut balances: Vec<ProfileBalanceInfo>) -> Vec<ProfileBalanceInfo> {
     if let Some(index) = balances
         .iter()
         .position(|balance| balance.currency == "CNY")
     {
         balances.swap(0, index);
     }
-    balances.into_iter().next()
+    let non_zero: Vec<ProfileBalanceInfo> = balances
+        .iter()
+        .filter(|balance| {
+            balance
+                .total_balance
+                .parse::<f64>()
+                .is_ok_and(|total| total != 0.0)
+        })
+        .cloned()
+        .collect();
+    if non_zero.is_empty() {
+        balances
+    } else {
+        non_zero
+    }
 }
 
 #[cfg(test)]
@@ -44,43 +59,44 @@ mod tests {
     use super::preferred_deepseek_balance;
     use crate::models::ProfileBalanceInfo;
 
-    #[test]
-    fn prefers_cny_when_deepseek_returns_multiple_currencies() {
-        let balances = vec![
-            ProfileBalanceInfo {
-                currency: "USD".into(),
-                total_balance: "0.00".into(),
-                granted_balance: "0.00".into(),
-                topped_up_balance: "0.00".into(),
-                usage_percent: None,
-                usage_reset: None,
-                usage_reset_at: None,
-                usage_label: None,
-                weekly_usage_percent: None,
-                weekly_reset: None,
-                weekly_reset_at: None,
-                weekly_label: None,
-            },
-            ProfileBalanceInfo {
-                currency: "CNY".into(),
-                total_balance: "8.85".into(),
-                granted_balance: "0.00".into(),
-                topped_up_balance: "8.85".into(),
-                usage_percent: None,
-                usage_reset: None,
-                usage_reset_at: None,
-                usage_label: None,
-                weekly_usage_percent: None,
-                weekly_reset: None,
-                weekly_reset_at: None,
-                weekly_label: None,
-            },
-        ];
+    fn balance(currency: &str, total: &str) -> ProfileBalanceInfo {
+        ProfileBalanceInfo {
+            currency: currency.into(),
+            total_balance: total.into(),
+            granted_balance: "0.00".into(),
+            topped_up_balance: total.into(),
+            usage_percent: None,
+            usage_reset: None,
+            usage_reset_at: None,
+            usage_label: None,
+            weekly_usage_percent: None,
+            weekly_reset: None,
+            weekly_reset_at: None,
+            weekly_label: None,
+        }
+    }
 
-        assert_eq!(
-            preferred_deepseek_balance(balances).unwrap().currency,
-            "CNY"
-        );
+    #[test]
+    fn filters_zero_balance_and_prefers_cny_fallback() {
+        // USD 为 0 时只显示 CNY。
+        let balances = vec![balance("USD", "0.00"), balance("CNY", "8.85")];
+        let filtered = preferred_deepseek_balance(balances);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].currency, "CNY");
+
+        // 两个币种都有余额时都返回，CNY 在前。
+        let balances = vec![balance("USD", "5.00"), balance("CNY", "8.85")];
+        let filtered = preferred_deepseek_balance(balances);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].currency, "CNY");
+        assert_eq!(filtered[1].currency, "USD");
+
+        // 全部为 0 时保底返回原列表，CNY 优先。
+        let balances = vec![balance("USD", "0.00"), balance("CNY", "0.00")];
+        let filtered = preferred_deepseek_balance(balances);
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].currency, "CNY");
+        assert_eq!(filtered[0].total_balance, "0.00");
     }
 }
 
@@ -338,9 +354,7 @@ async fn query_deepseek_balance(
                 .map_err(|error| app_err!("余额接口响应解析失败: {error}"))?;
             Ok(ProfileBalance {
                 is_available: parsed.is_available,
-                balance_infos: preferred_deepseek_balance(parsed.balance_infos)
-                    .into_iter()
-                    .collect(),
+                balance_infos: preferred_deepseek_balance(parsed.balance_infos),
                 latency_ms,
             })
         },
