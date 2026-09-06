@@ -1732,6 +1732,11 @@ button:focus-visible {
   -moz-appearance: textfield;
 }
 
+/* .app-input 的 width:100%（layer 外、源码靠后）压过 w-* 工具类，带 [type] 提优先级 */
+.compact-token-input[type="number"] {
+  width: 5rem;
+}
+
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
 .app-input-stepper__input[type="number"]::-webkit-outer-spin-button,
 .compact-token-input[type="number"]::-webkit-inner-spin-button,
