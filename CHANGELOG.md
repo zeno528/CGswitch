@@ -1,20 +1,21 @@
 # CHANGELOG
 
-## [0.12.2] - 2026-09-06
+## [0.12.3] - 2026-09-06
 
 ### 修复
 - 修复更新悬浮卡片在点击「立即升级」后布局变形的问题：升级中按钮文案变宽不再挤压按钮，空间不足时自动换行
+- 修复供应商编辑页「压缩阈值」输入框数字垂直不居中的问题
 
 ### 界面与样式
 - 导入 Skill 页「全选」按钮从顶部工具栏移至底部操作栏，与「取消 / 导入」并排
 
 ### 如何选择安装包
 
-**Windows**：默认下载 `CGswitch-v0.12.2-Windows-setup.exe`，双击安装即可。需要批量部署、静默安装等场景可选用 `.msi` 版本。
+**Windows**：默认下载 `CGswitch-v0.12.3-Windows-setup.exe`，双击安装即可。需要批量部署、静默安装等场景可选用 `.msi` 版本。
 
 **macOS**：
-- Apple 芯片（M 系列）→ `CGswitch-v0.12.2-macOS-arm64.dmg`
-- Intel 芯片 → `CGswitch-v0.12.2-macOS-x64.dmg`
+- Apple 芯片（M 系列）→ `CGswitch-v0.12.3-macOS-arm64.dmg`
+- Intel 芯片 → `CGswitch-v0.12.3-macOS-x64.dmg`
 
 ### macOS 首次打开
 
