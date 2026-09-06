@@ -13,9 +13,10 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -234,7 +235,104 @@ fn find_codex_cli(home: &Path) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// 跑 `codex plugin <args>`，返回 stdout；失败时把 CLI 的报错带出来。
+// ==================== 代理探测与 CLI 超时 ====================
+
+/// codex CLI 子进程按操作类型分档限时：本地操作（list/remove）正常亚秒完成，
+/// 卡住即异常，快速失败；联网操作（add/upgrade = git clone）给慢代理留足时间，
+/// 但也不允许无限等待把 UI 卡死。
+const PLUGIN_CLI_TIMEOUT_FAST_SECS: u64 = 20;
+const PLUGIN_CLI_TIMEOUT_NETWORK_SECS: u64 = 60;
+
+fn plugin_cli_timeout(args: &[&str]) -> Duration {
+    let network = args
+        .iter()
+        .any(|arg| matches!(*arg, "add" | "upgrade" | "update"));
+    Duration::from_secs(if network {
+        PLUGIN_CLI_TIMEOUT_NETWORK_SECS
+    } else {
+        PLUGIN_CLI_TIMEOUT_FAST_SECS
+    })
+}
+
+/// 探测当前可用的代理地址：显式环境变量优先，其次读系统代理。
+/// GUI 进程拿不到用户 shell 里的 export，git 也不读 macOS/Windows 系统代理——
+/// 这里把两层都查一遍，调用方以环境变量注入 codex CLI 子进程，git 随之继承。
+fn detect_system_proxy() -> Option<String> {
+    for key in ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
+        if let Ok(value) = std::env::var(key) {
+            if !value.trim().is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // scutil --proxy 输出 "  HTTPSProxy : 127.0.0.1" 形式的键值行
+        if let Ok(output) = std::process::Command::new("scutil").arg("--proxy").output() {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let enabled = ["HTTPSEnable", "HTTPEnable", "SOCKSEnable"]
+                .iter()
+                .any(|key| scutil_value(&text, key).as_deref() == Some("1"));
+            if enabled {
+                if let (Some(host), Some(port)) = (
+                    scutil_value(&text, "HTTPSProxy")
+                        .or_else(|| scutil_value(&text, "HTTPProxy"))
+                        .or_else(|| scutil_value(&text, "SOCKSProxy")),
+                    scutil_value(&text, "HTTPSPort")
+                        .or_else(|| scutil_value(&text, "HTTPPort"))
+                        .or_else(|| scutil_value(&text, "SOCKSPort")),
+                ) {
+                    return Some(format!("http://{host}:{port}"));
+                }
+            }
+        }
+    }
+    #[cfg(windows)]
+    {
+        let settings = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+        let reg_value = |name: &str| {
+            std::process::Command::new("reg")
+                .args(["query", settings, "/v", name])
+                .output()
+                .ok()
+                .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+        };
+        if reg_value("ProxyEnable").is_some_and(|text| text.contains("0x1")) {
+            if let Some(value) = reg_value("ProxyServer").and_then(|text| {
+                text.lines().find_map(|line| {
+                    let value = line.split("REG_SZ").nth(1)?.trim();
+                    (!value.is_empty() && !value.contains(';')).then(|| value.to_string())
+                })
+            }) {
+                return Some(format!("http://{value}"));
+            }
+        }
+    }
+    None
+}
+
+/// 解析 scutil --proxy 输出里的单行键值（"  HTTPSProxy : 127.0.0.1"）。
+#[cfg(target_os = "macos")]
+fn scutil_value(text: &str, key: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let mut parts = line.trim().split(" : ");
+        match parts.next() {
+            Some(name) if name == key => parts.next().map(|value| value.trim().to_string()),
+            _ => None,
+        }
+    })
+}
+
+/// CLI 报错文本是否呈现为网络不可达（用于追加友好提示）。
+fn looks_like_network_error(detail: &str) -> bool {
+    let detail = detail.to_ascii_lowercase();
+    ["unable to access", "could not resolve", "failed to connect", "connection refused", "timed out", "ssl", "terminated"]
+        .iter()
+        .any(|needle| detail.contains(needle))
+}
+
+/// 跑 `codex plugin <args>`，返回 stdout；失败时把 CLI 的报错带出来，
+/// 网络类失败追加代理提示；整体限时，防止 git 卡死拖住 UI。
 fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> {
     let cli = find_codex_cli(home).ok_or_else(|| {
         app_err!(
@@ -247,24 +345,65 @@ fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(proxy) = detect_system_proxy() {
+        for key in [
+            "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy",
+        ] {
+            command.env(key, &proxy);
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         command.creation_flags(CREATE_NO_WINDOW);
     }
-    let output = command
-        .output()
+    let mut child = command
+        .spawn()
         .map_err(|error| app_err!("执行 codex CLI 失败: {error}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if !output.status.success() {
+    let timeout = plugin_cli_timeout(args);
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child
+            .try_wait()
+            .map_err(|error| app_err!("执行 codex CLI 失败: {error}"))?
+        {
+            Some(status) => break status,
+            None if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(app_err!(
+                    "插件操作超时（{} 秒）：无法连通 GitHub。\
+                     请确认网络可访问 github.com，或在代理软件中开启系统代理 / TUN 模式后重试",
+                    timeout.as_secs()
+                ));
+            }
+            None => std::thread::sleep(Duration::from_millis(150)),
+        }
+    };
+    // 进程已退出，管道里是残留输出（codex plugin 的输出量很小，不会撑满缓冲区）
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut stdout_bytes);
+    }
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_end(&mut stderr_bytes);
+    }
+    let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
+    let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
+    if !status.success() {
         let detail = if stderr.trim().is_empty() {
             stdout.trim()
         } else {
             stderr.trim()
         };
-        return Err(app_err!("codex CLI 报错：{detail}"));
+        let hint = if looks_like_network_error(detail) {
+            "（疑似无法连通 GitHub：已尝试注入系统代理，若仍失败请确认代理软件已开启，或切换 TUN 模式后重试）"
+        } else {
+            ""
+        };
+        return Err(app_err!("codex CLI 报错：{detail}{hint}"));
     }
     Ok(stdout)
 }
@@ -1520,6 +1659,18 @@ impl AppContext {
                     if error
                         .to_string()
                         .to_ascii_lowercase()
+                        .contains("reserved and cannot be added") =>
+                {
+                    // Codex 保留的官方市场（openai-curated/bundled 等）由官方自动提供，
+                    // 拒绝用户来源添加——属预期行为，翻译成人话而不是透传 CLI 报错
+                    return Err(app_err!(
+                        "「{fallback_name}」属于 Codex 官方保留市场，已由 Codex 自动提供（列表中显示为已安装），无需手动添加"
+                    ));
+                }
+                Err(error)
+                    if error
+                        .to_string()
+                        .to_ascii_lowercase()
                         .contains("already added from a different source") =>
                 {
                     let list_output = run_codex_plugin(&home, &["marketplace", "list"])?;
@@ -2261,6 +2412,29 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
             )
         );
         assert!(parse_marketplace_source("not-a-marketplace").is_err());
+    }
+
+    #[test]
+    fn scutil_proxy_fields_parse_and_network_errors_recognized() {
+        let text = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 20080\n  HTTPProxy : 127.0.0.1\n  HTTPSEnable : 1\n  HTTPSPort : 20080\n  HTTPSProxy : 127.0.0.1\n}\n";
+        assert_eq!(
+            super::scutil_value(text, "HTTPSProxy").as_deref(),
+            Some("127.0.0.1")
+        );
+        assert_eq!(super::scutil_value(text, "HTTPSPort").as_deref(), Some("20080"));
+        assert_eq!(super::scutil_value(text, "NoSuchKey"), None);
+        assert_eq!(
+            super::plugin_cli_timeout(&["marketplace", "add", "o/r"]).as_secs(),
+            super::PLUGIN_CLI_TIMEOUT_NETWORK_SECS
+        );
+        assert_eq!(
+            super::plugin_cli_timeout(&["marketplace", "list"]).as_secs(),
+            super::PLUGIN_CLI_TIMEOUT_FAST_SECS
+        );
+        assert!(super::looks_like_network_error(
+            "fatal: unable to access 'https://github.com/': Failed to connect"
+        ));
+        assert!(!super::looks_like_network_error("marketplace already added"));
     }
 
     fn context() -> (tempfile::TempDir, AppContext) {

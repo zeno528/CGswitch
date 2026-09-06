@@ -36,17 +36,30 @@ const marketplaceKindLabels: Record<PluginMarketplace["kind"], string> = {
 const recommendedMarketplaces = [
   {
     name: "openai-curated",
+    // Codex 桌面端在不同渠道下会把官方精选市场物化为 openai-api-curated（~/.codex/.tmp/plugins）
+    aliases: ["openai-api-curated"],
     displayName: "OpenAI Plugins",
     source: "openai/plugins",
     description: "OpenAI 官方 Codex 插件市场，提供可安装的应用集成与开发工作流。",
   },
   {
     name: "ponytail",
+    aliases: [],
     displayName: "Ponytail",
     source: "DietrichGebert/ponytail",
     description: "偏向最小实现的开发工作流，强调 YAGNI、标准库和原生能力。",
   },
 ] as const;
+
+/// 推荐市场是否已配置：按市场名或别名匹配（官方市场在不同渠道下名称不同）。
+function findConfiguredMarketplace(
+  recommended: { name: string; aliases: readonly string[] },
+  marketplaces: PluginMarketplace[],
+): PluginMarketplace | undefined {
+  return marketplaces.find(
+    (marketplace) => marketplace.name === recommended.name || recommended.aliases.includes(marketplace.name),
+  );
+}
 
 function ContainsChips({ items }: { items: string[] }) {
   if (!items.length) return null;
@@ -291,7 +304,7 @@ function MarketplaceDetailView({
         <button type="button" className="apple-page-header apple-back-button" aria-label="返回插件市场" onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
           <span className="apple-title">{marketplace.display_name ?? marketplace.name}</span>
-          {loaded ? <span className="apple-chip" aria-label={`${installedPluginCount} 个已安装插件`}>{installedPluginCount} 个已安装</span> : null}
+          {loaded ? <span className="apple-chip apple-chip--accent" aria-label={`${installedPluginCount} 个已安装插件`}>{installedPluginCount} 个已安装</span> : null}
         </button>
       </div>
       <div className="apple-edit-content">
@@ -308,9 +321,9 @@ function MarketplaceDetailView({
           <div className="apple-group">
             <div className="apple-panel-section">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="title-md">{marketplace.display_name ?? marketplace.name}</span>
+                <div className="field-label">可浏览插件</div>
                 <span className="apple-chip">{marketplaceKindLabels[marketplace.kind]}</span>
-                {loaded ? <span className="apple-chip">{plugins.length} 个插件</span> : <LoadingSpinner />}
+                {loaded ? <span className="apple-chip" aria-label={`${plugins.length} 个可浏览插件`}>{plugins.length}</span> : <LoadingSpinner />}
               </div>
               {marketplace.description ? <p className="muted mt-2 text-sm">{marketplace.description}</p> : null}
               {marketplace.source_url ? (
@@ -318,14 +331,6 @@ function MarketplaceDetailView({
                   <SourceLink source={marketplace.source_url} />
                 </div>
               ) : null}
-            </div>
-          </div>
-          <div className="apple-group">
-            <div className="apple-panel-section">
-              <div className="flex items-center gap-2">
-                <div className="field-label">可浏览插件</div>
-                {loaded ? <span className="apple-chip" aria-label={`${plugins.length} 个可浏览插件`}>{plugins.length}</span> : null}
-              </div>
               {error ? <p className="muted mt-2 text-sm">{error}</p> : null}
               {loaded && !plugins.length && !error ? <p className="muted mt-2 text-sm">这个市场暂时没有可安装插件。</p> : null}
             </div>
@@ -343,7 +348,7 @@ function MarketplaceDetailView({
                     <div className="flex items-center gap-2">
                       <span className="truncate font-semibold">{plugin.display_name ?? plugin.name}</span>
                       {plugin.version ? <span className="apple-chip">v{plugin.version}</span> : null}
-                      {plugin.installed ? <span className="apple-chip">已安装</span> : null}
+                      {plugin.installed ? <span className="apple-chip apple-chip--accent">已安装</span> : null}
                     </div>
                     {plugin.description ? <div className="muted mt-1 break-words text-sm">{plugin.description}</div> : null}
                     {(plugin.category || plugin.capabilities.length || plugin.contains.length) ? (
@@ -582,7 +587,7 @@ function PluginMarketplaceView({
   };
 
   const browseRecommended = async (recommended: typeof recommendedMarketplaces[number]) => {
-    const existing = marketplaces.find((marketplace) => marketplace.name === recommended.name);
+    const existing = findConfiguredMarketplace(recommended, marketplaces);
     if (existing) {
       openMarketplace(existing);
       return;
@@ -671,6 +676,9 @@ function PluginMarketplaceView({
     return <AddPluginView onBack={() => setShowAddPlugin(false)} onMarketplaceAdded={async (marketplace) => { await refreshMarketplaces(); setShowAddPlugin(false); openMarketplace(marketplace); }} onInstalled={onInstalled} />;
   }
 
+  // 推荐区只展示尚未添加的市场：已添加的进入下方「已添加的插件市场」列表，避免两处重复展示
+  const pendingRecommended = recommendedMarketplaces.filter((recommended) => !findConfiguredMarketplace(recommended, marketplaces));
+
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
@@ -691,28 +699,26 @@ function PluginMarketplaceView({
       </div>
       <div ref={contentRef} className="apple-edit-content">
         <div className="space-y-4">
-          <div className="apple-group">
-            <div className="apple-panel-section">
-              <AppDisclosure
-                open={recommendedOpen}
-                onOpenChange={setRecommendedOpen}
-                summary={(
-                  <span className="min-w-0">
-                    <span className="field-label block">推荐市场</span>
-                    <span className="muted mt-1 block break-words text-sm">这些市场采用 Codex 官方 marketplace.json 规范，添加后进入目录即可浏览和安装。</span>
-                  </span>
-                )}
-              >
-                <div className="mt-2 space-y-2">
-                  {recommendedMarketplaces.map((recommended) => {
-                    const configured = marketplaces.find((marketplace) => marketplace.name === recommended.name);
-                    return (
+          {pendingRecommended.length ? (
+            <div className="apple-group">
+              <div className="apple-panel-section">
+                <AppDisclosure
+                  open={recommendedOpen}
+                  onOpenChange={setRecommendedOpen}
+                  summary={(
+                    <span className="min-w-0">
+                      <span className="field-label block">推荐市场</span>
+                      <span className="muted mt-1 block break-words text-sm">以下市场还未添加，采用 Codex 官方 marketplace.json 规范；添加后会出现在下方列表。</span>
+                    </span>
+                  )}
+                >
+                  <div className="mt-2 space-y-2">
+                    {pendingRecommended.map((recommended) => (
                       <div key={recommended.name} className="rounded-[var(--radius-control)] px-2.5 py-2 shadow-[0_0_0_1px_var(--panel-ring)]">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold">{recommended.displayName}</span>
-                              {configured ? <span className="apple-chip">已安装</span> : null}
                             </div>
                             <div className="muted mt-0.5 break-words text-sm">{recommended.description}</div>
                             <div className="mt-0.5 flex flex-wrap items-center gap-2">
@@ -722,16 +728,16 @@ function PluginMarketplaceView({
                           </div>
                           <button type="button" className="apple-action-button app-button--primary shrink-0" disabled={Boolean(adding) || !marketplacesLoaded} onClick={() => void browseRecommended(recommended)}>
                             {adding === recommended.name ? <LoadingSpinner /> : <ChevronRight className="h-4 w-4" strokeWidth={2} />}
-                            {configured ? "浏览插件" : "添加并浏览"}
+                            添加并浏览
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </AppDisclosure>
+                    ))}
+                  </div>
+                </AppDisclosure>
+              </div>
             </div>
-          </div>
+          ) : null}
           <div className="apple-group">
             <div className="apple-panel-section">
               <div className="flex items-center gap-2">
@@ -857,7 +863,7 @@ export default function PluginsView({ state }: { state: AppState }) {
           <div className="flex items-center gap-2">
             <div className="apple-title">插件</div>
             {loaded ? (
-              <span className="apple-chip" aria-label={`${plugins.length} 个已安装插件`}>{plugins.length} 个已安装</span>
+              <span className="apple-chip apple-chip--accent" aria-label={`${plugins.length} 个已安装插件`}>{plugins.length} 个已安装</span>
             ) : <span className="text-accent" role="status" aria-label="正在加载插件"><LoadingSpinner size="md" /></span>}
           </div>
         </div>
