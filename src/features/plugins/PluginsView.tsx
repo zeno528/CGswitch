@@ -676,9 +676,6 @@ function PluginMarketplaceView({
     return <AddPluginView onBack={() => setShowAddPlugin(false)} onMarketplaceAdded={async (marketplace) => { await refreshMarketplaces(); setShowAddPlugin(false); openMarketplace(marketplace); }} onInstalled={onInstalled} />;
   }
 
-  // 推荐区只展示尚未添加的市场：已添加的进入下方「已添加的插件市场」列表，避免两处重复展示
-  const pendingRecommended = recommendedMarketplaces.filter((recommended) => !findConfiguredMarketplace(recommended, marketplaces));
-
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
@@ -699,26 +696,28 @@ function PluginMarketplaceView({
       </div>
       <div ref={contentRef} className="apple-edit-content">
         <div className="space-y-4">
-          {pendingRecommended.length ? (
-            <div className="apple-group">
-              <div className="apple-panel-section">
-                <AppDisclosure
-                  open={recommendedOpen}
-                  onOpenChange={setRecommendedOpen}
-                  summary={(
-                    <span className="min-w-0">
-                      <span className="field-label block">推荐市场</span>
-                      <span className="muted mt-1 block break-words text-sm">以下市场还未添加，采用 Codex 官方 marketplace.json 规范；添加后会出现在下方列表。</span>
-                    </span>
-                  )}
-                >
-                  <div className="mt-2 space-y-2">
-                    {pendingRecommended.map((recommended) => (
+          <div className="apple-group">
+            <div className="apple-panel-section">
+              <AppDisclosure
+                open={recommendedOpen}
+                onOpenChange={setRecommendedOpen}
+                summary={(
+                  <span className="min-w-0">
+                    <span className="field-label block">推荐市场</span>
+                    <span className="muted mt-1 block break-words text-sm">这些市场采用 Codex 官方 marketplace.json 规范，添加后进入目录即可浏览和安装。</span>
+                  </span>
+                )}
+              >
+                <div className="mt-2 space-y-2">
+                  {recommendedMarketplaces.map((recommended) => {
+                    const configured = findConfiguredMarketplace(recommended, marketplaces);
+                    return (
                       <div key={recommended.name} className="rounded-[var(--radius-control)] px-2.5 py-2 shadow-[0_0_0_1px_var(--panel-ring)]">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold">{recommended.displayName}</span>
+                              {configured ? <span className="apple-chip apple-chip--accent">已安装</span> : null}
                             </div>
                             <div className="muted mt-0.5 break-words text-sm">{recommended.description}</div>
                             <div className="mt-0.5 flex flex-wrap items-center gap-2">
@@ -728,16 +727,16 @@ function PluginMarketplaceView({
                           </div>
                           <button type="button" className="apple-action-button app-button--primary shrink-0" disabled={Boolean(adding) || !marketplacesLoaded} onClick={() => void browseRecommended(recommended)}>
                             {adding === recommended.name ? <LoadingSpinner /> : <ChevronRight className="h-4 w-4" strokeWidth={2} />}
-                            添加并浏览
+                            {configured ? "浏览插件" : "添加并浏览"}
                           </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </AppDisclosure>
-              </div>
+                    );
+                  })}
+                </div>
+              </AppDisclosure>
             </div>
-          ) : null}
+          </div>
           <div className="apple-group">
             <div className="apple-panel-section">
               <div className="flex items-center gap-2">
