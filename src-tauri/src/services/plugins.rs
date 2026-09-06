@@ -2428,17 +2428,7 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
     }
 
     #[test]
-    fn scutil_proxy_fields_parse_and_network_errors_recognized() {
-        let text = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 20080\n  HTTPProxy : 127.0.0.1\n  HTTPSEnable : 1\n  HTTPSPort : 20080\n  HTTPSProxy : 127.0.0.1\n}\n";
-        assert_eq!(
-            super::scutil_value(text, "HTTPSProxy").as_deref(),
-            Some("127.0.0.1")
-        );
-        assert_eq!(
-            super::scutil_value(text, "HTTPSPort").as_deref(),
-            Some("20080")
-        );
-        assert_eq!(super::scutil_value(text, "NoSuchKey"), None);
+    fn plugin_cli_timeout_and_network_error_detection() {
         assert_eq!(
             super::plugin_cli_timeout(&["marketplace", "add", "o/r"]).as_secs(),
             super::PLUGIN_CLI_TIMEOUT_NETWORK_SECS
@@ -2453,6 +2443,21 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         assert!(!super::looks_like_network_error(
             "marketplace already added"
         ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn scutil_proxy_fields_parse() {
+        let text = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 20080\n  HTTPProxy : 127.0.0.1\n  HTTPSEnable : 1\n  HTTPSPort : 20080\n  HTTPSProxy : 127.0.0.1\n}\n";
+        assert_eq!(
+            super::scutil_value(text, "HTTPSProxy").as_deref(),
+            Some("127.0.0.1")
+        );
+        assert_eq!(
+            super::scutil_value(text, "HTTPSPort").as_deref(),
+            Some("20080")
+        );
+        assert_eq!(super::scutil_value(text, "NoSuchKey"), None);
     }
 
     fn context() -> (tempfile::TempDir, AppContext) {
