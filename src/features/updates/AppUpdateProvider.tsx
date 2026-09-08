@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowUpCircle, LoaderCircle } from "lucide-react";
+import { ArrowUp, LoaderCircle, X } from "lucide-react";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { checkForAppUpdate, UPDATED_VERSION_KEY, type AppUpdate } from "./appUpdate";
@@ -96,9 +96,13 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
 export function UpdateNotice() {
   const { update, updateSource, installing, install } = useAppUpdate();
   const feedback = useFeedback();
+  const [autoOpened, setAutoOpened] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
   const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (update && updateSource === "sidebar") setAutoOpened(true);
+  }, [update, updateSource]);
   useEffect(() => {
     if (!pinned) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -113,22 +117,31 @@ export function UpdateNotice() {
   // 升级由哪个入口发起，进度就归哪个入口：install() 已把 updateSource 改写为发起方，
   // 侧边栏发起时卡片强制保持展开（避免 hover 移开丢反馈）；设置页发起时这边不弹卡
   const installingHere = installing && updateSource === "sidebar";
-  const open = hovered || pinned || installingHere;
-  // 打开更新日志后收起卡片，避免挡住侧边栏
-  const openChangelog = () => {
+  const open = autoOpened || hovered || pinned || installingHere;
+  const closePopover = () => {
+    setAutoOpened(false);
     setPinned(false);
     setHovered(false);
+  };
+  // 打开更新日志后收起卡片，避免挡住侧边栏
+  const openChangelog = () => {
+    closePopover();
     void api.openUrl(releaseNotesUrl).catch((error) => feedback.error(String(error)));
   };
   return (
     <div ref={noticeRef} className="relative" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       <button type="button" className="update-notice-button" onClick={() => setPinned((value) => !value)}>
-        <ArrowUpCircle strokeWidth={2} aria-hidden="true" />
+        <span className="grid h-[var(--sidebar-icon-size)] w-[var(--sidebar-icon-size)] shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
+          <ArrowUp className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+        </span>
         <span className="apple-sidebar-label">发现新版本</span>
       </button>
       {open ? (
         <div className="update-notice-popover">
-          <div className="text-sm font-semibold">发现新版本 v{update.version}</div>
+          <button type="button" className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-[var(--text-primary)]" aria-label="关闭更新提示" onClick={closePopover}>
+            <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+          </button>
+          <div className="pr-7 text-sm font-semibold">发现新版本 v{update.version}</div>
           <p className="muted meta-xs mt-1">下载并安装新版本，完成后自动重启</p>
           <div className="mt-2.5 flex flex-nowrap gap-2">
             <button type="button" className="apple-action-button" onClick={openChangelog}>更新日志</button>

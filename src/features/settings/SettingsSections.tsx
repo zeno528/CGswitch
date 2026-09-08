@@ -1,4 +1,4 @@
-import { ArrowUpCircle, Database, DatabaseBackup, Download, ExternalLink, FolderOpen, LoaderCircle, Moon, MoonStar, Monitor, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { ArrowUp, Database, DatabaseBackup, Download, ExternalLink, FolderOpen, LoaderCircle, Moon, MoonStar, Monitor, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, isTauri } from "../../api";
@@ -195,16 +195,18 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       {update ? (
         <div className="update-available-reveal mt-3">
           <div className="update-available-card">
-            <div className="flex items-center gap-2 text-sm">
-              <ArrowUpCircle className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
+            <div className="flex min-w-0 items-center gap-2 text-sm">
+              <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
+                <ArrowUp className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden="true" />
+              </span>
               <span className="font-medium">发现新版本 v{update.version}</span>
             </div>
-            <div className="flex gap-2">
-              <button type="button" className="apple-action-button" title="在 GitHub 查看更新日志" onClick={() => void api.openUrl(releaseNotesUrl).catch((error) => feedback.error(String(error)))}>
+            <div className="flex shrink-0 items-center gap-1">
+              <button type="button" className="apple-action-button apple-action-button--quaternary h-8 px-2.5 text-accent" title="在 GitHub 查看更新日志" onClick={() => void api.openUrl(releaseNotesUrl).catch((error) => feedback.error(String(error)))}>
                 更新日志
               </button>
-              <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => void install("about")}>
-                {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
+              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install("about")}>
+                {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
                 {installing ? "正在下载安装…" : "立即升级"}
               </button>
             </div>

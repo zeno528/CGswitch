@@ -94,13 +94,13 @@ function SourceLink({ source }: { source: string }) {
   return (
     <button
       type="button"
-      className="apple-inline-btn shrink-0"
+      className={isGithub ? "shrink-0 p-1 text-accent" : "apple-inline-btn shrink-0"}
       title={`打开来源：${url}`}
       aria-label={`打开${isGithub ? " GitHub" : "来源"}`}
       onClick={() => void api.openUrl(url).catch((error) => feedback.error(String(error)))}
     >
-      {isGithub ? "GitHub" : "打开来源"}
-      {isGithub ? <GithubMark /> : <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
+      {isGithub ? <GithubMark /> : "打开来源"}
+      {!isGithub && <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
     </button>
   );
 }

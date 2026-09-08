@@ -31,6 +31,13 @@ export function toAppUpdate(update: Pick<Update, "version" | "download" | "insta
 }
 
 export async function checkForAppUpdate(): Promise<AppUpdate | null> {
+  // 临时用于开发窗口验证侧边栏更新入口；生产构建不会进入此分支。
+  if (import.meta.env.DEV) {
+    return {
+      version: "0.13.10-test",
+      install: async () => { throw new Error("开发环境模拟更新，不会执行安装"); },
+    };
+  }
   if (!isTauri) return null;
   const update = await check({ timeout: 30_000 });
   return update ? toAppUpdate(update) : null;

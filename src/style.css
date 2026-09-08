@@ -750,21 +750,17 @@ body.drag-active * {
   width: 0.6rem;
 }
 
-.update-notice-button > svg {
-  width: var(--sidebar-icon-size);
-  height: var(--sidebar-icon-size);
-  flex-shrink: 0;
-}
 
 /* 关于页「发现新版本」升级卡片：只展示版本号，升级由用户点击触发 */
 .update-available-card {
   align-items: center;
-  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  border-radius: var(--radius-card);
+  min-height: 4rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--panel-ring));
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel-bg));
+  border-radius: var(--radius-control);
   display: flex;
   justify-content: space-between;
-  padding: 0.625rem 0.75rem;
+  padding: 0.5rem 0.625rem;
 }
 
 /* 卡片出现时平滑展开外层大卡片：grid 行高 0fr→1fr 做真实高度过渡，

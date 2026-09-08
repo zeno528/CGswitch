@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { toAppUpdate } from "./appUpdate";
+import { checkForAppUpdate, toAppUpdate } from "./appUpdate";
 
 const { setUpdateMarker, takeUpdateMarker } = vi.hoisted(() => ({
   setUpdateMarker: vi.fn(async (_version: string) => undefined),
@@ -14,6 +14,10 @@ vi.mock("../../api", () => ({
 }));
 
 describe("toAppUpdate", () => {
+  it("开发环境模拟出可用更新，供侧边栏入口验证", async () => {
+    await expect(checkForAppUpdate()).resolves.toMatchObject({ version: "0.13.10-test" });
+  });
+
   it("安装成功：下载后先把版本标记原子落盘，再启动安装器", async () => {
     const download = vi.fn(async () => {});
     const install = vi.fn(async () => {});

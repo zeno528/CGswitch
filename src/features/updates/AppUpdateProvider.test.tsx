@@ -38,8 +38,14 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("releases/latest");
   });
 
+  it("启动自动发现更新时自动展开，关闭后仍可从侧边栏入口再次查看", () => {
+    expect(providerSource).toContain('if (update && updateSource === "sidebar") setAutoOpened(true);');
+    expect(providerSource).toContain('const open = autoOpened || hovered || pinned || installingHere;');
+    expect(providerSource).toContain('aria-label="关闭更新提示"');
+    expect(providerSource).toContain("setAutoOpened(false);");
+  });
+
   it("升级期间悬浮卡片强制保持显示，但仅限侧边栏发起的升级", () => {
     expect(providerSource).toContain("const installingHere = installing && updateSource === \"sidebar\";");
-    expect(providerSource).toContain("const open = hovered || pinned || installingHere;");
   });
 });
