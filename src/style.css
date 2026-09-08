@@ -68,7 +68,7 @@
   /* 窗口标题栏高度：品牌区与窗口控制按钮共用同一垂直中心 */
   --window-chrome-height: 1.875rem;
   /* 卡片、高亮分区和配置编辑器容器统一圆角 */
-  --radius-card: 1rem;
+  --radius-card: 1.125rem;
   /* 右侧滚动条占位宽度，启动时由 JS 实测写入，保证左右视觉间距完全一致 */
   --scrollbar-size: 0px;
 }
@@ -946,7 +946,7 @@ body.drag-active * {
 
 .apple-edit-content > .apple-group {
   margin-top: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-card);
 }
 
 /* 结构性防呆：首卡片间距只来自上方 padding-top（--gap-page），任何首子元素
@@ -1113,7 +1113,7 @@ body.drag-active * {
 
 .profile-list > .apple-group,
 .profile-drag-preview {
-  border-radius: 0.875rem;
+  border-radius: var(--radius-card);
 }
 
 .profile-list > .apple-group.is-active {

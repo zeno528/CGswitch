@@ -37,7 +37,7 @@ describe("AppShell 布局", () => {
   });
 
   it("让编辑页的表单大卡片与主视图使用相同圆角", () => {
-    expect(styles).toContain(".apple-edit-content > .apple-group {\n  margin-top: 0;\n  border-radius: var(--radius-control);");
+    expect(styles).toContain(".apple-edit-content > .apple-group {\n  margin-top: 0;\n  border-radius: var(--radius-card);");
   });
 
   it("将 Skill 更新徽标锚定在导入按钮左上角", () => {
@@ -49,6 +49,6 @@ describe("AppShell 布局", () => {
   });
 
   it("让供应商卡片使用略圆的圆角", () => {
-    expect(styles).toContain(".profile-list > .apple-group,\n.profile-drag-preview {\n  border-radius: 0.875rem;");
+    expect(styles).toContain(".profile-list > .apple-group,\n.profile-drag-preview {\n  border-radius: var(--radius-card);");
   });
 });
