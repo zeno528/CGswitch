@@ -1536,8 +1536,10 @@ button:focus-visible {
   flex: 0 0 auto;
   position: relative;
   width: fit-content;
+  min-width: min(200px, calc(100vw - 24px));
   max-width: min(720px, calc(100vw - 24px));
   align-items: center;
+  justify-content: center;
   margin: 0;
   overflow: hidden;
   border: 0;
