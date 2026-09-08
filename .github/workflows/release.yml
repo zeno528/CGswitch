@@ -1,5 +1,6 @@
-# 发版流水线（构建+发布准备）：由 /release skill 负责版本号、撰写发行日志并提交；
-# 本工作流承担确定性动作——校验、三平台构建、创建发行页、上传产物。
+# 发版流水线（构建+发布准备）：/release skill 负责跑 bump 脚本与撰写 CHANGELOG 内容
+# （## [Unreleased] 段落，不含版本号与日期）；本工作流承担确定性动作——回填版本标题
+# （## [版本] - 发行日）、校验、三平台构建、创建发行页、上传产物。
 # 触发方式：push 到 main 且 VERSION / CHANGELOG.md 有变更时自动触发；
 # 构建完成先建草稿、传资产（用 GITHUB_TOKEN 创建 release/tag）。
 # 自动触发（push）时 release_mode 输入为空，天然停在草稿等人工发布；
@@ -56,7 +57,8 @@ jobs:
             exit 1
           }
       - uses: actions/checkout@v7
-      # 第 0 秒拦截：VERSION 非空即视为发版（CHANGELOG 段落可选，没写则由 GitHub 自动生成说明）。
+      # 第 0 秒拦截：VERSION 非空即视为发版（CHANGELOG 的 Unreleased 段落可选，
+      # 没写则发行页只带工作流生成的版本标题行与安装指南）。
       # 仅当该版本已公开发布时绿色跳过，避免重复推送重复构建
       - id: guard
         name: 校验 VERSION
@@ -146,17 +148,47 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 拉全历史与 tag：生成 Full Changelog 对比链接需要取上一版本 tag
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - id: version
-        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-      # 发行说明 = CHANGELOG.md 对应段落（可选，/release skill 会写）+ 安装指南兜底（必带，
+        run: |
+          echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+          # 发行日期按维护者时区取当天，即实际发行日（AI 起草日志时无法预知）
+          echo "date=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
+      # 版本号与日期是确定性信息，由工作流定：/release skill 只在 CHANGELOG.md 顶部写
+      # ## [Unreleased] 内容段落，这里回填为 ## [<版本>] - <发行日> 并 commit 回 main
+      # （[skip ci] 防止这次 push 再触发本工作流）。重跑时段落已版本化，sed 不命中即跳过
+      - name: 回填 CHANGELOG 版本标题
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DATE: ${{ steps.version.outputs.date }}
+        run: |
+          sed -i "s/^## \[Unreleased\]$/## [$VERSION] - $DATE/" CHANGELOG.md
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md 无 Unreleased 段落（空日志发版或重跑已回填），跳过回填"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore(changelog): v$VERSION [skip ci]" -- CHANGELOG.md
+            git push origin HEAD:refs/heads/main
+          fi
+      # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ Full Changelog 对比链接
+      # + CHANGELOG.md 对应段落内容（可选，/release skill 写）+ 安装指南兜底（必带，
       # 没写更新日志时用户也能知道下载哪个包）。已存在草稿（重跑场景）则更新，已公开则拒绝改动
       - name: 创建草稿发行页
         run: |
           TAG="v$VERSION"
+          # 上一版本 tag（跳过当前版本自身——重跑时本地已 fetch 到当前 tag）：
+          # 没写更新日志时用户仍可从 Full Changelog 链接看到两版本间的全部提交；
+          # 首个版本无旧 tag 则省略该行
+          PREV_TAG="$(git tag -l 'v*' --sort=-v:refname | awk -v t="$TAG" '$0 != t {print; exit}')"
           NOTES="$(mktemp)"
+          # 提取段落内容时跳过 ## [版本] 标题行本身——标题行统一由工作流生成，
+          # 保证发行页的版本号/日期不依赖（也不重复于）CHANGELOG 里写的内容
           awk -v v="$VERSION" '
-            index($0, "## [" v "]") == 1 { insec = 1 }
+            index($0, "## [" v "]") == 1 { insec = 1; next }
             insec && /^## \[/ && index($0, "## [" v "]") != 1 { exit }
             insec { print }
           ' CHANGELOG.md > "$NOTES"
@@ -185,7 +217,13 @@ jobs:
           然后再次打开 CGswitch；如果安装到了其他目录，请将命令中的路径替换为实际的 .app 路径。
           EOF
           sed -i "s/__VERSION__/$VERSION/g" "$GUIDE"
-          cat "$NOTES" "$GUIDE" > "$NOTES.full" && mv "$NOTES.full" "$NOTES"
+          {
+            printf '## [%s] - %s\n' "$VERSION" "$DATE"
+            if [ -n "$PREV_TAG" ]; then
+              printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$PREV_TAG" "$TAG"
+            fi
+            cat "$NOTES" "$GUIDE"
+          } > "$NOTES.full" && mv "$NOTES.full" "$NOTES"
           if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             git tag "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
@@ -201,6 +239,7 @@ jobs:
           fi
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          DATE: ${{ steps.version.outputs.date }}
           GH_TOKEN: ${{ github.token }}
       - uses: actions/download-artifact@v8
         with:
