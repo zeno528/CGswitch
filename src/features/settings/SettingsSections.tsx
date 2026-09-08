@@ -187,7 +187,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
           <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
         </button>
         <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
-          <RefreshCw className={`h-4 w-4 text-accent ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
+          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
           检查更新
         </button>
         </div>
