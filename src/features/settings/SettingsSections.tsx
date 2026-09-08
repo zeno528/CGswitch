@@ -216,7 +216,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
       <h2 className="setting-title">数据与路径</h2>
       <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">
-        {paths.map((item) => (
+        {paths.filter((item) => item.label !== "备份目录").map((item) => (
           <button key={item.label} type="button" className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/8" disabled={Boolean(openingPath)} title={`打开${item.label}`} onClick={() => onOpenPath(item)}>
             <span className="shrink-0 text-sm font-medium">{item.label}</span>
             <span className="mono muted meta-xs min-w-0 flex-1 truncate" title={item.path}>{item.path.replace(/^\/(Users|home)\/[^/]+/, "~")}</span>

@@ -33,6 +33,26 @@ describe("SettingsSections", () => {
     expect(html).not.toContain("检查 GitHub 正式发布版本");
   });
 
+  it("does not show the backup directory in the about paths", () => {
+    const html = renderToStaticMarkup(
+      <FeedbackProvider>
+        <AppUpdateProvider enabled={false}>
+          <SettingsAbout
+            paths={[
+              { label: "应用数据目录", path: "C:\\Users\\<user>\\.cgswitch" },
+              { label: "备份目录", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+              { label: "Codex 配置", path: "C:\\Users\\<user>\\.codex\\config.toml" },
+            ]}
+            onOpenPath={() => undefined}
+            openingPath={null}
+          />
+        </AppUpdateProvider>
+      </FeedbackProvider>,
+    );
+    expect(html).toContain("应用数据目录");
+    expect(html).not.toContain("备份目录");
+  });
+
   it("手动检查发现新版只展示版本号，升级由用户点击触发", () => {
     expect(settingsSectionsSource).toContain("立即升级");
     expect(settingsSectionsSource).toContain("更新日志");

@@ -125,6 +125,32 @@ body {
   line-height: 1.6;
 }
 
+/* 所有语义化交互控件统一使用可点击光标，禁用控件明确显示不可用。 */
+:where(
+  button:not(:disabled),
+  a[href],
+  summary,
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  label:has(input:not(:disabled)),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"])
+) {
+  cursor: pointer;
+}
+
+:where(
+  button:disabled,
+  select:disabled,
+  input[type="checkbox"]:disabled,
+  input[type="radio"]:disabled,
+  [aria-disabled="true"]
+) {
+  cursor: not-allowed;
+}
+
 /* 输入框占位提示统一用微软雅黑，避免 Windows 中文字体回退到宋体；不改变实际输入内容的字体 */
 input::placeholder,
 textarea::placeholder {
@@ -958,6 +984,8 @@ body.drag-active * {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   transition:
     background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out,
     opacity 150ms ease-out;
 }
 
@@ -968,6 +996,18 @@ body.drag-active * {
 .apple-inline-btn:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+.apple-inline-btn--quiet {
+  border-color: var(--panel-ring);
+  color: var(--accent);
+  background: transparent;
+}
+
+.apple-inline-btn--quiet:hover {
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--panel-ring));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 /* 编辑类页面的统一返回按钮（ProfileEdit / ProfileIconEdit 共用） */
