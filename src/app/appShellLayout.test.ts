@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const profileEditSource = readFileSync(new URL("../features/profiles/ProfileEdit.tsx", import.meta.url), "utf8");
+const feedbackSource = readFileSync(new URL("./Feedback.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 
 describe("AppShell 布局", () => {
@@ -18,8 +19,21 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("margin: 0.125rem 0.3125rem 0.3125rem 0;");
   });
 
+  it("让主题分段控件使用控件级圆角而不是卡片圆角", () => {
+    expect(styles).toContain(".apple-segmented-control {\n  border-radius: var(--radius-control);\n  background: var(--input-bg);");
+  });
+
   it("将通知条与页面顶部操作按钮对齐", () => {
     expect(styles).toContain(".app-toast-viewport {\n  position: fixed;\n  top: 2.5rem;");
+  });
+
+  it("让通知条沿前后层与展开态路径退场", () => {
+    expect(feedbackSource).toContain("data-front={index === 0}");
+    expect(styles).toContain("transform: translateY(40%) scale(var(--toast-resting-scale));");
+    expect(styles).toContain("transform: translateY(-100%) scale(1);");
+    expect(styles).toContain("transform: translateY(calc(var(--toast-expanded-offset) - 100%)) scale(1);");
+    expect(styles).toContain('.app-toast-viewport:not([data-expanded="true"]) .app-toast[data-state="closed"][data-front="true"] {');
+    expect(styles).toContain('.app-toast-viewport[data-expanded="true"] .app-toast[data-state="closed"] {');
   });
 
   it("拖拽时不改变供应商标题颜色", () => {

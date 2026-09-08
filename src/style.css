@@ -1143,7 +1143,10 @@ body.drag-active * {
   outline-color: color-mix(in srgb, var(--accent) 75%, transparent);
 }
 
-.apple-segmented-control { background: var(--input-bg); }
+.apple-segmented-control {
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+}
 
 .apple-action-button {
   align-items: center;
@@ -1553,7 +1556,7 @@ button:focus-visible {
   opacity: 1;
   transform: translateY(var(--toast-offset)) scale(var(--toast-scale));
   transform-origin: top center;
-  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out;
+  transition: transform 460ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease-out;
   transition-delay: var(--toast-transition-delay), var(--toast-transition-delay);
   will-change: transform, opacity;
 }
@@ -1573,10 +1576,20 @@ button:focus-visible {
   opacity: 1;
 }
 
-.app-toast[data-state="closed"] {
+.app-toast-viewport .app-toast[data-state="closed"] {
   opacity: 0;
   pointer-events: none;
-  transform: translateY(calc(var(--toast-resting-offset) - 10px)) scale(calc(var(--toast-resting-scale) - 0.04));
+  transform: translateY(40%) scale(var(--toast-resting-scale));
+  transition: transform 400ms ease, opacity 200ms ease-out;
+  transition-delay: 0ms;
+}
+
+.app-toast-viewport:not([data-expanded="true"]) .app-toast[data-state="closed"][data-front="true"] {
+  transform: translateY(-100%) scale(1);
+}
+
+.app-toast-viewport[data-expanded="true"] .app-toast[data-state="closed"] {
+  transform: translateY(calc(var(--toast-expanded-offset) - 100%)) scale(1);
 }
 
 .app-toast__icon {
@@ -2061,9 +2074,9 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 @keyframes app-dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)) scale(0.95); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @media (prefers-reduced-motion: no-preference) {
   @starting-style {
-    .app-toast[data-state="open"] {
+    .app-toast-viewport .app-toast[data-state="open"] {
       opacity: 0;
-      transform: translateY(calc(var(--toast-resting-offset) - 14px)) scale(calc(var(--toast-resting-scale) - 0.04));
+      transform: translateY(calc(var(--toast-resting-offset) - 32px)) scale(var(--toast-resting-scale));
     }
   }
 }
