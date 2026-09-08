@@ -5,7 +5,7 @@ import {
   CircleUserRound,
   Info,
   Cog,
-  RefreshCw,
+  RotateCw,
   Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -58,7 +58,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
-                <RefreshCw className="h-[18px] w-[18px]" strokeWidth={2} />
+                <RotateCw className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
                 <div className="setting-title">应用配置后自动重启 Codex</div>
@@ -80,7 +80,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
               <div>
                 <div className="setting-title">自动检查更新</div>
                 <div className="setting-description mt-0.5">
-                  启动时检查新版本，发现后在侧边栏提示更新。
+                  启动时检查新版本，发现后在 Codex 状态旁提示更新。
                 </div>
               </div>
             </div>

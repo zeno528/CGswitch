@@ -11,7 +11,7 @@ import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
 import SettingsView from "../features/settings/SettingsView";
-import { AppUpdateProvider, UpdateNotice } from "../features/updates/AppUpdateProvider";
+import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
 import type { SkillSummary } from "../types";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
@@ -141,7 +141,7 @@ export default function AppShell() {
 
   return (
     <FeedbackProvider>
-      {/* settings 就绪后启动静默检查一次更新，发现新版由侧边栏横幅提示；checkForAppUpdate 内部已守卫非 Tauri 环境 */}
+      {/* settings 就绪后启动静默检查一次更新，发现新版由状态栏图标提示；checkForAppUpdate 内部已守卫非 Tauri 环境 */}
       <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update)}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
         <div className="apple-window-chrome">
@@ -202,7 +202,6 @@ export default function AppShell() {
               </button>
             </nav>
             <div className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5">
-              <UpdateNotice />
               <button type="button" className={navClass(view === "settings")} aria-label="设置" onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <SettingsIcon strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>设置</span>

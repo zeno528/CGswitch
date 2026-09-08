@@ -719,44 +719,42 @@ body.drag-active * {
   flex-shrink: 0;
 }
 
-/* 侧边栏更新横幅（设置按钮上方）：默认透明，仅在交互时显示高亮。 */
-.update-notice-button {
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--sidebar-nav-radius);
-  color: var(--accent);
-  display: flex;
-  font-size: var(--font-size-base);
-  gap: 0.5rem;
-  height: var(--sidebar-nav-height);
-  padding-inline: var(--sidebar-nav-padding);
+.update-notice {
   position: relative;
-  width: 100%;
-  transition: transform var(--motion-fast) ease-out, background-color var(--motion-fast) ease-out;
 }
 
-.update-notice-button:hover {
-  background: var(--selection-bg);
+.update-notice-trigger {
+  display: grid;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  place-items: center;
+  border-radius: 50%;
+  transition: transform var(--motion-fast) ease-out;
 }
 
-.update-notice-button:active {
-  transform: scale(0.97);
+.update-notice-trigger:hover,
+.update-notice-trigger:focus-visible {
+  transform: scale(1.04);
 }
 
-/* 横幅悬浮卡片：hover / 点击横幅时在侧边栏右缘弹出，展示完整版本号与操作，
-   样式对齐 .apple-sidebar-flyout（panel-bg + ring + 阴影），不受侧边栏宽度影响 */
+.update-notice-trigger:active {
+  transform: scale(0.94);
+}
+
+/* 状态栏更新图标的交互卡片：点击图标展开，点击关闭按钮或空白处收起。 */
 .update-notice-popover {
   position: absolute;
-  left: calc(100% + 0.6rem);
-  bottom: 0;
+  top: calc(100% + 0.6rem);
+  left: 0;
   z-index: 30;
   width: max-content;
-  max-width: calc(100vw - 2rem);
-  border-radius: 12px;
+  max-width: min(20rem, calc(100vw - 2rem));
+  border-radius: var(--radius-control);
+  border: 1px solid var(--panel-border);
   background: var(--panel-bg);
   box-shadow:
-    0 0 0 1px var(--panel-ring),
-    0 6px 20px rgba(0, 0, 0, 0.14);
+    0 8px 24px rgb(0 0 0 / 0.1),
+    0 0 0 1px var(--panel-ring);
   padding: 0.75rem;
 }
 
@@ -765,17 +763,6 @@ body.drag-active * {
   flex-shrink: 0;
   white-space: nowrap;
 }
-
-/* 透明桥：覆盖横幅与卡片之间的空隙，鼠标横移时不离开容器，卡片不消失 */
-.update-notice-popover::before {
-  content: "";
-  position: absolute;
-  left: -0.6rem;
-  top: 0;
-  bottom: 0;
-  width: 0.6rem;
-}
-
 
 /* 关于页「发现新版本」升级卡片：只展示版本号，升级由用户点击触发 */
 .update-available-card {
