@@ -59,7 +59,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
 
   const closeToast = useCallback((id: number) => {
     setToasts((current) => current.map((toast) => toast.id === id ? { ...toast, open: false } : toast));
-    window.setTimeout(() => removeToast(id), 400);
+    window.setTimeout(() => removeToast(id), 220);
   }, [removeToast]);
 
   const showToast = useCallback((tone: ToastTone, message: string) => {
@@ -120,7 +120,6 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
                 if (!open) closeToast(toast.id);
               }}
               style={toastStyle}
-              data-front={index === 0}
               className={`app-toast app-toast--${toast.tone}`}
             >
               <ToastIcon className={`app-toast__icon app-toast__icon--${toast.tone}`} size={20} strokeWidth={2.5} aria-hidden="true" />
