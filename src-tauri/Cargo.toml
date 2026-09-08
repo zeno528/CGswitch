@@ -1,6 +1,6 @@
 [package]
 name = "cgswitch"
-version = "0.13.9"
+version = "0.13.10"
 description = "A lightweight Codex model profile switcher"
 authors = ["zeno528"]
 license = "MIT"
