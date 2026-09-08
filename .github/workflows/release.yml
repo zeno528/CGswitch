@@ -38,8 +38,10 @@ concurrency:
 
 jobs:
   verify:
-    name: verify (Windows)
-    runs-on: windows-latest
+    # 只跑 guard 三步（分支校验/VERSION 非空/已发布跳过），秒级放行；
+    # 完整质量检查由 CI 在同一次 push 上对同一 SHA 执行，不在这里重复挡构建
+    name: verify
+    runs-on: ubuntu-latest
     outputs:
       # 版本已公开发布（重复推送不重发）时为 true，下游全部跳过
       skip: ${{ steps.guard.outputs.skip }}
@@ -72,28 +74,6 @@ jobs:
               echo "skip=true" >> "$GITHUB_OUTPUT"
             fi
           fi
-      - run: corepack enable
-        if: steps.guard.outputs.skip != 'true'
-        shell: bash
-      - uses: actions/setup-node@v7
-        if: steps.guard.outputs.skip != 'true'
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: rustup component add rustfmt clippy
-        if: steps.guard.outputs.skip != 'true'
-        shell: bash
-        working-directory: src-tauri
-      - uses: Swatinem/rust-cache@v2
-        if: steps.guard.outputs.skip != 'true'
-        with:
-          workspaces: src-tauri
-      - run: pnpm install --frozen-lockfile
-        if: steps.guard.outputs.skip != 'true'
-      - run: pnpm check
-        if: steps.guard.outputs.skip != 'true'
-      - run: pnpm build
-        if: steps.guard.outputs.skip != 'true'
 
   build:
     needs: verify
