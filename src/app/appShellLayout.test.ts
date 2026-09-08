@@ -56,4 +56,8 @@ describe("AppShell 布局", () => {
     expect(profileEditSource).toContain("(!create || Boolean(selectedPreset?.admin_url))");
     expect(profileEditSource).not.toContain("(!create || selectedPreset?.base_url)");
   });
+
+  it("官网地址按钮复用配置卡片的高亮按钮样式", () => {
+    expect(profileEditSource).toContain('className="apple-icon-button !h-6 !w-7 shrink-0 text-accent disabled:opacity-40"');
+  });
 });

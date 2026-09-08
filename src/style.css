@@ -1774,7 +1774,7 @@ button:focus-visible {
 
 /* .app-input 的 width:100%（layer 外、源码靠后）压过 w-* 工具类，带 [type] 提优先级 */
 .compact-token-input[type="number"] {
-  width: 5rem;
+  width: 4.5rem;
 }
 
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
