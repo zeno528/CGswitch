@@ -67,8 +67,8 @@ export function ProfileCardContent({
   const balanceLabel = isSubscriptionProfile ? "额度" : isUsageProvider ? "用量" : "余额";
   const primaryUsagePercent = balanceInfo?.usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.usage_percent : balanceInfo.usage_percent) : null;
   const weeklyUsagePercent = balanceInfo?.weekly_usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.weekly_usage_percent : balanceInfo.weekly_usage_percent) : null;
-  const primaryUsageText = isSubscriptionProfile ? `${primaryLabel}剩余 ` : isUsageProvider ? `${primaryLabel}:` : `${primaryLabel} `;
-  const weeklyUsageText = isSubscriptionProfile ? `${weeklyLabel}剩余 ` : isUsageProvider ? `${weeklyLabel}:` : `${weeklyLabel} `;
+  const primaryUsageText = isSubscriptionProfile ? `${primaryLabel}: 剩` : isUsageProvider ? `${primaryLabel}:` : `${primaryLabel} `;
+  const weeklyUsageText = isSubscriptionProfile ? `${weeklyLabel}: 剩` : isUsageProvider ? `${weeklyLabel}:` : `${weeklyLabel} `;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -84,7 +84,7 @@ export function ProfileCardContent({
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? "未设置"}</span>
           {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span className="apple-chip">{profile.reasoning_effort}</span></> : null}
-          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? "查询失败（点击重试）" : "点击刷新"} aria-label={isSubscriptionProfile ? "ChatGPT额度" : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
+          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? "查询失败（点击重试）" : isSubscriptionProfile ? "百分比=剩余额度，时间为重置倒计时；点击刷新" : "点击刷新"} aria-label={isSubscriptionProfile ? "ChatGPT额度" : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
             <Wallet className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
             {balanceError ? <span className="chip-danger">查询失败</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>余额: </span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
