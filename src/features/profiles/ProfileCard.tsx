@@ -1,4 +1,4 @@
-import { Check, Copy, ExternalLink, GripVertical, KeyRound, Monitor, Wallet, Wifi } from "lucide-react";
+import { Check, Copy, Globe, GripVertical, KeyRound, Monitor, Wallet, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -76,6 +76,7 @@ export function ProfileCardContent({
       <div className="profile-card-content__text min-w-0 flex-1">
         <div className="flex min-h-7 items-center gap-2">
           <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title="点击重命名" onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
+          {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title="打开官网" aria-label="打开官网" onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
           {!profile.provider ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${subscriptionAuthed ? "bg-accent/10 text-accent" : "bg-black/5 muted dark:bg-white/6"}`} title={authTitle} aria-label={authTitle}>
             {authSource === "desktop" ? <Monitor className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" /> : <KeyRound className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />}
           </span> : null}
@@ -87,7 +88,6 @@ export function ProfileCardContent({
             <Wallet className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
             {balanceError ? <span className="chip-danger">查询失败</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>余额: </span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
-          {profile.admin_url ? <button type="button" className="grid h-4 w-4 place-items-center rounded-full text-accent transition-colors hover:bg-(--profile-chip-bg)" title="打开官网" aria-label="打开官网" onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><ExternalLink className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
         </div>
       </div>
     </div>

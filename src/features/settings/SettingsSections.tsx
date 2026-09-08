@@ -1,4 +1,4 @@
-import { ArrowUp, Database, DatabaseBackup, Download, ExternalLink, FolderOpen, LoaderCircle, Moon, MoonStar, Monitor, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Database, DatabaseBackup, Download, ExternalLink, FolderOpen, History, LoaderCircle, Moon, MoonStar, Monitor, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { api, isTauri } from "../../api";
@@ -163,7 +163,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   // 检查只负责发现并展示版本号，升级必须由用户点击「立即升级」触发
   const checkUpdate = async () => {
     try {
-      const found = await check("about");
+      const found = await check();
       if (!found) feedback.success("已是最新版本");
     } catch (error) {
       feedback.error(updateFailureMessage(error));
@@ -186,6 +186,10 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
           GitHub
           <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
         </button>
+        <button type="button" className="apple-action-button" title="在 GitHub 查看最新发行版" onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
+          <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          更新日志
+        </button>
         <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
           <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
           检查更新
@@ -196,27 +200,22 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
         <div className="update-available-reveal mt-3">
           <div className="update-available-card">
             <div className="flex min-w-0 items-center gap-2 text-sm">
-              <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
-                <ArrowUp className="h-2.5 w-2.5" strokeWidth={2.5} aria-hidden="true" />
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
+                <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
               </span>
               <span className="font-medium">发现新版本 v{update.version}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <button type="button" className="apple-action-button apple-action-button--quaternary h-8 px-2.5 text-accent" title="在 GitHub 查看更新日志" onClick={() => void api.openUrl(releaseNotesUrl).catch((error) => feedback.error(String(error)))}>
-                更新日志
-              </button>
-              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install("about")}>
-                {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-                {installing ? "正在下载安装…" : "立即升级"}
-              </button>
-            </div>
+            <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
+              {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
+              {installing ? "正在下载安装…" : "立即升级"}
+            </button>
           </div>
         </div>
       ) : null}
       <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
       <h2 className="setting-title">数据与路径</h2>
       <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">
-        {paths.map((item) => (
+        {paths.filter((item) => item.label !== "备份目录").map((item) => (
           <button key={item.label} type="button" className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/8" disabled={Boolean(openingPath)} title={`打开${item.label}`} onClick={() => onOpenPath(item)}>
             <span className="shrink-0 text-sm font-medium">{item.label}</span>
             <span className="mono muted meta-xs min-w-0 flex-1 truncate" title={item.path}>{item.path.replace(/^\/(Users|home)\/[^/]+/, "~")}</span>

@@ -68,7 +68,7 @@
   /* 窗口标题栏高度：品牌区与窗口控制按钮共用同一垂直中心 */
   --window-chrome-height: 1.875rem;
   /* 卡片、高亮分区和配置编辑器容器统一圆角 */
-  --radius-card: 1rem;
+  --radius-card: 1.125rem;
   /* 右侧滚动条占位宽度，启动时由 JS 实测写入，保证左右视觉间距完全一致 */
   --scrollbar-size: 0px;
 }
@@ -123,6 +123,32 @@ body {
     sans-serif;
   font-size: var(--font-size-base);
   line-height: 1.6;
+}
+
+/* 所有语义化交互控件统一使用可点击光标，禁用控件明确显示不可用。 */
+:where(
+  button:not(:disabled),
+  a[href],
+  summary,
+  select:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  label:has(input:not(:disabled)),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="checkbox"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"])
+) {
+  cursor: pointer;
+}
+
+:where(
+  button:disabled,
+  select:disabled,
+  input[type="checkbox"]:disabled,
+  input[type="radio"]:disabled,
+  [aria-disabled="true"]
+) {
+  cursor: not-allowed;
 }
 
 /* 输入框占位提示统一用微软雅黑，避免 Windows 中文字体回退到宋体；不改变实际输入内容的字体 */
@@ -693,44 +719,42 @@ body.drag-active * {
   flex-shrink: 0;
 }
 
-/* 侧边栏更新横幅（设置按钮上方）：默认透明，仅在交互时显示高亮。 */
-.update-notice-button {
-  align-items: center;
-  border: 1px solid transparent;
-  border-radius: var(--sidebar-nav-radius);
-  color: var(--accent);
-  display: flex;
-  font-size: var(--font-size-base);
-  gap: 0.5rem;
-  height: var(--sidebar-nav-height);
-  padding-inline: var(--sidebar-nav-padding);
+.update-notice {
   position: relative;
-  width: 100%;
-  transition: transform var(--motion-fast) ease-out, background-color var(--motion-fast) ease-out;
 }
 
-.update-notice-button:hover {
-  background: var(--selection-bg);
+.update-notice-trigger {
+  display: grid;
+  width: var(--icon-button-size);
+  height: var(--icon-button-size);
+  place-items: center;
+  border-radius: 50%;
+  transition: transform var(--motion-fast) ease-out;
 }
 
-.update-notice-button:active {
-  transform: scale(0.97);
+.update-notice-trigger:hover,
+.update-notice-trigger:focus-visible {
+  transform: scale(1.04);
 }
 
-/* 横幅悬浮卡片：hover / 点击横幅时在侧边栏右缘弹出，展示完整版本号与操作，
-   样式对齐 .apple-sidebar-flyout（panel-bg + ring + 阴影），不受侧边栏宽度影响 */
+.update-notice-trigger:active {
+  transform: scale(0.94);
+}
+
+/* 状态栏更新图标的交互卡片：点击图标展开，点击关闭按钮或空白处收起。 */
 .update-notice-popover {
   position: absolute;
-  left: calc(100% + 0.6rem);
-  bottom: 0;
+  top: calc(100% + 0.6rem);
+  left: 0;
   z-index: 30;
   width: max-content;
-  max-width: calc(100vw - 2rem);
-  border-radius: 12px;
+  max-width: min(20rem, calc(100vw - 2rem));
+  border-radius: var(--radius-control);
+  border: 1px solid var(--panel-border);
   background: var(--panel-bg);
   box-shadow:
-    0 0 0 1px var(--panel-ring),
-    0 6px 20px rgba(0, 0, 0, 0.14);
+    0 8px 24px rgb(0 0 0 / 0.1),
+    0 0 0 1px var(--panel-ring);
   padding: 0.75rem;
 }
 
@@ -739,17 +763,6 @@ body.drag-active * {
   flex-shrink: 0;
   white-space: nowrap;
 }
-
-/* 透明桥：覆盖横幅与卡片之间的空隙，鼠标横移时不离开容器，卡片不消失 */
-.update-notice-popover::before {
-  content: "";
-  position: absolute;
-  left: -0.6rem;
-  top: 0;
-  bottom: 0;
-  width: 0.6rem;
-}
-
 
 /* 关于页「发现新版本」升级卡片：只展示版本号，升级由用户点击触发 */
 .update-available-card {
@@ -933,7 +946,7 @@ body.drag-active * {
 
 .apple-edit-content > .apple-group {
   margin-top: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-card);
 }
 
 /* 结构性防呆：首卡片间距只来自上方 padding-top（--gap-page），任何首子元素
@@ -958,6 +971,8 @@ body.drag-active * {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   transition:
     background-color 150ms ease-out,
+    border-color 150ms ease-out,
+    color 150ms ease-out,
     opacity 150ms ease-out;
 }
 
@@ -968,6 +983,18 @@ body.drag-active * {
 .apple-inline-btn:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+.apple-inline-btn--quiet {
+  border-color: var(--panel-ring);
+  color: var(--accent);
+  background: transparent;
+}
+
+.apple-inline-btn--quiet:hover {
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--panel-ring));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 /* 编辑类页面的统一返回按钮（ProfileEdit / ProfileIconEdit 共用） */
@@ -1086,7 +1113,7 @@ body.drag-active * {
 
 .profile-list > .apple-group,
 .profile-drag-preview {
-  border-radius: 0.875rem;
+  border-radius: var(--radius-card);
 }
 
 .profile-list > .apple-group.is-active {
@@ -1116,7 +1143,10 @@ body.drag-active * {
   outline-color: color-mix(in srgb, var(--accent) 75%, transparent);
 }
 
-.apple-segmented-control { background: var(--input-bg); }
+.apple-segmented-control {
+  border-radius: var(--radius-control);
+  background: var(--input-bg);
+}
 
 .apple-action-button {
   align-items: center;
@@ -1509,8 +1539,10 @@ button:focus-visible {
   flex: 0 0 auto;
   position: relative;
   width: fit-content;
+  min-width: min(200px, calc(100vw - 24px));
   max-width: min(720px, calc(100vw - 24px));
   align-items: center;
+  justify-content: center;
   margin: 0;
   overflow: hidden;
   border: 0;
@@ -1524,7 +1556,7 @@ button:focus-visible {
   opacity: 1;
   transform: translateY(var(--toast-offset)) scale(var(--toast-scale));
   transform-origin: top center;
-  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease-out;
+  transition: transform 460ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms ease-out;
   transition-delay: var(--toast-transition-delay), var(--toast-transition-delay);
   will-change: transform, opacity;
 }
@@ -1544,10 +1576,20 @@ button:focus-visible {
   opacity: 1;
 }
 
-.app-toast[data-state="closed"] {
+.app-toast-viewport .app-toast[data-state="closed"] {
   opacity: 0;
   pointer-events: none;
-  transform: translateY(calc(var(--toast-resting-offset) - 10px)) scale(calc(var(--toast-resting-scale) - 0.04));
+  transform: translateY(40%) scale(var(--toast-resting-scale));
+  transition: transform 400ms ease, opacity 200ms ease-out;
+  transition-delay: 0ms;
+}
+
+.app-toast-viewport:not([data-expanded="true"]) .app-toast[data-state="closed"][data-front="true"] {
+  transform: translateY(-100%) scale(1);
+}
+
+.app-toast-viewport[data-expanded="true"] .app-toast[data-state="closed"] {
+  transform: translateY(calc(var(--toast-expanded-offset) - 100%)) scale(1);
 }
 
 .app-toast__icon {
@@ -1747,7 +1789,7 @@ button:focus-visible {
 
 /* .app-input 的 width:100%（layer 外、源码靠后）压过 w-* 工具类，带 [type] 提优先级 */
 .compact-token-input[type="number"] {
-  width: 5rem;
+  width: 4.5rem;
 }
 
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
@@ -2032,9 +2074,9 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 @keyframes app-dialog-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 10px)) scale(0.95); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @media (prefers-reduced-motion: no-preference) {
   @starting-style {
-    .app-toast[data-state="open"] {
+    .app-toast-viewport .app-toast[data-state="open"] {
       opacity: 0;
-      transform: translateY(calc(var(--toast-resting-offset) - 14px)) scale(calc(var(--toast-resting-scale) - 0.04));
+      transform: translateY(calc(var(--toast-resting-offset) - 32px)) scale(var(--toast-resting-scale));
     }
   }
 }

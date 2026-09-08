@@ -11,6 +11,7 @@ import { LoadingSpinner } from "../../components/LoadingSpinner";
 import type { AppState, AuthStatus, ProfileBalanceInfo, ProfileSummary } from "../../types";
 import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent } from "./ProfileCard";
 import ProfileEdit from "./ProfileEdit";
+import { UpdateNotice } from "../updates/AppUpdateProvider";
 
 interface ProfilesViewProps {
   state: AppState;
@@ -229,7 +230,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
           <span
             className={`codex-status codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}
             role="status"
@@ -241,6 +242,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
             <span className="codex-status__divider" aria-hidden="true" />
             <span className="codex-status__label">{state.codex.running ? "运行中" : "未运行"}</span>
           </span>
+          <UpdateNotice />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="apple-toolbar-group">
