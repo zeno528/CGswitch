@@ -869,7 +869,7 @@ export default function PluginsView({ state }: { state: AppState }) {
         <button type="button" className="apple-action-button app-button--primary" onClick={() => setAddingMarketplace(true)}>
           <Store className="h-4 w-4" strokeWidth={2} />
           插件市场
-          <span className="rounded-md bg-white/95 px-1.5 py-px font-bold tracking-wide text-accent meta-xs">Beta</span>
+          <span className="rounded-full bg-white/95 px-1.5 py-px font-bold tracking-wide text-accent meta-xs">Beta</span>
         </button>
       </header>
       <div className="apple-edit-content">

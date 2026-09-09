@@ -18,8 +18,20 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("margin: 0.125rem 0.3125rem 0.3125rem 0;");
   });
 
-  it("让主题分段控件使用控件级圆角而不是卡片圆角", () => {
-    expect(styles).toContain(".apple-segmented-control {\n  border-radius: var(--radius-control);\n  background: var(--input-bg);");
+  it("让捕获配置图标按钮保持圆形", () => {
+    expect(styles).toContain(".apple-toolbar-group > .apple-icon-button {\n  border-radius: 999px;");
+  });
+
+  it("让 Codex 运行状态只显示简单绿色圆点", () => {
+    expect(styles).toContain(".codex-status--running {\n  border-color: color-mix(in srgb, var(--success) 18%, var(--panel-ring));\n  background: color-mix(in srgb, var(--success) 6%, var(--panel-bg));\n}");
+    expect(styles).not.toContain(".codex-status--running {\n  border-color: color-mix(in srgb, var(--success) 18%, var(--panel-ring));\n  background: color-mix(in srgb, var(--success) 6%, var(--panel-bg));\n  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);");
+    expect(styles).toContain(".codex-status--running .codex-status__signal {\n  color: var(--success);\n  background: transparent;");
+    expect(styles).toContain(".codex-status--running .codex-status__signal-dot {\n  animation: codex-status-breathe 2.8s ease-in-out infinite;");
+    expect(styles).toContain("0%, 100% { opacity: 0.88; transform: scale(0.96); }\n  50% { opacity: 1; transform: scale(1.02); }");
+  });
+
+  it("让主题分段控件与工具栏容器共用药丸圆角", () => {
+    expect(styles).toContain(".apple-toolbar-group,\n.apple-segmented-control {\n  border-radius: 999px;");
   });
 
   it("将通知条与页面顶部操作按钮对齐", () => {

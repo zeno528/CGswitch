@@ -83,7 +83,7 @@ export function ProfileCardContent({
         </div>
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? "未设置"}</span>
-          {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span className="apple-chip">{profile.reasoning_effort}</span></> : null}
+          {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}
           {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? "查询失败（点击重试）" : isSubscriptionProfile ? "百分比=剩余额度，时间为重置倒计时；点击刷新" : "点击刷新"} aria-label={isSubscriptionProfile ? "ChatGPT额度" : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
             <Wallet className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
             {balanceError ? <span className="chip-danger">查询失败</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>余额: </span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
@@ -232,7 +232,7 @@ export default function ProfileCard({
       data-draggable
       data-profile-id={profile.id}
       style={style}
-      className={`apple-group${active ? " is-active" : ""}${dragHover ? " is-drag-hover" : ""} group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 transition-opacity duration-150 sm:flex-row sm:items-center sm:justify-between ${sortable.isDragging ? "pointer-events-none opacity-0" : "opacity-100"}`}
+      className={`apple-group${active ? " is-active" : ""}${active && profile.kind === "official" ? " brand-gradient-surface" : ""}${dragHover ? " is-drag-hover" : ""} group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 transition-opacity duration-150 sm:flex-row sm:items-center sm:justify-between ${sortable.isDragging ? "pointer-events-none opacity-0" : "opacity-100"}`}
       title="单击编辑"
       onClick={onEdit}
     >
