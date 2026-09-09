@@ -78,6 +78,20 @@ export function collectJsonDiagnostics(state: EditorState): Diagnostic[] {
   return diagnostics;
 }
 
+export function computeTextChange(current: string, next: string) {
+  let from = 0;
+  while (from < current.length && from < next.length && current.charCodeAt(from) === next.charCodeAt(from)) from += 1;
+
+  let currentTo = current.length;
+  let nextTo = next.length;
+  while (currentTo > from && nextTo > from && current.charCodeAt(currentTo - 1) === next.charCodeAt(nextTo - 1)) {
+    currentTo -= 1;
+    nextTo -= 1;
+  }
+
+  return { from, to: currentTo, insert: next.slice(from, nextTo) };
+}
+
 interface ConfigTextEditorProps {
   value: string;
   language: "toml" | "json";
@@ -276,7 +290,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     };
     syncingValueRef.current = true;
     try {
-      editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
+      editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });
       restoreScrollPosition();
       restoreFrame = requestAnimationFrame(restoreScrollPosition);
     } finally {

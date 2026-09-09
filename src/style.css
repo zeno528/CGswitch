@@ -33,6 +33,10 @@
   --profile-meta-text: rgba(60, 60, 67, 0.68);
   /* 功能强调紫（静默启动等）：iOS 系统紫，深色主题换亮紫 */
   --lavender: #af52de;
+  /* Logo exploration 01 的浅色背景，用于关于卡片上半区 */
+  --about-hero-start: #eef4ff;
+  --about-hero-mid: #dbe2ff;
+  --about-hero-end: #eee3ff;
   /* 品牌图标底色：按文字色派生的浅灰砖，深浅主题共用同一公式自动适配 */
   --tile-bg: color-mix(in srgb, var(--text-secondary) 12%, transparent);
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 25%, transparent);
@@ -96,6 +100,9 @@
   --input-bg: #1e1e1e;
   --profile-meta-text: rgba(255, 255, 255, 0.62);
   --lavender: #bf5af2;
+  --about-hero-start: color-mix(in srgb, #eef4ff 24%, var(--panel-bg));
+  --about-hero-mid: color-mix(in srgb, #dbe2ff 24%, var(--panel-bg));
+  --about-hero-end: color-mix(in srgb, #eee3ff 24%, var(--panel-bg));
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 25%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
 }
@@ -1090,6 +1097,15 @@ body.drag-active * {
   border-radius: var(--radius-card);
   background: var(--panel-bg);
   box-shadow: 0 0 0 1px var(--panel-ring);
+}
+
+.settings-about__hero {
+  margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card)) 0;
+  padding: var(--gap-card) var(--gap-card) 0;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background-image:
+    radial-gradient(circle at 30% 20%, color-mix(in srgb, white 40%, transparent), transparent 38%),
+    linear-gradient(135deg, var(--about-hero-start) 0%, var(--about-hero-mid) 48%, var(--about-hero-end) 100%);
 }
 
 /* 配置卡片专属：整卡激活底色 + 细边框，避免污染其他 apple-group 卡片。 */

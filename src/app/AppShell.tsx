@@ -171,7 +171,7 @@ export default function AppShell() {
                 onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}
                 onMouseLeave={() => sidebar.setSidebarFlyoutArmed(false)}
               >
-                <img src="/logo.svg" alt="CGswitch" className="dark:invert" draggable="false" />
+                <img src="/logo.svg" alt="CGswitch" className="invert" draggable="false" />
                 <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">CGswitch</span>
               </div>
               {sidebar.sidebarFlyoutArmed ? (

@@ -3,7 +3,7 @@ import profileEditSource from "../features/profiles/ProfileEdit.tsx?raw";
 import editorSource from "./ConfigTextEditor.tsx?raw";
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { collectJsonDiagnostics } from "./ConfigTextEditor";
+import { collectJsonDiagnostics, computeTextChange } from "./ConfigTextEditor";
 
 describe("ConfigTextEditor runtime", () => {
   it("uses the native CodeMirror runtime instead of a duplicate wrapper runtime", () => {
@@ -20,6 +20,17 @@ describe("ConfigTextEditor runtime", () => {
 
   it("gates JSON diagnostics behind JSON.parse", () => {
     expect(editorSource).toContain("JSON.parse(text)");
+  });
+
+  it("only synchronizes the changed config fragment", () => {
+    const current = 'model = "gpt-5.6"\nmodel_reasoning_effort = "medium"\n[features]\n';
+    const next = `${current}respect_system_proxy = true\n`;
+    expect(computeTextChange(current, next)).toEqual({
+      from: current.length,
+      to: current.length,
+      insert: "respect_system_proxy = true\n",
+    });
+    expect(editorSource).toContain("editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });");
   });
 
   it("keeps the horizontal scrollbar outside the line-number gutter", () => {

@@ -172,47 +172,49 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
 
   return (
     <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="CGswitch" className="h-12 w-12 shrink-0 dark:invert" />
-          <div>
-            <div className="apple-wordmark">CGswitch</div>
-            <div className="app-version mt-1.5">版本 {version.trim()}</div>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-        <button type="button" className="apple-action-button" title="打开 GitHub 项目仓库" onClick={openRepository}>
-          <GithubMark className="h-4 w-4" />
-          GitHub
-          <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
-        </button>
-        <button type="button" className="apple-action-button" title="在 GitHub 查看最新发行版" onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
-          <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-          更新日志
-        </button>
-        <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
-          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
-          检查更新
-        </button>
-        </div>
-      </div>
-      {update ? (
-        <div className="update-available-reveal mt-3">
-          <div className="update-available-card">
-            <div className="flex min-w-0 items-center gap-2 text-sm">
-              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
-                <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-              </span>
-              <span className="font-medium">发现新版本 v{update.version}</span>
+      <div className="settings-about__hero">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="CGswitch" className="h-12 w-12 shrink-0 invert" />
+            <div>
+              <div className="apple-wordmark">CGswitch</div>
+              <div className="app-version mt-1.5">版本 {version.trim()}</div>
             </div>
-            <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
-              {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-              {installing ? "正在下载安装…" : "立即升级"}
-            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+          <button type="button" className="apple-action-button" title="打开 GitHub 项目仓库" onClick={openRepository}>
+            <GithubMark className="h-4 w-4" />
+            GitHub
+            <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button type="button" className="apple-action-button" title="在 GitHub 查看最新发行版" onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
+            <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            更新日志
+          </button>
+          <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
+            <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
+            检查更新
+          </button>
           </div>
         </div>
-      ) : null}
-      <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
+        {update ? (
+          <div className="update-available-reveal mt-3">
+            <div className="update-available-card">
+              <div className="flex min-w-0 items-center gap-2 text-sm">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
+                  <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+                </span>
+                <span className="font-medium">发现新版本 v{update.version}</span>
+              </div>
+              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
+                {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
+                {installing ? "正在下载安装…" : "立即升级"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
+      </div>
       <h2 className="setting-title">数据与路径</h2>
       <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">
         {paths.filter((item) => item.label !== "备份目录").map((item) => (
