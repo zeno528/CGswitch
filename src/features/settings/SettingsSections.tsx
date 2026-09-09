@@ -25,7 +25,7 @@ export const formatTimestamp = (seconds: number) => { const date = new Date(seco
 interface SettingsGeneralProps { form: Settings; onPatch: (patch: Partial<Settings>) => void; }
 
 export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
-  return <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]"><div className="mb-2"><div className="setting-title">外观主题</div><div className="setting-description mt-0.5">更改应用界面的配色，切换立即生效</div></div><div className="apple-group apple-segmented-control inline-flex gap-1 p-1">{themeOptions.map((option) => <button key={option.value} type="button" className={`inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-xl text-sm transition-colors ${form.theme === option.value ? "bg-(--selection-bg) font-semibold text-accent" : "font-medium hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={form.theme === option.value} onClick={() => onPatch({ theme: option.value })}>{option.value === "system" ? <Monitor className="h-4 w-4" strokeWidth={2} /> : option.value === "light" ? <Sun className="h-4 w-4" strokeWidth={2} /> : <Moon className="h-4 w-4" strokeWidth={2} />}{option.label}</button>)}</div><hr className="my-4 border-0 border-t border-[var(--panel-divider)]" /><div className="flex flex-col gap-5">{[["autostart_enabled", "开机自启", "登录系统后自动启动 CGswitch", Power, "text-accent"], ["silent_start", "静默启动", "启动时不显示主窗口，驻留系统托盘", MoonStar, "text-[var(--lavender)]"], ["minimize_to_tray", "关闭时最小化到托盘", "点击关闭按钮时隐藏到托盘而不是退出", PanelBottomClose, "text-[var(--warning)]"]].map(([key, label, description, Icon, color]) => <div key={String(key)} className="flex items-center justify-between gap-4"><div className="flex items-start gap-3"><span className={`settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl ${String(color)}`}><Icon className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">{String(label)}</div><div className="setting-description mt-0.5">{String(description)}</div></div></div><AppSwitch checked={Boolean(form[key as keyof Settings])} onCheckedChange={(value) => onPatch({ [String(key)] : value })} /></div>)}</div></div>;
+  return <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]"><div className="mb-2"><div className="setting-title">外观主题</div><div className="setting-description mt-0.5">更改应用界面的配色，切换立即生效</div></div><div className="apple-group apple-segmented-control inline-flex gap-1 p-1">{themeOptions.map((option) => <button key={option.value} type="button" className={`inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm transition-colors ${form.theme === option.value ? "bg-(--selection-bg) font-semibold text-accent" : "font-medium hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={form.theme === option.value} onClick={() => onPatch({ theme: option.value })}>{option.value === "system" ? <Monitor className="h-4 w-4" strokeWidth={2} /> : option.value === "light" ? <Sun className="h-4 w-4" strokeWidth={2} /> : <Moon className="h-4 w-4" strokeWidth={2} />}{option.label}</button>)}</div><hr className="my-4 border-0 border-t border-[var(--panel-divider)]" /><div className="flex flex-col gap-5">{[["autostart_enabled", "开机自启", "登录系统后自动启动 CGswitch", Power, "text-accent"], ["silent_start", "静默启动", "启动时不显示主窗口，驻留系统托盘", MoonStar, "text-[var(--lavender)]"], ["minimize_to_tray", "关闭时最小化到托盘", "点击关闭按钮时隐藏到托盘而不是退出", PanelBottomClose, "text-[var(--warning)]"]].map(([key, label, description, Icon, color]) => <div key={String(key)} className="flex items-center justify-between gap-4"><div className="flex items-start gap-3"><span className={`settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl ${String(color)}`}><Icon className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">{String(label)}</div><div className="setting-description mt-0.5">{String(description)}</div></div></div><AppSwitch checked={Boolean(form[key as keyof Settings])} onCheckedChange={(value) => onPatch({ [String(key)] : value })} /></div>)}</div></div>;
 }
 
 interface SettingsAdvancedProps { form: Settings; onPatch: (patch: Partial<Settings>) => void; paths: PathInfo[]; backupsEpoch: number; onOpenPath: (item: PathInfo) => void; onRefresh: () => Promise<void>; }
@@ -172,47 +172,49 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
 
   return (
     <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div className="flex items-center gap-3">
-          <img src="/logo.svg" alt="CGswitch" className="h-12 w-12 shrink-0 dark:invert" />
-          <div>
-            <div className="apple-wordmark">CGswitch</div>
-            <div className="app-version mt-1.5">版本 {version.trim()}</div>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-        <button type="button" className="apple-action-button" title="打开 GitHub 项目仓库" onClick={openRepository}>
-          <GithubMark className="h-4 w-4" />
-          GitHub
-          <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
-        </button>
-        <button type="button" className="apple-action-button" title="在 GitHub 查看最新发行版" onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
-          <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-          更新日志
-        </button>
-        <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
-          <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
-          检查更新
-        </button>
-        </div>
-      </div>
-      {update ? (
-        <div className="update-available-reveal mt-3">
-          <div className="update-available-card">
-            <div className="flex min-w-0 items-center gap-2 text-sm">
-              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
-                <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-              </span>
-              <span className="font-medium">发现新版本 v{update.version}</span>
+      <div className="settings-about__hero brand-gradient-surface">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="flex items-center gap-3">
+            <img src="/logo.svg" alt="CGswitch" className="app-logo h-14 w-14 shrink-0" />
+            <div>
+              <div className="apple-wordmark">CGswitch</div>
+              <div className="app-version mt-1.5">版本 {version.trim()}</div>
             </div>
-            <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
-              {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-              {installing ? "正在下载安装…" : "立即升级"}
-            </button>
+          </div>
+          <div className="settings-about__actions flex flex-wrap gap-2">
+          <button type="button" className="apple-action-button" title="打开 GitHub 项目仓库" onClick={openRepository}>
+            <GithubMark className="h-4 w-4" />
+            GitHub
+            <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
+          </button>
+          <button type="button" className="apple-action-button" title="在 GitHub 查看最新发行版" onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
+            <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            更新日志
+          </button>
+          <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
+            <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
+            检查更新
+          </button>
           </div>
         </div>
-      ) : null}
-      <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
+        {update ? (
+          <div className="update-available-reveal mt-3">
+            <div className="update-available-card">
+              <div className="flex min-w-0 items-center gap-2 text-sm">
+                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
+                  <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
+                </span>
+                <span className="font-medium">发现新版本 v{update.version}</span>
+              </div>
+              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
+                {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
+                {installing ? "正在下载安装…" : "立即升级"}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
+      </div>
       <h2 className="setting-title">数据与路径</h2>
       <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">
         {paths.filter((item) => item.label !== "备份目录").map((item) => (

@@ -10,24 +10,28 @@
 :root {
   color-scheme: light;
   --accent: #007aff;
-  --primary-button-bg: var(--accent);
-  --primary-button-hover-bg: color-mix(in srgb, var(--accent) 88%, black);
+  --primary-button-bg: #2d2d2b;
+  --primary-button-hover-bg: #222220;
+  --primary-button-text: #ffffff;
+  --secondary-button-bg: #efefed;
+  --secondary-button-hover-bg: #e5e5e3;
   --success: #34c759;
   --warning: #ff9f0a;
   --danger: #ff3b30;
-  --app-bg: #f7f7f8;
+  --app-bg: #f7f7f9;
   --panel-bg: #ffffff;
   --panel-border: rgba(60, 60, 67, 0.12);
   --panel-ring: rgba(60, 60, 67, 0.08);
   --panel-divider: rgba(60, 60, 67, 0.1);
   --text-secondary: rgba(60, 60, 67, 0.68);
-  --sidebar-bg: #e8e8e9;
+  --sidebar-bg: #f2f3f8;
   --selection-bg: rgba(0, 122, 255, 0.12);
   --profile-active-bg: color-mix(in srgb, var(--accent) 7%, var(--panel-bg));
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
-  --success-text: #248a3d;
+  --success-text: #27c840;
   --chip-success: #30d158;
   --toast-icon-foreground: #1c1c1e;
+  --chip-bg: #e9e9e6;
   --profile-chip-bg: rgb(0 0 0 / 0.04);
   --input-bg: #f5f5f5;
   --profile-meta-text: rgba(60, 60, 67, 0.68);
@@ -35,7 +39,7 @@
   --lavender: #af52de;
   /* 品牌图标底色：按文字色派生的浅灰砖，深浅主题共用同一公式自动适配 */
   --tile-bg: color-mix(in srgb, var(--text-secondary) 12%, transparent);
-  --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 25%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 15%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
   /* 全局间距参数：页头/标题到首个内容区块，以及相邻卡片/分区之间 */
   --gap-page: 0.75rem;
@@ -52,7 +56,7 @@
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
   --sidebar-icon-size: 1.125rem;
-  --brand-logo-size: 1.25rem;
+  --brand-logo-size: 1.5rem;
   --control-height: 2.25rem;
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
@@ -77,8 +81,11 @@
   color-scheme: dark;
   /* VS Code Dark+：编辑区/侧栏/标题栏/输入框/选中项/主按钮 */
   --accent: #007aff;
-  --primary-button-bg: var(--accent);
-  --primary-button-hover-bg: color-mix(in srgb, var(--accent) 88%, black);
+  --primary-button-bg: #f0f0ee;
+  --primary-button-hover-bg: #e2e2df;
+  --primary-button-text: #1c1c1e;
+  --secondary-button-bg: #3b3c41;
+  --secondary-button-hover-bg: #46474d;
   --success: #3fb950;
   --app-bg: #1a1d1f;
   --panel-bg: #292b30;
@@ -92,11 +99,12 @@
   --success-text: #6ee7a0;
   --chip-success: #63e68a;
   --toast-icon-foreground: #ffffff;
+  --chip-bg: #1e1e1e;
   --profile-chip-bg: #1e1e1e;
   --input-bg: #1e1e1e;
   --profile-meta-text: rgba(255, 255, 255, 0.62);
   --lavender: #bf5af2;
-  --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 25%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 15%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
 }
 
@@ -175,14 +183,24 @@ textarea::placeholder {
   color: var(--text-secondary);
 }
 
+/* 应用内两个品牌 Logo 共用同一套主题反色：白色源图在浅色主题转黑，深色主题保留白色。 */
+.app-logo {
+  filter: invert(1);
+}
+
+:root.dark .app-logo {
+  filter: none;
+}
+
 .app-version {
   align-items: center;
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  color: var(--text-secondary);
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-bg) 72%, transparent);
+  color: inherit;
   display: inline-flex;
   font-size: 11px;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1;
   padding: 3px 6px;
 }
@@ -191,7 +209,7 @@ textarea::placeholder {
    字号与内边距只在这里改，禁止在组件里单独调某颗胶囊的尺寸 */
 .apple-chip {
   align-items: center;
-  background: var(--profile-chip-bg);
+  background: var(--chip-bg);
   border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   border-radius: 999px;
   display: inline-flex;
@@ -210,7 +228,7 @@ textarea::placeholder {
 }
 
 :root.dark .apple-chip {
-  background: rgb(255 255 255 / 0.08);
+  background: var(--chip-bg);
 }
 
 /* 暗色 accent 覆盖必须放在普通暗色胶囊规则之后：同特异性 (0,3,0)，
@@ -219,11 +237,10 @@ textarea::placeholder {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-:root.dark .profile-card-meta .apple-chip {
-  background: var(--profile-chip-bg);
-}
-
+/* 供应商卡片余额/用量药丸：浅色主题下用页面底色(即 #f7f7f9)让它比普通胶囊更轻、融入卡片；
+   深色主题不在此覆盖，由 :root.dark .apple-chip 的 --chip-bg(#1e1e1e) 兜底。 */
 .profile-card-meta .apple-chip {
+  background: var(--app-bg);
   font-size: 12px;
 }
 
@@ -239,7 +256,7 @@ textarea::placeholder {
 /* 余额/用量胶囊数据变色（全局统一；后续供应商直接复用）。
    变色数据同时加粗，标签/倒计时保持默认字重 */
 .chip-success {
-  color: var(--chip-success);
+  color: var(--success-text);
   font-weight: 600;
 }
 
@@ -391,12 +408,12 @@ textarea::placeholder {
   border: 1px solid var(--panel-border);
 }
 
-/* 全局悬浮滚动条：默认隐藏，鼠标进入可滚动区域时才显现缩略图，
-   轨道始终透明（与所在背景合并），视觉上弱且不抢眼。
+/* 全局滚动条：有溢出时常驻显示缩略图，轨道始终透明（与所在背景合并），
+   视觉上弱且不抢眼。
    注：Chromium 下自定义 ::-webkit-scrollbar 会覆盖标准属性，故只写 webkit 一套 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -409,20 +426,12 @@ textarea::placeholder {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: transparent;
+  background: var(--scrollbar-thumb);
   border-radius: 999px;
 }
 
-*:hover::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-}
-
-*:hover::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
-}
-
-*:hover {
-  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* 窗口主滚动条常驻，避免内容变高时出现/消失导致页面抖动；
@@ -821,8 +830,8 @@ body.drag-active * {
 .apple-sidebar-brand {
   gap: 0.5rem;
   height: 2.25rem;
-  /* 与导航按钮图标对齐：mx-1.5(6px) + --sidebar-nav-padding(9px) */
-  padding-left: calc(0.375rem + var(--sidebar-nav-padding));
+  /* logo 放大后按尺寸差减半，保持中心与导航按钮图标共线 */
+  padding-left: calc(0.375rem + var(--sidebar-nav-padding) - (var(--brand-logo-size) - var(--sidebar-icon-size)) / 2);
   transition:
     gap var(--motion-sidebar) cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -835,7 +844,7 @@ body.drag-active * {
 
 .apple-sidebar--collapsed .apple-sidebar-brand {
   gap: 0;
-  padding-right: 0.75rem;
+  padding-right: var(--sidebar-nav-padding);
 }
 
 .apple-title {
@@ -898,18 +907,6 @@ body.drag-active * {
 
 .apple-edit-toolbar--footer .apple-action-button {
   font-weight: 600;
-}
-
-.apple-edit-toolbar--footer .app-button--primary {
-  border-color: transparent;
-}
-
-.apple-edit-toolbar--footer .apple-action-button:not(.app-button--primary) {
-  background: var(--tile-bg);
-}
-
-.apple-edit-toolbar--footer .apple-action-button:not(.app-button--primary):hover {
-  background: var(--profile-chip-bg);
 }
 
 /* 首卡片与页头的间距统一由 .apple-edit-content 的 padding-top（--gap-page）承担，
@@ -1037,8 +1034,8 @@ body.drag-active * {
 }
 
 .codex-status--running {
-  border-color: color-mix(in srgb, var(--success) 24%, var(--panel-ring));
-  background: color-mix(in srgb, var(--success) 4%, var(--panel-bg));
+  border-color: color-mix(in srgb, var(--success) 18%, var(--panel-ring));
+  background: color-mix(in srgb, var(--success) 6%, var(--panel-bg));
 }
 
 .codex-status__signal {
@@ -1060,7 +1057,7 @@ body.drag-active * {
 
 .codex-status--running .codex-status__signal {
   color: var(--success);
-  background: color-mix(in srgb, var(--success) 10%, transparent);
+  background: transparent;
 }
 
 .codex-status--running .codex-status__signal-dot {
@@ -1085,8 +1082,8 @@ body.drag-active * {
 }
 
 @keyframes codex-status-breathe {
-  0%, 100% { opacity: 0.82; transform: scale(0.94); }
-  50% { opacity: 1; transform: scale(1.04); }
+  0%, 100% { opacity: 0.88; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.02); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1100,8 +1097,29 @@ body.drag-active * {
   box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
+.settings-about__hero {
+  margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card)) 0;
+  padding: var(--gap-card) var(--gap-card) 0;
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+/* ChatGPT / OpenAI 官网品牌配色：以后提到该官网蓝紫渐变时统一使用这里。 */
+.brand-gradient-surface {
+  background-image:
+    radial-gradient(42% 62% at 2% 20%, rgba(112, 160, 255, 0.78), transparent 100%),
+    radial-gradient(46% 72% at 98% 24%, rgba(89, 90, 239, 0.82), transparent 100%),
+    radial-gradient(44% 55% at 26% 100%, rgba(144, 190, 255, 0.7), transparent 100%),
+    radial-gradient(38% 48% at 78% 94%, rgba(207, 201, 255, 0.75), transparent 100%),
+    linear-gradient(118deg, #6d8fec 0%, #9bb8fa 48%, #8787ee 100%);
+}
+
+.settings-about__actions > .apple-action-button {
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
 /* 配置卡片专属：整卡激活底色 + 细边框，避免污染其他 apple-group 卡片。 */
-.profile-list > .apple-group.is-active,
+.profile-list > .apple-group.is-active:not(.brand-gradient-surface),
 .profile-drag-preview.is-active {
   background-image: linear-gradient(
     90deg,
@@ -1118,40 +1136,86 @@ body.drag-active * {
 
 .profile-list > .apple-group.is-active {
   box-shadow: none;
-  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {
+  color: var(--primary-button-bg);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
+  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
+  background: var(--app-bg);
+  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
+}
+
+/* 激活 ChatGPT 渐变卡：浅色下同样让药丸融入页面底色；深色主题保住 chip-bg 原样 */
+:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+  background: var(--chip-bg);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]) {
+  color: var(--primary-button-bg);
+}
+
+.profile-list > .apple-group.brand-gradient-surface [aria-label*="登录"] {
+  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
+  background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);
+  color: var(--primary-button-bg);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .drag-handle {
+  color: color-mix(in srgb, var(--primary-button-bg) 70%, transparent);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .chip-success {
+  color: var(--success-text);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button[title="删除"] {
+  color: var(--danger);
+}
+
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .app-button--primary:disabled {
+  opacity: 0.9;
 }
 
 .profile-list > .apple-group:not(.is-active):hover {
-  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .profile-drag-preview.is-active {
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.2);
-  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 :root.dark .profile-list > .apple-group.is-active {
-  outline-color: color-mix(in srgb, var(--accent) 75%, transparent);
+  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
 :root.dark .profile-list > .apple-group:not(.is-active):hover {
-  outline-color: color-mix(in srgb, var(--accent) 75%, transparent);
+  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
 :root.dark .profile-drag-preview.is-active {
-  outline-color: color-mix(in srgb, var(--accent) 75%, transparent);
+  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
 .apple-segmented-control {
-  border-radius: var(--radius-control);
   background: var(--input-bg);
 }
 
 .apple-action-button {
   align-items: center;
-  border: 1px solid var(--panel-ring);
-  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--secondary-button-bg);
   display: inline-flex;
   gap: 0.5rem;
   height: var(--control-height);
@@ -1163,7 +1227,7 @@ body.drag-active * {
 }
 
 .apple-action-button:hover {
-  background: var(--profile-chip-bg);
+  background: var(--secondary-button-hover-bg);
 }
 
 .skill-update-badge {
@@ -1181,11 +1245,6 @@ body.drag-active * {
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-}
-
-.apple-action-button--quaternary {
-  border-color: transparent;
-  background: transparent;
 }
 
 .apple-action-button:disabled {
@@ -1226,12 +1285,20 @@ body.drag-active * {
   gap: 0.25rem;
   padding: 0.125rem;
   border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--profile-chip-bg) 45%, transparent);
+}
+
+.apple-toolbar-group,
+.apple-segmented-control {
+  border-radius: 999px;
 }
 
 .apple-toolbar-group > .apple-action-button {
   height: var(--icon-button-size);
+}
+
+.apple-toolbar-group > .apple-icon-button {
+  border-radius: 999px;
 }
 
 .apple-toolbar-group > :is(.apple-action-button, .apple-icon-button):is(:hover, :focus-visible):not(:disabled) {
@@ -1497,9 +1564,9 @@ button:focus-visible {
 }
 
 .app-button--primary {
-  border-color: color-mix(in srgb, var(--primary-button-bg) 60%, transparent);
+  border-color: transparent;
   background: var(--primary-button-bg);
-  color: white;
+  color: var(--primary-button-text);
 }
 
 .app-button--primary:hover {
@@ -1960,8 +2027,12 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 .cm-editor {
   height: auto;
+  /* 27 行按当前 12px / 1.6 行高完整显示；窗口变小时按视口连续收缩 */
+  max-height: min(34rem, 60vh);
   background: transparent;
 }
+
+.cm-editor.cm-focused { outline: none; }
 
 .cm-editor .cm-scroller,
 .cm-editor .cm-content,
@@ -1973,7 +2044,27 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   line-height: 1.6;
 }
 
-.cm-editor .cm-scroller { overflow-x: auto; overflow-y: hidden; }
+.cm-editor .cm-scroller { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.cm-horizontal-scrollbar-row {
+  display: none;
+  height: 8px;
+  overflow: hidden;
+}
+
+.cm-horizontal-scrollbar-gutter {
+  flex: 0 0 auto;
+  height: 8px;
+}
+
+.cm-horizontal-scrollbar {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.cm-horizontal-scrollbar > div { height: 1px; }
 /* 行号列宽随位数自适应（min-width 保住 24px 紧凑观感）；固定宽度会让三位以上行号
    被 .cm-gutter 的 overflow: hidden 裁掉末位 */
 .cm-gutters .cm-lineNumbers { width: auto; min-width: 1.5rem; flex: 0 0 auto; }
