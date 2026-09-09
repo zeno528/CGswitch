@@ -21,6 +21,16 @@ describe("ConfigTextEditor runtime", () => {
   it("gates JSON diagnostics behind JSON.parse", () => {
     expect(editorSource).toContain("JSON.parse(text)");
   });
+
+  it("keeps the horizontal scrollbar outside the line-number gutter", () => {
+    expect(editorSource).toContain('className="cm-horizontal-scrollbar-row"');
+    expect(editorSource).toContain('className="cm-horizontal-scrollbar-gutter"');
+    expect(editorSource).toContain('className="cm-horizontal-scrollbar"');
+    expect(editorSource).toContain("editor.scrollDOM.scrollLeft = scrollbar.scrollLeft");
+    expect(editorSource.indexOf('<div ref={hostRef} />')).toBeLessThan(editorSource.indexOf('className="cm-horizontal-scrollbar-row"'));
+    expect(editorSource).toContain("const previousScrollTop = editor.scrollDOM.scrollTop");
+    expect(editorSource).toContain("editor.scrollDOM.scrollTop = previousScrollTop");
+  });
 });
 
 describe("collectJsonDiagnostics", () => {

@@ -94,6 +94,10 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
 ) {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   const hostRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollbarRowRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollbarGutterRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollbarRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollbarContentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
@@ -132,7 +136,11 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
 
   useEffect(() => {
     const parent = hostRef.current;
-    if (!parent) return;
+    const scrollbarRow = horizontalScrollbarRowRef.current;
+    const scrollbarGutter = horizontalScrollbarGutterRef.current;
+    const scrollbar = horizontalScrollbarRef.current;
+    const scrollbarContent = horizontalScrollbarContentRef.current;
+    if (!parent || !scrollbarRow || !scrollbarGutter || !scrollbar || !scrollbarContent) return;
 
     const reportDiagnostics = (view: EditorView) => {
       let count = 0;
@@ -158,7 +166,51 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       }));
     });
 
-    const editor = new EditorView({
+    let editor: EditorView;
+    let syncingScroll = false;
+    let syncFrame = 0;
+    const syncHorizontalScrollbar = () => {
+      const scroller = editor.scrollDOM;
+      const gutters = scroller.querySelector<HTMLElement>(".cm-gutters-before");
+      const gutterWidth = gutters?.getBoundingClientRect().width ?? 0;
+      const viewportWidth = Math.max(0, scroller.getBoundingClientRect().width - gutterWidth);
+      const contentWidth = Math.max(viewportWidth, scroller.scrollWidth - gutterWidth);
+      const hasOverflow = scroller.scrollWidth > scroller.clientWidth;
+      const maxScrollLeft = hasOverflow ? Math.max(0, contentWidth - viewportWidth) : 0;
+      scrollbarGutter.style.width = `${gutterWidth}px`;
+      scrollbarGutter.style.backgroundColor = gutters ? getComputedStyle(gutters).backgroundColor : "transparent";
+      scrollbarContent.style.width = `${contentWidth}px`;
+      scrollbarRow.style.display = hasOverflow ? "flex" : "none";
+      scrollbar.scrollLeft = Math.min(scroller.scrollLeft, maxScrollLeft);
+      scrollbar.setAttribute("aria-valuemax", String(maxScrollLeft));
+      scrollbar.setAttribute("aria-valuenow", String(scroller.scrollLeft));
+    };
+    const scheduleScrollbarSync = () => {
+      cancelAnimationFrame(syncFrame);
+      syncFrame = requestAnimationFrame(syncHorizontalScrollbar);
+    };
+    const onEditorScroll = () => {
+      if (syncingScroll) return;
+      syncingScroll = true;
+      scrollbar.scrollLeft = editor.scrollDOM.scrollLeft;
+      scrollbar.setAttribute("aria-valuenow", String(editor.scrollDOM.scrollLeft));
+      syncingScroll = false;
+    };
+    const onScrollbarScroll = () => {
+      if (syncingScroll) return;
+      syncingScroll = true;
+      editor.scrollDOM.scrollLeft = scrollbar.scrollLeft;
+      scrollbar.setAttribute("aria-valuenow", String(scrollbar.scrollLeft));
+      syncingScroll = false;
+    };
+    const onEditorWheel = (event: WheelEvent) => {
+      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+      if (!delta) return;
+      event.preventDefault();
+      scrollbar.scrollLeft += delta;
+    };
+
+    editor = new EditorView({
       state: EditorState.create({
         doc: valueRef.current,
         extensions: [
@@ -175,15 +227,27 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !syncingValueRef.current) onChangeRef.current(update.state.doc.toString());
             reportDiagnostics(update.view);
+            if (update.docChanged || update.geometryChanged) scheduleScrollbarSync();
           }),
         ],
       }),
       parent,
     });
     viewRef.current = editor;
+    editor.scrollDOM.addEventListener("scroll", onEditorScroll);
+    editor.scrollDOM.addEventListener("wheel", onEditorWheel, { passive: false });
+    scrollbar.addEventListener("scroll", onScrollbarScroll);
+    const resizeObserver = new ResizeObserver(scheduleScrollbarSync);
+    resizeObserver.observe(editor.dom);
+    scheduleScrollbarSync();
     reportDiagnostics(editor);
 
     return () => {
+      cancelAnimationFrame(syncFrame);
+      resizeObserver.disconnect();
+      editor.scrollDOM.removeEventListener("scroll", onEditorScroll);
+      editor.scrollDOM.removeEventListener("wheel", onEditorWheel);
+      scrollbar.removeEventListener("scroll", onScrollbarScroll);
       editor.destroy();
       if (viewRef.current === editor) viewRef.current = null;
     };
@@ -203,15 +267,45 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   useEffect(() => {
     const editor = viewRef.current;
     if (!editor || editor.state.doc.toString() === value) return;
+    const previousScrollTop = editor.scrollDOM.scrollTop;
+    const previousScrollLeft = editor.scrollDOM.scrollLeft;
+    let restoreFrame = 0;
+    const restoreScrollPosition = () => {
+      editor.scrollDOM.scrollTop = previousScrollTop;
+      editor.scrollDOM.scrollLeft = previousScrollLeft;
+    };
     syncingValueRef.current = true;
     try {
       editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
+      restoreScrollPosition();
+      restoreFrame = requestAnimationFrame(restoreScrollPosition);
     } finally {
       syncingValueRef.current = false;
     }
+    return () => cancelAnimationFrame(restoreFrame);
   }, [value]);
 
-  return <div ref={hostRef} className="apple-editor-shell" />;
+  return (
+    <div className="apple-editor-shell">
+      <div ref={hostRef} />
+      <div ref={horizontalScrollbarRowRef} className="cm-horizontal-scrollbar-row">
+        <div ref={horizontalScrollbarGutterRef} className="cm-horizontal-scrollbar-gutter" aria-hidden="true" />
+        <div
+          ref={horizontalScrollbarRef}
+          className="cm-horizontal-scrollbar"
+          role="scrollbar"
+          aria-label="编辑器水平滚动条"
+          aria-orientation="horizontal"
+          aria-valuemin={0}
+          aria-valuemax={0}
+          aria-valuenow={0}
+          tabIndex={0}
+        >
+          <div ref={horizontalScrollbarContentRef} />
+        </div>
+      </div>
+    </div>
+  );
 });
 
 export default ConfigTextEditor;

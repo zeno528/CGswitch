@@ -391,12 +391,12 @@ textarea::placeholder {
   border: 1px solid var(--panel-border);
 }
 
-/* 全局悬浮滚动条：默认隐藏，鼠标进入可滚动区域时才显现缩略图，
-   轨道始终透明（与所在背景合并），视觉上弱且不抢眼。
+/* 全局滚动条：有溢出时常驻显示缩略图，轨道始终透明（与所在背景合并），
+   视觉上弱且不抢眼。
    注：Chromium 下自定义 ::-webkit-scrollbar 会覆盖标准属性，故只写 webkit 一套 */
 * {
   scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -409,20 +409,12 @@ textarea::placeholder {
 }
 
 *::-webkit-scrollbar-thumb {
-  background: transparent;
+  background: var(--scrollbar-thumb);
   border-radius: 999px;
 }
 
-*:hover::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-}
-
-*:hover::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
-}
-
-*:hover {
-  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* 窗口主滚动条常驻，避免内容变高时出现/消失导致页面抖动；
@@ -1960,8 +1952,12 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 .cm-editor {
   height: auto;
+  /* 27 行按当前 12px / 1.6 行高完整显示；窗口变小时按视口连续收缩 */
+  max-height: min(34rem, 60vh);
   background: transparent;
 }
+
+.cm-editor.cm-focused { outline: none; }
 
 .cm-editor .cm-scroller,
 .cm-editor .cm-content,
@@ -1973,7 +1969,27 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   line-height: 1.6;
 }
 
-.cm-editor .cm-scroller { overflow-x: auto; overflow-y: hidden; }
+.cm-editor .cm-scroller { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+.cm-horizontal-scrollbar-row {
+  display: none;
+  height: 8px;
+  overflow: hidden;
+}
+
+.cm-horizontal-scrollbar-gutter {
+  flex: 0 0 auto;
+  height: 8px;
+}
+
+.cm-horizontal-scrollbar {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.cm-horizontal-scrollbar > div { height: 1px; }
 /* 行号列宽随位数自适应（min-width 保住 24px 紧凑观感）；固定宽度会让三位以上行号
    被 .cm-gutter 的 overflow: hidden 裁掉末位 */
 .cm-gutters .cm-lineNumbers { width: auto; min-width: 1.5rem; flex: 0 0 auto; }

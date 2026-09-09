@@ -48,8 +48,23 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".skill-update-badge {\n  position: absolute;\n  left: -0.45rem;\n  top: -0.45rem;");
   });
 
-  it("让配置编辑器仅保留横向滚动", () => {
-    expect(styles).toContain(".cm-editor .cm-scroller { overflow-x: auto; overflow-y: hidden; }");
+  it("让配置编辑器的横向滚动条从行号栏右侧开始", () => {
+    expect(styles).toContain("max-height: min(34rem, 60vh);");
+    expect(styles).toContain(".cm-editor .cm-scroller { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }");
+    expect(styles).toContain(".cm-horizontal-scrollbar {");
+    expect(styles).toContain(".cm-horizontal-scrollbar-row {");
+    expect(styles).toContain(".cm-horizontal-scrollbar-gutter {");
+  });
+
+  it("取消编辑器外围的焦点发光描边", () => {
+    expect(styles).toContain(".cm-editor.cm-focused { outline: none; }");
+    expect(styles).not.toContain(".apple-editor-shell:focus-within");
+  });
+
+  it("让有溢出的滚动条常驻显示缩略图", () => {
+    expect(styles).toContain("*::-webkit-scrollbar-thumb {\n  background: var(--scrollbar-thumb);");
+    expect(styles).toContain("scrollbar-color: var(--scrollbar-thumb) transparent;");
+    expect(styles).not.toContain("*:hover::-webkit-scrollbar-thumb {\n  background: var(--scrollbar-thumb);");
   });
 
   it("让供应商卡片使用略圆的圆角", () => {
