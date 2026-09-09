@@ -237,7 +237,10 @@ textarea::placeholder {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* 供应商卡片余额/用量药丸：浅色主题下用页面底色(即 #f7f7f9)让它比普通胶囊更轻、融入卡片；
+   深色主题不在此覆盖，由 :root.dark .apple-chip 的 --chip-bg(#1e1e1e) 兜底。 */
 .profile-card-meta .apple-chip {
+  background: var(--app-bg);
   font-size: 12px;
 }
 
@@ -1146,8 +1149,13 @@ body.drag-active * {
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
-  background: var(--chip-bg);
+  background: var(--app-bg);
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
+}
+
+/* 激活 ChatGPT 渐变卡：浅色下同样让药丸融入页面底色；深色主题保住 chip-bg 原样 */
+:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+  background: var(--chip-bg);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,

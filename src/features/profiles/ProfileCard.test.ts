@@ -31,12 +31,12 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface [aria-label*=\"登录\"] {");
   });
 
-  it("统一普通胶囊与卡片胶囊的浅色底色", () => {
+  it("胶囊底色统一定义在 --chip-bg，浅色下余额用量药丸改用页面底色融入卡片", () => {
     expect(styles).toContain("--chip-bg: #e9e9e6;");
     expect(styles).toContain(".apple-chip {\n  align-items: center;\n  background: var(--chip-bg);");
-    expect(styles).toContain(".profile-card-meta .apple-chip {\n  font-size: 12px;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color:");
-    expect(styles).toContain("  background: var(--chip-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--app-bg);\n  font-size: 12px;");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
   });
 
   it("让浅色模式的用量成功百分比使用高对比度绿色", () => {
