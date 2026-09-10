@@ -174,16 +174,13 @@ jobs:
             git commit -m "chore(changelog): v$VERSION [skip ci]" -- CHANGELOG.md
             git push origin HEAD:refs/heads/main
           fi
-      # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ Full Changelog 对比链接
-      # + CHANGELOG.md 对应段落内容（可选，/release skill 写）+ 安装指南兜底（必带，
-      # 没写更新日志时用户也能知道下载哪个包）。已存在草稿（重跑场景）则更新，已公开则拒绝改动
+      # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ CHANGELOG.md 对应段落内容
+      # （可选，/release skill 写）+ 安装指南兜底（必带，没写更新日志时用户也能知道下载哪个包）
+      # + --generate-notes 自动追加的 PR 清单 / 贡献者 / Full Changelog（GitHub 原生生成）。
+      # 已存在草稿（重跑场景）则更新，已公开则拒绝改动
       - name: 创建草稿发行页
         run: |
           TAG="v$VERSION"
-          # 上一版本 tag（跳过当前版本自身——重跑时本地已 fetch 到当前 tag）：
-          # 没写更新日志时用户仍可从 Full Changelog 链接看到两版本间的全部提交；
-          # 首个版本无旧 tag 则省略该行
-          PREV_TAG="$(git tag -l 'v*' --sort=-v:refname | awk -v t="$TAG" '$0 != t {print; exit}')"
           NOTES="$(mktemp)"
           # 提取段落内容时跳过 ## [版本] 标题行本身——标题行统一由工作流生成，
           # 保证发行页的版本号/日期不依赖（也不重复于）CHANGELOG 里写的内容
@@ -199,29 +196,23 @@ jobs:
 
           ## 如何选择安装包
 
-          **Windows**：默认下载 `CGswitch-v__VERSION__-Windows-setup.exe`，双击安装即可。需要批量部署、静默安装等场景可选用 `.msi` 版本。
+          按操作系统下载对应安装包，双击（macOS 为拖入「应用程序」）即可完成安装。
 
-          **macOS**：
+          **Windows**：下载 `CGswitch-v__VERSION__-Windows-setup.exe`；批量部署、静默安装等场景可改用 `.msi` 版本。
+          **macOS（Apple 芯片 / M 系列）**：下载 `CGswitch-v__VERSION__-macOS-arm64.dmg`，打开后拖入「应用程序」。
+          **macOS（Intel 芯片）**：下载 `CGswitch-v__VERSION__-macOS-x64.dmg`，安装方式同上。
 
-          - Apple 芯片（M 系列）→ `CGswitch-v__VERSION__-macOS-arm64.dmg`
-          - Intel 芯片 → `CGswitch-v__VERSION__-macOS-x64.dmg`
-
-          ## macOS 首次打开
-
-          首次打开 macOS 版本时，如果系统阻止打开应用，请先将应用拖入「应用程序」，再前往「系统设置 → 隐私与安全性」，允许打开该应用。如果仍无法打开，再在终端执行：
-
-          ```bash
-          xattr -cr /Applications/CGswitch.app
-          ```
-
-          然后再次打开 CGswitch；如果安装到了其他目录，请将命令中的路径替换为实际的 .app 路径。
+          > **macOS 首次打开被阻止？** 先前往「系统设置 → 隐私与安全性」允许打开；仍无法打开时，在终端执行：
+          >
+          > ```bash
+          > xattr -cr /Applications/CGswitch.app
+          > ```
+          >
+          > 然后再次打开 CGswitch；若安装到了其他目录，请将命令中的路径替换为实际的 .app 路径。
           EOF
           sed -i "s/__VERSION__/$VERSION/g" "$GUIDE"
           {
             printf '## [%s] - %s\n' "$VERSION" "$DATE"
-            if [ -n "$PREV_TAG" ]; then
-              printf '\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' "$GITHUB_REPOSITORY" "$PREV_TAG" "$TAG"
-            fi
             cat "$NOTES" "$GUIDE"
           } > "$NOTES.full" && mv "$NOTES.full" "$NOTES"
           if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -230,9 +221,9 @@ jobs:
           fi
           STATE="$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || true)"
           if [ -z "$STATE" ]; then
-            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES"
+            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES" --generate-notes
           elif [ "$STATE" = true ]; then
-            gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES"
+            gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES" --generate-notes
           else
             echo "::error::发行 $TAG 已经公开，拒绝修改已发布内容；请先递增 VERSION。"
             exit 1
