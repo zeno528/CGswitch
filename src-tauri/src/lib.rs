@@ -23,6 +23,21 @@ fn should_restore_main_window_on_reopen(has_visible_windows: bool) -> bool {
     !has_visible_windows
 }
 
+/// 托盘菜单项，供 `set_app_language` 在界面语言变化时更新文案。
+pub struct TrayMenuItems {
+    pub show: MenuItem<tauri::Wry>,
+    pub quit: MenuItem<tauri::Wry>,
+}
+
+/// 托盘菜单文案。语言由前端解析后传入（Rust 侧无法得知 "system" 对应哪种系统语言）。
+fn tray_labels(language: &str) -> (&'static str, &'static str) {
+    if language == "en-US" {
+        ("Show main window", "Quit CGswitch")
+    } else {
+        ("显示主窗口", "退出 CGswitch")
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let paths = paths::app_paths().expect("无法定位用户数据目录");
@@ -93,6 +108,7 @@ pub fn run() {
             commands::parse_mcp_fragment,
             commands::restart_codex,
             commands::set_window_theme,
+            commands::set_app_language,
             commands::auth_start_login,
             commands::auth_poll_for_account,
             commands::auth_get_status,
@@ -163,8 +179,14 @@ pub fn run() {
                 }
             });
 
-            let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", "退出 CGswitch", true, None::<&str>)?;
+            let (show_text, quit_text) = tray_labels(&settings.language);
+            let show_item = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
+            // 交命令层持有，供前端切换语言时更新文案。
+            app.manage(TrayMenuItems {
+                show: show_item.clone(),
+                quit: quit_item.clone(),
+            });
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("缺少应用图标").clone())

@@ -473,6 +473,7 @@ let webUpdateMarker: string | null = null;
 
 let webSettings: Settings = {
   theme: "system",
+  language: "system",
   auto_restart: false,
   autostart_enabled: false,
   silent_start: false,
@@ -1097,6 +1098,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       await new Promise((resolve) => setTimeout(resolve, 500));
       return undefined as T;
     case "set_window_theme":
+      return undefined as T;
+    // 浏览器调试无系统托盘，仅接受调用不产生副作用
+    case "set_app_language":
       return undefined as T;
     case "auth_get_status":
       return { authenticated: false, default_account_id: null, accounts: [], external: null } as T;

@@ -165,8 +165,12 @@ export interface AuthStatus {
   external: ManagedAccount | null;
 }
 
+/** 界面语言设置；"system" 表示跟随系统语言。 */
+export type LanguageSetting = "system" | "zh-CN" | "en-US";
+
 export interface Settings {
   theme: "system" | "light" | "dark";
+  language: LanguageSetting;
   auto_restart: boolean;
   autostart_enabled: boolean;
   silent_start: boolean;

@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run",
     "check:style": "node scripts/check-style-leaks.mjs",
-    "check": "pnpm typecheck && pnpm test:unit && pnpm check:style && pnpm check:rust",
+    "check:i18n": "node scripts/check-i18n-leaks.mjs",
+    "check": "pnpm typecheck && pnpm test:unit && pnpm check:style && pnpm check:i18n && pnpm check:rust",
     "check:rust": "cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml",
     "preview": "vite preview",
     "tauri": "pnpm sync-version && tauri"
@@ -44,9 +45,11 @@
     "@tauri-apps/plugin-dialog": "^2.7.3",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "2.11.0",
+    "i18next": "26.4.2",
     "lucide-react": "1.43.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-i18next": "17.0.13",
     "react-markdown": "10.1.0"
   },
   "devDependencies": {
