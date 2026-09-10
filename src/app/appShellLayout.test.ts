@@ -15,7 +15,9 @@ describe("AppShell 布局", () => {
 
   it("移除侧栏激活装饰条，并固定悬浮卡片为普通字重", () => {
     expect(source).not.toContain("apple-sidebar-indicator");
-    expect(source).toContain('active ? "bg-(--tile-bg) text-accent" :');
+    expect(source).toContain('const navClass = "apple-sidebar-nav-button app-selection-state";');
+    expect(source).toContain('data-active={view === "settings" ? "true" : undefined}');
+    expect(source).not.toContain('active ? "bg-(--tile-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) font-semibold text-accent" :');
     // 侧栏标签的颜色两主题都靠继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。

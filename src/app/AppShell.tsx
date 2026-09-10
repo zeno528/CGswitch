@@ -146,8 +146,7 @@ export default function AppShell() {
     setView("settings");
   };
 
-  const navClass = (active: boolean) =>
-    `apple-sidebar-nav-button ${active ? "bg-(--tile-bg) text-accent" : "font-normal hover:bg-black/5 dark:hover:bg-white/8"}`;
+  const navClass = "apple-sidebar-nav-button app-selection-state";
 
   return (
     <FeedbackProvider>
@@ -189,29 +188,29 @@ export default function AppShell() {
               ) : null}
             </div>
             <nav className="mx-1.5 mt-3 space-y-1">
-              <button type="button" className={navClass(view === "profiles")} aria-label={t("nav.providers")} onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass} data-active={view === "profiles" ? "true" : undefined} aria-label={t("nav.providers")} onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Layers2 strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.providers")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.providers")}</span> : null}
               </button>
-              <button type="button" className={navClass(view === "mcp")} aria-label={t("nav.mcp")} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <McpIcon className="h-[18px] w-[18px]" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.mcp")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.mcp")}</span> : null}
               </button>
-              <button type="button" className={navClass(view === "plugins")} aria-label={t("nav.plugins")} onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass} data-active={view === "plugins" ? "true" : undefined} aria-label={t("nav.plugins")} onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Blocks strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.plugins")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.plugins")}</span> : null}
               </button>
-              <button type="button" className={navClass(view === "skills")} aria-label={t("nav.skills")} onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass} data-active={view === "skills" ? "true" : undefined} aria-label={t("nav.skills")} onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Puzzle strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.skills")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.skills")}</span> : null}
               </button>
             </nav>
             <div className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5">
-              <button type="button" className={navClass(view === "settings")} aria-label={t("nav.settings")} onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass} data-active={view === "settings" ? "true" : undefined} aria-label={t("nav.settings")} onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <SettingsIcon strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.settings")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.settings")}</span> : null}

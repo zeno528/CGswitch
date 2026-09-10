@@ -582,8 +582,9 @@ function mockBuiltinFragment(preset: BuiltinPreset, apiKey: string): string {
 export async function webInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   await new Promise((resolve) => setTimeout(resolve, 120));
   switch (command) {    case "get_state":
-    case "get_settings":
       return webState() as T;
+    case "get_settings":
+      return { ...webSettings } as T;
     case "set_update_marker":
       webUpdateMarker = (args?.version as string) ?? null;
       return null as T;

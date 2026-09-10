@@ -6,6 +6,7 @@ import { FeedbackProvider } from "../../app/Feedback";
 import { AppUpdateProvider } from "../updates/AppUpdateProvider";
 import { SettingsAbout, SettingsGeneral, backupTitle, formatSize, formatTimestamp } from "./SettingsSections";
 import { setupI18n } from "../../i18n";
+import { webInvoke } from "../../api/web-mock";
 import type { Settings } from "../../types";
 
 const settingsSectionsSource = readFileSync(new URL("./SettingsSections.tsx", import.meta.url), "utf8");
@@ -33,8 +34,8 @@ describe("SettingsSections", () => {
     );
     const activeButton = html.match(/<button[^>]*aria-pressed="true"[^>]*>/)?.[0];
     expect(activeButton).toContain("font-normal");
-    expect(activeButton).toContain("bg-(--tile-bg)");
-    expect(activeButton).toContain("text-accent");
+    expect(activeButton).toContain("app-selection-state");
+    expect(activeButton).toContain('data-active="true"');
     expect(activeButton).not.toContain("bg-(--selection-bg)");
     expect(activeButton).not.toContain("font-semibold");
   });
@@ -121,5 +122,32 @@ describe("SettingsSections", () => {
     expect(enHtml).toContain("Appearance");
     expect(enHtml).toContain("English");
     expect(enHtml).not.toContain("界面语言");
+  });
+
+  it("语言设置使用左右分布的下拉选择框", () => {
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    setupI18n("zh-CN");
+    const html = renderToStaticMarkup(
+      <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
+    );
+    expect(html).toContain('aria-haspopup="listbox"');
+    expect(html).toContain('class="flex items-center justify-between gap-4"');
+  });
+
+  it("显示偏好与启动开关统一使用左右设置行", () => {
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    setupI18n("zh-CN");
+    const html = renderToStaticMarkup(
+      <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
+    );
+    expect(html.match(/class="flex items-center justify-between gap-4"/g)).toHaveLength(5);
+    expect(html.match(/role="switch"/g)).toHaveLength(3);
+    expect(html.match(/settings-icon-tile/g)).toHaveLength(5);
+  });
+
+  it("浏览器调试的 get_settings 返回设置对象", async () => {
+    const settings = await webInvoke<Settings>("get_settings");
+    expect(settings.language).toBe("system");
+    expect(settings).not.toHaveProperty("profiles");
   });
 });

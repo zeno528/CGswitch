@@ -120,7 +120,8 @@ export function AppSelect<T extends string | number>({
         role="option"
         tabIndex={open ? 0 : -1}
         aria-selected={selected?.value === option.value}
-        className="app-select-option"
+        className="app-select-option app-selection-state"
+        data-active={selected?.value === option.value ? "true" : undefined}
         data-selected={selected?.value === option.value}
         onClick={() => selectOption(option)}
       >
@@ -129,6 +130,7 @@ export function AppSelect<T extends string | number>({
       </button>)}
     </div>
   );
+  const menuContent = typeof document === "undefined" ? menu : createPortal(menu, document.body);
 
   return (
     <div ref={rootRef} className="app-select-wrap" data-open={open}>
@@ -151,7 +153,7 @@ export function AppSelect<T extends string | number>({
         <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>
         <ChevronDown className="app-select__icon" size={16} strokeWidth={2} aria-hidden="true" />
       </button>
-      {createPortal(menu, document.body)}
+      {menuContent}
     </div>
   );
 }

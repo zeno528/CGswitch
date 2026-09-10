@@ -1,4 +1,4 @@
-import { Database, DatabaseBackup, Download, ExternalLink, FolderOpen, History, LoaderCircle, Moon, MoonStar, Monitor, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Database, DatabaseBackup, Download, ExternalLink, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, Palette, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -29,7 +29,80 @@ interface SettingsGeneralProps { form: Settings; onPatch: (patch: Partial<Settin
 
 export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
   const { t } = useTranslation("settings");
-  return <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]"><div className="mb-2"><div className="setting-title">{t("appearance.title")}</div><div className="setting-description mt-0.5">{t("appearance.description")}</div></div><div className="apple-group apple-segmented-control inline-flex gap-1 p-1">{themeOptions.map((option) => <button key={option.value} type="button" className={`inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal transition-colors ${form.theme === option.value ? "bg-(--tile-bg) text-accent" : "hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={form.theme === option.value} onClick={() => onPatch({ theme: option.value })}>{option.value === "system" ? <Monitor className="h-4 w-4" strokeWidth={2} /> : option.value === "light" ? <Sun className="h-4 w-4" strokeWidth={2} /> : <Moon className="h-4 w-4" strokeWidth={2} />}{t(option.labelKey)}</button>)}</div><div className="mb-2 mt-5"><div className="setting-title">{t("language.title")}</div><div className="setting-description mt-0.5">{t("language.description")}</div></div><div className="apple-group apple-segmented-control inline-flex gap-1 p-1">{languageOptions.map((option) => <button key={option.value} type="button" className={`inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal transition-colors ${form.language === option.value ? "bg-(--tile-bg) text-accent" : "hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={form.language === option.value} onClick={() => onPatch({ language: option.value })}>{t(option.labelKey)}</button>)}</div><hr className="my-4 border-0 border-t border-[var(--panel-divider)]" /><div className="flex flex-col gap-5">{[["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power, "text-accent"], ["silent_start", t("startup.silentTitle"), t("startup.silentDescription"), MoonStar, "text-[var(--lavender)]"], ["minimize_to_tray", t("startup.minimizeTitle"), t("startup.minimizeDescription"), PanelBottomClose, "text-[var(--warning)]"]].map(([key, label, description, Icon, color]) => <div key={String(key)} className="flex items-center justify-between gap-4"><div className="flex items-start gap-3"><span className={`settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl ${String(color)}`}><Icon className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">{String(label)}</div><div className="setting-description mt-0.5">{String(description)}</div></div></div><AppSwitch checked={Boolean(form[key as keyof Settings])} onCheckedChange={(value) => onPatch({ [String(key)] : value })} /></div>)}</div></div>;
+  return (
+    <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
+              <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div className="setting-title">{t("appearance.title")}</div>
+              <div className="setting-description mt-0.5">{t("appearance.description")}</div>
+            </div>
+          </div>
+          <div className="apple-group apple-segmented-control inline-flex shrink-0 gap-1 p-1">
+            {themeOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
+                data-active={form.theme === option.value ? "true" : undefined}
+                aria-pressed={form.theme === option.value}
+                onClick={() => onPatch({ theme: option.value })}
+              >
+                {option.value === "system" ? <Monitor className="h-4 w-4" strokeWidth={2} /> : option.value === "light" ? <Sun className="h-4 w-4" strokeWidth={2} /> : <Moon className="h-4 w-4" strokeWidth={2} />}
+                {t(option.labelKey)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
+              <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div className="setting-title">{t("language.title")}</div>
+              <div className="setting-description mt-0.5">{t("language.description")}</div>
+            </div>
+          </div>
+          <div className="w-44 shrink-0">
+            <AppSelect
+              value={form.language}
+              options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
+              onChange={(value) => onPatch({ language: value })}
+            />
+          </div>
+        </div>
+      </div>
+      <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
+      <div className="flex flex-col gap-5">
+        {[
+          ["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power, "text-accent"],
+          ["silent_start", t("startup.silentTitle"), t("startup.silentDescription"), MoonStar, "text-[var(--lavender)]"],
+          ["minimize_to_tray", t("startup.minimizeTitle"), t("startup.minimizeDescription"), PanelBottomClose, "text-[var(--warning)]"],
+        ].map(([key, label, description, Icon, color]) => (
+          <div key={String(key)} className="flex items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <span className={`settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl ${String(color)}`}>
+                <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+              </span>
+              <div>
+                <div className="setting-title">{String(label)}</div>
+                <div className="setting-description mt-0.5">{String(description)}</div>
+              </div>
+            </div>
+            <AppSwitch
+              checked={Boolean(form[key as keyof Settings])}
+              onCheckedChange={(value) => onPatch({ [String(key)]: value })}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 interface SettingsAdvancedProps { form: Settings; onPatch: (patch: Partial<Settings>) => void; paths: PathInfo[]; backupsEpoch: number; onOpenPath: (item: PathInfo) => void; onRefresh: () => Promise<void>; }
