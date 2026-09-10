@@ -113,7 +113,7 @@ describe("SettingsSections", () => {
     const zhHtml = render();
     expect(zhHtml).toContain("界面语言");
     expect(zhHtml).toContain("外观主题");
-    expect(zhHtml).toContain("跟随系统");
+    expect(zhHtml).toContain("自动检测");
 
     setupI18n("en-US");
     const enHtml = render();

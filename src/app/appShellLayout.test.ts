@@ -18,6 +18,9 @@ describe("AppShell 布局", () => {
     expect(source).toContain('active ? "bg-(--tile-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) font-semibold text-accent" :');
+    // 侧栏标签的颜色两主题都靠继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
+    // 禁止再给标签写直接 color 规则：它会压过继承，让激活态在深色下不变色。
+    expect(styles).not.toContain(".apple-sidebar-nav-button .apple-sidebar-label");
     expect(styles).not.toContain(".apple-sidebar-indicator");
     expect(styles).toMatch(/\.apple-sidebar-flyout \{[\s\S]*font-weight: 400;/);
     expect(styles).toContain("color: var(--text-primary);");

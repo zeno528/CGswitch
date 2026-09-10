@@ -12,7 +12,7 @@ export default {
   language: {
     title: "界面语言",
     description: "选择界面显示语言，点击后立即生效",
-    system: "跟随系统",
+    system: "自动检测",
     zh: "简体中文",
     en: "English",
   },

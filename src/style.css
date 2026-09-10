@@ -804,9 +804,9 @@ body.drag-active * {
   to { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
 }
 
-:root.dark .apple-sidebar-nav-button .apple-sidebar-label {
-  color: #ffffff;
-}
+/* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
+   这里曾有一条 :root.dark 写死 #ffffff 的规则——它与 body 深色值重复，却因「直接规则压过继承」
+   把激活态的 accent 截胡，导致深色下激活项不变色。不要再加回来。 */
 
 .apple-sidebar--collapsed .apple-sidebar-label {
   max-width: 0;

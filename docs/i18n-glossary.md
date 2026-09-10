@@ -34,7 +34,8 @@
 | 恢复 | Restore | |
 | 重命名 | Rename | |
 | 主题 | Theme | |
-| 跟随系统 / 浅色 / 深色 | System / Light / Dark | 对应 `SettingsSections.tsx:17` 的 themeOptions |
+| 跟随系统 / 浅色 / 深色 | System / Light / Dark | 主题项，对应 `themeOptions` |
+| 自动检测 / 简体中文 / English | Auto-detect / 简体中文 / English | 语言项，对应 `languageOptions`；与主题的「跟随系统」**有意区分** |
 | 检查更新 | Check for updates | |
 | 立即升级 | Update now | |
 | 未设置 | Not set | `profile.model` 等空值占位 |
@@ -63,8 +64,8 @@
 **1. 「供应商配置」导航项 → `Providers`**（用户确认）
 与同排的 MCP Servers / Plugins / Skills 风格一致，短、不撑侧栏。
 
-**2. 主题「跟随系统」→ `System`**（用户确认）
-与语言项的「跟随系统」用同一个词，同屏措辞统一。
+**2. 主题「跟随系统」→ `System`；语言「自动检测」→ `Auto-detect`**（用户确认）
+两项措辞**有意不同**：主题是沿用系统「外观」，语言是自动识别系统语言。不要为了「同屏统一」把语言项改回 `System`。
 
 **3. 「应用」一词歧义（动词 vs 名词）—— 翻译时逐处判断，不全局替换**
 本仓库「应用」既作动词（应用配置 = apply the config），又作名词（应用数据目录 = app data folder）。英文必须分开：动词用 `Apply`，名词用 `App`。

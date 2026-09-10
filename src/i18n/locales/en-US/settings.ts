@@ -12,7 +12,7 @@ export default {
   language: {
     title: "Language",
     description: "Choose the interface language. Applies immediately.",
-    system: "System",
+    system: "Auto-detect",
     zh: "简体中文",
     en: "English",
   },
