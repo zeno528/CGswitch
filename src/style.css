@@ -61,6 +61,9 @@
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
+  /* 界面字体唯一来源：macOS 命中 SF Pro（-apple-system），Windows 命中 Segoe UI；
+     中文再往后落到 PingFang SC / 微软雅黑，不会退到宋体。任何界面文字都从这里取，不要另写一套。 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Cascadia Mono", monospace;
   --main-top-inset: 1rem;
   --edit-footer-padding-right: var(--gap-main);
@@ -120,15 +123,7 @@ body {
   margin: 0;
   background: var(--app-bg);
   color: #1c1c1e;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Text",
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei",
-    system-ui,
-    sans-serif;
+  font-family: var(--font-ui);
   font-size: var(--font-size-base);
   line-height: 1.6;
 }
@@ -157,12 +152,6 @@ body {
   [aria-disabled="true"]
 ) {
   cursor: not-allowed;
-}
-
-/* 输入框占位提示统一用微软雅黑，避免 Windows 中文字体回退到宋体；不改变实际输入内容的字体 */
-input::placeholder,
-textarea::placeholder {
-  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
 :root.dark body {
@@ -708,7 +697,7 @@ body.drag-active * {
   align-items: center;
   border-radius: var(--sidebar-nav-radius);
   display: flex;
-  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-ui);
   font-size: var(--font-size-base);
   font-weight: 400;
   gap: 0.5rem;

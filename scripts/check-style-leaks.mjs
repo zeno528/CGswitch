@@ -1,5 +1,7 @@
 // 样式泄漏扫描：拦截绕过 token / 全局类的新代码（发版前随 pnpm check 运行）。
 // 规则来源见 AGENTS.md「样式准入」。白名单必须附带理由，且只允许 (文件, 类) 精确匹配。
+// 字体栈单独有一条准入：style.css 里的 font-family 只允许引用 --font-ui / --font-mono，
+// 组件里禁止出现 fontFamily（当年三处各写一套 Windows 优先栈就是这么攒出来的）。
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -45,7 +47,24 @@ const RULES = [
     pattern: /(?:overflow(?:-x|-y)?-(?:auto|scroll)|overscroll-[a-z-]+|(?:^|[\s"'`])sticky(?:[\s"'`]|$))/g,
     extract: (match) => match.trim(),
   },
+  {
+    name: "内联字体栈（界面字体只允许 --font-ui / --font-mono，或直接继承，不要在组件里指定字体）",
+    pattern: /fontFamily:\s*["'`]/g,
+    extract: (match) => match.trim(),
+  },
 ];
+
+/* 字体栈准入：style.css 里的 font-family 只允许引用 --font-ui / --font-mono。
+   曾有三处各写一套 Windows 优先栈（侧栏导航、输入框占位符、侧栏 wordmark），
+   macOS 上前两者落不到 San Francisco，占位符还与输入文字不同字体。 */
+const FONT_WHITELIST = [
+  { text: 'font-family: "Segoe UI Variable Display", "Bahnschrift", "Segoe UI", -apple-system, sans-serif;', reason: "侧栏应用名 wordmark：刻意的品牌几何字体，末尾带 -apple-system 回退" },
+];
+/* 只取出声明，允许与否在代码里判：把排除项写进正则会被 \s* 的回溯绕过
+   （「冒号后零空白」时否定断言成立，于是 var(--font-ui) 也被误判）。 */
+const CSS_FONT_RULE = /font-family:\s*([^;]+);/g;
+const ALLOWED_FONT_VALUES = /^var\(--font-(?:ui|mono)\)$/;
+const CSS_PATH = fileURLToPath(new URL("../src/style.css", import.meta.url));
 
 /* 文件级结构不变量：中间滚动区与页头必须成对出现，防止新页面漏页头或自建布局骨架 */
 const STRUCTURAL_CHECKS = [
@@ -86,6 +105,17 @@ for (const filePath of files) {
   }
 }
 
+/* style.css 单独扫：上面的 RULES 面向 Tailwind 类名写法，直接套到原生 CSS 会误报（如 position: sticky）。 */
+const usedFontWhitelist = new Set();
+for (const match of readFileSync(CSS_PATH, "utf8").matchAll(CSS_FONT_RULE)) {
+  const text = match[0].trim();
+  const value = match[1].replace(/!\s*important\s*$/, "").trim();
+  if (ALLOWED_FONT_VALUES.test(value)) continue;
+  const entry = FONT_WHITELIST.find((item) => item.text === text);
+  if (entry) usedFontWhitelist.add(entry.text);
+  else violations.push({ rel: "style.css", rule: "字体栈（必须走 --font-ui / --font-mono）", klass: text });
+}
+
 const whitelistedUnknown = WHITELIST.filter(
   (w) => !files.some((f) => f.slice(SRC_ROOT.length + 1).replace(/\\/g, "/") === w.file),
 );
@@ -101,4 +131,10 @@ if (whitelistedUnknown.length) {
   for (const w of whitelistedUnknown) console.error(`  ${w.file}: ${w.class}`);
   process.exit(1);
 }
-console.log("✔ 样式泄漏扫描通过（字号/色值/中性灰/首卡间距/滚动与 sticky 均未越界，结构不变量成立）");
+const staleFontWhitelist = FONT_WHITELIST.filter((item) => !usedFontWhitelist.has(item.text));
+if (staleFontWhitelist.length) {
+  console.error("✖ 字体白名单已过期（对应声明已改写或删除，请清理）：");
+  for (const item of staleFontWhitelist) console.error(`  ${item.text}  ← ${item.reason}`);
+  process.exit(1);
+}
+console.log("✔ 样式泄漏扫描通过（字号/色值/中性灰/首卡间距/滚动与 sticky/字体栈 均未越界，结构不变量成立）");

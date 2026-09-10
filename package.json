@@ -7,7 +7,8 @@
   "scripts": {
     "sync-version": "node scripts/sync-version.mjs",
     "skills:sync": "node scripts/sync-skills.mjs",
-    "postinstall": "node scripts/sync-skills.mjs",
+    "hooks:sync": "node scripts/sync-hooks.mjs",
+    "postinstall": "node scripts/sync-skills.mjs && node scripts/sync-hooks.mjs",
     "version:patch": "node scripts/bump-version.mjs patch",
     "version:minor": "node scripts/bump-version.mjs minor",
     "version:major": "node scripts/bump-version.mjs major",
