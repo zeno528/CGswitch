@@ -1,6 +1,6 @@
 import { Database, DatabaseBackup, Download, ExternalLink, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, Palette, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api, isTauri } from "../../api";
 import { useFeedback } from "../../app/Feedback";
@@ -25,82 +25,101 @@ export const backupTitle = (name: string) => name.replace(/^(?:cg-backup-|cgswit
 export const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 export const formatTimestamp = (seconds: number) => { const date = new Date(seconds * 1000); const pad = (value: number) => String(value).padStart(2, "0"); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`; };
 
+// 设置页各分区统一的左上角标题包装：标题 id 与 aria-labelledby 成对生成
+export function SettingsPanelSection({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2" aria-labelledby={`settings-content-${id}`}>
+      <h2 id={`settings-content-${id}`} className="title-sm px-1">
+        {label}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
 interface SettingsGeneralProps { form: Settings; onPatch: (patch: Partial<Settings>) => void; }
 
 export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
   const { t } = useTranslation("settings");
   return (
-    <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
-              <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <div className="setting-title">{t("appearance.title")}</div>
-              <div className="setting-description mt-0.5">{t("appearance.description")}</div>
+    <div className="flex flex-col gap-[var(--gap-section)]">
+      <SettingsPanelSection id="appearance-language" label={t("general.appearanceGroupTitle")}>
+        <div className="apple-group p-[var(--gap-card)]">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                  <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="setting-title">{t("appearance.title")}</div>
+                  <div className="setting-description mt-0.5">{t("appearance.description")}</div>
+                </div>
+              </div>
+              <div className="apple-group apple-segmented-control inline-flex shrink-0 gap-1 p-1">
+                {themeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
+                    data-active={form.theme === option.value ? "true" : undefined}
+                    aria-pressed={form.theme === option.value}
+                    onClick={() => onPatch({ theme: option.value })}
+                  >
+                    {option.value === "system" ? <Monitor className="h-4 w-4" strokeWidth={2} /> : option.value === "light" ? <Sun className="h-4 w-4" strokeWidth={2} /> : <Moon className="h-4 w-4" strokeWidth={2} />}
+                    {t(option.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="setting-title">{t("language.title")}</div>
+                  <div className="setting-description mt-0.5">{t("language.description")}</div>
+                </div>
+              </div>
+              <div className="w-44 shrink-0">
+                <AppSelect
+                  value={form.language}
+                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
+                  onChange={(value) => onPatch({ language: value })}
+                />
+              </div>
             </div>
           </div>
-          <div className="apple-group apple-segmented-control inline-flex shrink-0 gap-1 p-1">
-            {themeOptions.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
-                data-active={form.theme === option.value ? "true" : undefined}
-                aria-pressed={form.theme === option.value}
-                onClick={() => onPatch({ theme: option.value })}
-              >
-                {option.value === "system" ? <Monitor className="h-4 w-4" strokeWidth={2} /> : option.value === "light" ? <Sun className="h-4 w-4" strokeWidth={2} /> : <Moon className="h-4 w-4" strokeWidth={2} />}
-                {t(option.labelKey)}
-              </button>
+        </div>
+      </SettingsPanelSection>
+      <SettingsPanelSection id="startup" label={t("general.startupGroupTitle")}>
+        <div className="apple-group p-[var(--gap-card)]">
+          <div className="flex flex-col gap-5">
+            {[
+              ["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power],
+              ["silent_start", t("startup.silentTitle"), t("startup.silentDescription"), MoonStar],
+              ["minimize_to_tray", t("startup.minimizeTitle"), t("startup.minimizeDescription"), PanelBottomClose],
+            ].map(([key, label, description, Icon]) => (
+              <div key={String(key)} className="flex items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                    <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+                  </span>
+                  <div>
+                    <div className="setting-title">{String(label)}</div>
+                    <div className="setting-description mt-0.5">{String(description)}</div>
+                  </div>
+                </div>
+                <AppSwitch
+                  checked={Boolean(form[key as keyof Settings])}
+                  onCheckedChange={(value) => onPatch({ [String(key)]: value })}
+                />
+              </div>
             ))}
           </div>
         </div>
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
-              <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <div className="setting-title">{t("language.title")}</div>
-              <div className="setting-description mt-0.5">{t("language.description")}</div>
-            </div>
-          </div>
-          <div className="w-44 shrink-0">
-            <AppSelect
-              value={form.language}
-              options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
-              onChange={(value) => onPatch({ language: value })}
-            />
-          </div>
-        </div>
-      </div>
-      <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
-      <div className="flex flex-col gap-5">
-        {[
-          ["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power, "text-accent"],
-          ["silent_start", t("startup.silentTitle"), t("startup.silentDescription"), MoonStar, "text-[var(--lavender)]"],
-          ["minimize_to_tray", t("startup.minimizeTitle"), t("startup.minimizeDescription"), PanelBottomClose, "text-[var(--warning)]"],
-        ].map(([key, label, description, Icon, color]) => (
-          <div key={String(key)} className="flex items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <span className={`settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl ${String(color)}`}>
-                <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
-              </span>
-              <div>
-                <div className="setting-title">{String(label)}</div>
-                <div className="setting-description mt-0.5">{String(description)}</div>
-              </div>
-            </div>
-            <AppSwitch
-              checked={Boolean(form[key as keyof Settings])}
-              onCheckedChange={(value) => onPatch({ [String(key)]: value })}
-            />
-          </div>
-        ))}
-      </div>
+      </SettingsPanelSection>
     </div>
   );
 }
@@ -143,14 +162,14 @@ export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPat
   const deleteBackup = async (backup: DatabaseBackupInfo) => { if (!await feedback.confirm({ title: t("backup.deleteConfirmTitle"), description: <Trans ns="settings" i18nKey="backup.deleteConfirm" values={{ name: backup.name }} components={{ strong: <strong /> }} />, confirmText: t("backup.delete"), destructive: true })) return; try { await api.deleteDatabaseBackup(backup.name); feedback.success(t("backup.toastDeleted")); await loadBackups(); } catch (error) { feedback.error(String(error)); } };
 
   return (
-    <div className="apple-group mt-[var(--gap-section)]">
+    <div className="apple-group">
       <section className="apple-panel-section">
         <AppDisclosure
           open={backupOpen}
           onOpenChange={setBackupOpen}
           summary={(
             <>
-              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
+              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                 <Database className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <span className="min-w-0">
@@ -198,7 +217,7 @@ export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPat
                     {backups.map((backup) => (
                       <div key={backup.name} className="apple-list-row">
                         <div className="flex min-w-0 items-center gap-2.5">
-                          <span className="settings-icon-tile grid h-8 w-8 shrink-0 place-items-center rounded-lg text-accent">
+                          <span className="settings-icon-tile grid h-8 w-8 shrink-0 place-items-center rounded-lg">
                             <Database className="h-4 w-4" strokeWidth={2} />
                           </span>
                           <div className="min-w-0">
@@ -254,7 +273,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   };
 
   return (
-    <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
+    <div className="apple-group p-[var(--gap-card)]">
       <div className="settings-about__hero brand-gradient-surface">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">

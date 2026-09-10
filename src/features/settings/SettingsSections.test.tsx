@@ -5,11 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { FeedbackProvider } from "../../app/Feedback";
 import { AppUpdateProvider } from "../updates/AppUpdateProvider";
 import { SettingsAbout, SettingsGeneral, backupTitle, formatSize, formatTimestamp } from "./SettingsSections";
+import ChatGPTAccount from "./ChatGPTAccount";
 import { setupI18n } from "../../i18n";
 import { webInvoke } from "../../api/web-mock";
-import type { Settings } from "../../types";
+import type { AuthStatus, Settings } from "../../types";
 
 const settingsSectionsSource = readFileSync(new URL("./SettingsSections.tsx", import.meta.url), "utf8");
+const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("SettingsSections", () => {
   it("formats backup titles", () => {
@@ -143,6 +146,44 @@ describe("SettingsSections", () => {
     expect(html.match(/class="flex items-center justify-between gap-4"/g)).toHaveLength(5);
     expect(html.match(/role="switch"/g)).toHaveLength(3);
     expect(html.match(/settings-icon-tile/g)).toHaveLength(5);
+  });
+
+  it("通用设置按语义拆分为外观语言和启动行为分组", () => {
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    setupI18n("zh-CN");
+    const html = renderToStaticMarkup(
+      <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
+    );
+    expect(html).toContain("外观与语言");
+    expect(html).toContain("启动行为");
+  });
+
+  it("其他设置分区使用内容语义作为左上角分组标题", () => {
+    expect(settingsViewSource).toContain('label={t("account.sectionTitle")}');
+    expect(settingsViewSource).toContain('label={t("codex.sectionTitle")}');
+    expect(settingsViewSource).toContain('label={t("backup.sectionTitle")}');
+    expect(settingsViewSource).toContain('label={t("about.sectionTitle")}');
+  });
+
+  it("设置项图标统一复用深浅主题的主按钮颜色", () => {
+    expect(styles).toContain(".settings-page .settings-icon-tile {\n  background: var(--primary-button-bg);\n  color: var(--primary-button-text);\n}");
+  });
+
+  it("账号行先显示账号，再以次要层级显示登录方式", () => {
+    const status: AuthStatus = {
+      authenticated: true,
+      default_account_id: "desktop",
+      external: { id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true },
+      accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false }],
+    };
+    setupI18n("zh-CN");
+    const html = renderToStaticMarkup(<FeedbackProvider><ChatGPTAccount initialStatus={status} /></FeedbackProvider>);
+    expect(html.indexOf("desktop@example.com")).toBeLessThan(html.indexOf("跟随 Codex登录"));
+    expect(html.indexOf("oauth@example.com")).toBeLessThan(html.indexOf("OAuth 设备码登录"));
+  });
+
+  it("移除按钮跟随账号行高度", () => {
+    expect(styles).toContain(".apple-action-button--compact {\n  align-self: stretch;\n  height: auto;\n");
   });
 
   it("浏览器调试的 get_settings 返回设置对象", async () => {

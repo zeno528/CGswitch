@@ -18,4 +18,15 @@ describe("AppSelect styles", () => {
     expect(sharedStateSource).not.toContain("background: var(--selection-bg)");
     expect(sharedStateSource).not.toContain("font-weight: 600");
   });
+
+  it("下拉菜单复用全局卡片的 ring 边框", () => {
+    const menuSource = styleSource.slice(
+      styleSource.indexOf(".app-select-menu {"),
+      styleSource.indexOf(".app-select-menu[data-open"),
+    );
+    expect(menuSource).toContain("border: 0;");
+    expect(menuSource).toContain("var(--panel-ring)");
+    expect(menuSource).toContain("0 8px 24px rgb(0 0 0 / 0.12)");
+    expect(menuSource).not.toContain("border: 1px solid var(--panel-border)");
+  });
 });

@@ -19,13 +19,14 @@
   --warning: #ff9f0a;
   --danger: #ff3b30;
   --app-bg: #f7f7f9;
-  --panel-bg: #ffffff;
+  --panel-bg: #fffeff;
+  --main-surface-bg: #ffffff;
   --panel-border: rgba(60, 60, 67, 0.12);
   --panel-ring: rgba(60, 60, 67, 0.08);
   --panel-divider: rgba(60, 60, 67, 0.1);
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
-  --sidebar-bg: #f2f3f8;
+  --sidebar-bg: #f5f5f5;
   --selection-bg: rgba(0, 122, 255, 0.12);
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
   --success-text: #27c840;
@@ -35,8 +36,6 @@
   --profile-chip-bg: rgb(0 0 0 / 0.04);
   --input-bg: #f5f5f5;
   --profile-meta-text: rgba(60, 60, 67, 0.68);
-  /* 功能强调紫（静默启动等）：iOS 系统紫，深色主题换亮紫 */
-  --lavender: #af52de;
   /* 品牌图标底色：按文字色派生的浅灰砖，深浅主题共用同一公式自动适配 */
   --tile-bg: color-mix(in srgb, var(--text-secondary) 12%, transparent);
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 15%, transparent);
@@ -92,6 +91,7 @@
   --success: #3fb950;
   --app-bg: #1a1d1f;
   --panel-bg: #292b30;
+  --main-surface-bg: var(--app-bg);
   --panel-border: #42434a;
   --panel-ring: rgba(255, 255, 255, 0.14);
   --panel-divider: rgba(255, 255, 255, 0.1);
@@ -106,7 +106,6 @@
   --profile-chip-bg: #1e1e1e;
   --input-bg: #1e1e1e;
   --profile-meta-text: rgba(255, 255, 255, 0.62);
-  --lavender: #bf5af2;
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 15%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
 }
@@ -391,10 +390,15 @@ body {
   color: var(--text-secondary);
 }
 
-/* 设置页图标容器：只保留边界，颜色由图标本身表达 */
+/* 设置页图标容器：边界复用全局面板，图标颜色跟随主按钮的深浅主题语义色 */
 .settings-icon-tile {
   background: transparent;
   border: 1px solid var(--panel-border);
+}
+
+.settings-page .settings-icon-tile {
+  background: var(--primary-button-bg);
+  color: var(--primary-button-text);
 }
 
 /* 全局滚动条：有溢出时常驻显示缩略图，轨道始终透明（与所在背景合并），
@@ -496,7 +500,7 @@ main:has(.apple-edit-page) {
   margin: 0.125rem 0.3125rem 0.3125rem 0;
   border: 1px solid rgb(0 0 0 / 0.07);
   border-radius: 0.75rem;
-  background: var(--app-bg);
+  background: var(--main-surface-bg);
 }
 
 @keyframes apple-page-enter {
@@ -859,7 +863,7 @@ body.drag-active * {
    统一最小高度：各页左侧内容高度不同（状态胶囊 28 / 返回按钮 32 / 图标座 36），
    固定后右侧操作按钮在所有页面落在同一水平线上 */
 .apple-page-bar {
-  background: var(--app-bg);
+  background: var(--main-surface-bg);
   margin-inline: calc(-1 * var(--gap-main));
   margin-top: calc(-1 * var(--main-top-inset));
   padding-inline: var(--gap-main);
@@ -899,7 +903,7 @@ body.drag-active * {
   gap: 0.5rem;
   /* 负水平外边距让操作栏全宽贴卡片边缘；底部由卡片圆角裁切收口 */
   margin-inline: calc(-1 * var(--gap-main));
-  background: var(--app-bg);
+  background: var(--main-surface-bg);
   padding-left: var(--gap-main);
   padding-right: var(--edit-footer-padding-right);
   border-top: 1px solid var(--panel-border);
@@ -1216,7 +1220,8 @@ body.drag-active * {
 }
 
 .apple-action-button--compact {
-  height: 1.5rem;
+  align-self: stretch;
+  height: auto;
   padding-inline: 0.5rem;
 }
 
@@ -1760,11 +1765,11 @@ button:focus-visible {
   max-height: min(20rem, calc(100vh - 2rem));
   overflow-y: auto;
   gap: 0.15rem;
-  border: 1px solid var(--panel-border);
+  border: 0;
   border-radius: var(--radius-control);
   background: var(--panel-bg);
   padding: 0.3rem;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.1), 0 0 0 1px var(--panel-ring);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px var(--panel-ring);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px) scale(0.98);
@@ -2127,7 +2132,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 }
 
 :root.dark .app-switch-rail { background-color: rgb(255 255 255 / 0.20); }
-.app-switch[data-state="checked"] .app-switch-rail { background-color: var(--accent); }
+.app-switch[data-state="checked"] .app-switch-rail { background-color: var(--primary-button-bg); }
 .app-switch:focus .app-switch-rail { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent); }
 :root.dark .app-switch:focus .app-switch-rail { box-shadow: 0 0 8px 0 color-mix(in srgb, var(--accent) 30%, transparent); }
 .app-switch:disabled { cursor: not-allowed; }
@@ -2149,7 +2154,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   transition: background-color 300ms cubic-bezier(0.4, 0, 0.2, 1), left 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 300ms cubic-bezier(0.4, 0, 0.2, 1), max-width 300ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.app-switch[data-state="checked"] .app-switch-thumb { left: calc(100% - var(--switch-button-width) - var(--switch-offset)); }
+.app-switch[data-state="checked"] .app-switch-thumb { left: calc(100% - var(--switch-button-width) - var(--switch-offset)); background: var(--primary-button-text); }
 :root.dark .app-switch-thumb { box-shadow: 0 2px 4px 0 rgb(0 0 0 / 0.4); }
 .app-switch:not(:disabled):is(:active, [data-pressed="true"]) .app-switch-thumb { max-width: var(--switch-button-width-pressed); }
 .app-switch[data-state="checked"]:not(:disabled):is(:active, [data-pressed="true"]) .app-switch-thumb { left: calc(100% - var(--switch-button-width-pressed) - var(--switch-offset)); }

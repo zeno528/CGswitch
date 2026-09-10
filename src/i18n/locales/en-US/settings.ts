@@ -16,6 +16,10 @@ export default {
     zh: "简体中文",
     en: "English",
   },
+  general: {
+    appearanceGroupTitle: "Appearance & language",
+    startupGroupTitle: "Startup behavior",
+  },
   startup: {
     autostartTitle: "Launch at login",
     autostartDescription: "Start CGswitch automatically after you sign in",
@@ -35,13 +39,14 @@ export default {
     tabAbout: "About",
   },
   codex: {
+    sectionTitle: "Application & updates",
     autoRestartTitle: "Restart Codex automatically after applying",
     autoRestartDescription: "When on, applying a config restarts Codex so it takes effect; when off, the config is only saved and you can restart manually later.",
     autoCheckTitle: "Check for updates automatically",
     autoCheckDescription: "Check for new versions at startup and show an update hint next to the Codex status.",
   },
   account: {
-    title: "ChatGPT Account",
+    sectionTitle: "ChatGPT account management",
     deviceLoginTitle: "ChatGPT device code sign-in",
     deviceLoginDescription: "Complete the ChatGPT sign-in in your browser. The app will continue automatically.",
     waitingAuth: "Waiting for authorization...",
@@ -76,6 +81,7 @@ export default {
     quotaLoading: "Checking quota...",
   },
   backup: {
+    sectionTitle: "Backup management",
     title: "Data backup",
     description: "Manage local database backups with import, export, and automatic backup",
     actionsTitle: "Backup actions",
@@ -119,6 +125,7 @@ export default {
     toastFolderMissing: "Backup folder not found",
   },
   about: {
+    sectionTitle: "Application info",
     upToDate: "You're on the latest version",
     version: "Version {{version}}",
     openRepo: "Open the GitHub repository",

@@ -16,6 +16,10 @@ export default {
     zh: "简体中文",
     en: "English",
   },
+  general: {
+    appearanceGroupTitle: "外观与语言",
+    startupGroupTitle: "启动行为",
+  },
   startup: {
     autostartTitle: "开机自启",
     autostartDescription: "登录系统后自动启动 CGswitch",
@@ -35,13 +39,14 @@ export default {
     tabAbout: "关于",
   },
   codex: {
+    sectionTitle: "应用与更新",
     autoRestartTitle: "应用配置后自动重启 Codex",
     autoRestartDescription: "开启后应用配置会自动重启 Codex 生效；关闭则只保存配置，稍后可手动重启。",
     autoCheckTitle: "自动检查更新",
     autoCheckDescription: "启动时检查新版本，发现后在 Codex 状态旁提示更新。",
   },
   account: {
-    title: "ChatGPT 账号",
+    sectionTitle: "ChatGPT 账号管理",
     deviceLoginTitle: "ChatGPT 设备码登录",
     deviceLoginDescription: "请在浏览器完成 ChatGPT 登录，应用会自动继续。",
     waitingAuth: "等待授权中...",
@@ -76,6 +81,7 @@ export default {
     quotaLoading: "正在查询额度…",
   },
   backup: {
+    sectionTitle: "备份管理",
     title: "数据备份",
     description: "管理本地数据库备份，支持导入、导出和自动备份",
     actionsTitle: "备份操作",
@@ -119,6 +125,7 @@ export default {
     toastFolderMissing: "找不到备份目录",
   },
   about: {
+    sectionTitle: "应用信息",
     upToDate: "已是最新版本",
     version: "版本 {{version}}",
     openRepo: "打开 GitHub 项目仓库",

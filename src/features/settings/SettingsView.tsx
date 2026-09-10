@@ -13,10 +13,9 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { AppSwitch } from "../../components/AppSwitch";
-import { ProfileIconTile } from "../../components/ProfileIconTile";
 import type { AppState, PathInfo, Settings } from "../../types";
 import ChatGPTAccount from "./ChatGPTAccount";
-import { SettingsAbout, SettingsAdvanced, SettingsGeneral } from "./SettingsSections";
+import { SettingsAbout, SettingsAdvanced, SettingsGeneral, SettingsPanelSection } from "./SettingsSections";
 
 type Section = "general" | "codex" | "account" | "advanced" | "about";
 interface SettingsViewProps { state: AppState; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; onHome: () => void; initialSection?: Section; }
@@ -55,11 +54,12 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div className="apple-page-bar apple-page-bar--sticky"><button type="button" className="apple-page-header apple-back-button" aria-label={t("view.backHome")} onClick={onHome}><ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} /><span className="apple-title">{t("view.title")}</span></button></div><div ref={tabBar} className="relative mt-2 flex items-center gap-1 border-b border-[var(--panel-border)]" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("account", t("view.tabAccount"), CircleUserRound)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
     {section === "general" ? <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} /> : null}
     {section === "codex" ? (
-      <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
+      <SettingsPanelSection id="codex" label={t("codex.sectionTitle")}>
+        <div className="apple-group p-[var(--gap-card)]">
         <div className="flex flex-col gap-5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
+              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                 <RotateCw className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
@@ -76,7 +76,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
           </div>
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl text-accent">
+              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                 <ArrowUpCircle className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
@@ -92,10 +92,25 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
             />
           </div>
         </div>
-      </div>
+        </div>
+      </SettingsPanelSection>
     ) : null}
-    {section === "account" ? <div className="apple-group brand-gradient-surface mt-[var(--gap-section)] p-4"><div className="flex items-center gap-3"><ProfileIconTile name="ChatGPT" icon="openai-chatgpt" size="sm" /><h2 className="title-sm">{t("account.title")}</h2></div><div className="mt-3"><ChatGPTAccount initialStatus={state.auth_status} balanceCache={state.balance_cache} /></div></div> : null}
-    {section === "advanced" ? <SettingsAdvanced form={form} onPatch={(patch) => void saveGeneral(patch)} paths={state.paths} backupsEpoch={backupsEpoch} onOpenPath={openPath} onRefresh={onRefresh} /> : null}
-    {section === "about" ? <SettingsAbout paths={state.paths} onOpenPath={openPath} openingPath={openingPath} /> : null}
+    {section === "account" ? (
+      <SettingsPanelSection id="account" label={t("account.sectionTitle")}>
+        <div className="apple-group brand-gradient-surface p-4">
+          <ChatGPTAccount initialStatus={state.auth_status} balanceCache={state.balance_cache} />
+        </div>
+      </SettingsPanelSection>
+    ) : null}
+    {section === "advanced" ? (
+      <SettingsPanelSection id="advanced" label={t("backup.sectionTitle")}>
+        <SettingsAdvanced form={form} onPatch={(patch) => void saveGeneral(patch)} paths={state.paths} backupsEpoch={backupsEpoch} onOpenPath={openPath} onRefresh={onRefresh} />
+      </SettingsPanelSection>
+    ) : null}
+    {section === "about" ? (
+      <SettingsPanelSection id="about" label={t("about.sectionTitle")}>
+        <SettingsAbout paths={state.paths} onOpenPath={openPath} openingPath={openingPath} />
+      </SettingsPanelSection>
+    ) : null}
   </div></section>;
 }

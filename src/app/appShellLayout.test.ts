@@ -40,6 +40,27 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("margin: 0.125rem 0.3125rem 0.3125rem 0;");
   });
 
+  it("浅色主题的侧栏与窗口标题栏使用统一背景色", () => {
+    expect(styles).toContain("--sidebar-bg: #f5f5f5;");
+    expect(styles).toMatch(/\.apple-window-chrome \{[\s\S]*?background: var\(--sidebar-bg\);/);
+    expect(styles).toMatch(/\.apple-sidebar \{[\s\S]*?background: var\(--sidebar-bg\);/);
+  });
+
+  it("让全局卡片浅色使用微暖白、深色保持原卡片底色", () => {
+    expect(styles).toContain("--panel-bg: #fffeff;");
+    expect(styles).toContain("--panel-bg: #292b30;");
+    expect(styles).toMatch(/\.apple-group \{[\s\S]*?background: var\(--panel-bg\);/);
+    expect(styles).toMatch(/\.panel \{[\s\S]*?background: var\(--panel-bg\);/);
+  });
+
+  it("让主内容表面浅色使用白色、深色保持原底色", () => {
+    expect(styles).toContain("--main-surface-bg: #ffffff;");
+    expect(styles).toContain("--main-surface-bg: var(--app-bg);");
+    expect(styles).toMatch(/\.apple-main-card \{[\s\S]*?background: var\(--main-surface-bg\);/);
+    expect(styles).toMatch(/\.apple-page-bar \{[\s\S]*?background: var\(--main-surface-bg\);/);
+    expect(styles).toMatch(/\.apple-edit-toolbar--footer \{[\s\S]*?background: var\(--main-surface-bg\);/);
+  });
+
   it("让捕获配置图标按钮保持圆形", () => {
     expect(styles).toContain(".apple-toolbar-group > .apple-icon-button {\n  border-radius: 999px;");
   });
