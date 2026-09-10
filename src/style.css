@@ -1121,8 +1121,7 @@ body.drag-active * {
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-/* 配置卡片专属：整卡激活底色 + 细边框，避免污染其他 apple-group 卡片。 */
-.profile-list > .apple-group.is-active:not(.brand-gradient-surface),
+/* 拖拽预览保留通用激活底色；列表中的配置卡片统一使用上方 ChatGPT 品牌渐变。 */
 .profile-drag-preview.is-active {
   background-image: linear-gradient(
     90deg,
@@ -1139,7 +1138,6 @@ body.drag-active * {
 
 .profile-list > .apple-group.is-active {
   box-shadow: none;
-  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {
@@ -1196,10 +1194,6 @@ body.drag-active * {
   box-shadow:
     0 12px 32px rgba(0, 0, 0, 0.2);
   outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-:root.dark .profile-list > .apple-group.is-active {
-  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
 :root.dark .profile-list > .apple-group:not(.is-active):hover {

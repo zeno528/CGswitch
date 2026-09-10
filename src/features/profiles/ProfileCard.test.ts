@@ -18,9 +18,23 @@ describe("ProfileCard 官网入口", () => {
     expect(adminButton).toBeLessThan(metaRow);
   });
 
-  it("官方配置激活时使用 ChatGPT 品牌渐变", () => {
-    expect(source).toContain('active && profile.kind === "official" ? " brand-gradient-surface" : ""');
-    expect(styles).toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface),\n.profile-drag-preview.is-active {");
+  it("所有配置激活时使用 ChatGPT 品牌渐变", () => {
+    expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
+    expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
+    expect(source).not.toContain("third-party-gradient");
+    expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
+    expect(styles).toContain(".profile-drag-preview.is-active {");
+  });
+
+  it("激活时不显示描边，但悬停时保留描边", () => {
+    const activeRuleStart = styles.indexOf(".profile-list > .apple-group.is-active {");
+    const activeRuleEnd = styles.indexOf("}", activeRuleStart);
+    const activeRule = styles.slice(activeRuleStart, activeRuleEnd);
+
+    expect(activeRule).toContain("box-shadow: none;");
+    expect(activeRule).not.toContain("outline:");
+    expect(styles).toContain(".profile-list > .apple-group:not(.is-active):hover {\n  outline: 1px solid");
+    expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
   });
 
   it("提高官方渐变卡片的文字与图标对比度", () => {
