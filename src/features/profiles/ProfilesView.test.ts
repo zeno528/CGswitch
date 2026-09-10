@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./ProfilesView.tsx", import.meta.url), "utf8");
+const cardSource = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("ProfilesView 拖拽预览", () => {
@@ -10,6 +11,10 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain('import { createPortal } from "react-dom";');
     expect(source).toContain("createPortal(<DragOverlay");
     expect(source).toContain("document.body");
+  });
+
+  it("源卡片在拖拽收尾时立即恢复显隐，避免释放瞬间渐隐", () => {
+    expect(cardSource).not.toContain("group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 transition-opacity duration-150 sm:flex-row");
   });
 
   it("排序保存成功后同步父级状态，切页回来仍保留新顺序", () => {

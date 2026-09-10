@@ -232,7 +232,7 @@ export default function ProfileCard({
       data-draggable
       data-profile-id={profile.id}
       style={style}
-      className={`apple-group${active ? " is-active brand-gradient-surface" : ""}${dragHover ? " is-drag-hover" : ""} group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 transition-opacity duration-150 sm:flex-row sm:items-center sm:justify-between ${sortable.isDragging ? "pointer-events-none opacity-0" : "opacity-100"}`}
+      className={`apple-group${active ? " is-active brand-gradient-surface" : ""}${dragHover ? " is-drag-hover" : ""} group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${sortable.isDragging ? "pointer-events-none opacity-0" : "opacity-100"}`}
       title="单击编辑"
       onClick={onEdit}
     >
