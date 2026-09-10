@@ -1,0 +1,9 @@
+model = "kimi-k3"
+model_provider = "kimi"
+model_context_window = 1048576
+
+[model_providers.kimi]
+name = "Kimi"
+base_url = "https://api.moonshot.cn/v1"
+experimental_bearer_token = "<你的 Kimi API Key>"
+wire_api = "responses"

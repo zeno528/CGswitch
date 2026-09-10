@@ -978,7 +978,7 @@ fn add_builtin_profile_creates_snapshot_only() {
         .unwrap();
 
     assert_eq!(profile.name, "DeepSeek");
-    assert_eq!(profile.model.as_deref(), Some("deepseek-v4-flash"));
+    assert_eq!(profile.model.as_deref(), Some("deepseek-flash"));
     assert_eq!(profile.provider.as_deref(), Some("deepseek"));
     assert_eq!(profile.reasoning_effort.as_deref(), Some("high"));
     assert_eq!(profile.icon.as_deref(), Some("deepseek"));
@@ -2217,7 +2217,7 @@ fn update_builtin_profile_writes_key_back_when_active() {
 
     // 使用中改密钥：只就地更新供应商段落，模板其余内容保持不变
     let config = String::from_utf8(std::fs::read(context.paths.codex_config()).unwrap()).unwrap();
-    assert!(config.contains("model = \"deepseek-v4-flash\""));
+    assert!(config.contains("model = \"deepseek-flash\""));
     assert!(config.contains("experimental_bearer_token = \"sk-real\""));
     assert!(!config.contains("sk-old"));
     assert!(!config.contains("<你的 DeepSeek API Key>"));
@@ -2307,11 +2307,12 @@ fn active_builtin_save_without_placeholder_keeps_edited_text() {
 
     // 编辑文本里用户已把占位符改成真实密钥：保存不再报“缺少密钥占位符”
     let edited = r#"
-model = "deepseek-v4-flash"
+model = "deepseek-flash"
 model_provider = "deepseek"
 preferred_auth_method = "apikey"
 forced_login_method = "api"
 model_reasoning_effort = "high"
+web_search = "disabled"
 model_catalog_json = "~/.codex/models.json"
 
 [model_providers.deepseek]
@@ -2437,7 +2438,7 @@ fn builtin_placeholder_key_is_not_exposed_as_api_key() {
     let payload = ProfilePayload {
         builtin: Some("deepseek".into()),
         model_values: [
-            ("model".to_string(), "\"deepseek-v4-flash\"".into()),
+            ("model".to_string(), "\"deepseek-flash\"".into()),
             ("model_reasoning_effort".to_string(), "\"high\"".into()),
             ("model_catalog_json".to_string(), "\"~/.codex/models.json\"".into()),
         ]

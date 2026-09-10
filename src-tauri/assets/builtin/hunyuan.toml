@@ -1,0 +1,9 @@
+model_provider = "hy3-tokenhub"
+model = "hy3"
+disable_response_storage = true
+
+[model_providers.hy3-tokenhub]
+name = "Hy3 via tokenhub"
+base_url = "https://tokenhub.tencentmaas.com/v1"
+experimental_bearer_token = "<你的腾讯混元 API Key>"
+wire_api = "responses"

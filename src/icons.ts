@@ -13,6 +13,10 @@ const LABELS: Record<string, string> = {
   minimax: "MiniMax",
   opencode: "OpenCode",
   openrouter: "OpenRouter",
+  kimi: "Kimi",
+  qwen: "Qwen",
+  hunyuan: "腾讯混元",
+  volcengine: "火山方舟",
 };
 
 const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter"]);

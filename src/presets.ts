@@ -78,12 +78,16 @@ export const customCatalogTemplate = `{
 
 export const builtinPresets: BuiltinPreset[] = [
   { kind: "chatgpt", name: "ChatGPT", provider: null, icon: "openai-chatgpt", base_url: "", admin_url: "https://openai.com/chatgpt/pricing", model: "gpt-5.6" },
-  { kind: "deepseek", name: "DeepSeek", provider: "deepseek", icon: "deepseek", base_url: "https://api.deepseek.com/", admin_url: "https://platform.deepseek.com", model: "deepseek-v4-flash" },
+  { kind: "deepseek", name: "DeepSeek", provider: "deepseek", icon: "deepseek", base_url: "https://api.deepseek.com/", admin_url: "https://platform.deepseek.com", model: "deepseek-flash" },
   { kind: "minimax", name: "MiniMax CN", provider: "minimax", icon: "minimax", base_url: "https://api.minimaxi.com/v1", admin_url: "https://platform.minimaxi.com", model: "MiniMax-M3" },
   { kind: "zhipu", name: "Zhipu CN", provider: "ZAI", icon: "zhipu", base_url: "https://open.bigmodel.cn/api/v1", admin_url: "https://open.bigmodel.cn", model: "glm-5.3" },
   { kind: "opencode", name: "OpenCode", provider: "opencode-go", icon: "opencode", base_url: "https://opencode.ai/zen/go/v1", admin_url: null, model: "glm-5.2" },
   { kind: "openrouter", name: "OpenRouter", provider: "openrouter", icon: "openrouter", base_url: "https://openrouter.ai/api/v1", admin_url: "https://openrouter.ai/settings/keys", model: "openai/gpt-5.6-sol" },
   { kind: "mimo", name: "小米 MiMo", provider: "mimo", icon: "xiaomi-mimo", base_url: "https://api.xiaomimimo.com/v1", admin_url: "https://platform.xiaomimimo.com/#/console/api-keys", model: "mimo-v2.5-pro" },
+  { kind: "kimi", name: "Kimi", provider: "kimi", icon: "kimi", base_url: "https://api.moonshot.cn/v1", admin_url: "https://platform.kimi.com/console/api-keys", model: "kimi-k3" },
+  { kind: "qwen", name: "通义千问", provider: "Model_Studio_Token_Plan_Personal", icon: "qwen", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://bailian.console.aliyun.com", model: "qwen3.8-max" },
+  { kind: "hunyuan", name: "腾讯混元", provider: "hy3-tokenhub", icon: "hunyuan", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey", model: "hy3" },
+  { kind: "doubao", name: "火山方舟豆包", provider: "volcengine-coding-plan", icon: "volcengine", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey", model: "ark-code-latest" },
   { kind: "custom", name: "自定义", provider: null, icon: "custom", base_url: "", admin_url: null, model: "自定义" },
 ];
 

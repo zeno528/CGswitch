@@ -1,0 +1,8 @@
+model_provider = "Model_Studio_Token_Plan_Personal"
+model = "qwen3.8-max"
+
+[model_providers.Model_Studio_Token_Plan_Personal]
+name = "Model_Studio_Token_Plan_Personal"
+base_url = "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+experimental_bearer_token = "<你的百炼 Token Plan API Key>"
+wire_api = "responses"

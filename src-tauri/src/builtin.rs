@@ -21,6 +21,16 @@ pub const OPENROUTER_CONFIG: &[u8] = include_bytes!("../assets/builtin/openroute
 pub const MIMO_CONFIG: &[u8] = include_bytes!("../assets/builtin/mimo.toml");
 pub const MIMO_MODELS: &[u8] = include_bytes!("../assets/builtin/mimo-models.json");
 
+pub const KIND_KIMI: &str = "kimi";
+pub const KIND_QWEN: &str = "qwen";
+pub const KIND_HUNYUAN: &str = "hunyuan";
+pub const KIND_DOUBAO: &str = "doubao";
+
+pub const KIMI_CONFIG: &[u8] = include_bytes!("../assets/builtin/kimi.toml");
+pub const QWEN_CONFIG: &[u8] = include_bytes!("../assets/builtin/qwen.toml");
+pub const HUNYUAN_CONFIG: &[u8] = include_bytes!("../assets/builtin/hunyuan.toml");
+pub const DOUBAO_CONFIG: &[u8] = include_bytes!("../assets/builtin/doubao.toml");
+
 pub struct BuiltinTemplate {
     pub kind: &'static str,
     pub name: &'static str,
@@ -35,7 +45,7 @@ pub struct BuiltinTemplate {
     pub insert_catalog_line: bool,
 }
 
-pub const BUILTINS: [BuiltinTemplate; 7] = [
+pub const BUILTINS: [BuiltinTemplate; 11] = [
     BuiltinTemplate {
         kind: KIND_DEEPSEEK,
         name: "DeepSeek",
@@ -111,6 +121,50 @@ pub const BUILTINS: [BuiltinTemplate; 7] = [
         catalog: Some(("models.json", MIMO_MODELS)),
         insert_catalog_line: false,
     },
+    // Kimi：官方 Codex 接入页 config 逐字（moonshot.cn/v1，wire=responses），
+    // kimi-k3 不在 Codex 内置目录，用 model_context_window 补足上下文声明。
+    BuiltinTemplate {
+        kind: KIND_KIMI,
+        name: "Kimi",
+        icon: "kimi",
+        config: KIMI_CONFIG,
+        placeholder: Some("<你的 Kimi API Key>".as_bytes()),
+        catalog: None,
+        insert_catalog_line: false,
+    },
+    // 通义千问：仅百炼 Token Plan（个人）通道原生 Responses，base 固定；
+    // Coding Plan/按量只走 chat 或需 workspaceId，不作通用预设。
+    BuiltinTemplate {
+        kind: KIND_QWEN,
+        name: "通义千问",
+        icon: "qwen",
+        config: QWEN_CONFIG,
+        placeholder: Some("<你的百炼 Token Plan API Key>".as_bytes()),
+        catalog: None,
+        insert_catalog_line: false,
+    },
+    // 腾讯混元：仅 TokenHub 按量 Hy3/Hy4 原生 Responses，无状态需禁 store；
+    // 订阅 Coding Plan 只走 chat（Codex 已移除 chat wire），不可用。
+    BuiltinTemplate {
+        kind: KIND_HUNYUAN,
+        name: "腾讯混元",
+        icon: "hunyuan",
+        config: HUNYUAN_CONFIG,
+        placeholder: Some("<你的腾讯混元 API Key>".as_bytes()),
+        catalog: None,
+        insert_catalog_line: false,
+    },
+    // 火山方舟豆包：Coding Plan 专用 base（/api/coding/v3）原生 Responses；
+    // 勿改 /api/v3（不耗 Coding Plan 额度、按量另计）。
+    BuiltinTemplate {
+        kind: KIND_DOUBAO,
+        name: "火山方舟豆包",
+        icon: "volcengine",
+        config: DOUBAO_CONFIG,
+        placeholder: Some("<你的火山方舟 API Key>".as_bytes()),
+        catalog: None,
+        insert_catalog_line: false,
+    },
 ];
 
 impl BuiltinTemplate {
@@ -171,7 +225,7 @@ mod tests {
     fn embedded_configs_match_official_templates_byte_for_byte() {
         assert_eq!(
             DEEPSEEK_CONFIG,
-            b"model = \"deepseek-v4-flash\"\nmodel_provider = \"deepseek\"\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\nmodel_reasoning_effort = \"high\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.deepseek]\nname = \"deepseek\"\nbase_url = \"https://api.deepseek.com/\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<\xE4\xBD\xA0\xE7\x9A\x84 DeepSeek API Key>\""
+            b"model = \"deepseek-flash\"\nmodel_provider = \"deepseek\"\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\nmodel_reasoning_effort = \"high\"\nweb_search = \"disabled\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.deepseek]\nname = \"deepseek\"\nbase_url = \"https://api.deepseek.com/\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<\xE4\xBD\xA0\xE7\x9A\x84 DeepSeek API Key>\""
         );
         assert_eq!(
             MINIMAX_CONFIG,
@@ -201,8 +255,8 @@ mod tests {
 
     #[test]
     fn embedded_catalogs_keep_original_size_and_line_endings() {
-        assert_eq!(DEEPSEEK_MODELS.len(), 114364);
-        assert_eq!(count(DEEPSEEK_MODELS, b"\r\n"), 205);
+        assert_eq!(DEEPSEEK_MODELS.len(), 76247);
+        assert_eq!(count(DEEPSEEK_MODELS, b"\r\n"), 139);
         assert_eq!(ZHIPU_MODELS.len(), 4061);
         assert_eq!(count(ZHIPU_MODELS, b"\r\n"), 114);
         assert_eq!(MINIMAX_CATALOG.len(), 953);
@@ -351,13 +405,11 @@ mod tests {
     fn deepseek_catalog_preserves_search_tool_overrides() {
         let catalog: serde_json::Value = serde_json::from_slice(DEEPSEEK_MODELS).unwrap();
         let models = catalog["models"].as_array().unwrap();
-        assert_eq!(models.len(), 3);
-        assert_eq!(models[0]["slug"], "deepseek-v4-flash");
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0]["slug"], "deepseek-flash");
         assert_eq!(models[0]["supports_search_tool"], false);
         assert_eq!(models[1]["slug"], "deepseek-v4-pro");
         assert_eq!(models[1]["supports_search_tool"], false);
-        assert_eq!(models[2]["slug"], "deepseek-v4-flash-vision-exp");
-        assert_eq!(models[2]["supports_search_tool"], true);
     }
 
     #[test]
@@ -379,6 +431,31 @@ mod tests {
                 w == b"model_catalog_json = \"~/.codex/model-catalogs/custom-catalog.json\""
             }));
         assert!(rendered.windows(b"mm-key".len()).any(|w| w == b"mm-key"));
+    }
+
+    #[test]
+    fn new_responses_presets_are_wire_responses_without_catalog() {
+        for kind in [KIND_KIMI, KIND_QWEN, KIND_HUNYUAN, KIND_DOUBAO] {
+            let t = template(kind).unwrap();
+            assert_eq!(t.catalog, None, "{kind} 首版不内置静态模型目录");
+            assert!(!t.insert_catalog_line);
+            let cfg = String::from_utf8_lossy(t.config);
+            assert!(
+                cfg.contains("wire_api = \"responses\""),
+                "{kind} 应为原生 responses wire"
+            );
+            assert!(
+                !cfg.contains("env_key"),
+                "{kind} 应遵循项目 experimental_bearer_token 惯例"
+            );
+            let rendered = t.render_config(Some("sk-test")).unwrap();
+            let ph = t.placeholder.expect("新模板必须有密钥占位符");
+            assert!(
+                !rendered.windows(ph.len()).any(|w| w == ph),
+                "{kind} 占位符应被替换"
+            );
+            assert!(rendered.windows(b"sk-test".len()).any(|w| w == b"sk-test"));
+        }
     }
 
     fn count(haystack: &[u8], needle: &[u8]) -> usize {

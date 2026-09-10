@@ -61,7 +61,7 @@ export function ProfileCardContent({
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
   const authSource = profile.auth_source ?? (profile.account_id ? "oauth" : "desktop");
-  const authTitle = `${authSource === "desktop" ? "Codex登录" : "OAuth登录"}${subscriptionAuthed ? "" : "（未登录）"}`;
+  const authTitle = `${authSource === "desktop" ? "跟随 Codex登录" : "OAuth登录"}${subscriptionAuthed ? "" : "（未登录）"}`;
   const primaryLabel = balanceInfo?.usage_label ?? (isUsageProvider ? "5小时" : "额度");
   const weeklyLabel = balanceInfo?.weekly_label ?? (isUsageProvider ? "7天" : "周期");
   const balanceLabel = isSubscriptionProfile ? "额度" : isUsageProvider ? "用量" : "余额";
@@ -109,7 +109,7 @@ interface ProfileCardActionsProps {
 
 export function ProfileCardActions({ active, busy, connectionDimmed, connectionTitle, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   return (
-    <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
+    <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
       <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />使用中</> : "切换"}</button>
       <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" title="复制供应商" aria-label="复制供应商" onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
       <button type="button" className={`apple-icon-button enabled:hover:bg-(--profile-chip-bg) disabled:cursor-not-allowed disabled:opacity-40 ${connectionDimmed ? "text-[var(--text-secondary)]" : "text-accent"}`} disabled={connectionDimmed || busy || testing} title={connectionTitle} aria-label="测试连通性" onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
