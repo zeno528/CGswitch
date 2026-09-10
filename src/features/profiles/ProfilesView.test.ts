@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("./ProfilesView.tsx", import.meta.url), "utf8");
+const source = readFileSync(new URL("./ProfilesView.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const cardSource = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
