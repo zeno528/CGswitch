@@ -8,7 +8,9 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { crosshairCursor, drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as editorPlaceholder, rectangularSelection, dropCursor, type ViewUpdate } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
+import i18next from "i18next";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import type { EditorDiagnosticSummary, TomlDiagnostic } from "../types";
 
@@ -71,7 +73,7 @@ export function collectJsonDiagnostics(state: EditorState): Diagnostic[] {
         to: Math.min(state.doc.length, Math.max(node.to, node.from + 1)),
         severity: "error",
         source: "JSON",
-        message: "JSON 语法错误，请检查此处的逗号、括号或值",
+        message: i18next.t("editor.jsonSyntaxError"),
       });
     },
   });
@@ -106,6 +108,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   { value, language, placeholder, readOnly = false, validateToml = api.validateToml, onChange, onDiagnostics },
   ref,
 ) {
+  const { t } = useTranslation();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   const hostRef = useRef<HTMLDivElement>(null);
   const horizontalScrollbarRowRef = useRef<HTMLDivElement>(null);
@@ -233,7 +236,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
             EditorState.readOnly.of(readOnly),
             EditorView.editable.of(!readOnly),
           ]),
-          editorPlaceholder(placeholder ?? "在此编辑配置…"),
+          editorPlaceholder(placeholder ?? t("editor.placeholder")),
           language === "toml" ? StreamLanguage.define(toml) : json(),
           language === "toml" ? tomlDiagnostics : jsonDiagnostics,
           lintGutter(),
@@ -265,7 +268,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       editor.destroy();
       if (viewRef.current === editor) viewRef.current = null;
     };
-  }, [dark, language, placeholder, validateToml]);
+  }, [dark, language, placeholder, validateToml, t]);
 
   useEffect(() => {
     const editor = viewRef.current;
@@ -308,7 +311,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           ref={horizontalScrollbarRef}
           className="cm-horizontal-scrollbar"
           role="scrollbar"
-          aria-label="编辑器水平滚动条"
+          aria-label={t("editor.horizontalScrollbar")}
           aria-orientation="horizontal"
           aria-valuemin={0}
           aria-valuemax={0}

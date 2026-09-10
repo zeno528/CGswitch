@@ -1,5 +1,6 @@
 import { Check, ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
@@ -30,6 +31,7 @@ export function AppSelect<T extends string | number>({
   className = "",
   renderLabel,
 }: AppSelectProps<T>) {
+  const { t } = useTranslation();
   const selected = options.find((option) => String(option.value) === String(value));
   const hasOptions = options.length > 0;
   const [open, setOpen] = useState(false);
@@ -111,7 +113,7 @@ export function AppSelect<T extends string | number>({
   };
 
   const menu = (
-    <div ref={menuRef} className="app-select-menu" data-open={open} data-placement={placement} style={menuStyle} role="listbox" aria-label={placeholder ?? "选项"} aria-hidden={!open}>
+    <div ref={menuRef} className="app-select-menu" data-open={open} data-placement={placement} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
       {options.map((option) => <button
         key={String(option.value)}
         type="button"
@@ -146,7 +148,7 @@ export function AppSelect<T extends string | number>({
           }
         }}
       >
-        <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? "请选择"}</span>
+        <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>
         <ChevronDown className="app-select__icon" size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       {createPortal(menu, document.body)}

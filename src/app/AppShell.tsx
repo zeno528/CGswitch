@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { isTauri } from "../api";
+import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
@@ -12,6 +13,7 @@ import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
 import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
+import { setupI18n } from "../i18n";
 import type { SkillSummary } from "../types";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
@@ -24,8 +26,14 @@ export default function AppShell() {
   const [profilesReset, setProfilesReset] = useState(0);
   const [mcpReset, setMcpReset] = useState(0);
   const [skillCache, setSkillCache] = useState<SkillSummary[] | null>(null);
+  const { t } = useTranslation();
   const { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
+  // 设置保存后（例如换了界面语言）即时切换，无需重启；托盘菜单文案一并同步。
+  useEffect(() => {
+    const language = setupI18n(state?.settings.language);
+    if (isTauri) void api.setAppLanguage(language).catch(() => undefined);
+  }, [state?.settings.language]);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate } = useActivationRefresh();
   const sidebar = useSidebar();
@@ -36,6 +44,8 @@ export default function AppShell() {
     void (async () => {
       await refresh();
       if (cancelled) return;
+      // 语言必须在窗口显示前切好，否则用户会看到一帧系统语言。
+      setupI18n(stateRef.current?.settings.language);
       if (isTauri && !stateRef.current?.settings.silent_start) {
         // 等首绘（双 rAF ≈ 一帧完成）再显示，窗口出现即完整内容；
         // 更新重启等热启动下加载极快，不等首绘会闪出空白窗口。
@@ -149,9 +159,9 @@ export default function AppShell() {
           <div data-tauri-drag-region className="min-w-0 flex-1 self-stretch" />
           {!isMacWindow ? (
             <div className="flex h-full items-center">
-              <button type="button" className="window-control-button" aria-label="最小化" onClick={() => void appWindow?.minimize()}><Minus strokeWidth={2} aria-hidden="true" /></button>
-              <button type="button" className="window-control-button" aria-label="最大化" onClick={() => void appWindow?.toggleMaximize()}><Square strokeWidth={2} aria-hidden="true" /></button>
-              <button type="button" className="window-control-button window-control-button--close" aria-label="关闭" onClick={() => void appWindow?.close()}><X strokeWidth={2} aria-hidden="true" /></button>
+              <button type="button" className="window-control-button" aria-label={t("window.minimize")} onClick={() => void appWindow?.minimize()}><Minus strokeWidth={2} aria-hidden="true" /></button>
+              <button type="button" className="window-control-button" aria-label={t("window.maximize")} onClick={() => void appWindow?.toggleMaximize()}><Square strokeWidth={2} aria-hidden="true" /></button>
+              <button type="button" className="window-control-button window-control-button--close" aria-label={t("window.close")} onClick={() => void appWindow?.close()}><X strokeWidth={2} aria-hidden="true" /></button>
             </div>
           ) : null}
         </div>
@@ -175,36 +185,36 @@ export default function AppShell() {
                 <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">CGswitch</span>
               </div>
               {sidebar.sidebarFlyoutArmed ? (
-                <span className="apple-sidebar-flyout" aria-hidden="true">{sidebar.sidebarCollapsed ? "展开侧边栏" : "收缩侧边栏"}</span>
+                <span className="apple-sidebar-flyout" aria-hidden="true">{t(sidebar.sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}</span>
               ) : null}
             </div>
             <nav className="mx-1.5 mt-3 space-y-1">
-              <button type="button" className={navClass(view === "profiles")} aria-label="供应商配置" onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "profiles")} aria-label={t("nav.providers")} onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Layers2 strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>供应商配置</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">供应商配置</span> : null}
+                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.providers")}</span>
+                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.providers")}</span> : null}
               </button>
-              <button type="button" className={navClass(view === "mcp")} aria-label="MCP 管理" onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "mcp")} aria-label={t("nav.mcp")} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <McpIcon className="h-[18px] w-[18px]" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>MCP 管理</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">MCP 管理</span> : null}
+                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.mcp")}</span>
+                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.mcp")}</span> : null}
               </button>
-              <button type="button" className={navClass(view === "plugins")} aria-label="插件" onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "plugins")} aria-label={t("nav.plugins")} onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Blocks strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>插件</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">插件</span> : null}
+                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.plugins")}</span>
+                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.plugins")}</span> : null}
               </button>
-              <button type="button" className={navClass(view === "skills")} aria-label="Skill" onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "skills")} aria-label={t("nav.skills")} onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Puzzle strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>Skill</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">Skill</span> : null}
+                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.skills")}</span>
+                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.skills")}</span> : null}
               </button>
             </nav>
             <div className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5">
-              <button type="button" className={navClass(view === "settings")} aria-label="设置" onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "settings")} aria-label={t("nav.settings")} onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <SettingsIcon strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>设置</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">设置</span> : null}
+                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.settings")}</span>
+                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.settings")}</span> : null}
               </button>
             </div>
           </aside>

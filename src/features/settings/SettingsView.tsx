@@ -9,6 +9,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { AppSwitch } from "../../components/AppSwitch";
@@ -22,6 +23,7 @@ interface SettingsViewProps { state: AppState; onPreviewTheme: (theme: Settings[
 
 export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved, onHome, initialSection = "general" }: SettingsViewProps) {
   const feedback = useFeedback();
+  const { t } = useTranslation("settings");
   const [form, setForm] = useState<Settings>(state.settings);
   const [section, setSection] = useState<Section>(initialSection);
   const [saving, setSaving] = useState(false);
@@ -50,7 +52,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   const openPath = async (item: PathInfo) => { if (openingPath) return; setOpeningPath(item.path); try { await api.openPath(item.path); } catch (error) { feedback.error(String(error)); } finally { setOpeningPath(null); } };
   const tab = (id: Section, label: string, Icon: typeof Cog) => <button type="button" data-section={id} className={`settings-tab relative flex h-10 items-center gap-1.5 rounded-md px-3 transition-colors ${section === id ? "text-accent" : "text-[var(--text-secondary)] hover:text-accent"}`} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon className="h-4 w-4 shrink-0" strokeWidth={2} />{label}</button>;
 
-  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div className="apple-page-bar apple-page-bar--sticky"><button type="button" className="apple-page-header apple-back-button" aria-label="返回首页" onClick={onHome}><ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} /><span className="apple-title">设置</span></button></div><div ref={tabBar} className="relative mt-2 flex items-center gap-1 border-b border-[var(--panel-border)]" aria-label="设置分区"><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", "通用", Cog)}{tab("account", "账号", CircleUserRound)}{tab("codex", "应用", AppWindow)}{tab("advanced", "高级", Wrench)}{tab("about", "关于", Info)}</div><div key={section} className="apple-edit-content">
+  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div className="apple-page-bar apple-page-bar--sticky"><button type="button" className="apple-page-header apple-back-button" aria-label={t("view.backHome")} onClick={onHome}><ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} /><span className="apple-title">{t("view.title")}</span></button></div><div ref={tabBar} className="relative mt-2 flex items-center gap-1 border-b border-[var(--panel-border)]" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("account", t("view.tabAccount"), CircleUserRound)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
     {section === "general" ? <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} /> : null}
     {section === "codex" ? (
       <div className="apple-group mt-[var(--gap-section)] p-[var(--gap-card)]">
@@ -61,9 +63,9 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
                 <RotateCw className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
-                <div className="setting-title">应用配置后自动重启 Codex</div>
+                <div className="setting-title">{t("codex.autoRestartTitle")}</div>
                 <div className="setting-description mt-0.5">
-                  开启后应用配置会自动重启 Codex 生效；关闭则只保存配置，稍后可手动重启。
+                  {t("codex.autoRestartDescription")}
                 </div>
               </div>
             </div>
@@ -78,9 +80,9 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
                 <ArrowUpCircle className="h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <div>
-                <div className="setting-title">自动检查更新</div>
+                <div className="setting-title">{t("codex.autoCheckTitle")}</div>
                 <div className="setting-description mt-0.5">
-                  启动时检查新版本，发现后在 Codex 状态旁提示更新。
+                  {t("codex.autoCheckDescription")}
                 </div>
               </div>
             </div>
@@ -92,7 +94,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
         </div>
       </div>
     ) : null}
-    {section === "account" ? <div className="apple-group brand-gradient-surface mt-[var(--gap-section)] p-4"><div className="flex items-center gap-3"><ProfileIconTile name="ChatGPT" icon="openai-chatgpt" size="sm" /><h2 className="title-sm">ChatGPT 账号</h2></div><div className="mt-3"><ChatGPTAccount initialStatus={state.auth_status} balanceCache={state.balance_cache} /></div></div> : null}
+    {section === "account" ? <div className="apple-group brand-gradient-surface mt-[var(--gap-section)] p-4"><div className="flex items-center gap-3"><ProfileIconTile name="ChatGPT" icon="openai-chatgpt" size="sm" /><h2 className="title-sm">{t("account.title")}</h2></div><div className="mt-3"><ChatGPTAccount initialStatus={state.auth_status} balanceCache={state.balance_cache} /></div></div> : null}
     {section === "advanced" ? <SettingsAdvanced form={form} onPatch={(patch) => void saveGeneral(patch)} paths={state.paths} backupsEpoch={backupsEpoch} onOpenPath={openPath} onRefresh={onRefresh} /> : null}
     {section === "about" ? <SettingsAbout paths={state.paths} onOpenPath={openPath} openingPath={openingPath} /> : null}
   </div></section>;
