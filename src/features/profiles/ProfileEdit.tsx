@@ -615,8 +615,9 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                 <div className="flex gap-1">
                   {tabs.map((tab) => <button key={tab.id} type="button" className={`relative flex h-8 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors ${activeTab === tab.id ? "bg-(--selection-bg) text-accent" : "muted hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={activeTab === tab.id} title={tab.title} onClick={() => { setActiveTab(tab.id); setEditorDiagnostics({ count: 0, firstLine: null }); }}>{tab.id === "config" ? <Settings className="h-3.5 w-3.5" strokeWidth={2} /> : <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />}<span>{tab.label}</span>{((tab.id === "config" && configDirty) || (tab.id === "models" && catalogDirty) || (tab.id === "auth" && authDirty)) ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}</button>)}
                 </div>
+                {/* flex-wrap：标签用 whitespace-nowrap，英文文案比中文长约 30–50%，装不下时折行而不是被右边缘裁掉 */}
                 {activeTab === "config" ? (
-                  <div className="flex select-none items-center gap-2">
+                  <div className="flex select-none flex-wrap items-center justify-end gap-2">
                     {showLongContextOverride ? (
                       <div className={`flex h-8 items-center overflow-hidden rounded-[10px] border text-xs transition-colors ${longContextEnabled ? "border-accent/30 bg-accent/10" : "border-[var(--panel-ring)]"}`}>
                         <label className={`flex h-full cursor-pointer items-center gap-2 px-2.5 transition-colors ${longContextEnabled ? "text-accent" : ""}`} title={t("edit.longContextTitle")}>

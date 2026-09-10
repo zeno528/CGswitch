@@ -2,7 +2,8 @@
 export default {
   nav: {
     providers: "Providers",
-    mcp: "MCP Servers",
+    // 侧边栏给标签只留约 72px；"MCP Servers" 会溢出，导航用短名，完整名见页面标题 mcp:list.title
+    mcp: "MCP",
     plugins: "Plugins",
     skills: "Skill",
     settings: "Settings",
