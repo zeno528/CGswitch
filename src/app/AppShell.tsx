@@ -4,7 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
-import { useActivationRefresh, useAppState, useCodexPolling, useSidebarIndicator, useThemeMode, type AppView } from "./appShellHooks";
+import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import { loadMcpServers, loadPlugins, loadSkills } from "./managementDataCache";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -28,7 +28,7 @@ export default function AppShell() {
   useThemeMode(state?.settings.theme);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate } = useActivationRefresh();
-  const sidebar = useSidebarIndicator(view);
+  const sidebar = useSidebar();
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +137,7 @@ export default function AppShell() {
   };
 
   const navClass = (active: boolean) =>
-    `apple-sidebar-nav-button ${active ? "bg-(--selection-bg) font-semibold text-accent" : "font-normal hover:bg-black/5 dark:hover:bg-white/8"}`;
+    `apple-sidebar-nav-button ${active ? "bg-(--tile-bg) text-accent" : "font-normal hover:bg-black/5 dark:hover:bg-white/8"}`;
 
   return (
     <FeedbackProvider>
@@ -178,24 +178,23 @@ export default function AppShell() {
                 <span className="apple-sidebar-flyout" aria-hidden="true">{sidebar.sidebarCollapsed ? "展开侧边栏" : "收缩侧边栏"}</span>
               ) : null}
             </div>
-            <nav ref={sidebar.sidebarNavRef} className="relative mx-1.5 mt-3 space-y-1">
-              {sidebar.indicator.visible ? <span className={`apple-sidebar-indicator ${sidebar.indicator.instant ? "apple-sidebar-indicator--instant" : ""}`} style={{ top: `${sidebar.indicator.top}px`, left: `${sidebar.indicator.left}px` }} aria-hidden="true" /> : null}
-              <button ref={sidebar.profileNavRef} type="button" className={navClass(view === "profiles")} aria-label="供应商配置" onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+            <nav className="mx-1.5 mt-3 space-y-1">
+              <button type="button" className={navClass(view === "profiles")} aria-label="供应商配置" onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Layers2 strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>供应商配置</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">供应商配置</span> : null}
               </button>
-              <button ref={sidebar.mcpNavRef} type="button" className={navClass(view === "mcp")} aria-label="MCP 管理" onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "mcp")} aria-label="MCP 管理" onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <McpIcon className="h-[18px] w-[18px]" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>MCP 管理</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">MCP 管理</span> : null}
               </button>
-              <button ref={sidebar.pluginsNavRef} type="button" className={navClass(view === "plugins")} aria-label="插件" onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "plugins")} aria-label="插件" onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Blocks strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>插件</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">插件</span> : null}
               </button>
-              <button ref={sidebar.skillsNavRef} type="button" className={navClass(view === "skills")} aria-label="Skill" onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass(view === "skills")} aria-label="Skill" onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <Puzzle strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>Skill</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">Skill</span> : null}

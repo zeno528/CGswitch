@@ -5,10 +5,6 @@ import type { AppState, CodexAppStatus, Settings } from "../types";
 
 export type AppView = "profiles" | "mcp" | "plugins" | "skills" | "settings";
 
-export function indicatorTop(targetRect: { top: number }, navRect: { top: number }) {
-  return targetRect.top - navRect.top + 8;
-}
-
 export function useAppState() {
   const [state, setState] = useState<AppState | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -140,62 +136,17 @@ export function useActivationRefresh() {
   return { activationEpoch, activate };
 }
 
-export function useSidebarIndicator(view: AppView) {
+export function useSidebar() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => localStorage.getItem("cgswitch.sidebar-collapsed") !== "0",
   );
   const [sidebarFlyoutArmed, setSidebarFlyoutArmed] = useState(true);
-  const [indicator, setIndicator] = useState({ top: 8, left: 0, instant: false, visible: view !== "settings" });
-  const profileNavRef = useRef<HTMLButtonElement>(null);
-  const mcpNavRef = useRef<HTMLButtonElement>(null);
-  const pluginsNavRef = useRef<HTMLButtonElement>(null);
-  const skillsNavRef = useRef<HTMLButtonElement>(null);
-  const sidebarNavRef = useRef<HTMLElement>(null);
-  const previousViewRef = useRef<AppView>(view);
-
-  const updateIndicator = useCallback(() => {
-    if (view === "settings") return;
-    const target = view === "profiles" ? profileNavRef.current : view === "mcp" ? mcpNavRef.current : view === "plugins" ? pluginsNavRef.current : skillsNavRef.current;
-    const nav = sidebarNavRef.current;
-    if (!target || !nav) return;
-    setIndicator((current) => ({
-      ...current,
-      top: indicatorTop(target.getBoundingClientRect(), nav.getBoundingClientRect()),
-      left: target.offsetLeft,
-    }));
-  }, [view]);
-
-  useEffect(() => {
-    const previousView = previousViewRef.current;
-    previousViewRef.current = view;
-    if (view === "settings") {
-      setIndicator((current) => ({ ...current, instant: true, visible: false }));
-      return;
-    }
-
-    const instant = previousView === "settings";
-    if (instant) setIndicator((current) => ({ ...current, instant: true }));
-    let reset: number | undefined;
-    const frame = requestAnimationFrame(() => {
-      updateIndicator();
-      if (!instant) return;
-      setIndicator((current) => ({ ...current, visible: true }));
-      reset = requestAnimationFrame(() => {
-        setIndicator((current) => ({ ...current, instant: false }));
-      });
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-      if (reset !== undefined) cancelAnimationFrame(reset);
-    };
-  }, [updateIndicator, sidebarCollapsed, view]);
 
   const toggleSidebar = () => {
     setSidebarCollapsed((collapsed) => {
       const next = !collapsed;
       localStorage.setItem("cgswitch.sidebar-collapsed", next ? "1" : "0");
       if (next) setSidebarFlyoutArmed(false);
-      window.setTimeout(updateIndicator, 360);
       return next;
     });
   };
@@ -205,11 +156,5 @@ export function useSidebarIndicator(view: AppView) {
     sidebarFlyoutArmed,
     setSidebarFlyoutArmed,
     toggleSidebar,
-    indicator,
-    profileNavRef,
-    mcpNavRef,
-    pluginsNavRef,
-    skillsNavRef,
-    sidebarNavRef,
   };
 }

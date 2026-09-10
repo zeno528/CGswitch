@@ -107,7 +107,7 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 - …
 ```
 
-> **不要**在 CHANGELOG 里写「如何选择安装包」和「macOS 首次打开」：这两段由 `.github/workflows/release.yml` 的 release job 自动追加到发行页（安装指南兜底，必带），写进 CHANGELOG 会与工作流产出重复。旧版本段落里出现的这两段是历史遗留，新版本不沿用。版本标题行与 Full Changelog 对比链接同样由工作流自动生成（即使没写日志，发行页也有版本号、日期和变更入口），都不用写。
+> **不要**在 CHANGELOG 里写「如何选择安装包」安装指南（含 macOS 首次打开提示）：这段由 `.github/workflows/release.yml` 的 release job 自动追加到发行页（安装指南兜底，必带），写进 CHANGELOG 会与工作流产出重复。旧版本段落里出现的这段是历史遗留，新版本不沿用。版本标题行与 Full Changelog 对比链接同样由工作流自动生成（即使没写日志，发行页也有版本号、日期和变更入口），都不用写。
 
 ### Step 3: 写入 CHANGELOG 与本地 commit
 

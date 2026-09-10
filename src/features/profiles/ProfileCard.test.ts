@@ -18,17 +18,40 @@ describe("ProfileCard 官网入口", () => {
     expect(adminButton).toBeLessThan(metaRow);
   });
 
-  it("官方配置激活时使用 ChatGPT 品牌渐变", () => {
-    expect(source).toContain('active && profile.kind === "official" ? " brand-gradient-surface" : ""');
-    expect(styles).toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface),\n.profile-drag-preview.is-active {");
+  it("所有配置激活时使用 ChatGPT 品牌渐变", () => {
+    expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
+    expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
+    expect(source).not.toContain("third-party-gradient");
+    expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
+    expect(styles).toContain(".profile-drag-preview.is-active {");
   });
 
-  it("提高官方渐变卡片的文字与图标对比度", () => {
+  it("浅色激活卡提高辅助信息对比度并保留余额药丸底色", () => {
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: color-mix(in srgb, var(--primary-button-bg) 84%, transparent);");
+    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);");
+    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
+    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: color-mix(in srgb, var(--primary-button-bg) 70%, transparent);");
+  });
+
+  it("激活时不显示描边，但悬停时保留描边", () => {
+    const activeRuleStart = styles.indexOf(".profile-list > .apple-group.is-active {");
+    const activeRuleEnd = styles.indexOf("}", activeRuleStart);
+    const activeRule = styles.slice(activeRuleStart, activeRuleEnd);
+
+    expect(activeRule).toContain("box-shadow: none;");
+    expect(activeRule).not.toContain("outline:");
+    expect(styles).toContain(".profile-list > .apple-group:not(.is-active):hover {\n  outline: 1px solid");
+    expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
+  });
+
+  it("提高渐变卡片的文字与图标对比度", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {\n  color: var(--primary-button-bg);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title=\"删除\"]) {");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface [aria-label*=\"登录\"] {");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title=\"删除\"]),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface [aria-label*=\"登录\"],\n.profile-drag-preview.brand-gradient-surface [aria-label*=\"登录\"] {");
   });
 
   it("胶囊底色统一定义在 --chip-bg，浅色下余额用量药丸改用页面底色融入卡片", () => {
