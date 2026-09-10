@@ -394,14 +394,14 @@ textarea::placeholder {
 
 /* 设置项说明：与标题形成稳定的字号、字重和对比度层级 */
 .setting-description {
-  color: color-mix(in srgb, var(--text-secondary) 82%, #1c1c1e 18%);
+  color: var(--text-secondary);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   line-height: 1.45;
 }
 
 :root.dark .setting-description {
-  color: #ffffff;
+  color: var(--text-secondary);
 }
 
 /* 设置页图标容器：只保留边界，颜色由图标本身表达 */

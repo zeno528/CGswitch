@@ -15,11 +15,19 @@ describe("AppShell 布局", () => {
 
   it("移除侧栏激活装饰条，并固定悬浮卡片为普通字重", () => {
     expect(source).not.toContain("apple-sidebar-indicator");
-    expect(source).toContain('active ? "bg-(--selection-bg) text-accent" :');
+    expect(source).toContain('active ? "bg-(--tile-bg) text-accent" :');
+    expect(source).not.toContain('active ? "bg-(--selection-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) font-semibold text-accent" :');
     expect(styles).not.toContain(".apple-sidebar-indicator");
     expect(styles).toMatch(/\.apple-sidebar-flyout \{[\s\S]*font-weight: 400;/);
     expect(styles).toContain("color: var(--text-primary);");
+  });
+
+  it("让设置项说明在浅色和深色主题都保持弱层级", () => {
+    const descriptionStyles = styles.match(/\.setting-description \{[\s\S]*?\n\}/)?.[0];
+    expect(descriptionStyles).toContain("color: var(--text-secondary);");
+    expect(descriptionStyles).toContain("font-weight: 400;");
+    expect(styles).toContain(":root.dark .setting-description {\n  color: var(--text-secondary);\n}");
   });
 
   it("让窗口控制区与主卡片仅保留微小间隙", () => {

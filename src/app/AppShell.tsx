@@ -137,7 +137,7 @@ export default function AppShell() {
   };
 
   const navClass = (active: boolean) =>
-    `apple-sidebar-nav-button ${active ? "bg-(--selection-bg) text-accent" : "font-normal hover:bg-black/5 dark:hover:bg-white/8"}`;
+    `apple-sidebar-nav-button ${active ? "bg-(--tile-bg) text-accent" : "font-normal hover:bg-black/5 dark:hover:bg-white/8"}`;
 
   return (
     <FeedbackProvider>

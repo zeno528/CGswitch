@@ -32,6 +32,9 @@ describe("SettingsSections", () => {
     );
     const activeButton = html.match(/<button[^>]*aria-pressed="true"[^>]*>/)?.[0];
     expect(activeButton).toContain("font-normal");
+    expect(activeButton).toContain("bg-(--tile-bg)");
+    expect(activeButton).toContain("text-accent");
+    expect(activeButton).not.toContain("bg-(--selection-bg)");
     expect(activeButton).not.toContain("font-semibold");
   });
 
