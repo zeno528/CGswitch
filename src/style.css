@@ -61,6 +61,9 @@
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
+  /* 界面字体唯一来源：macOS 命中 SF Pro（-apple-system），Windows 命中 Segoe UI；
+     中文再往后落到 PingFang SC / 微软雅黑，不会退到宋体。任何界面文字都从这里取，不要另写一套。 */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Cascadia Mono", monospace;
   --main-top-inset: 1rem;
   --edit-footer-padding-right: var(--gap-main);
@@ -120,15 +123,7 @@ body {
   margin: 0;
   background: var(--app-bg);
   color: #1c1c1e;
-  font-family:
-    -apple-system,
-    BlinkMacSystemFont,
-    "SF Pro Text",
-    "Segoe UI",
-    "PingFang SC",
-    "Microsoft YaHei",
-    system-ui,
-    sans-serif;
+  font-family: var(--font-ui);
   font-size: var(--font-size-base);
   line-height: 1.6;
 }
@@ -157,12 +152,6 @@ body {
   [aria-disabled="true"]
 ) {
   cursor: not-allowed;
-}
-
-/* 输入框占位提示统一用微软雅黑，避免 Windows 中文字体回退到宋体；不改变实际输入内容的字体 */
-input::placeholder,
-textarea::placeholder {
-  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
 :root.dark body {
@@ -708,7 +697,7 @@ body.drag-active * {
   align-items: center;
   border-radius: var(--sidebar-nav-radius);
   display: flex;
-  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: var(--font-ui);
   font-size: var(--font-size-base);
   font-weight: 400;
   gap: 0.5rem;
@@ -804,9 +793,9 @@ body.drag-active * {
   to { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
 }
 
-:root.dark .apple-sidebar-nav-button .apple-sidebar-label {
-  color: #ffffff;
-}
+/* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
+   这里曾有一条 :root.dark 写死 #ffffff 的规则——它与 body 深色值重复，却因「直接规则压过继承」
+   把激活态的 accent 截胡，导致深色下激活项不变色。不要再加回来。 */
 
 .apple-sidebar--collapsed .apple-sidebar-label {
   max-width: 0;
@@ -1152,14 +1141,14 @@ body.drag-active * {
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]),
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]) {
+.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
   color: var(--primary-button-bg);
 }
 
-.profile-list > .apple-group.brand-gradient-surface [aria-label*="登录"],
-.profile-drag-preview.brand-gradient-surface [aria-label*="登录"] {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,
+.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
   background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);
   color: var(--primary-button-bg);
@@ -1177,7 +1166,7 @@ body.drag-active * {
   color: var(--success-text);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button[title="删除"] {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button.profile-card-delete {
   color: var(--danger);
 }
 

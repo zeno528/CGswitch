@@ -1,24 +1,17 @@
 import { Check, Copy, ExternalLink, KeyRound, Monitor, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { balanceChipClass } from "../../presets";
+import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
 import type { AuthStatus, DeviceCodeResponse, ProfileBalanceInfo } from "../../types";
 
 const authQuotaCache = new Map<string, ProfileBalanceInfo>();
 
 function authQuotaCacheKey(source: "desktop" | "oauth", accountId?: string) {
   return `auth:${source}:${accountId ?? "codex-external"}`;
-}
-
-function formatQuotaReset(resetAt?: number | null) {
-  if (resetAt == null) return null;
-  return `重置时间：${new Date(resetAt).toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" })}`;
-}
-
-function quotaTitle(label: string) {
-  return label === "7天" ? "每周使用限额" : `${label}使用限额`;
 }
 
 function remainingPercent(usedPercent: number) {
@@ -36,6 +29,9 @@ function cubicInOut(value: number) {
 }
 
 function QuotaProgressBar({ label, usedPercent, resetAt, onRefresh, loading, animationRevision, animationFromRemaining }: { label: string; usedPercent: number; resetAt?: number | null; onRefresh?: () => void; loading?: boolean; animationRevision: number; animationFromRemaining?: number }) {
+  const { t, i18n } = useTranslation("settings");
+  // 窗口标签的文案在 profiles 命名空间，另取一个对应的 t
+  const { t: tBalance } = useTranslation("profiles");
   const used = Math.min(100, Math.max(0, usedPercent));
   const remaining = remainingPercent(usedPercent);
   const animationStart = animationFromRemaining ?? 0;
@@ -43,7 +39,9 @@ function QuotaProgressBar({ label, usedPercent, resetAt, onRefresh, loading, ani
   const animationStartScale = animationMax === 0 ? 1 : animationStart / animationMax;
   const animationEndScale = animationMax === 0 ? 1 : remaining / animationMax;
   const fillClass = used >= 90 ? "bg-(--danger)" : used >= 70 ? "bg-(--warning)" : "bg-(--chip-success)";
-  const reset = formatQuotaReset(resetAt);
+  const title = isWeeklyWindowLabel(label) ? t("account.weeklyLimit") : t("account.usageLimit", { label: localizeBalanceLabel(label, tBalance) ?? label });
+  // 重置时间按当前界面语言本地化，不写死中文日期习惯
+  const reset = resetAt == null ? null : t("account.resetTime", { time: new Date(resetAt).toLocaleString(i18n.language, { dateStyle: "short", timeStyle: "short" }) });
   const fillRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -69,21 +67,24 @@ function QuotaProgressBar({ label, usedPercent, resetAt, onRefresh, loading, ani
   return <div className="grid min-w-0 grid-cols-1 items-center gap-2 text-xs sm:grid-cols-[14rem_minmax(0,1fr)_auto] sm:gap-6">
     <div className="min-w-0">
       <div className="flex items-center gap-2">
-        <span className="field-label">{quotaTitle(label)}</span>
-        {onRefresh ? <button type="button" className="apple-icon-button h-5 w-5 text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" disabled={loading} title="刷新额度" aria-label="刷新额度" onClick={onRefresh}>{loading ? <LoadingSpinner /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />}</button> : null}
+        <span className="field-label">{title}</span>
+        {onRefresh ? <button type="button" className="apple-icon-button h-5 w-5 text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={onRefresh}>{loading ? <LoadingSpinner /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />}</button> : null}
       </div>
       {reset ? <div className="meta-xs mt-0.5 muted">{reset}</div> : null}
     </div>
     <div className="flex min-w-0 items-center">
-      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/6 dark:bg-white/8" role="progressbar" aria-label={`${quotaTitle(label)}剩余`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
+      <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-black/6 dark:bg-white/8" role="progressbar" aria-label={t("account.remainingAria", { title })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
         <span ref={fillRef} key={animationRevision} className={`origin-left block h-full rounded-full ${fillClass}`} style={{ width: `${animationRevision ? animationMax : remaining}%`, transform: animationRevision ? `scaleX(${animationStartScale})` : undefined }} />
       </div>
     </div>
-    <span className="meta-xs shrink-0 whitespace-nowrap">剩余 <span className={`font-semibold ${balanceChipClass(used, false)}`}>{remaining}%</span></span>
+    <span className="meta-xs shrink-0 whitespace-nowrap">{t("account.remainingShort")} <span className={`font-semibold ${balanceChipClass(used, false)}`}>{remaining}%</span></span>
   </div>;
 }
 
 function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" | "oauth"; accountId?: string; cachedBalance?: ProfileBalanceInfo }) {
+  const { t } = useTranslation("settings");
+  // 窗口标签的文案在 profiles 命名空间，另取一个对应的 t
+  const { t: tBalance } = useTranslation("profiles");
   const cacheKey = authQuotaCacheKey(source, accountId);
   const [quota, setQuota] = useState<ProfileBalanceInfo | null>(() => authQuotaCache.get(cacheKey) ?? cachedBalance ?? null);
   const [error, setError] = useState("");
@@ -100,7 +101,7 @@ function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" 
     try {
       const result = await api.authGetQuota(source, accountId);
       const info = result.balance_infos[0];
-      if (!info) throw new Error("额度查询未返回数据");
+      if (!info) throw new Error("额度查询未返回数据"); // i18n-exempt: 内部错误信息，界面只按 error 真假渲染固定文案
       const previousQuota = displayedQuotaRef.current;
       displayedQuotaRef.current = info;
       setAnimationFromQuota(previousQuota);
@@ -131,14 +132,16 @@ function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey]);
 
-  const primaryLabel = quota?.usage_label ?? "额度";
-  const weeklyLabel = quota?.weekly_label ?? "周期";
+  // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
+  const primaryLabel = localizeBalanceLabel(quota?.usage_label, tBalance) ?? t("account.quotaLabel");
+  const weeklyLabel = localizeBalanceLabel(quota?.weekly_label, tBalance) ?? t("account.periodLabel");
 
-  return <div className="mt-3 border-t border-[var(--panel-divider)] pt-2">{quota?.usage_percent != null ? <div className="space-y-2"><QuotaProgressBar label={primaryLabel} usedPercent={quota.usage_percent} resetAt={quota.usage_reset_at} onRefresh={() => void refresh()} loading={loading} animationRevision={animationRevision} animationFromRemaining={animationFromQuota?.usage_percent == null ? undefined : remainingPercent(animationFromQuota.usage_percent)} />{quota.weekly_usage_percent != null ? <QuotaProgressBar label={weeklyLabel} usedPercent={quota.weekly_usage_percent} resetAt={quota.weekly_reset_at} animationRevision={animationRevision} animationFromRemaining={animationFromQuota?.weekly_usage_percent == null ? undefined : remainingPercent(animationFromQuota.weekly_usage_percent)} /> : null}</div> : <p className={`mt-1 text-xs ${error ? "text-[var(--danger)]" : "muted"}`}>{error ? "额度查询失败" : "正在查询额度…"}</p>}</div>;
+  return <div className="mt-3 border-t border-[var(--panel-divider)] pt-2">{quota?.usage_percent != null ? <div className="space-y-2"><QuotaProgressBar label={primaryLabel} usedPercent={quota.usage_percent} resetAt={quota.usage_reset_at} onRefresh={() => void refresh()} loading={loading} animationRevision={animationRevision} animationFromRemaining={animationFromQuota?.usage_percent == null ? undefined : remainingPercent(animationFromQuota.usage_percent)} />{quota.weekly_usage_percent != null ? <QuotaProgressBar label={weeklyLabel} usedPercent={quota.weekly_usage_percent} resetAt={quota.weekly_reset_at} animationRevision={animationRevision} animationFromRemaining={animationFromQuota?.weekly_usage_percent == null ? undefined : remainingPercent(animationFromQuota.weekly_usage_percent)} /> : null}</div> : <p className={`mt-1 text-xs ${error ? "text-[var(--danger)]" : "muted"}`}>{error ? t("account.quotaFailed") : t("account.quotaLoading")}</p>}</div>;
 }
 
 export default function ChatGPTAccount({ initialStatus, balanceCache }: { initialStatus: AuthStatus; balanceCache?: Record<string, ProfileBalanceInfo> }) {
   const feedback = useFeedback();
+  const { t } = useTranslation("settings");
   const [status, setStatus] = useState(initialStatus);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -160,7 +163,7 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
       const deadline = Date.now() + current.expires_in * 1000;
       while (!disposed.current && !pollCancelled.current && Date.now() < deadline) {
         const account = await api.authPollForAccount(current.device_code);
-        if (account) { setLogin(null); await refreshStatus(); feedback.success("ChatGPT 账号已添加，可在配置中选择"); break; }
+        if (account) { setLogin(null); await refreshStatus(); feedback.success(t("account.addedToast")); break; }
         await new Promise((resolve) => window.setTimeout(resolve, current.interval * 1000));
       }
     } catch (error) { if (!disposed.current) { feedback.error(String(error)); setLogin(null); } }
@@ -171,7 +174,7 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
     if (busy) return;
     setBusy(true); setLogin(null); setCopied(false); pollCancelled.current = false;
     try { const next = await api.authStartLogin(); setLogin(next); await api.openUrl(next.verification_uri); void poll(next); }
-    catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? "认证请求被地区限制拦截。请开启系统代理并确认节点位于 ChatGPT 支持的地区后重试。" : text); setBusy(false); }
+    catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? t("account.regionBlocked") : text); setBusy(false); }
   };
 
   const copyUserCode = async () => {
@@ -181,12 +184,12 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
       setCopied(true);
       if (copyResetTimer.current !== undefined) window.clearTimeout(copyResetTimer.current);
       copyResetTimer.current = window.setTimeout(() => setCopied(false), 1600);
-    } catch { feedback.error("复制失败，请手动选择复制"); }
+    } catch { feedback.error(t("account.copyFailed")); }
   };
 
   const removeAccount = async (accountId: string) => {
-    if (!await feedback.confirm({ title: "移除订阅账号", description: "确定移除该 ChatGPT 订阅账号吗？移除后本机将清除该账号的登录凭据。", confirmText: "移除", destructive: true })) return;
-    try { await api.authRemoveAccount(accountId); feedback.success("账号已移除"); await refreshStatus(); }
+    if (!await feedback.confirm({ title: t("account.removeTitle"), description: t("account.removeDescription"), confirmText: t("account.remove"), destructive: true })) return;
+    try { await api.authRemoveAccount(accountId); feedback.success(t("account.removedToast")); await refreshStatus(); }
     catch (error) { feedback.error(String(error)); }
   };
 
@@ -195,31 +198,31 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span>
-          <div><div className="setting-title">ChatGPT 设备码登录</div><p className="setting-description mt-0.5">请在浏览器完成 ChatGPT 登录，应用会自动继续。</p></div>
+          <div><div className="setting-title">{t("account.deviceLoginTitle")}</div><p className="setting-description mt-0.5">{t("account.deviceLoginDescription")}</p></div>
         </div>
-        <span className="apple-chip chip-warn" role="status"><LoadingSpinner />等待授权中...</span>
+        <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
       </div>
       <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]">
         <div className="text-center">
-          <div className="field-label">授权码：请在浏览器中输入此码</div>
+          <div className="field-label">{t("account.authCodeLabel")}</div>
           <div className="mt-2 flex items-center justify-center gap-2">
             <code className="mono whitespace-nowrap rounded-lg bg-black/8 px-4 py-2 text-2xl font-bold tracking-[0.3em] dark:bg-white/8">{login.user_code}</code>
-            <button type="button" className={`grid h-8 w-8 place-items-center rounded-full ${copied ? "bg-success/10 text-success" : "text-accent hover:bg-(--profile-chip-bg)"}`} title={copied ? "已复制" : "复制授权码"} aria-label={copied ? "授权码已复制" : "复制授权码"} onClick={() => void copyUserCode()}>{copied ? <Check className="h-4 w-4" strokeWidth={2} /> : <Copy className="h-4 w-4" strokeWidth={2} />}</button>
+            <button type="button" className={`grid h-8 w-8 place-items-center rounded-full ${copied ? "bg-success/10 text-success" : "text-accent hover:bg-(--profile-chip-bg)"}`} title={copied ? t("account.copied") : t("account.copyCode")} aria-label={copied ? t("account.codeCopied") : t("account.copyCode")} onClick={() => void copyUserCode()}>{copied ? <Check className="h-4 w-4" strokeWidth={2} /> : <Copy className="h-4 w-4" strokeWidth={2} />}</button>
           </div>
         </div>
-        <div className="mt-3 border-t border-[var(--panel-border)] pt-3 text-center"><div className="muted text-xs">授权页面</div><button type="button" className="mt-1 flex w-full min-w-0 items-center justify-center gap-1.5 text-sm font-medium text-accent hover:underline" title={login.verification_uri} onClick={() => void api.openUrl(login.verification_uri)}><span className="truncate">{login.verification_uri}</span><ExternalLink className="h-4 w-4 shrink-0" strokeWidth={2} /></button></div>
-        <div className="mt-4 flex justify-center"><button type="button" className="apple-action-button" onClick={() => { pollCancelled.current = true; setLogin(null); setBusy(false); }}>取消登录</button></div>
+        <div className="mt-3 border-t border-[var(--panel-border)] pt-3 text-center"><div className="muted text-xs">{t("account.authPage")}</div><button type="button" className="mt-1 flex w-full min-w-0 items-center justify-center gap-1.5 text-sm font-medium text-accent hover:underline" title={login.verification_uri} onClick={() => void api.openUrl(login.verification_uri)}><span className="truncate">{login.verification_uri}</span><ExternalLink className="h-4 w-4 shrink-0" strokeWidth={2} /></button></div>
+        <div className="mt-4 flex justify-center"><button type="button" className="apple-action-button" onClick={() => { pollCancelled.current = true; setLogin(null); setBusy(false); }}>{t("account.cancelLogin")}</button></div>
       </div>
     </div>
   );
 
   if (status.authenticated) return (
     <div className="space-y-4">
-      {status.external ? <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-center gap-3"><Monitor className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="min-w-0"><div className="setting-title">跟随 Codex登录</div><span className="mono mt-0.5 block truncate text-sm font-medium">{status.external.login}</span></div></div><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
-      {status.accounts.length ? <div className="space-y-2">{status.accounts.map((account) => <div key={account.id} className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-center gap-3"><KeyRound className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="min-w-0 flex-1"><div className="setting-title">OAuth 设备码登录</div><span className="mono mt-0.5 block truncate text-sm font-medium">{account.login}</span></div><button type="button" className="apple-action-button text-[var(--danger)]" onClick={() => void removeAccount(account.id)}>移除</button></div><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}</div> : null}
-      <button type="button" className="apple-action-button" disabled={busy} onClick={() => void startLogin()}><Plus className="h-4 w-4" strokeWidth={2} />添加其他账号</button>
+      {status.external ? <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-center gap-3"><Monitor className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="min-w-0"><div className="setting-title">{t("account.followCodex")}</div><span className="mono mt-0.5 block truncate text-sm font-medium">{status.external.login}</span></div></div><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
+      {status.accounts.length ? <div className="space-y-2">{status.accounts.map((account) => <div key={account.id} className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-center gap-3"><KeyRound className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="min-w-0 flex-1"><div className="setting-title">{t("account.oauthDeviceLogin")}</div><span className="mono mt-0.5 block truncate text-sm font-medium">{account.login}</span></div><button type="button" className="apple-action-button text-[var(--danger)]" onClick={() => void removeAccount(account.id)}>{t("account.remove")}</button></div><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}</div> : null}
+      <button type="button" className="apple-action-button" disabled={busy} onClick={() => void startLogin()}><Plus className="h-4 w-4" strokeWidth={2} />{t("account.addAnother")}</button>
     </div>
   );
 
-  return <div><div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">尚未连接 ChatGPT</div><p className="setting-description mt-0.5">登录后可管理多个 ChatGPT 账号。</p></div></div><div className="mt-4"><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><ExternalLink className="h-4 w-4" strokeWidth={2} />使用 ChatGPT 登录</button></div></div>{loadError ? <p className="muted mt-3 text-sm">{loadError}</p> : null}</div>;
+  return <div><div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">{t("account.notConnected")}</div><p className="setting-description mt-0.5">{t("account.notConnectedDescription")}</p></div></div><div className="mt-4"><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.signIn")}</button></div></div>{loadError ? <p className="muted mt-3 text-sm">{loadError}</p> : null}</div>;
 }

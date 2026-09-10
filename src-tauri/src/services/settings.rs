@@ -131,6 +131,13 @@ impl AppContext {
         if !["system", "light", "dark"].contains(&settings.theme.as_str()) {
             return Err(app_err!("不支持的主题设置"));
         }
+        // 语言值大小写不敏感地归一到规范形式（容忍手动编辑过 settings.json）
+        settings.language = match settings.language.trim().to_ascii_lowercase().as_str() {
+            "zh-cn" | "zh" => "zh-CN".into(),
+            "en-us" | "en" => "en-US".into(),
+            "system" => "system".into(),
+            _ => return Err(app_err!("不支持的界面语言设置")),
+        };
         let text =
             serde_json::to_string_pretty(&settings).map_err(|_| app_err!("设置序列化失败"))?;
         atomic_write(&self.paths.settings, text.as_bytes())?;

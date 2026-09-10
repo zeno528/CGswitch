@@ -155,6 +155,7 @@ export const api = {
   deleteMcpServer: (name: string) => call<void>("delete_mcp_server", { name }),
   restartCodex: () => call<void>("restart_codex"),
   setWindowTheme: (dark: boolean) => call<void>("set_window_theme", { dark }),
+  setAppLanguage: (language: string) => call<void>("set_app_language", { language }),
   authStartLogin: () => call<DeviceCodeResponse>("auth_start_login"),
   authPollForAccount: (deviceCode: string) =>
     call<ManagedAccount | null>("auth_poll_for_account", { deviceCode }),

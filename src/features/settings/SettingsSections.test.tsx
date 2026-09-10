@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { FeedbackProvider } from "../../app/Feedback";
 import { AppUpdateProvider } from "../updates/AppUpdateProvider";
 import { SettingsAbout, SettingsGeneral, backupTitle, formatSize, formatTimestamp } from "./SettingsSections";
+import { setupI18n } from "../../i18n";
 import type { Settings } from "../../types";
 
 const settingsSectionsSource = readFileSync(new URL("./SettingsSections.tsx", import.meta.url), "utf8");
@@ -26,7 +27,7 @@ describe("SettingsSections", () => {
   });
 
   it("keeps the active theme option at normal weight", () => {
-    const form: Settings = { theme: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
@@ -39,6 +40,7 @@ describe("SettingsSections", () => {
   });
 
   it("provides a manual app update check in the about section", () => {
+    setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout paths={[]} onOpenPath={() => undefined} openingPath={null} /></AppUpdateProvider></FeedbackProvider>,
     );
@@ -67,10 +69,10 @@ describe("SettingsSections", () => {
   });
 
   it("手动检查发现新版只展示版本号，升级由用户点击触发", () => {
-    expect(settingsSectionsSource).toContain("立即升级");
-    expect(settingsSectionsSource).toContain("更新日志");
+    expect(settingsSectionsSource).toContain('t("about.updateNow")');
+    expect(settingsSectionsSource).toContain('t("about.changelog")');
     expect(settingsSectionsSource).toContain("releaseNotesUrl(update?.version ?? version.trim())");
-    expect(settingsSectionsSource).toContain("if (!found) feedback.success(\"已是最新版本\")");
+    expect(settingsSectionsSource).toContain('if (!found) feedback.success(t("about.upToDate"))');
     // 不再沿用旧逻辑：检查到新版立即自动下载安装
     expect(settingsSectionsSource).not.toContain("正在下载并安装");
     expect(settingsSectionsSource).not.toContain("await update.install()");
@@ -92,11 +94,32 @@ describe("SettingsSections", () => {
   it("自动检查更新开关位于应用分区而非通用区", () => {
     const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.meta.url), "utf8");
     expect(settingsViewSource).toContain('checked={form.auto_check_update}');
-    expect(settingsViewSource).toContain("启动时检查新版本，发现后在 Codex 状态旁提示更新");
-    const form: Settings = { theme: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    expect(settingsViewSource).toContain('t("codex.autoCheckDescription")');
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
     expect(html).not.toContain("自动检查更新");
+  });
+
+  it("语言选择控件按当前界面语言渲染，切换语言后文案随之变化", () => {
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    const render = () =>
+      renderToStaticMarkup(
+        <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
+      );
+
+    setupI18n("zh-CN");
+    const zhHtml = render();
+    expect(zhHtml).toContain("界面语言");
+    expect(zhHtml).toContain("外观主题");
+    expect(zhHtml).toContain("自动检测");
+
+    setupI18n("en-US");
+    const enHtml = render();
+    expect(enHtml).toContain("Language");
+    expect(enHtml).toContain("Appearance");
+    expect(enHtml).toContain("English");
+    expect(enHtml).not.toContain("界面语言");
   });
 });

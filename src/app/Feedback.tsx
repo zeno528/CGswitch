@@ -1,7 +1,9 @@
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Toast from "@radix-ui/react-toast";
+import i18next from "i18next";
 import { Check, Info, Trash2, TriangleAlert, X } from "lucide-react";
 import { createContext, useCallback, useContext, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 type ToastTone = "success" | "error" | "warning" | "info";
 
@@ -39,15 +41,17 @@ const toastIcons = { success: Check, error: X, warning: TriangleAlert, info: Inf
 const MAX_TOASTS = 3;
 
 export function normalizeToastMessage(message: string) {
+  // 下面两条匹配的是 Rust 侧原文，不是待展示文案：翻译会破坏去重逻辑。
   const normalized = message
     .trim()
     .replace(/^Error:\s*/i, "")
-    .replace(/连接失败[：:]\s*连接失败(?:[：:]\s*)?/g, "连接失败：")
-    .replace(/连接失败：\s*$/, "连接失败");
-  return normalized || "操作失败";
+    .replace(/连接失败[：:]\s*连接失败(?:[：:]\s*)?/g, "连接失败：") // i18n-exempt: 匹配后端原文
+    .replace(/连接失败：\s*$/, "连接失败"); // i18n-exempt: 匹配后端原文
+  return normalized || i18next.t("feedback.genericError");
 }
 
 export function FeedbackProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation();
   const [toasts, setToasts] = useState<ToastState[]>([]);
   const [confirmation, setConfirmation] = useState<ConfirmationState | null>(null);
   const confirmActionRef = useRef<HTMLButtonElement>(null);
@@ -124,7 +128,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
             >
               <ToastIcon className={`app-toast__icon app-toast__icon--${toast.tone}`} size={20} strokeWidth={2.5} aria-hidden="true" />
               <Toast.Description className="app-toast__content">{toast.message}</Toast.Description>
-              <Toast.Close className="app-toast__close" aria-label="关闭通知" title="关闭通知">
+              <Toast.Close className="app-toast__close" aria-label={t("feedback.dismissToast")} title={t("feedback.dismissToast")}>
                 <X size={14} strokeWidth={2.5} aria-hidden="true" />
               </Toast.Close>
             </Toast.Root>
@@ -172,14 +176,14 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
             </AlertDialog.Description>
             <div className="app-dialog-actions">
               <AlertDialog.Cancel className="apple-action-button" onClick={() => closeConfirmation(false)}>
-                {confirmation?.cancelText ?? "取消"}
+                {confirmation?.cancelText ?? t("feedback.cancel")}
               </AlertDialog.Cancel>
               <AlertDialog.Action
                 ref={confirmActionRef}
                 className={`apple-action-button ${confirmation?.destructive ? "app-button--danger" : "app-button--primary"}`}
                 onClick={() => closeConfirmation(true)}
               >
-                {confirmation?.confirmText ?? "确定"}
+                {confirmation?.confirmText ?? t("feedback.confirm")}
               </AlertDialog.Action>
             </div>
           </AlertDialog.Content>

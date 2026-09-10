@@ -1,0 +1,19 @@
+#!/bin/sh
+# 提交前检查（硬闸门，由 git 执行，不分代码来源：人、Claude、其他 AI 都要过）。
+#   - 改了 src-tauri/ → 全量 pnpm check（含 cargo fmt/clippy/测试，较慢）
+#   - 否则           → 前端链（样式 + i18n + typecheck + 单测，约 6 秒）
+# 本文件是正本（随仓库分发）；本机副本由 `pnpm hooks:sync` 安装到 .git/hooks/。
+set -e
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+if git diff --cached --name-only | grep -q '^src-tauri/'; then
+  echo "[pre-commit] 检测到 src-tauri/ 改动 → 全量 pnpm check（含 Rust 链，请稍候）"
+  pnpm check
+else
+  echo "[pre-commit] 前端链：样式 + i18n + typecheck + 单测"
+  node scripts/check-style-leaks.mjs
+  node scripts/check-i18n-leaks.mjs
+  npx tsc --noEmit
+  npx vitest run
+fi
+echo "[pre-commit] 通过"

@@ -50,8 +50,9 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {\n  color: var(--primary-button-bg);");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title=\"删除\"]),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface [aria-label*=\"登录\"],\n.profile-drag-preview.brand-gradient-surface [aria-label*=\"登录\"] {");
+    // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,\n.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {");
   });
 
   it("胶囊底色统一定义在 --chip-bg，浅色下余额用量药丸改用页面底色融入卡片", () => {

@@ -194,21 +194,20 @@ jobs:
 
           ---
 
-          ## 如何选择安装包
+          ## 下载安装指引
 
-          按操作系统下载对应安装包，双击（macOS 为拖入「应用程序」）即可完成安装。
+          | 系统 | 下载 | 安装 |
+          | --- | --- | --- |
+          | Windows | `CGswitch-v__VERSION__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `CGswitch-v__VERSION__-Windows.msi` |
+          | macOS | Apple 芯片：`CGswitch-v__VERSION__-macOS-arm64.dmg`<br>Intel：`CGswitch-v__VERSION__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
 
-          **Windows**：下载 `CGswitch-v__VERSION__-Windows-setup.exe`；批量部署、静默安装等场景可改用 `.msi` 版本。
-          **macOS（Apple 芯片 / M 系列）**：下载 `CGswitch-v__VERSION__-macOS-arm64.dmg`，打开后拖入「应用程序」。
-          **macOS（Intel 芯片）**：下载 `CGswitch-v__VERSION__-macOS-x64.dmg`，安装方式同上。
-
-          > **macOS 首次打开被阻止？** 先前往「系统设置 → 隐私与安全性」允许打开；仍无法打开时，在终端执行：
+          > **macOS 首次打开被阻止？** 在「系统设置 → 隐私与安全性」中允许打开；仍无法打开时执行：
           >
           > ```bash
           > xattr -cr /Applications/CGswitch.app
           > ```
           >
-          > 然后再次打开 CGswitch；若安装到了其他目录，请将命令中的路径替换为实际的 .app 路径。
+          > 然后重试；若应用不在 `/Applications`，将命令中的路径替换为实际 `.app` 路径。
           EOF
           sed -i "s/__VERSION__/$VERSION/g" "$GUIDE"
           {

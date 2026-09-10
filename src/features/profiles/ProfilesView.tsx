@@ -3,6 +3,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, 
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { AppDialog } from "../../components/AppDialog";
@@ -21,9 +22,10 @@ interface ProfilesViewProps {
 }
 
 function ProfileDragPreview({ profile, width, height, active, busy, subscriptionAuthed, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; subscriptionAuthed: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
+  const { t } = useTranslation("profiles");
   const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
   const connectionDimmed = !profile.provider ? !subscriptionAuthed : !profile.has_key;
-  const connectionTitle = !profile.provider ? subscriptionAuthed ? "测试订阅认证连通性" : "尚未认证 ChatGPT 订阅" : !profile.has_key ? "缺少 API 密钥，点击查看提示" : "测试连通性";
+  const connectionTitle = !profile.provider ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified") : !profile.has_key ? t("connection.missingApiKeyHint") : t("connection.test");
   return (
     <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
       <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
@@ -43,6 +45,7 @@ function ProfileDragPreview({ profile, width, height, active, busy, subscription
 
 export default function ProfilesView({ state, activationEpoch, onRefresh, onManageChatgptAccounts }: ProfilesViewProps) {
   const feedback = useFeedback();
+  const { t } = useTranslation("profiles");
   const [items, setItems] = useState(state.profiles);
   const [busy, setBusy] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -148,10 +151,10 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
     try {
       if (modal === "capture") {
         await api.captureProfile(profileName.trim());
-        feedback.success("捕获成功");
+        feedback.success(t("feedback.captureSuccess"));
       } else if (modalProfile) {
         await api.renameProfile(modalProfile.id, profileName.trim());
-        feedback.success("供应商已重命名");
+        feedback.success(t("feedback.providerRenamed"));
       }
       setModal(null);
       await onRefresh();
@@ -165,7 +168,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
     setRestarting(true);
     try {
       await api.restartCodex();
-      feedback.success("Codex 已重启");
+      feedback.success(t("feedback.codexRestarted"));
       await onRefresh();
     } catch (error) {
       feedback.error(String(error));
@@ -180,7 +183,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
     setBusy(true);
     try {
       await api.applyProfile(profile.id);
-      feedback.success("切换成功，重启Codex生效");
+      feedback.success(t("feedback.switchSuccess"));
       if (state.settings.auto_restart) await restart(true);
       await onRefresh();
     } catch (error) { feedback.error(String(error)); }
@@ -188,13 +191,13 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   };
 
   const removeProfile = async (profile: ProfileSummary) => {
-    const confirmed = await feedback.confirm({ title: "删除供应商", description: <>确定删除“<strong>{profile.name}</strong>”吗？删除后不可恢复。</>, confirmText: "删除", destructive: true });
+    const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="profiles" i18nKey="confirm.deleteConfirm" values={{ name: profile.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
     const previousIndex = items.findIndex((item) => item.id === profile.id);
     setItems((current) => current.filter((item) => item.id !== profile.id));
     try {
       await api.deleteProfile(profile.id);
-      feedback.success("供应商已删除");
+      feedback.success(t("feedback.providerDeleted"));
       await onRefresh();
     } catch (error) {
       setItems((current) => {
@@ -209,7 +212,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const duplicateProfile = async (profile: ProfileSummary) => {
     if (busy || duplicatingProfileRef.current) return;
     duplicatingProfileRef.current = true;
-    try { await api.duplicateProfile(profile.id); feedback.success("供应商已复制"); await onRefresh(); }
+    try { await api.duplicateProfile(profile.id); feedback.success(t("feedback.providerDuplicated")); await onRefresh(); }
     catch (error) { feedback.error(String(error)); }
     finally { duplicatingProfileRef.current = false; }
   };
@@ -241,7 +244,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
             <span className="codex-status__signal" aria-hidden="true"><span className="codex-status__signal-dot" /></span>
             <span className="codex-status__name">Codex</span>
             <span className="codex-status__divider" aria-hidden="true" />
-            <span className="codex-status__label">{state.codex.running ? "运行中" : "未运行"}</span>
+            <span className="codex-status__label">{state.codex.running ? t("status.running") : t("status.stopped")}</span>
           </span>
           <UpdateNotice />
         </div>
@@ -249,26 +252,26 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
           <div className="apple-toolbar-group">
             <button type="button" className="apple-action-button apple-action-button--quaternary"
               disabled={busy}
-              title="重启Codex APP" onClick={() => void restart(false)}>
+              title={t("toolbar.restart")} onClick={() => void restart(false)}>
               {restarting ? <LoadingSpinner size="md" /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
-              {restarting ? "重启中…" : "重启Codex APP"}
+              {restarting ? t("toolbar.restarting") : t("toolbar.restart")}
             </button>
             <button type="button" className="apple-icon-button text-accent" disabled={busy}
-              title="捕获当前配置" aria-label="捕获当前配置" onClick={openCapture}>
+              title={t("toolbar.capture")} aria-label={t("toolbar.capture")} onClick={openCapture}>
               <Camera className="h-4 w-4" strokeWidth={2} />
             </button>
           </div>
           <button type="button" className="apple-action-button app-button--primary" disabled={busy}
             onClick={() => setCreatingProfile(true)}>
-            <Plus className="h-4 w-4" strokeWidth={2} />添加供应商
+            <Plus className="h-4 w-4" strokeWidth={2} />{t("toolbar.addProvider")}
           </button>
         </div>
       </header>
       <div className="apple-edit-content">
-        <div>{items.length === 0 ? <EmptyStateCard icon={<Server className="h-5 w-5" strokeWidth={1.8} />}><p className="muted">还没有供应商配置。可以添加内置官方供应商，或先把 ~/.codex/config.toml 调整到目标状态，再点击“捕获当前配置”。</p></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)] will-change-transform">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} subscriptionAuthed={profileAuthAvailable(profile)} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => setEditingProfile(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} subscriptionAuthed={profileAuthAvailable(draggedProfile)} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
+        <div>{items.length === 0 ? <EmptyStateCard icon={<Server className="h-5 w-5" strokeWidth={1.8} />}><p className="muted">{t("empty.description")}</p></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)] will-change-transform">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} subscriptionAuthed={profileAuthAvailable(profile)} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => setEditingProfile(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} subscriptionAuthed={profileAuthAvailable(draggedProfile)} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
       </div>
-      <AppDialog open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }} title={modal === "capture" ? "保存当前配置快照" : "重命名供应商"} initialFocusRef={nameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setModal(null)}>取消</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !profileName.trim()} onClick={() => void submitModal()}>保存</button></>}>
-        <div className="space-y-4"><p className="muted text-sm">{modal === "capture" ? "为当前 Codex 配置创建快照，切换供应商后可一键恢复。" : "输入新的供应商名称。"}</p><input ref={nameInput} className="app-input" maxLength={50} placeholder="例如：DeepSeek 日常" value={profileName} onChange={(event) => setProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submitModal(); }} /></div>
+      <AppDialog open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }} title={modal === "capture" ? t("dialog.captureTitle") : t("dialog.renameTitle")} initialFocusRef={nameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setModal(null)}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !profileName.trim()} onClick={() => void submitModal()}>{t("dialog.save")}</button></>}>
+        <div className="space-y-4"><p className="muted text-sm">{modal === "capture" ? t("dialog.captureDescription") : t("dialog.renameDescription")}</p><input ref={nameInput} className="app-input" maxLength={50} placeholder={t("dialog.namePlaceholder")} value={profileName} onChange={(event) => setProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submitModal(); }} /></div>
       </AppDialog>
     </section>
   );

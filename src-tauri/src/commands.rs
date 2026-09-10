@@ -601,6 +601,19 @@ pub fn parse_mcp_fragment(toml: String) -> AppResult<McpServerSpec> {
     codex_config::parse_mcp_fragment(&toml)
 }
 
+/// 更新托盘菜单文案。语言由前端解析后传入（"zh-CN" / "en-US"）。
+#[tauri::command]
+pub fn set_app_language(language: String, tray: State<'_, crate::TrayMenuItems>) -> AppResult<()> {
+    let (show, quit) = crate::tray_labels(&language);
+    tray.show
+        .set_text(show)
+        .map_err(|error| app_err!("更新托盘菜单失败: {error}"))?;
+    tray.quit
+        .set_text(quit)
+        .map_err(|error| app_err!("更新托盘菜单失败: {error}"))?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_window_theme(dark: bool, app: AppHandle) -> AppResult<()> {
     #[cfg(not(windows))]

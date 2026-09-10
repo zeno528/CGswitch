@@ -34,7 +34,8 @@ describe("ProfilesView 拖拽预览", () => {
   });
 
   it("激活卡拖拽预览的官网与登录标识沿用主色", () => {
-    expect(styles).toContain(".profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title=\"删除\"]) {\n  color: var(--primary-button-bg);");
-    expect(styles).toContain(".profile-drag-preview.brand-gradient-surface [aria-label*=\"登录\"] {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);\n  color: var(--primary-button-bg);");
+    // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
+    expect(styles).toContain(".profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {\n  color: var(--primary-button-bg);");
+    expect(styles).toContain(".profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);\n  color: var(--primary-button-bg);");
   });
 });

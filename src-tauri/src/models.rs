@@ -243,6 +243,8 @@ pub struct ProfileDetail {
 pub struct Settings {
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_language")]
+    pub language: String,
     #[serde(default)]
     pub auto_restart: bool,
     #[serde(default)]
@@ -263,6 +265,11 @@ fn default_theme() -> String {
     "system".into()
 }
 
+/// 界面语言；"system" 表示跟随系统语言。
+fn default_language() -> String {
+    "system".into()
+}
+
 fn default_database_backup_keep_count() -> u32 {
     5
 }
@@ -275,6 +282,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: "system".into(),
+            language: default_language(),
             auto_restart: false,
             autostart_enabled: false,
             silent_start: false,
