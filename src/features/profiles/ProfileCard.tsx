@@ -1,5 +1,6 @@
 import { Check, Copy, Globe, GripVertical, KeyRound, Monitor, Wallet, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api } from "../../api";
@@ -9,6 +10,7 @@ import { useFeedback } from "../../app/Feedback";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
 import { TrashIcon } from "../../components/TrashIcon";
+import { localizeBalanceLabel } from "./balanceLabel";
 
 const balanceInfoCache = new Map<string, ProfileBalanceInfo>();
 const balanceErrorCache = new Map<string, string>();
@@ -56,37 +58,39 @@ export function ProfileCardContent({
   onOpenAdmin,
   onRename,
 }: ProfileCardContentProps) {
+  const { t } = useTranslation("profiles");
   const balanceInfo = balanceInfos[0] ?? null;
   const isSubscriptionProfile = profile.kind === "official";
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
   const authSource = profile.auth_source ?? (profile.account_id ? "oauth" : "desktop");
-  const authTitle = `${authSource === "desktop" ? "跟随 Codex登录" : "OAuth登录"}${subscriptionAuthed ? "" : "（未登录）"}`;
-  const primaryLabel = balanceInfo?.usage_label ?? (isUsageProvider ? "5小时" : "额度");
-  const weeklyLabel = balanceInfo?.weekly_label ?? (isUsageProvider ? "7天" : "周期");
-  const balanceLabel = isSubscriptionProfile ? "额度" : isUsageProvider ? "用量" : "余额";
+  const authTitle = `${authSource === "desktop" ? t("card.authDesktop") : t("card.authOAuth")}${subscriptionAuthed ? "" : t("card.authNotSignedIn")}`;
+  // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
+  const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.quota"));
+  const weeklyLabel = localizeBalanceLabel(balanceInfo?.weekly_label, t) ?? (isUsageProvider ? t("balance.window7d") : t("balance.period"));
+  const balanceLabel = isSubscriptionProfile ? t("card.quota") : isUsageProvider ? t("card.usage") : t("card.balance");
   const primaryUsagePercent = balanceInfo?.usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.usage_percent : balanceInfo.usage_percent) : null;
   const weeklyUsagePercent = balanceInfo?.weekly_usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.weekly_usage_percent : balanceInfo.weekly_usage_percent) : null;
-  const primaryUsageText = isSubscriptionProfile ? `${primaryLabel}: 剩` : isUsageProvider ? `${primaryLabel}:` : `${primaryLabel} `;
-  const weeklyUsageText = isSubscriptionProfile ? `${weeklyLabel}: 剩` : isUsageProvider ? `${weeklyLabel}:` : `${weeklyLabel} `;
+  const primaryUsageText = isSubscriptionProfile ? t("card.usageRemaining", { label: primaryLabel }) : isUsageProvider ? `${primaryLabel}:` : `${primaryLabel} `;
+  const weeklyUsageText = isSubscriptionProfile ? t("card.usageRemaining", { label: weeklyLabel }) : isUsageProvider ? `${weeklyLabel}:` : `${weeklyLabel} `;
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <ProfileIconTile name={profile.name} icon={profile.icon} />
       <div className="profile-card-content__text min-w-0 flex-1">
         <div className="flex min-h-7 items-center gap-2">
-          <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title="点击重命名" onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
-          {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title="打开官网" aria-label="打开官网" onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
-          {!profile.provider ? <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${subscriptionAuthed ? "bg-accent/10 text-accent" : "bg-black/5 muted dark:bg-white/6"}`} title={authTitle} aria-label={authTitle}>
+          <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title={t("card.clickToRename")} onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
+          {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
+          {!profile.provider ? <span className={`profile-card-auth-badge inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${subscriptionAuthed ? "bg-accent/10 text-accent" : "bg-black/5 muted dark:bg-white/6"}`} title={authTitle} aria-label={authTitle}>
             {authSource === "desktop" ? <Monitor className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" /> : <KeyRound className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />}
           </span> : null}
         </div>
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
-          <span className="min-w-0 truncate">{profile.model ?? "未设置"}</span>
+          <span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>
           {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}
-          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? "查询失败（点击重试）" : isSubscriptionProfile ? "百分比=剩余额度，时间为重置倒计时；点击刷新" : "点击刷新"} aria-label={isSubscriptionProfile ? "ChatGPT额度" : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
+          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? t("balance.queryFailedRetry") : isSubscriptionProfile ? t("balance.subscriptionTooltip") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
             <Wallet className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
-            {balanceError ? <span className="chip-danger">查询失败</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>余额: </span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
+            {balanceError ? <span className="chip-danger">{t("balance.queryFailed")}</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>{t("balance.balancePrefix")}</span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
         </div>
       </div>
@@ -108,12 +112,13 @@ interface ProfileCardActionsProps {
 }
 
 export function ProfileCardActions({ active, busy, connectionDimmed, connectionTitle, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+  const { t } = useTranslation("profiles");
   return (
     <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
-      <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />使用中</> : "切换"}</button>
-      <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" title="复制供应商" aria-label="复制供应商" onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
-      <button type="button" className={`apple-icon-button enabled:hover:bg-(--profile-chip-bg) disabled:cursor-not-allowed disabled:opacity-40 ${connectionDimmed ? "text-[var(--text-secondary)]" : "text-accent"}`} disabled={connectionDimmed || busy || testing} title={connectionTitle} aria-label="测试连通性" onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
-      <button type="button" className="apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || active} title="删除" aria-label="删除" onClick={onRemove}><TrashIcon /></button>
+      <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />{t("actions.inUse")}</> : t("actions.switch")}</button>
+      <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
+      <button type="button" className={`apple-icon-button enabled:hover:bg-(--profile-chip-bg) disabled:cursor-not-allowed disabled:opacity-40 ${connectionDimmed ? "text-[var(--text-secondary)]" : "text-accent"}`} disabled={connectionDimmed || busy || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
+      <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
     </div>
   );
 }
@@ -133,6 +138,7 @@ export default function ProfileCard({
   onDuplicate,
 }: ProfileCardProps) {
   const feedback = useFeedback();
+  const { t } = useTranslation("profiles");
   const [testing, setTesting] = useState(false);
   const [connectionState, setConnectionState] = useState<"unknown" | "ok" | "fail">("unknown");
   const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>([]);
@@ -152,14 +158,14 @@ export default function ProfileCard({
   const fetchBalance = async () => {
     if (!supportsBalance || !profile.show_balance || balanceFetchingRef.current) return;
     if (profile.kind !== "official" && !profile.has_key) {
-      invalidateBalance("缺少 API 密钥");
+      invalidateBalance(t("balance.missingApiKey"));
       return;
     }
     balanceFetchingRef.current = true;
     try {
       const result = await api.getProfileBalance(profile.id);
       const infos = result.balance_infos;
-      if (!infos[0]) throw new Error("查询未返回余额/用量数据");
+      if (!infos[0]) throw new Error("查询未返回余额/用量数据"); // i18n-exempt: 该消息只被当布尔用，界面渲染的是固定文案 balance.queryFailed
       setBalanceError("");
       balanceErrorCache.delete(profile.id);
       setBalanceInfos(infos);
@@ -195,17 +201,17 @@ export default function ProfileCard({
 
   const connectionDimmed = !profile.provider ? !subscriptionAuthed : connectionState === "fail" || !profile.has_key;
   const connectionTitle = !profile.provider
-    ? subscriptionAuthed ? "测试订阅认证连通性" : "尚未认证 ChatGPT 订阅"
-    : !profile.has_key ? "缺少 API 密钥，点击查看提示" : "测试连通性";
+    ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified")
+    : !profile.has_key ? t("connection.missingApiKeyHint") : t("connection.test");
   const testConnection = async () => {
     if (testing) return;
     if (!profile.provider && !subscriptionAuthed) {
-      feedback.warning("尚未完成 ChatGPT 订阅认证，请先到设置页登录");
+      feedback.warning(t("connection.subscriptionWarning"));
       return;
     }
     if (profile.provider && !profile.has_key) {
       setConnectionState("fail");
-      feedback.warning("还没有配置 API 密钥，请先填写后再测试");
+      feedback.warning(t("connection.missingApiKeyWarning"));
       return;
     }
     setTesting(true);
@@ -213,14 +219,14 @@ export default function ProfileCard({
       const result = await api.testProfileConnection(profile.id);
       if (result.ok) {
         setConnectionState("ok");
-        feedback.success(`连接正常${result.latency_ms != null ? ` · ${result.latency_ms}ms` : ""}`);
+        feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
       } else {
         setConnectionState("fail");
-        feedback.error(`连接失败：${result.error ?? "未知错误"}`);
+        feedback.error(t("connection.failed", { error: result.error ?? t("connection.unknownError") }));
       }
     } catch (error) {
       setConnectionState("fail");
-      feedback.error(`测试失败：${String(error)}`);
+      feedback.error(t("connection.testFailed", { error: String(error) }));
     } finally {
       setTesting(false);
     }
@@ -233,10 +239,10 @@ export default function ProfileCard({
       data-profile-id={profile.id}
       style={style}
       className={`apple-group${active ? " is-active brand-gradient-surface" : ""}${dragHover ? " is-drag-hover" : ""} group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${sortable.isDragging ? "pointer-events-none opacity-0" : "opacity-100"}`}
-      title="单击编辑"
+      title={t("card.clickToEdit")}
       onClick={onEdit}
     >
-      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grab place-items-center self-center rounded-md py-1 pl-3 pr-3 muted transition-colors hover:opacity-70 active:cursor-grabbing sm:self-stretch" title="拖动排序" aria-label="拖动排序" {...sortable.attributes} {...sortable.listeners} onClick={(event) => event.stopPropagation()}>
+      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grab place-items-center self-center rounded-md py-1 pl-3 pr-3 muted transition-colors hover:opacity-70 active:cursor-grabbing sm:self-stretch" title={t("card.dragToReorder")} aria-label={t("card.dragToReorder")} {...sortable.attributes} {...sortable.listeners} onClick={(event) => event.stopPropagation()}>
         <GripVertical className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
       </span>
       <ProfileCardContent

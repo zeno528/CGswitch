@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FeedbackProvider } from "../../app/Feedback";
+import { setupI18n } from "../../i18n";
 import { AppUpdateProvider, releaseNotesUrl, UpdateNotice } from "./AppUpdateProvider";
 
 const providerSource = readFileSync(new URL("./AppUpdateProvider.tsx", import.meta.url), "utf8");
@@ -17,6 +18,7 @@ const render = (enabled: boolean) => renderToStaticMarkup(
 
 describe("AppUpdateProvider", () => {
   it("未发现更新时横幅不产出任何 UI", () => {
+    setupI18n("zh-CN");
     expect(render(true)).toBe(render(false));
     expect(render(true)).not.toContain("新版本 v");
   });
@@ -28,13 +30,13 @@ describe("AppUpdateProvider", () => {
   });
 
   it("升级必须由用户点击「立即升级」触发，安装失败走 toast", () => {
-    expect(providerSource).toContain("立即升级");
-    expect(providerSource).toContain("feedback.error(updateFailureMessage(error))");
+    expect(providerSource).toContain('t("notice.updateNow")');
+    expect(providerSource).toContain("feedback.error(updateFailureMessage(error, t))");
     expect(providerSource).not.toContain("downloadAndInstall");
   });
 
   it("悬浮卡片提供更新日志入口（GitHub 最新 Release 页）", () => {
-    expect(providerSource).toContain("更新日志");
+    expect(providerSource).toContain('t("notice.changelog")');
     expect(providerSource).toContain("releases/tag/v");
     expect(providerSource).not.toContain("releases/latest");
   });
@@ -52,7 +54,7 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("onClick={() => setOpen((value) => !value)}");
     expect(providerSource).not.toContain("onMouseEnter={() => setHovered(true)}");
     expect(providerSource).not.toContain("const open = hovered;");
-    expect(providerSource).toContain('aria-label="关闭更新提示"');
+    expect(providerSource).toContain('aria-label={t("notice.close")}');
   });
 
   it("点击卡片外部或关闭按钮可以收起更新卡片", () => {

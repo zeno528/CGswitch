@@ -1,5 +1,6 @@
 import { ArrowLeft, Save } from "lucide-react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { providerIconThemeClass, providerIcons } from "../../icons";
 
 interface ProfileIconEditProps {
@@ -9,19 +10,20 @@ interface ProfileIconEditProps {
 }
 
 export default function ProfileIconEdit({ icon, onBack, onSave }: ProfileIconEditProps) {
+  const { t } = useTranslation("profiles");
   const [selected, setSelected] = useState<string | null>(icon);
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
-        <button type="button" className="apple-page-header apple-back-button" aria-label="返回" onClick={onBack}>
+        <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
-          <span className="apple-title">选择供应商图标</span>
+          <span className="apple-title">{t("icons.pageTitle")}</span>
         </button>
       </div>
       <div className="apple-edit-content">
         <div className="apple-group p-[var(--gap-card)]">
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
-            {providerIcons.map((current) => (
+            {providerIcons().map((current) => (
               <button
                 key={current.id}
                 type="button"
@@ -35,14 +37,14 @@ export default function ProfileIconEdit({ icon, onBack, onSave }: ProfileIconEdi
             ))}
           </div>
           <button type="button" className={`mt-3 w-full rounded-lg border border-dashed px-2 py-2.5 text-xs transition-colors ${selected === null ? "border-accent font-medium text-accent" : "muted border-[var(--panel-border)] hover:bg-black/3 dark:hover:bg-white/4"}`} aria-pressed={selected === null} onClick={() => setSelected(null)}>
-            不使用图标（显示名称首字）
+            {t("icons.none")}
           </button>
         </div>
       </div>
       <div className="apple-edit-toolbar apple-edit-toolbar--footer">
-        <button type="button" className="apple-action-button" onClick={onBack}>取消</button>
+        <button type="button" className="apple-action-button" onClick={onBack}>{t("dialog.cancel")}</button>
         <button type="button" className="apple-action-button app-button--primary" onClick={() => onSave(selected)}>
-          <Save className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> 保存
+          <Save className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> {t("dialog.save")}
         </button>
       </div>
     </section>

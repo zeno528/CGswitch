@@ -1,5 +1,6 @@
 import { ArrowLeft, ChevronRight, Minus, Plus, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { AppSelect } from "../../components/AppSelect";
@@ -18,12 +19,14 @@ function pairsToRecord(pairs: KVPair[]): Record<string, string> {
 }
 
 function PairEditor({ pairs, onChange, keyPlaceholder, valuePlaceholder }: { pairs: KVPair[]; onChange: (pairs: KVPair[]) => void; keyPlaceholder: string; valuePlaceholder: string }) {
-  if (!pairs.length) return <button type="button" className="app-dynamic-input__create" onClick={() => onChange([{ key: "", value: "" }])}><Plus size={16} strokeWidth={2} aria-hidden="true" />添加</button>;
-  return <div className="app-dynamic-input">{pairs.map((pair, index) => <div key={index} className="app-dynamic-input__item"><div className="app-dynamic-input__pair"><div className="app-input-focus-frame"><input className="app-input app-dynamic-input__input mono" placeholder={keyPlaceholder} value={pair.key} onChange={(event) => onChange(pairs.map((current, currentIndex) => currentIndex === index ? { ...current, key: event.target.value } : current))} /></div><div className="app-input-stepper app-input-focus-frame"><input className="app-input app-dynamic-input__input app-input-stepper__input mono" placeholder={valuePlaceholder} value={pair.value} onChange={(event) => onChange(pairs.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} /><div className="app-input-stepper__actions"><button type="button" className="app-input-stepper__action" aria-label="删除此行" onClick={() => onChange(pairs.filter((_current, currentIndex) => currentIndex !== index))}><Minus size={16} strokeWidth={2} aria-hidden="true" /></button><button type="button" className="app-input-stepper__action" aria-label="在此行后添加" onClick={() => onChange([...pairs.slice(0, index + 1), { key: "", value: "" }, ...pairs.slice(index + 1)])}><Plus size={16} strokeWidth={2} aria-hidden="true" /></button></div></div></div></div>)}</div>;
+  const { t } = useTranslation("mcp");
+  if (!pairs.length) return <button type="button" className="app-dynamic-input__create" onClick={() => onChange([{ key: "", value: "" }])}><Plus size={16} strokeWidth={2} aria-hidden="true" />{t("edit.add")}</button>;
+  return <div className="app-dynamic-input">{pairs.map((pair, index) => <div key={index} className="app-dynamic-input__item"><div className="app-dynamic-input__pair"><div className="app-input-focus-frame"><input className="app-input app-dynamic-input__input mono" placeholder={keyPlaceholder} value={pair.key} onChange={(event) => onChange(pairs.map((current, currentIndex) => currentIndex === index ? { ...current, key: event.target.value } : current))} /></div><div className="app-input-stepper app-input-focus-frame"><input className="app-input app-dynamic-input__input app-input-stepper__input mono" placeholder={valuePlaceholder} value={pair.value} onChange={(event) => onChange(pairs.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} /><div className="app-input-stepper__actions"><button type="button" className="app-input-stepper__action" aria-label={t("edit.removeRow")} onClick={() => onChange(pairs.filter((_current, currentIndex) => currentIndex !== index))}><Minus size={16} strokeWidth={2} aria-hidden="true" /></button><button type="button" className="app-input-stepper__action" aria-label={t("edit.addRowAfter")} onClick={() => onChange([...pairs.slice(0, index + 1), { key: "", value: "" }, ...pairs.slice(index + 1)])}><Plus size={16} strokeWidth={2} aria-hidden="true" /></button></div></div></div></div>)}</div>;
 }
 
 function TimeoutInput({ value, onChange, placeholder }: { value: number | null; onChange: (value: number | null) => void; placeholder: string }) {
-  return <div className="app-input-stepper app-input-focus-frame"><input className="app-input app-input-stepper__input" type="number" min={1} placeholder={placeholder} value={value ?? ""} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)} /><div className="app-input-stepper__actions"><button type="button" className="app-input-stepper__action" aria-label="减少 1 秒" onClick={() => onChange(Math.max(1, (value ?? 1) - 1))}><Minus size={16} strokeWidth={2} aria-hidden="true" /></button><button type="button" className="app-input-stepper__action" aria-label="增加 1 秒" onClick={() => onChange((value ?? 0) + 1)}><Plus size={16} strokeWidth={2} aria-hidden="true" /></button></div></div>;
+  const { t } = useTranslation("mcp");
+  return <div className="app-input-stepper app-input-focus-frame"><input className="app-input app-input-stepper__input" type="number" min={1} placeholder={placeholder} value={value ?? ""} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)} /><div className="app-input-stepper__actions"><button type="button" className="app-input-stepper__action" aria-label={t("edit.decreaseSecond")} onClick={() => onChange(Math.max(1, (value ?? 1) - 1))}><Minus size={16} strokeWidth={2} aria-hidden="true" /></button><button type="button" className="app-input-stepper__action" aria-label={t("edit.increaseSecond")} onClick={() => onChange((value ?? 0) + 1)}><Plus size={16} strokeWidth={2} aria-hidden="true" /></button></div></div>;
 }
 
 interface McpEditProps {
@@ -34,6 +37,7 @@ interface McpEditProps {
 
 export default function McpEdit({ server, create = false, onBack }: McpEditProps) {
   const feedback = useFeedback();
+  const { t } = useTranslation("mcp");
   const [name, setName] = useState(server?.name ?? "");
   const [transport, setTransport] = useState<Transport>(server?.url ? "http" : "stdio");
   const [command, setCommand] = useState(server?.command ?? "");
@@ -120,21 +124,21 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
     setFormatting(true);
     try {
       const formatted = await api.formatToml(tomlText);
-      if (formatted === tomlText) feedback.info("格式无误，无需调整"); else { setTomlText(formatted); feedback.success("片段已格式化"); }
-    } catch (error) { feedback.error(`格式化失败：${String(error)}`); }
+      if (formatted === tomlText) feedback.info(t("feedback.formatNoChange")); else { setTomlText(formatted); feedback.success(t("feedback.formatted")); }
+    } catch (error) { feedback.error(t("feedback.formatFailed", { error: String(error) })); }
     finally { setFormatting(false); }
   };
 
   const save = async () => {
     if (saving) return;
-    if (!/^[A-Za-z0-9_-]+$/.test(name.trim())) { feedback.error("名称只能包含字母、数字、下划线和连字符"); return; }
-    if (transport === "stdio" && !command.trim()) { feedback.error("请填写启动命令"); return; }
-    if (transport === "http" && !url.trim()) { feedback.error("请填写服务地址"); return; }
-    if (transport === "http" && !/^https?:\/\//i.test(url.trim())) { feedback.error("服务地址必须以 http:// 或 https:// 开头"); return; }
-    if (startupTimeout !== null && startupTimeout <= 0) { feedback.error("启动超时必须为正数（秒）"); return; }
-    if (toolTimeout !== null && toolTimeout <= 0) { feedback.error("工具调用超时必须为正数（秒）"); return; }
+    if (!/^[A-Za-z0-9_-]+$/.test(name.trim())) { feedback.error(t("feedback.invalidName")); return; }
+    if (transport === "stdio" && !command.trim()) { feedback.error(t("feedback.commandRequired")); return; }
+    if (transport === "http" && !url.trim()) { feedback.error(t("feedback.urlRequired")); return; }
+    if (transport === "http" && !/^https?:\/\//i.test(url.trim())) { feedback.error(t("feedback.urlScheme")); return; }
+    if (startupTimeout !== null && startupTimeout <= 0) { feedback.error(t("feedback.startupTimeoutPositive")); return; }
+    if (toolTimeout !== null && toolTimeout <= 0) { feedback.error(t("feedback.toolTimeoutPositive")); return; }
     setSaving(true);
-    try { await api.saveMcpServer(server?.name ?? null, formSpec(), tomlText); feedback.success("MCP 服务器已保存"); onBack(); }
+    try { await api.saveMcpServer(server?.name ?? null, formSpec(), tomlText); feedback.success(t("feedback.saved")); onBack(); }
     catch (error) { feedback.error(String(error)); }
     finally { setSaving(false); }
   };
@@ -142,9 +146,9 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col" onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") void save(); }}>
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
-        <button type="button" className="apple-page-header apple-back-button" aria-label="返回" onClick={onBack}>
+        <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
-          <span className="apple-title">{create ? "新建 MCP 服务器" : "编辑 MCP 服务器"}</span>
+          <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
         </button>
       </div>
 
@@ -153,12 +157,12 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
           <div className="apple-panel-section">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <div className="field-label mb-1.5">名称</div>
-                <input className="app-input mono" maxLength={64} placeholder="例如：context7" value={name} onChange={(event) => setName(event.target.value)} />
+                <div className="field-label mb-1.5">{t("edit.name")}</div>
+                <input className="app-input mono" maxLength={64} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} />
               </div>
               <div>
-                <div className="field-label mb-1.5">传输类型</div>
-                <AppSelect value={transport} options={[{ label: "本地进程 (STDIO)", value: "stdio" as const }, { label: "远程服务 (HTTP)", value: "http" as const }]} onChange={setTransport} />
+                <div className="field-label mb-1.5">{t("edit.transport")}</div>
+                <AppSelect value={transport} options={[{ label: t("edit.transportStdio"), value: "stdio" as const }, { label: t("edit.transportHttp"), value: "http" as const }]} onChange={setTransport} />
               </div>
             </div>
           </div>
@@ -166,21 +170,21 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
           <div className="apple-panel-section">
             {transport === "stdio" ? <>
               <div>
-                <div className="field-label mb-1.5">启动命令</div>
-                <input className="app-input mono" placeholder="例如：npx 或 C:\\tools\\server.exe" value={command} onChange={(event) => setCommand(event.target.value)} />
+                <div className="field-label mb-1.5">{t("edit.command")}</div>
+                <input className="app-input mono" placeholder={t("edit.commandPlaceholder")} value={command} onChange={(event) => setCommand(event.target.value)} />
               </div>
               <div className="mt-4">
-                <div className="field-label mb-1.5">启动参数</div>
-                <textarea className="app-input mono min-h-20" rows={2} placeholder="每行一个参数，例如：-y" value={argsText} onChange={(event) => setArgsText(event.target.value)} />
+                <div className="field-label mb-1.5">{t("edit.args")}</div>
+                <textarea className="app-input mono min-h-20" rows={2} placeholder={t("edit.argsPlaceholder")} value={argsText} onChange={(event) => setArgsText(event.target.value)} />
               </div>
             </> : <>
               <div>
-                <div className="field-label mb-1.5">服务地址</div>
+                <div className="field-label mb-1.5">{t("edit.url")}</div>
                 <input className="app-input mono" placeholder="https://mcp.example.com/mcp" value={url} onChange={(event) => setUrl(event.target.value)} />
               </div>
               <div className="mt-4">
-                <div className="field-label mb-1.5">Bearer Token 环境变量名（可选）</div>
-                <input className="app-input mono" placeholder="例如：TAVILY_API_KEY" value={bearer} onChange={(event) => setBearer(event.target.value)} />
+                <div className="field-label mb-1.5">{t("edit.bearerLabel")}</div>
+                <input className="app-input mono" placeholder={t("edit.bearerPlaceholder")} value={bearer} onChange={(event) => setBearer(event.target.value)} />
               </div>
             </>}
           </div>
@@ -192,28 +196,28 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
               summary={(
                 <>
                   <ChevronRight className="apple-disclosure__icon" size={18} strokeWidth={2} aria-hidden="true" />
-                  <span className="field-subtitle">高级选项（环境变量 / 请求头 / 超时）</span>
+                  <span className="field-subtitle">{t("edit.advanced")}</span>
                 </>
               )}
               showIcon={false}
             >
               {transport === "stdio" ? <>
-                <div className="field-label mb-1.5">环境变量</div>
-                <PairEditor pairs={envPairs} onChange={setEnvPairs} keyPlaceholder="变量名" valuePlaceholder="值" />
+                <div className="field-label mb-1.5">{t("edit.env")}</div>
+                <PairEditor pairs={envPairs} onChange={setEnvPairs} keyPlaceholder={t("edit.envKeyPlaceholder")} valuePlaceholder={t("edit.valuePlaceholder")} />
               </> : <>
-                <div className="field-label mb-1.5">HTTP 请求头（固定值）</div>
-                <PairEditor pairs={headerPairs} onChange={setHeaderPairs} keyPlaceholder="Header 名" valuePlaceholder="值" />
-                <div className="field-label mb-1.5 mt-4">HTTP 请求头（值取自环境变量）</div>
-                <PairEditor pairs={envHeaderPairs} onChange={setEnvHeaderPairs} keyPlaceholder="Header 名" valuePlaceholder="环境变量名" />
+                <div className="field-label mb-1.5">{t("edit.headerFixed")}</div>
+                <PairEditor pairs={headerPairs} onChange={setHeaderPairs} keyPlaceholder={t("edit.headerKeyPlaceholder")} valuePlaceholder={t("edit.valuePlaceholder")} />
+                <div className="field-label mb-1.5 mt-4">{t("edit.headerFromEnv")}</div>
+                <PairEditor pairs={envHeaderPairs} onChange={setEnvHeaderPairs} keyPlaceholder={t("edit.headerKeyPlaceholder")} valuePlaceholder={t("edit.envVarPlaceholder")} />
               </>}
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <div className="field-label mb-1.5">启动超时（秒，可选）</div>
-                  <TimeoutInput value={startupTimeout} onChange={setStartupTimeout} placeholder="默认 10" />
+                  <div className="field-label mb-1.5">{t("edit.startupTimeout")}</div>
+                  <TimeoutInput value={startupTimeout} onChange={setStartupTimeout} placeholder={t("edit.startupTimeoutPlaceholder")} />
                 </div>
                 <div>
-                  <div className="field-label mb-1.5">工具调用超时（秒，可选）</div>
-                  <TimeoutInput value={toolTimeout} onChange={setToolTimeout} placeholder="默认 60" />
+                  <div className="field-label mb-1.5">{t("edit.toolTimeout")}</div>
+                  <TimeoutInput value={toolTimeout} onChange={setToolTimeout} placeholder={t("edit.toolTimeoutPlaceholder")} />
                 </div>
               </div>
             </AppDisclosure>
@@ -221,19 +225,19 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
 
           <div className="apple-panel-section">
             <div className="field-label mb-1.5 flex items-center gap-1.5">
-              TOML 源码
-              {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label="有未保存的改动" title="有未保存的改动" /> : null}
+              {t("edit.tomlSource")}
+              {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label={t("edit.unsavedChanges")} title={t("edit.unsavedChanges")} /> : null}
             </div>
-            <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder="编辑 [mcp_servers.*] 片段，与上方表单双向同步。" onChange={setTomlText} onDiagnostics={setDiagnostics} />
+            <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder={t("edit.tomlPlaceholder")} onChange={setTomlText} onDiagnostics={setDiagnostics} />
           </div>
         </div>
       </div>
 
       <div className="apple-edit-toolbar apple-edit-toolbar--footer">
-        {diagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" title="跳转到第一个错误" aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--danger)" aria-hidden="true" /><span className="truncate">{diagnostics.count} 个错误{diagnostics.firstLine !== null ? ` · 第 ${diagnostics.firstLine} 行` : ""}</span></button> : null}
-        <button type="button" className="apple-action-button" disabled={formatting || saving} onClick={() => void formatToml()}>格式化</button>
-        <button type="button" className="apple-action-button" onClick={onBack}>取消</button>
-        <button type="button" className="apple-action-button app-button--primary" disabled={saving} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? "保存中…" : "保存"}</button>
+        {diagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" title={t("edit.jumpToError")} aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--danger)" aria-hidden="true" /><span className="truncate">{t("edit.errorCount", { count: diagnostics.count })}{diagnostics.firstLine !== null ? t("edit.errorLine", { line: diagnostics.firstLine }) : ""}</span></button> : null}
+        <button type="button" className="apple-action-button" disabled={formatting || saving} onClick={() => void formatToml()}>{t("edit.format")}</button>
+        <button type="button" className="apple-action-button" onClick={onBack}>{t("edit.cancel")}</button>
+        <button type="button" className="apple-action-button app-button--primary" disabled={saving} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("edit.save")}</button>
       </div>
     </section>
   );

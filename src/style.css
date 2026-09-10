@@ -1152,14 +1152,14 @@ body.drag-active * {
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]),
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]) {
+.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
   color: var(--primary-button-bg);
 }
 
-.profile-list > .apple-group.brand-gradient-surface [aria-label*="登录"],
-.profile-drag-preview.brand-gradient-surface [aria-label*="登录"] {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,
+.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
   background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);
   color: var(--primary-button-bg);
@@ -1177,7 +1177,7 @@ body.drag-active * {
   color: var(--success-text);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button[title="删除"] {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button.profile-card-delete {
   color: var(--danger);
 }
 

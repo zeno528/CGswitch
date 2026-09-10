@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Download, LoaderCircle, X } from "lucide-react";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
@@ -22,12 +23,13 @@ const AppUpdateContext = createContext<AppUpdateContextValue | null>(null);
 
 export function useAppUpdate() {
   const value = useContext(AppUpdateContext);
-  if (!value) throw new Error("useAppUpdate 必须在 AppUpdateProvider 内使用");
+  if (!value) throw new Error("useAppUpdate 必须在 AppUpdateProvider 内使用"); // i18n-exempt: 开发者契约错误，用户不可见
   return value;
 }
 
 export function AppUpdateProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   const feedback = useFeedback();
+  const { t } = useTranslation("updates");
   const [update, setUpdate] = useState<AppUpdate | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -53,8 +55,8 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
   useEffect(() => {
     if (!enabled || autoCheckedRef.current) return;
     autoCheckedRef.current = true;
-    void check().catch((error) => console.warn("自动检查更新失败：", updateFailureMessage(error)));
-  }, [enabled, check]);
+    void check().catch((error) => console.warn("自动检查更新失败：", updateFailureMessage(error, t))); // i18n-exempt: 仅写控制台，用户不可见
+  }, [enabled, check, t]);
 
   // 应用内更新重启回来：读到安装时留下的版本标记即弹「更新成功」通知（与 enabled 无关，标记只会在更新后存在一次）。
   // 标记由后端原子落盘（Windows 安装器会立即杀进程，localStorage 异步提交可能丢）；
@@ -65,9 +67,9 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
       if (legacy) localStorage.removeItem(UPDATED_VERSION_KEY);
       const updatedVersion = legacy ?? (await api.takeUpdateMarker().catch(() => null));
       if (!updatedVersion) return;
-      feedback.success(`已更新到 v${updatedVersion}`);
+      feedback.success(t("toast.updated", { version: updatedVersion }));
     })();
-  }, [feedback]);
+  }, [feedback, t]);
 
   const install = useCallback(async () => {
     if (!update || installing) return;
@@ -75,11 +77,11 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
     try {
       await update.install();
     } catch (error) {
-      feedback.error(updateFailureMessage(error));
+      feedback.error(updateFailureMessage(error, t));
     } finally {
       setInstalling(false);
     }
-  }, [update, installing, feedback]);
+  }, [update, installing, feedback, t]);
 
   return <AppUpdateContext.Provider value={{ update, checking, installing, check, install }}>{children}</AppUpdateContext.Provider>;
 }
@@ -88,6 +90,7 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
 export function UpdateNotice() {
   const { update, installing, install } = useAppUpdate();
   const feedback = useFeedback();
+  const { t } = useTranslation("updates");
   const [open, setOpen] = useState(false);
   const noticeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -110,25 +113,25 @@ export function UpdateNotice() {
   };
   return (
     <div ref={noticeRef} className="update-notice">
-      <button type="button" className="update-notice-trigger" aria-label={`发现新版本 v${update.version}`} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
+      <button type="button" className="update-notice-trigger" aria-label={t("notice.title", { version: update.version })} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
         <span className="grid h-6 w-6 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
           <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
         </span>
       </button>
       {open ? (
         <div className="update-notice-popover">
-          <button type="button" className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-[var(--text-primary)]" aria-label="关闭更新提示" onClick={closePopover}>
+          <button type="button" className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-[var(--text-primary)]" aria-label={t("notice.close")} onClick={closePopover}>
             <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
           </button>
-          <div className="pr-7 text-sm font-semibold">发现新版本 v{update.version}</div>
-          <p className="muted meta-xs mt-1">下载并安装新版本，完成后自动重启</p>
+          <div className="pr-7 text-sm font-semibold">{t("notice.title", { version: update.version })}</div>
+          <p className="muted meta-xs mt-1">{t("notice.description")}</p>
           <div className="mt-2.5 flex flex-nowrap gap-2">
-            <button type="button" className="apple-action-button" title="在 GitHub 查看最新发行版" onClick={openChangelog}>
-              更新日志
+            <button type="button" className="apple-action-button" title={t("notice.openOnGithub")} onClick={openChangelog}>
+              {t("notice.changelog")}
             </button>
             <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => void install()}>
               {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-              {installing ? "下载安装中…" : "立即升级"}
+              {installing ? t("notice.installing") : t("notice.updateNow")}
             </button>
           </div>
         </div>

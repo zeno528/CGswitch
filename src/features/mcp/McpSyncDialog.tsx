@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { AppDialog } from "../../components/AppDialog";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import type { McpSyncDiffEntry, McpSyncPreview } from "../../types";
@@ -13,40 +15,41 @@ interface McpSyncDialogProps {
   onApply: (direction: SyncDirection) => void;
 }
 
-const fieldLabels: Record<string, string> = { enabled: "启用状态", startup_timeout_sec: "启动超时秒", tool_timeout_sec: "工具超时秒", command: "启动命令", args: "启动参数", env: "环境变量", url: "服务地址", bearer_token_env_var: "令牌环境变量", http_headers: "HTTP 头", env_http_headers: "环境变量 HTTP 头" };
-const valueText = (value: unknown) => value === null ? "未设置" : typeof value === "string" ? value : JSON.stringify(value);
-const kindText = (entry: McpSyncDiffEntry) => entry.kind === "live_only" ? "外部新增" : entry.kind === "db_only" ? "配置文件缺失" : "内容被修改";
-const detailFallback = (entry: McpSyncDiffEntry) => entry.kind === "live_only" ? "该配置仅存在于 config.toml，数据库中没有对应记录。" : entry.kind === "db_only" ? "该配置仅存在于数据库，config.toml 中没有对应记录。" : "存在未建模差异，当前没有可显示的字段明细。";
+const valueText = (value: unknown, t: TFunction<"mcp">) => value === null ? t("sync.notSet") : typeof value === "string" ? value : JSON.stringify(value);
+const kindText = (entry: McpSyncDiffEntry, t: TFunction<"mcp">) => entry.kind === "live_only" ? t("sync.kind.liveOnly") : entry.kind === "db_only" ? t("sync.kind.dbOnly") : t("sync.kind.changed");
+const detailFallback = (entry: McpSyncDiffEntry, t: TFunction<"mcp">) => entry.kind === "live_only" ? t("sync.detail.liveOnly") : entry.kind === "db_only" ? t("sync.detail.dbOnly") : t("sync.detail.changed");
 
 export default function McpSyncDialog({ open, preview, previewError, busy, onClose, onApply }: McpSyncDialogProps) {
+  const { t } = useTranslation("mcp");
   const [step, setStep] = useState<"diff" | "confirm">("diff");
   const [direction, setDirection] = useState<SyncDirection | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const fieldLabels: Record<string, string> = { enabled: t("sync.field.enabled"), startup_timeout_sec: t("sync.field.startupTimeoutSec"), tool_timeout_sec: t("sync.field.toolTimeoutSec"), command: t("sync.field.command"), args: t("sync.field.args"), env: t("sync.field.env"), url: t("sync.field.url"), bearer_token_env_var: t("sync.field.bearerTokenEnvVar"), http_headers: t("sync.field.httpHeaders"), env_http_headers: t("sync.field.envHttpHeaders") };
   useEffect(() => { if (!open) { setStep("diff"); setDirection(null); setExpanded(new Set()); } }, [open]);
   const entries = preview?.entries ?? [];
   const pendingLines = useMemo(() => {
     const names = (kind: McpSyncDiffEntry["kind"]) => entries.filter((entry) => entry.kind === kind).map((entry) => entry.name);
-    const parts = (values: string[]) => values.flatMap((value, index) => [index ? "、" : "", <code key={value} className="mono code-tok">{value}</code>]);
+    const parts = (values: string[]) => values.flatMap((value, index) => [index ? t("sync.listSeparator") : "", <code key={value} className="mono code-tok">{value}</code>]);
     if (!direction) return [];
-    if (!preview) return [<span key="rebuild">该文件当前无法解析，将用数据库中的 MCP 配置重建整个 MCP 段。</span>, <span key="backup">执行前会自动备份 <code className="mono code-tok">~/.codex/config.toml</code>。</span>];
+    if (!preview) return [<span key="rebuild">{t("sync.rebuildUnparsable")}</span>, <span key="backup"><Trans ns="mcp" i18nKey="sync.autoBackup" components={{ code: <code className="mono code-tok" /> }} /></span>];
     const added = names("live_only"); const missing = names("db_only"); const changed = names("changed");
     const lines: React.ReactNode[] = [];
     if (direction === "db-to-live") {
-      if (added.length) lines.push(<span key="added" className="font-semibold text-red-600 dark:text-red-400">配置文件有新增，从配置文件中删除：{parts(added)}</span>);
-      if (missing.length) lines.push(<span key="missing">配置文件缺失，写入配置文件：{parts(missing)}</span>);
-      if (changed.length) lines.push(<span key="changed">配置文件已修改，恢复为数据库内容：{parts(changed)}</span>);
-      lines.push(<span key="backup">执行前会自动备份 <code className="mono code-tok">~/.codex/config.toml</code>。</span>);
+      if (added.length) lines.push(<span key="added" className="font-semibold text-red-600 dark:text-red-400">{t("sync.confirm.removeAdded")}{parts(added)}</span>);
+      if (missing.length) lines.push(<span key="missing">{t("sync.confirm.writeMissing")}{parts(missing)}</span>);
+      if (changed.length) lines.push(<span key="changed">{t("sync.confirm.restoreChanged")}{parts(changed)}</span>);
+      lines.push(<span key="backup"><Trans ns="mcp" i18nKey="sync.autoBackup" components={{ code: <code className="mono code-tok" /> }} /></span>);
     } else {
-      if (added.length) lines.push(<span key="added">数据库新增：{parts(added)}</span>);
-      if (changed.length) lines.push(<span key="changed">数据库修改：{parts(changed)}</span>);
-      if (missing.length) lines.push(<span key="missing">数据库删除：{parts(missing)}</span>);
+      if (added.length) lines.push(<span key="added">{t("sync.confirm.dbAdded")}{parts(added)}</span>);
+      if (changed.length) lines.push(<span key="changed">{t("sync.confirm.dbChanged")}{parts(changed)}</span>);
+      if (missing.length) lines.push(<span key="missing">{t("sync.confirm.dbDeleted")}{parts(missing)}</span>);
     }
     return lines;
-  }, [direction, entries, preview]);
+  }, [direction, entries, preview, t]);
 
   const requestDirection = (next: SyncDirection) => { setDirection(next); setStep("confirm"); };
   const dialogDescription = step === "diff" && previewError
-    ? "config.toml 无法解析，只能用数据库中的 MCP 配置恢复。"
+    ? t("sync.unparsableDescription")
     : undefined;
   const directionChoice = (next: SyncDirection) => {
     const dbToLive = next === "db-to-live";
@@ -56,12 +59,12 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
         className="mcp-sync-choice apple-group flex w-full items-start justify-between gap-3 border-0 p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50"
         disabled={busy}
         onClick={() => requestDirection(next)}
-        aria-label={dbToLive ? "用数据库更新 config.toml" : "用 config.toml 更新数据库"}
+        aria-label={dbToLive ? t("sync.choice.dbToLive") : t("sync.choice.liveToDb")}
       >
         <span className="min-w-0">
-          <span className="block font-semibold">{dbToLive ? "用数据库更新 config.toml" : "用 config.toml 更新数据库"}</span>
+          <span className="block font-semibold">{dbToLive ? t("sync.choice.dbToLive") : t("sync.choice.liveToDb")}</span>
           <span className="muted mt-1 block text-xs leading-relaxed">
-            {dbToLive ? previewError ? "配置文件无法解析；写入前会自动备份原文件。" : "只替换 config.toml 的 MCP 配置段，其他配置保留。" : "读取当前 config.toml，把差异写入数据库。"}
+            {dbToLive ? previewError ? t("sync.choice.dbToLiveUnparsable") : t("sync.choice.dbToLiveHint") : t("sync.choice.liveToDbHint")}
           </span>
         </span>
       </button>
@@ -72,26 +75,26 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
     <AppDialog
       open={open}
       onOpenChange={(next) => { if (!next && !busy) onClose(); }}
-      title={step === "confirm" && direction ? direction === "db-to-live" ? "确认覆盖 config.toml" : "确认更新数据库" : previewError ? "恢复 MCP 配置" : "处理 MCP 配置差异"}
+      title={step === "confirm" && direction ? direction === "db-to-live" ? t("sync.title.confirmDbToLive") : t("sync.title.confirmLiveToDb") : previewError ? t("sync.title.restore") : t("sync.title.diff")}
       description={dialogDescription}
       className="max-w-[560px]"
       footer={step === "confirm" ? (
         <div className="flex w-full items-center justify-end gap-2">
-          <button type="button" className="apple-action-button" disabled={busy} onClick={() => setStep("diff")}>{previewError ? "返回" : "返回差异"}</button>
-          <button type="button" className="apple-action-button app-button--primary" disabled={busy || !direction} onClick={() => direction && onApply(direction)}>{direction === "db-to-live" ? "确认覆盖 config.toml" : "确认更新数据库"}</button>
+          <button type="button" className="apple-action-button" disabled={busy} onClick={() => setStep("diff")}>{previewError ? t("sync.back") : t("sync.backToDiff")}</button>
+          <button type="button" className="apple-action-button app-button--primary" disabled={busy || !direction} onClick={() => direction && onApply(direction)}>{direction === "db-to-live" ? t("sync.title.confirmDbToLive") : t("sync.title.confirmLiveToDb")}</button>
         </div>
       ) : (
-        <button type="button" className="apple-action-button" disabled={busy} onClick={onClose}>取消</button>
+        <button type="button" className="apple-action-button" disabled={busy} onClick={onClose}>{t("sync.cancel")}</button>
       )}
     >
       {step === "confirm" ? (
         <div className="mcp-sync-confirm">
           <p className="mcp-sync-confirm__scope">
-            <span className="field-subtitle">覆盖范围</span>
-            <span>{direction === "db-to-live" ? previewError ? <>config.toml 无法解析，将用数据库中的 MCP 配置重建整个文件。</> : <>完整替换 <code className="mono code-tok">~/.codex/config.toml</code> 的 <code className="mono code-tok">[mcp_servers]</code> 段；其他配置不受影响。</> : <>完整替换数据库中的 MCP 配置；数据库中的其他数据不受影响。</>}</span>
+            <span className="field-subtitle">{t("sync.confirm.scope")}</span>
+            <span>{direction === "db-to-live" ? previewError ? <>{t("sync.confirm.scopeUnparsable")}</> : <Trans ns="mcp" i18nKey="sync.confirm.scopeDbToLive" components={{ code: <code className="mono code-tok" /> }} /> : <>{t("sync.confirm.scopeLiveToDb")}</>}</span>
           </p>
           <div className="mcp-sync-confirm__changes">
-            <div className="field-subtitle">变更摘要</div>
+            <div className="field-subtitle">{t("sync.confirm.summary")}</div>
             <ul className="mcp-sync-confirm__list">{pendingLines.map((line, index) => <li key={index}>{line}</li>)}</ul>
           </div>
         </div>
@@ -103,10 +106,10 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
       ) : preview ? (
         <div className="space-y-4">
           <div className="muted rounded-[var(--radius-control-sm)] bg-[color-mix(in_srgb,var(--sidebar-bg)_34%,var(--panel-bg))] px-3 py-2 text-sm">
-            数据库 {preview.db_count} 台 · config.toml {preview.live_count} 台 · 差异 {preview.entries.length} 项
+            {t("sync.stats", { db: preview.db_count, live: preview.live_count, diff: preview.entries.length })}
           </div>
           <div className="space-y-2">
-            <div className="field-subtitle">差异详情</div>
+            <div className="field-subtitle">{t("sync.details")}</div>
             <div className="-m-1 max-h-[50vh] space-y-2 overflow-y-auto p-1">
               {entries.map((entry) => {
                 const isExpanded = expanded.has(entry.name);
@@ -122,7 +125,7 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
                     })}
                     summary={(
                       <>
-                        <span className={`apple-chip ${entry.kind === "live_only" ? "chip-warn" : "chip-danger"}`}>{kindText(entry)}</span>
+                        <span className={`apple-chip ${entry.kind === "live_only" ? "chip-warn" : "chip-danger"}`}>{kindText(entry, t)}</span>
                         <span className="min-w-0 flex-1 truncate font-semibold">{entry.name}</span>
                       </>
                     )}
@@ -134,8 +137,8 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
                             <div key={diff.field} className="grid gap-1">
                               <div className="field-label">{fieldLabels[diff.field] ?? diff.field}</div>
                               <div className="mcp-sync-diff__values meta-xs">
-                                <span>数据库：<code className="mono">{valueText(diff.db)}</code></span>
-                                <span>config.toml：<code className="mono">{valueText(diff.live)}</code></span>
+                                <span>{t("sync.dbValue")}<code className="mono">{valueText(diff.db, t)}</code></span>
+                                <span>{t("sync.liveValue")}<code className="mono">{valueText(diff.live, t)}</code></span>
                               </div>
                             </div>
                           ))}
@@ -143,7 +146,7 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
                       ) : entry.live_toml?.trim() || entry.db_toml?.trim() ? (
                         <pre className="mono muted m-0 whitespace-pre-wrap break-all meta-xs">{entry.live_toml ?? entry.db_toml}</pre>
                       ) : (
-                        <p className="muted m-0 text-sm">{detailFallback(entry)}</p>
+                        <p className="muted m-0 text-sm">{detailFallback(entry, t)}</p>
                       )}
                     </div>
                   </AppDisclosure>
@@ -152,7 +155,7 @@ export default function McpSyncDialog({ open, preview, previewError, busy, onClo
             </div>
           </div>
           <div className="space-y-2">
-            <div className="field-subtitle">选择要保留的配置</div>
+            <div className="field-subtitle">{t("sync.chooseConfig")}</div>
             <div className="grid gap-2">
               {directionChoice("live-to-db")}
               {directionChoice("db-to-live")}
