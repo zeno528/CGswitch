@@ -23,6 +23,7 @@
   --panel-border: rgba(60, 60, 67, 0.12);
   --panel-ring: rgba(60, 60, 67, 0.08);
   --panel-divider: rgba(60, 60, 67, 0.1);
+  --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
   --sidebar-bg: #f2f3f8;
   --selection-bg: rgba(0, 122, 255, 0.12);
@@ -92,6 +93,7 @@
   --panel-border: #42434a;
   --panel-ring: rgba(255, 255, 255, 0.14);
   --panel-divider: rgba(255, 255, 255, 0.1);
+  --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.68);
   --sidebar-bg: #25282b;
   --selection-bg: rgba(0, 122, 255, 0.16);
@@ -674,7 +676,8 @@ body.drag-active * {
   box-shadow:
     0 0 0 1px var(--panel-ring),
     0 6px 20px rgba(0, 0, 0, 0.14);
-  color: inherit;
+  color: var(--text-primary);
+  font-weight: 400;
   opacity: 0;
   padding: 0.4rem 0.6rem;
   pointer-events: none;
@@ -709,6 +712,7 @@ body.drag-active * {
   display: flex;
   font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: var(--font-size-base);
+  font-weight: 400;
   gap: 0.5rem;
   height: var(--sidebar-nav-height);
   position: relative;
@@ -802,8 +806,7 @@ body.drag-active * {
   to { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
 }
 
-:root.dark .apple-sidebar-nav-button .apple-sidebar-label,
-:root.dark .apple-sidebar-nav-button .apple-sidebar-flyout {
+:root.dark .apple-sidebar-nav-button .apple-sidebar-label {
   color: #ffffff;
 }
 
@@ -2183,24 +2186,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   .apple-disclosure__icon { animation: none !important; transition: none !important; }
 }
 
-.apple-sidebar-indicator {
-  position: absolute;
-  left: 0;
-  top: 8px;
-  width: 3px;
-  height: 20px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
-  transition:
-    top 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    left 160ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.apple-sidebar-indicator--instant {
-  transition: none;
-}
-
-/* 设置页标签栏下划线指示条：与侧边栏指示条同一动画曲线 */
+/* 设置页标签栏下划线指示条动画 */
 .settings-tab-indicator {
   transition:
     left 160ms cubic-bezier(0.22, 1, 0.36, 1),

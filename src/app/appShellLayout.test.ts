@@ -9,8 +9,17 @@ const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 describe("AppShell 布局", () => {
   it("保持侧栏导航紧贴品牌区，并让设置按钮锚定底部", () => {
     expect(source).toContain("apple-sidebar relative h-full shrink-0");
-    expect(source).toContain('className="relative mx-1.5 mt-3 space-y-1"');
+    expect(source).toContain('className="mx-1.5 mt-3 space-y-1"');
     expect(source).toContain('className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5"');
+  });
+
+  it("移除侧栏激活装饰条，并固定悬浮卡片为普通字重", () => {
+    expect(source).not.toContain("apple-sidebar-indicator");
+    expect(source).toContain('active ? "bg-(--selection-bg) text-accent" :');
+    expect(source).not.toContain('active ? "bg-(--selection-bg) font-semibold text-accent" :');
+    expect(styles).not.toContain(".apple-sidebar-indicator");
+    expect(styles).toMatch(/\.apple-sidebar-flyout \{[\s\S]*font-weight: 400;/);
+    expect(styles).toContain("color: var(--text-primary);");
   });
 
   it("让窗口控制区与主卡片仅保留微小间隙", () => {

@@ -25,6 +25,16 @@ describe("SettingsSections", () => {
     expect(formatTimestamp(0)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 
+  it("keeps the active theme option at normal weight", () => {
+    const form: Settings = { theme: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    const html = renderToStaticMarkup(
+      <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
+    );
+    const activeButton = html.match(/<button[^>]*aria-pressed="true"[^>]*>/)?.[0];
+    expect(activeButton).toContain("font-normal");
+    expect(activeButton).not.toContain("font-semibold");
+  });
+
   it("provides a manual app update check in the about section", () => {
     const html = renderToStaticMarkup(
       <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout paths={[]} onOpenPath={() => undefined} openingPath={null} /></AppUpdateProvider></FeedbackProvider>,
