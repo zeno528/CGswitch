@@ -199,7 +199,7 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
         </div>
         <span className="apple-chip chip-warn" role="status"><LoadingSpinner />等待授权中...</span>
       </div>
-      <div className="rounded-[var(--radius-card)] bg-accent/6 p-4 shadow-[0_0_0_1px_var(--panel-ring)] dark:bg-accent/10">
+      <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]">
         <div className="text-center">
           <div className="field-label">授权码：请在浏览器中输入此码</div>
           <div className="mt-2 flex items-center justify-center gap-2">
@@ -221,5 +221,5 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
     </div>
   );
 
-  return <div><div className="rounded-[var(--radius-card)] border border-[var(--panel-border)] bg-black/2 p-3 dark:bg-white/4"><div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">尚未连接 ChatGPT</div><p className="setting-description mt-0.5">登录后可管理多个 ChatGPT 账号。</p></div></div><div className="mt-4"><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><ExternalLink className="h-4 w-4" strokeWidth={2} />使用 ChatGPT 登录</button></div></div>{loadError ? <p className="muted mt-3 text-sm">{loadError}</p> : null}</div>;
+  return <div><div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex items-start gap-3"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span><div><div className="setting-title">尚未连接 ChatGPT</div><p className="setting-description mt-0.5">登录后可管理多个 ChatGPT 账号。</p></div></div><div className="mt-4"><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><ExternalLink className="h-4 w-4" strokeWidth={2} />使用 ChatGPT 登录</button></div></div>{loadError ? <p className="muted mt-3 text-sm">{loadError}</p> : null}</div>;
 }

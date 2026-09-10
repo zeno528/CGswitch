@@ -2068,6 +2068,15 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   overflow-y: hidden;
 }
 
+/* 编辑器滚动条只在编辑器悬停或获得焦点时显现，保留滚动能力和原有占位。 */
+.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar) {
+  scrollbar-color: transparent transparent;
+}
+
+.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar)::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
 .cm-horizontal-scrollbar > div { height: 1px; }
 /* 行号列宽随位数自适应（min-width 保住 24px 紧凑观感）；固定宽度会让三位以上行号
    被 .cm-gutter 的 overflow: hidden 裁掉末位 */
