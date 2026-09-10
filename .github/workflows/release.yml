@@ -222,35 +222,7 @@ jobs:
           # 不用 create --generate-notes：PATCH 更新接口不支持该参数，重跑更新草稿时清单会丢；
           # 显式生成拼进正文，创建与重跑两条路径行为一致
           printf '\n' >> "$NOTES"
-          GENERATED_NOTES="$(mktemp)"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body > "$GENERATED_NOTES"
-          sed -E 's/ by @([A-Za-z0-9-]+) in (https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[0-9]+)$/ by <strong>@<\/strong><strong>\1<\/strong> in \2/' "$GENERATED_NOTES" >> "$NOTES"
-          # 只感谢外部 PR 作者，并保留 PR 标题和链接；合并者不是贡献者判断依据。
-          SELF_LOGIN="${GITHUB_REPOSITORY%%/*}"
-          EXTERNAL_PR_LINES="$(
-            sed -nE 's/^\* (.*) by @([A-Za-z0-9-]+) in (https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[0-9]+)$/\2\t\1\t\3/p' "$GENERATED_NOTES" |
-              awk -F '\t' -v self="$SELF_LOGIN" '
-                $1 == self { next }
-                {
-                  pr = $3
-                  sub(/^.*\/pull\//, "#", pr)
-                  item = $2 "（[" pr "](" $3 ")）"
-                  if (!seen[$1]++) order[++count] = $1
-                  items[$1] = items[$1] ? items[$1] "；" item : item
-                }
-                END {
-                  for (i = 1; i <= count; i++)
-                    printf "- 感谢 <strong>@</strong><strong>%s</strong>：%s\n", order[i], items[order[i]]
-                }
-              '
-          )"
-          if [ -n "$EXTERNAL_PR_LINES" ]; then
-            {
-              printf '\n## 🙏 感谢贡献者\n\n'
-              printf '%s\n' "$EXTERNAL_PR_LINES"
-            } >> "$NOTES"
-          fi
-          rm -f "$GENERATED_NOTES"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body >> "$NOTES"
           STATE="$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || true)"
           if [ -z "$STATE" ]; then
             gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES"
