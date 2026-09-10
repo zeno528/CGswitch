@@ -50,7 +50,7 @@ describe("collectJsonDiagnostics", () => {
   it("valid JSON never reports errors, even with huge single-line strings", () => {
     // 真实回归样本：模型目录里 4 万字符的超长 base_instructions 曾被语法树误报
     const catalog = JSON.stringify({
-      models: [{ slug: "deepseek-v4-flash", base_instructions: "You are Codex. ".repeat(2800) }],
+      models: [{ slug: "deepseek-flash", base_instructions: "You are Codex. ".repeat(2800) }],
     });
     expect(collectJsonDiagnostics(stateOf(catalog))).toEqual([]);
   });

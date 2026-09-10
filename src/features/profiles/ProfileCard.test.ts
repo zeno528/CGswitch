@@ -48,4 +48,9 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain('{profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}');
     expect(source).not.toContain('<span className="apple-chip">{profile.reasoning_effort}</span>');
   });
+
+  it("余额按钮获得焦点时不显示卡片操作区", () => {
+    expect(source).toContain("focus-within:pointer-events-auto focus-within:opacity-100");
+    expect(source).not.toContain("group-focus-within:");
+  });
 });

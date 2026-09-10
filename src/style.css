@@ -1573,6 +1573,10 @@ button:focus-visible {
   background: var(--primary-button-hover-bg);
 }
 
+:root.dark .apple-list-row button[role="switch"].app-button--primary > svg {
+  filter: invert(1);
+}
+
 .app-button--danger {
   border-color: color-mix(in srgb, var(--danger) 60%, transparent);
   background: var(--danger);
@@ -2062,6 +2066,15 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   height: 8px;
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* 编辑器滚动条只在编辑器悬停或获得焦点时显现，保留滚动能力和原有占位。 */
+.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar) {
+  scrollbar-color: transparent transparent;
+}
+
+.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar)::-webkit-scrollbar-thumb {
+  background: transparent;
 }
 
 .cm-horizontal-scrollbar > div { height: 1px; }

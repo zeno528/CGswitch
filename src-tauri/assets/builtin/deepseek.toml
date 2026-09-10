@@ -1,8 +1,9 @@
-model = "deepseek-v4-flash"
+model = "deepseek-flash"
 model_provider = "deepseek"
 preferred_auth_method = "apikey"
 forced_login_method = "api"
 model_reasoning_effort = "high"
+web_search = "disabled"
 model_catalog_json = "~/.codex/models.json"
 
 [model_providers.deepseek]

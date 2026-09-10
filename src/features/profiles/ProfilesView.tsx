@@ -248,9 +248,9 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
           <div className="apple-toolbar-group">
             <button type="button" className="apple-action-button apple-action-button--quaternary"
               disabled={busy}
-              title="重启 Codex" onClick={() => void restart(false)}>
+              title="重启Codex APP" onClick={() => void restart(false)}>
               {restarting ? <LoadingSpinner size="md" /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
-              {restarting ? "重启中…" : "重启 Codex"}
+              {restarting ? "重启中…" : "重启Codex APP"}
             </button>
             <button type="button" className="apple-icon-button text-accent" disabled={busy}
               title="捕获当前配置" aria-label="捕获当前配置" onClick={openCapture}>

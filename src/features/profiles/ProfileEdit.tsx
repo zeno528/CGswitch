@@ -154,7 +154,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
   }, [apiKey, baseFragment, baseUrl, mcpSection]);
   const canSave = (!create || (isCustom ? Boolean(configText.trim()) : Boolean(selectedPreset))) && (!isOfficial || !authPreviewOnly || authPreviewReady);
   const accountOptions = [
-    { label: "Codex登录", value: "" },
+    { label: "跟随 Codex登录", value: "" },
     ...authAccounts.map((account) => ({ label: account.login, value: account.id })),
     { label: "+ 添加或管理ChatGPT 账号", value: manageChatgptAccountsValue },
   ];
@@ -168,7 +168,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     }
     const desktop = option.value === "";
     const Icon = desktop ? Monitor : KeyRound;
-    return <span className="inline-flex min-w-0 items-center gap-2"><Icon className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{desktop ? "Codex登录" : "OAuth登录"}</span>{desktop ? null : <><span className="text-[var(--text-secondary)]">·</span><span className="truncate">{option.label}</span></>}</span>;
+    return <span className="inline-flex min-w-0 items-center gap-2"><Icon className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{desktop ? "跟随 Codex登录" : "OAuth登录"}</span>{desktop ? null : <><span className="text-[var(--text-secondary)]">·</span><span className="truncate">{option.label}</span></>}</span>;
   };
   const refreshAuthPreview = async (accountId: string) => {
     const requestId = ++authPreviewRequest.current;
@@ -604,7 +604,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                 {isOpenCode && create ? <p className="muted mt-2 flex items-start gap-1.5 text-xs"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />使用此链接订阅 OpenCode Go，首月只需 $5，并可获得额外的 $5 额度！</p> : null}
               </>
             ) : null}
-            {isOfficial ? <div className="mt-4"><div className="field-subtitle mb-1.5">登录方式</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder="Codex登录" renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder="选择 OAuth 登录账号" renderLabel={renderAccountLabel} /> : <div className="flex min-h-9 min-w-0 items-center gap-2 rounded-xl px-3 shadow-[0_0_0_1px_var(--panel-ring)]"><Monitor className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">Codex登录</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
+            {isOfficial ? <div className="mt-4"><div className="field-subtitle mb-1.5">登录方式</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder="跟随 Codex登录" renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder="选择 OAuth 登录账号" renderLabel={renderAccountLabel} /> : <div className="flex min-h-9 min-w-0 items-center gap-2 rounded-xl px-3 shadow-[0_0_0_1px_var(--panel-ring)]"><Monitor className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">跟随 Codex登录</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
             {(!create || Boolean(selectedPreset?.admin_url)) ? <div className="mt-4"><div className="mb-1.5 flex items-center gap-1"><span className="field-label">官网地址</span><button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent disabled:opacity-40" disabled={!adminUrl.trim()} title="打开官网" aria-label="打开官网" onClick={() => void api.openUrl(adminUrl.trim()).catch((error) => feedback.error(String(error)))}><ExternalLink className="h-3.5 w-3.5" strokeWidth={2} /></button></div><input className="app-input" placeholder="https://console.example.com（可选）" value={adminUrl} onChange={(event) => setAdminUrl(event.target.value)} /></div> : null}
             {!create && supportsBalance ? <div className="mt-4 flex min-h-9 items-center justify-between gap-3 rounded-xl px-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex min-w-0 items-center gap-2"><span className="text-sm font-semibold">{isOfficial ? "ChatGPT 额度显示" : isUsageProvider ? "用量查询" : "余额/用量查询"}</span><span className="muted truncate text-xs" title="窗口激活时自动刷新，点击数字手动刷新">窗口激活时自动刷新</span></div><AppSwitch checked={showBalance} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>
@@ -636,7 +636,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                     ) : null}
                     <label
                       className={`flex h-8 items-center gap-2 rounded-[10px] border px-2.5 text-xs transition-colors ${contextMgmtEnabled ? "border-accent/30 bg-accent/10 text-accent" : "border-[var(--panel-ring)]"}`}
-                      title="上下文窗口滚动与 Token 预算提醒，需 ChatGPT 订阅登录官方后端，重启 Codex 后生效。"
+                      title="通过笔记与可搜索历史保留上下文细节，避免反复压缩为单一摘要；仅 ChatGPT Plus/Pro/Pro Lite 订阅，且模型支持时生效。修改后需重启 Codex。"
                     >
                       <input type="checkbox" checked={contextMgmtEnabled} disabled={patchingContextMgmt || saving} onChange={(event) => void toggleContextManagement(event.target.checked)} />
                       <span className="whitespace-nowrap font-medium">上下文管理</span>

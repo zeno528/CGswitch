@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customCatalogTemplate } from "./presets";
+import { builtinPresets, customCatalogTemplate } from "./presets";
 
 describe("customCatalogTemplate", () => {
   it("follows the Codex catalog schema with parser-required fields", () => {
@@ -47,5 +47,22 @@ describe("balanceChipClass", () => {
   it("uses usage thresholds before the total balance", () => {
     expect(balanceChipClass(70, false, "110.00")).toBe("chip-warn");
     expect(balanceChipClass(90, false, "110.00")).toBe("chip-danger");
+  });
+});
+
+describe("builtinPresets 新增 responses 供应商", () => {
+  it("内置 kimi / qwen / hunyuan / doubao 四条预设且 base_url 为官方端点", () => {
+    const expected: Record<string, string> = {
+      kimi: "https://api.moonshot.cn/v1",
+      qwen: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      hunyuan: "https://tokenhub.tencentmaas.com/v1",
+      doubao: "https://ark.cn-beijing.volces.com/api/coding/v3",
+    };
+    for (const [kind, base] of Object.entries(expected)) {
+      const preset = builtinPresets.find((p) => p.kind === kind);
+      expect(preset, `缺少内置预设 ${kind}`).toBeDefined();
+      expect(preset?.base_url).toBe(base);
+      expect(preset?.model).toBeTruthy();
+    }
   });
 });
