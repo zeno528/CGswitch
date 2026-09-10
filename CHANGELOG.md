@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## [Unreleased]
+## [0.14.2] - 2026-09-10
 
 ### 新增
 - 新增 4 个内置供应商预设：Kimi、通义千问（百炼 Token Plan）、腾讯混元（TokenHub Hy3）、火山方舟豆包（Coding Plan），并补齐对应图标。
