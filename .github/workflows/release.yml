@@ -176,8 +176,8 @@ jobs:
           fi
       # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ CHANGELOG.md 对应段落内容
       # （可选，/release skill 写）+ 安装指南兜底（必带，没写更新日志时用户也能知道下载哪个包）
-      # + --generate-notes 自动追加的 PR 清单 / 贡献者 / Full Changelog（GitHub 原生生成）。
-      # 已存在草稿（重跑场景）则更新，已公开则拒绝改动
+      # + GitHub 原生生成的 PR 清单 / 贡献者 / Full Changelog。已存在草稿（重跑场景）则更新，
+      # 已公开则拒绝改动
       - name: 创建草稿发行页
         run: |
           TAG="v$VERSION"
