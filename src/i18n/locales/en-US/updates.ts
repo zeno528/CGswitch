@@ -8,6 +8,7 @@ export default {
     installing: "Downloading…",
     close: "Dismiss update notice",
     openOnGithub: "View the latest release on GitHub",
+    noNotes: "No release notes for this version",
   },
   toast: {
     updated: "Updated to v{{version}}",

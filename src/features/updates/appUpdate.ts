@@ -4,15 +4,18 @@ import { api, isTauri } from "../../api";
 
 export interface AppUpdate {
   version: string;
+  /** 本次版本更新日志（latest.json 的 notes 段落）；旧清单或空日志发版时为 null */
+  notes: string | null;
   install: () => Promise<void>;
 }
 
 /** 旧版本把更新标记存 localStorage 的键：启动时兜底消费一次，覆盖升级过渡期 */
 export const UPDATED_VERSION_KEY = "cgswitch.updated-version";
 
-export function toAppUpdate(update: Pick<Update, "version" | "download" | "install">): AppUpdate {
+export function toAppUpdate(update: Pick<Update, "version" | "body" | "download" | "install">): AppUpdate {
   return {
     version: update.version,
+    notes: update.body ?? null,
     install: async () => {
       await update.download();
       // Windows 的 install 成功启动安装器后会立即退出当前进程，标记必须先原子落盘——

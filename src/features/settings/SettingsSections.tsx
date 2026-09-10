@@ -12,6 +12,7 @@ import { AppSwitch } from "../../components/AppSwitch";
 import { TrashIcon } from "../../components/TrashIcon";
 import { updateFailureMessage } from "../updates/updateText";
 import { useAppUpdate, releaseNotesUrl } from "../updates/AppUpdateProvider";
+import { UpdateNotesDialog } from "../updates/UpdateNotesDialog";
 import type { DatabaseBackupInfo, PathInfo, Settings } from "../../types";
 import version from "../../../VERSION?raw";
 
@@ -260,7 +261,9 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   const { t } = useTranslation("settings");
   // 更新失败提示的文案归 updates 命名空间，故另取一个对应的 t
   const { t: tUpdate } = useTranslation("updates");
-  const { update, checking, installing, check, install } = useAppUpdate();
+  const { update, checking, installing, check } = useAppUpdate();
+  // 与状态栏悬浮卡片一致：升级走确认式弹窗，先看更新日志再安装
+  const [confirming, setConfirming] = useState(false);
   const openRepository = () => void api.openUrl("https://github.com/zeno528/CGSwitch").catch((error) => feedback.error(String(error)));
   // 检查只负责发现并展示版本号，升级必须由用户点击「立即升级」触发
   const checkUpdate = async () => {
@@ -308,7 +311,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
                 </span>
                 <span className="font-medium">{t("about.updateAvailable", { version: update.version })}</span>
               </div>
-              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
+              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => setConfirming(true)}>
                 {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
                 {installing ? t("about.installing") : t("about.updateNow")}
               </button>
@@ -327,6 +330,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
           </button>
         ))}
       </div>
+      <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>
   );
 }

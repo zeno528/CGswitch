@@ -7,6 +7,7 @@ import { setupI18n } from "../../i18n";
 import { AppUpdateProvider, releaseNotesUrl, UpdateNotice } from "./AppUpdateProvider";
 
 const providerSource = readFileSync(new URL("./AppUpdateProvider.tsx", import.meta.url), "utf8");
+const dialogSource = readFileSync(new URL("./UpdateNotesDialog.tsx", import.meta.url), "utf8");
 
 const render = (enabled: boolean) => renderToStaticMarkup(
   <FeedbackProvider>
@@ -29,10 +30,21 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("autoCheckedRef.current = true");
   });
 
-  it("升级必须由用户点击「立即升级」触发，安装失败走 toast", () => {
-    expect(providerSource).toContain('t("notice.updateNow")');
+  it("升级走确认式弹窗：入口只负责打开弹窗，安装在弹窗内确认后触发，失败走 toast", () => {
+    // 悬浮卡片不再直接安装，只打开更新日志弹窗
+    expect(providerSource).not.toContain("void install()");
+    expect(providerSource).toContain("setConfirming(true)");
+    expect(providerSource).toContain("<UpdateNotesDialog");
+    // 弹窗：日志 markdown 渲染、无日志兜底、GitHub 链接、确认安装按钮
+    expect(dialogSource).toContain("skill-markdown-preview");
+    expect(dialogSource).toContain("<MarkdownPreview>{update.notes}</MarkdownPreview>");
+    expect(dialogSource).toContain('t("notice.noNotes")');
+    expect(dialogSource).toContain("releaseNotesUrl(update.version)");
+    expect(dialogSource).toContain("void install()");
+    expect(dialogSource).toContain('t("notice.updateNow")');
+    expect(dialogSource).not.toContain("downloadAndInstall");
+    // 安装失败 toast 的契约仍在 provider 的 install 回调里
     expect(providerSource).toContain("feedback.error(updateFailureMessage(error, t))");
-    expect(providerSource).not.toContain("downloadAndInstall");
   });
 
   it("悬浮卡片提供更新日志入口（GitHub 最新 Release 页）", () => {

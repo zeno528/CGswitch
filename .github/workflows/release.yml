@@ -189,6 +189,9 @@ jobs:
             insec && /^## \[/ && index($0, "## [" v "]") != 1 { exit }
             insec { print }
           ' CHANGELOG.md > "$NOTES"
+          # 纯版本段落另存一份：$NOTES 之后会被拼接改写（安装指引 + PR 清单），
+          # latest.json 的 notes 只用干净段落
+          cp "$NOTES" release-notes-section.md
           GUIDE="$(mktemp)"
           cat > "$GUIDE" <<'EOF'
 
@@ -257,8 +260,12 @@ jobs:
           const [version, repository] = process.argv.slice(2);
           const asset = (name) => `https://github.com/${repository}/releases/download/v${version}/${name}`;
           const signature = (name) => fs.readFileSync(`release-assets/${name}`, "utf8").trim();
+          // 应用内升级弹窗展示的更新日志（同一段落也拼进了发行页正文）；
+          // 空日志发版时省略 notes 字段，客户端按无日志兜底
+          const notes = fs.readFileSync("release-notes-section.md", "utf8").trim();
           fs.writeFileSync("release-assets/latest.json", `${JSON.stringify({
             version,
+            notes: notes || undefined,
             platforms: {
               "darwin-x86_64": { url: asset(`CGswitch-v${version}-macOS-x64.app.tar.gz`), signature: signature(`CGswitch-v${version}-macOS-x64.app.tar.gz.sig`) },
               "darwin-aarch64": { url: asset(`CGswitch-v${version}-macOS-arm64.app.tar.gz`), signature: signature(`CGswitch-v${version}-macOS-arm64.app.tar.gz.sig`) },

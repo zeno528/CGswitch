@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { checkForAppUpdate, UPDATED_VERSION_KEY, type AppUpdate } from "./appUpdate";
 import { updateFailureMessage } from "./updateText";
+import { UpdateNotesDialog } from "./UpdateNotesDialog";
 
 /** 更新日志入口：直接打开对应版本的 GitHub Release 页，避免 /latest 重定向。 */
 export const releaseNotesUrl = (version: string) => `https://github.com/zeno528/CGswitch/releases/tag/v${encodeURIComponent(version.replace(/^v/, ""))}`;
@@ -88,10 +89,12 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
 
 /** 状态栏更新图标：点击后展开可交互的更新卡片。 */
 export function UpdateNotice() {
-  const { update, installing, install } = useAppUpdate();
+  const { update, installing } = useAppUpdate();
   const feedback = useFeedback();
   const { t } = useTranslation("updates");
   const [open, setOpen] = useState(false);
+  // 升级走确认式弹窗：先展示更新日志，用户在弹窗内确认后才安装
+  const [confirming, setConfirming] = useState(false);
   const noticeRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!update) setOpen(false);
@@ -107,6 +110,10 @@ export function UpdateNotice() {
   }, [open]);
   if (!update) return null;
   const closePopover = () => setOpen(false);
+  const startUpgrade = () => {
+    closePopover();
+    setConfirming(true);
+  };
   const openChangelog = () => {
     closePopover();
     void api.openUrl(releaseNotesUrl(update.version)).catch((error) => feedback.error(String(error)));
@@ -129,13 +136,14 @@ export function UpdateNotice() {
             <button type="button" className="apple-action-button" title={t("notice.openOnGithub")} onClick={openChangelog}>
               {t("notice.changelog")}
             </button>
-            <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => void install()}>
+            <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={startUpgrade}>
               {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
               {installing ? t("notice.installing") : t("notice.updateNow")}
             </button>
           </div>
         </div>
       ) : null}
+      <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>
   );
 }

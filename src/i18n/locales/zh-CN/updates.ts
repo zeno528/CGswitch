@@ -8,6 +8,7 @@ export default {
     installing: "下载安装中…",
     close: "关闭更新提示",
     openOnGithub: "在 GitHub 查看最新发行版",
+    noNotes: "本次更新暂无日志",
   },
   toast: {
     updated: "已更新到 v{{version}}",
