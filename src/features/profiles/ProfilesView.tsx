@@ -21,7 +21,7 @@ interface ProfilesViewProps {
 }
 
 function ProfileDragPreview({ profile, width, height, active, busy, subscriptionAuthed, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; subscriptionAuthed: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
-  const stateClass = active ? "is-active is-drag-hover" : "is-drag-hover";
+  const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
   const connectionDimmed = !profile.provider ? !subscriptionAuthed : !profile.has_key;
   const connectionTitle = !profile.provider ? subscriptionAuthed ? "测试订阅认证连通性" : "尚未认证 ChatGPT 订阅" : !profile.has_key ? "缺少 API 密钥，点击查看提示" : "测试连通性";
   return (
@@ -94,6 +94,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const persistOrder = async (previous: ProfileSummary[], next: ProfileSummary[]) => {
     try {
       await api.reorderProfiles(next.map((item) => item.id));
+      await onRefresh();
     } catch (error) {
       setItems(previous);
       feedback.error(String(error));

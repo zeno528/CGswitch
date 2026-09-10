@@ -3,11 +3,33 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./ProfilesView.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("ProfilesView 拖拽预览", () => {
   it("将拖拽浮层挂到 body，避免被页面 transform 容器偏移", () => {
     expect(source).toContain('import { createPortal } from "react-dom";');
     expect(source).toContain("createPortal(<DragOverlay");
     expect(source).toContain("document.body");
+  });
+
+  it("排序保存成功后同步父级状态，切页回来仍保留新顺序", () => {
+    expect(source).toContain("await api.reorderProfiles(next.map((item) => item.id));\n      await onRefresh();");
+  });
+
+  it("激活卡的拖拽预览复用品牌渐变且不再覆盖旧底色", () => {
+    expect(source).toContain('active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover"');
+    expect(source).not.toContain('active ? "is-active is-drag-hover" : "is-drag-hover"');
+    expect(styles).not.toContain(".profile-drag-preview.is-active {\n  background-image: linear-gradient(");
+    expect(styles).not.toContain("--profile-active-bg:");
+
+    const activePreviewRuleStart = styles.indexOf(".profile-drag-preview.is-active {");
+    const activePreviewRuleEnd = styles.indexOf("}", activePreviewRuleStart);
+    expect(styles.slice(activePreviewRuleStart, activePreviewRuleEnd)).not.toContain("outline:");
+    expect(styles).not.toContain(":root.dark .profile-drag-preview.is-active {");
+  });
+
+  it("激活卡拖拽预览的官网与登录标识沿用主色", () => {
+    expect(styles).toContain(".profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title=\"删除\"]) {\n  color: var(--primary-button-bg);");
+    expect(styles).toContain(".profile-drag-preview.brand-gradient-surface [aria-label*=\"登录\"] {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);\n  color: var(--primary-button-bg);");
   });
 });

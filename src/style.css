@@ -27,7 +27,6 @@
   --text-secondary: rgba(60, 60, 67, 0.68);
   --sidebar-bg: #f2f3f8;
   --selection-bg: rgba(0, 122, 255, 0.12);
-  --profile-active-bg: color-mix(in srgb, var(--accent) 7%, var(--panel-bg));
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
   --success-text: #27c840;
   --chip-success: #30d158;
@@ -97,7 +96,6 @@
   --text-secondary: rgba(255, 255, 255, 0.68);
   --sidebar-bg: #25282b;
   --selection-bg: rgba(0, 122, 255, 0.16);
-  --profile-active-bg: color-mix(in srgb, var(--accent) 14%, var(--panel-bg));
   --success-text: #6ee7a0;
   --chip-success: #63e68a;
   --toast-icon-foreground: #ffffff;
@@ -1121,16 +1119,6 @@ body.drag-active * {
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-/* 拖拽预览保留通用激活底色；列表中的配置卡片统一使用上方 ChatGPT 品牌渐变。 */
-.profile-drag-preview.is-active {
-  background-image: linear-gradient(
-    90deg,
-    var(--profile-active-bg) 0%,
-    color-mix(in srgb, var(--profile-active-bg) 45%, transparent) 58%,
-    transparent 100%
-  );
-}
-
 .profile-list > .apple-group,
 .profile-drag-preview {
   border-radius: var(--radius-card);
@@ -1145,7 +1133,7 @@ body.drag-active * {
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
-  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);
+  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
@@ -1154,23 +1142,34 @@ body.drag-active * {
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
 }
 
-/* 激活 ChatGPT 渐变卡：浅色下同样让药丸融入页面底色；深色主题保住 chip-bg 原样 */
+/* 激活渐变卡的深色对比度维持现有观感。 */
+:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
+  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);
+}
+
 :root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
   background: var(--chip-bg);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]) {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]),
+.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
+.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not([title="删除"]) {
   color: var(--primary-button-bg);
 }
 
-.profile-list > .apple-group.brand-gradient-surface [aria-label*="登录"] {
+.profile-list > .apple-group.brand-gradient-surface [aria-label*="登录"],
+.profile-drag-preview.brand-gradient-surface [aria-label*="登录"] {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
   background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);
   color: var(--primary-button-bg);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .drag-handle {
+  color: color-mix(in srgb, var(--primary-button-bg) 84%, transparent);
+}
+
+:root.dark .profile-list > .apple-group.brand-gradient-surface .drag-handle {
   color: color-mix(in srgb, var(--primary-button-bg) 70%, transparent);
 }
 
@@ -1191,16 +1190,10 @@ body.drag-active * {
 }
 
 .profile-drag-preview.is-active {
-  box-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.2);
-  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
 :root.dark .profile-list > .apple-group:not(.is-active):hover {
-  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
-}
-
-:root.dark .profile-drag-preview.is-active {
   outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
