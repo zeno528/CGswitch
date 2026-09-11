@@ -126,6 +126,7 @@ describe("SettingsSections", () => {
     const zhHtml = render();
     expect(zhHtml).toContain("界面语言");
     expect(zhHtml).toContain("外观主题");
+    expect(zhHtml.indexOf("界面语言")).toBeLessThan(zhHtml.indexOf("外观主题"));
     expect(zhHtml).toContain("自动检测");
 
     setupI18n("en-US");
@@ -144,6 +145,14 @@ describe("SettingsSections", () => {
     );
     expect(html).toContain('aria-haspopup="listbox"');
     expect(html).toContain('class="flex items-center justify-between gap-4"');
+  });
+
+  it("外观与语言设置共享统一的右侧控制列宽度", () => {
+    expect(settingsSectionsSource).toContain('<div className="w-72 shrink-0">');
+    expect(settingsSectionsSource).toContain('className="apple-group apple-segmented-control inline-flex w-72 shrink-0 gap-1 p-1"');
+    expect(settingsSectionsSource).toContain('className="app-selection-state inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
+    expect(settingsSectionsSource).not.toContain('<div className="w-44 shrink-0">');
+    expect(settingsSectionsSource).not.toContain('className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
   });
 
   it("显示偏好与启动开关统一使用左右设置行", () => {

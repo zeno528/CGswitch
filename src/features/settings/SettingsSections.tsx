@@ -50,6 +50,24 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="setting-title">{t("language.title")}</div>
+                  <div className="setting-description mt-0.5">{t("language.description")}</div>
+                </div>
+              </div>
+              <div className="w-72 shrink-0">
+                <AppSelect
+                  value={form.language}
+                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
+                  onChange={(value) => onPatch({ language: value })}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                   <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
@@ -57,12 +75,12 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                   <div className="setting-description mt-0.5">{t("appearance.description")}</div>
                 </div>
               </div>
-              <div className="apple-group apple-segmented-control inline-flex shrink-0 gap-1 p-1">
+              <div className="apple-group apple-segmented-control inline-flex w-72 shrink-0 gap-1 p-1">
                 {themeOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
+                    className="app-selection-state inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
                     data-active={form.theme === option.value ? "true" : undefined}
                     aria-pressed={form.theme === option.value}
                     onClick={() => onPatch({ theme: option.value })}
@@ -71,24 +89,6 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                     {t(option.labelKey)}
                   </button>
                 ))}
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
-                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <div className="setting-title">{t("language.title")}</div>
-                  <div className="setting-description mt-0.5">{t("language.description")}</div>
-                </div>
-              </div>
-              <div className="w-44 shrink-0">
-                <AppSelect
-                  value={form.language}
-                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
-                  onChange={(value) => onPatch({ language: value })}
-                />
               </div>
             </div>
           </div>
