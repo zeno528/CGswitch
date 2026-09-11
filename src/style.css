@@ -1539,6 +1539,13 @@ button:focus-visible {
   padding: 0;
   gap: 0;
   overflow: hidden;
+  /* 描边随内容亮度分段：亮渐变头部一段用暗线勾边（对比不依赖虚化底色，深浅色通用），
+     往下渐隐回落到主题 ring 色。手法 = 透明 border + padding-box/border-box 双层背景（渐变描边标准解法） */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+    linear-gradient(180deg, rgb(0 0 0 / 0.2) 0%, rgb(0 0 0 / 0.16) 30%, var(--panel-ring) 44%) border-box;
+  box-shadow: 0 22px 70px rgb(0 0 0 / 0.22);
 }
 
 .app-dialog-hero {
