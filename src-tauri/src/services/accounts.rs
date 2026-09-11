@@ -121,7 +121,7 @@ impl AppContext {
             .set_profile_account(id, Some(account_id), &now_ms().to_string())
     }
 
-    /// OAuth 档案切换账号时，数据库绑定和 live auth 写入必须按激活顺序完成。
+    /// 切换 OAuth 配置所绑定的账号时，数据库绑定和 live auth 写入必须按激活顺序完成。
     pub async fn set_profile_account_and_apply_active(
         &self,
         id: &str,

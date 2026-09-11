@@ -1091,7 +1091,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     }
     case "apply_profile":
-      // 与后端一致：官方档案的认证来源在创建时固定；Web mock 不操作本机 auth.json。
+      // 与后端一致：官方配置的认证来源在创建时固定；Web mock 不操作本机 auth.json。
       webActiveProfileId = typeof args?.id === "string" ? args.id : null;
       await new Promise((resolve) => setTimeout(resolve, 500));
       return undefined as T;

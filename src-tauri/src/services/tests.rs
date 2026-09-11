@@ -272,7 +272,7 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
     context.apply_profile(&profile.id).unwrap();
     assert!(!context.paths.codex_home.join("auth.json").exists());
 
-    // 官方认证完成后，聚焦/刷新把新文件回写当前 Desktop 档案。
+    // 官方认证完成后，聚焦/刷新把新文件回写当前 Desktop 配置。
     let refreshed_live = chatgpt_auth("desktop-account", "refreshed-live");
     std::fs::write(context.paths.codex_home.join("auth.json"), &refreshed_live).unwrap();
     context.get_state().unwrap();
@@ -2563,7 +2563,7 @@ name = "ZAI"
     .unwrap();
     let context = AppContext::new(paths).unwrap();
 
-    // 捕获档案：model_provider 指向不存在的段 → 宽容保存，段体留空
+    // 捕获配置：model_provider 指向不存在的段 → 宽容保存，段体留空
     let profile = context.capture_profile("GLM").unwrap();
     let saved = context
         .update_profile_config(
@@ -2584,7 +2584,7 @@ name = "ZAI"
         None
     );
 
-    // 捕获档案：供应商名与段一致改名 → 供应商身份跟随配置
+    // 捕获配置：供应商名与段一致改名 → 供应商身份跟随配置
     let updated = context
         .update_profile_config(
             &profile.id,
@@ -2605,7 +2605,7 @@ name = "ZAI"
         Some("OTHER")
     );
 
-    // 内置档案：改名后脱离内置模板，按完整快照档案处理
+    // 内置配置：改名后脱离内置模板，按完整配置快照处理
     let builtin = context
         .add_builtin_profile("zhipu", None, Some("sk-test"), None, None)
         .unwrap();
