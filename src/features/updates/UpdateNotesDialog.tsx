@@ -22,7 +22,7 @@ export function UpdateNotesDialog({ open, onOpenChange }: UpdateNotesDialogProps
       open={open}
       onOpenChange={onOpenChange}
       title={t("notice.title", { version: update.version })}
-      hero={<img src="/logo.svg" alt="" className="app-logo h-12 w-12 shrink-0" aria-hidden="true" />}
+      hero={<img src="/logo.svg" alt="" className="app-logo h-14 w-14 shrink-0" aria-hidden="true" />}
       footer={
         <>
           <button type="button" className="apple-action-button" onClick={() => onOpenChange(false)}>

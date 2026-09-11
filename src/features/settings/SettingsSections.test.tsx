@@ -88,7 +88,9 @@ describe("SettingsSections", () => {
   });
 
   it("更新弹窗 logo 不跟随全局主题反色", () => {
-    expect(styles).toContain(".app-dialog-hero .app-logo {\n  filter: none;\n}");
+    const heroLogo = styles.slice(styles.indexOf(".app-dialog-hero .app-logo {"), styles.indexOf(".app-version"));
+    expect(heroLogo).not.toContain("invert");
+    expect(heroLogo).toContain("drop-shadow");
   });
 
   it("关于页 logo 高度与品牌信息块对齐", () => {

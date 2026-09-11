@@ -79,6 +79,16 @@ export function AppSelect<T extends string | number>({
     };
   }, [open, options.length]);
 
+  // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
+  // 菜单是 fixed 定位，offsetTop 即相对菜单的偏移；把选中项滚到可视区中部，越界时 scrollTop 自动收敛
+  useLayoutEffect(() => {
+    if (!open) return;
+    const menu = menuRef.current;
+    const current = menu?.querySelector<HTMLButtonElement>('[data-selected="true"]');
+    if (!menu || !current) return;
+    menu.scrollTop = Math.max(0, current.offsetTop - (menu.clientHeight - current.offsetHeight) / 2);
+  }, [open, options.length]);
+
   // 展开期间的背景滚动控制：
   // 1. 菜单外发生滚动（容器滚轮/拖动）→ 直接收起，避免 fixed 菜单跟随触发器跳跑
   useEffect(() => {

@@ -180,9 +180,9 @@ body {
   filter: none;
 }
 
-/* 更新弹窗头部使用浅色渐变，logo 始终保持源图的白色。 */
+/* 更新弹窗头部使用浅色渐变，logo 始终保持源图的白色，并带深蓝投影浮在光上。 */
 .app-dialog-hero .app-logo {
-  filter: none;
+  filter: drop-shadow(0 6px 18px rgb(10 20 80 / 0.65));
 }
 
 .app-version {
@@ -1546,14 +1546,22 @@ button:focus-visible {
   flex-shrink: 0;
   height: 32%;
   min-height: 7.5rem;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.875rem;
+  gap: 9px;
 }
 
+/* hero 标题：白→品牌浅蓝渐变文字 + 投影，浮在渐变光晕上 */
 .app-dialog-content--hero .app-dialog-title {
-  color: rgb(255 255 255);
-  font-size: 20px;
+  font-size: 21px;
+  letter-spacing: -0.2px;
+  line-height: 1;
+  background: linear-gradient(180deg, #ffffff 30%, #b9c8f7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 12px rgb(80 110 230 / 0.45));
 }
 
 .app-dialog-content--hero .app-dialog-close {

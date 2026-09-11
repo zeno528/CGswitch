@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const styleSource = readFileSync(new URL("../style.css", import.meta.url), "utf8");
+const componentSource = readFileSync(new URL("./AppSelect.tsx", import.meta.url), "utf8");
 
 describe("AppSelect styles", () => {
   it("三类控件共用侧边栏的悬停和激活高亮", () => {
@@ -28,5 +29,13 @@ describe("AppSelect styles", () => {
     expect(menuSource).toContain("var(--panel-ring)");
     expect(menuSource).toContain("0 8px 24px rgb(0 0 0 / 0.12)");
     expect(menuSource).not.toContain("border: 1px solid var(--panel-border)");
+  });
+});
+
+describe("AppSelect 交互", () => {
+  it("展开菜单时定位到当前选中项，而不是停留在列表顶部", () => {
+    // 契约：打开时按 data-selected 找到选中项并滚动菜单，使其进入可视区
+    expect(componentSource).toContain(`querySelector<HTMLButtonElement>('[data-selected="true"]')`);
+    expect(componentSource).toContain("menu.scrollTop");
   });
 });
