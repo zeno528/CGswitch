@@ -1171,7 +1171,7 @@ body.drag-active * {
   gap: 0.5rem;
   height: var(--control-height);
   justify-content: center;
-  padding-inline: 0.75rem;
+  padding-inline: 20px;
   font-size: var(--font-size-base);
   font-weight: 500;
   transition: background-color var(--motion-fast) ease-out;
