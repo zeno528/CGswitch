@@ -2,12 +2,9 @@
 export default {
   notice: {
     title: "Version {{version}} available",
-    description: "Download and install the new version. The app restarts automatically when done.",
-    changelog: "Release notes",
     updateNow: "Update now",
+    later: "Not now",
     installing: "Downloading…",
-    close: "Dismiss update notice",
-    openOnGithub: "View the latest release on GitHub",
     noNotes: "No release notes for this version",
   },
   toast: {

@@ -2,12 +2,9 @@
 export default {
   notice: {
     title: "发现新版本 v{{version}}",
-    description: "下载并安装新版本，完成后自动重启",
-    changelog: "更新日志",
     updateNow: "立即升级",
+    later: "暂不升级",
     installing: "下载安装中…",
-    close: "关闭更新提示",
-    openOnGithub: "在 GitHub 查看最新发行版",
     noNotes: "本次更新暂无日志",
   },
   toast: {
