@@ -1,13 +1,11 @@
 /** App update strings (status-bar notice, upgrade flow). */
 export default {
   notice: {
-    title: "Version {{version}} available",
-    description: "Download and install the new version. The app restarts automatically when done.",
-    changelog: "Release notes",
-    updateNow: "Update now",
+    title: "New version {{version}} is ready",
+    updateNow: "Restart to update",
+    later: "Later",
     installing: "Downloading…",
-    close: "Dismiss update notice",
-    openOnGithub: "View the latest release on GitHub",
+    noNotes: "No release notes for this version",
   },
   toast: {
     updated: "Updated to v{{version}}",

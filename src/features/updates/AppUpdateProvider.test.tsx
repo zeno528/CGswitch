@@ -7,6 +7,7 @@ import { setupI18n } from "../../i18n";
 import { AppUpdateProvider, releaseNotesUrl, UpdateNotice } from "./AppUpdateProvider";
 
 const providerSource = readFileSync(new URL("./AppUpdateProvider.tsx", import.meta.url), "utf8");
+const dialogSource = readFileSync(new URL("./UpdateNotesDialog.tsx", import.meta.url), "utf8");
 
 const render = (enabled: boolean) => renderToStaticMarkup(
   <FeedbackProvider>
@@ -29,15 +30,32 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("autoCheckedRef.current = true");
   });
 
-  it("升级必须由用户点击「立即升级」触发，安装失败走 toast", () => {
-    expect(providerSource).toContain('t("notice.updateNow")');
+  it("升级走确认式弹窗：入口只负责打开弹窗，安装在弹窗内确认后触发，失败走 toast", () => {
+    // 悬浮卡片不再直接安装，只打开更新日志弹窗
+    expect(providerSource).not.toContain("void install()");
+    expect(providerSource).toContain("setConfirming(true)");
+    expect(providerSource).toContain("<UpdateNotesDialog");
+    // 弹窗：日志 markdown 渲染、无日志兜底、「稍后 / 立即重启更新」双按钮
+    expect(dialogSource).toContain("skill-markdown-preview");
+    expect(dialogSource).toContain("<MarkdownPreview>{update.notes}</MarkdownPreview>");
+    expect(dialogSource).toContain('t("notice.later")');
+    expect(dialogSource).toContain("onOpenChange(false)");
+    expect(dialogSource).toContain('t("notice.updateNow")');
+    // 品牌渐变头部：项目 logo + 版本标题（hero 变体由 AppDialog 承载）
+    expect(dialogSource).toContain('src="/logo.svg"');
+    expect(dialogSource).toContain('t("notice.noNotes")');
+    expect(dialogSource).toContain("void install()");
+    expect(dialogSource).toContain('t("notice.updateNow")');
+    expect(dialogSource).not.toContain("downloadAndInstall");
+    // 安装失败 toast 的契约仍在 provider 的 install 回调里
     expect(providerSource).toContain("feedback.error(updateFailureMessage(error, t))");
-    expect(providerSource).not.toContain("downloadAndInstall");
   });
 
-  it("悬浮卡片提供更新日志入口（GitHub 最新 Release 页）", () => {
-    expect(providerSource).toContain('t("notice.changelog")');
-    expect(providerSource).toContain("releases/tag/v");
+  it("GitHub 入口只在设置-关于页，弹窗内不再有更新日志按钮，悬浮卡片已移除", () => {
+    const settingsSource = readFileSync(new URL("../settings/SettingsSections.tsx", import.meta.url), "utf8");
+    expect(settingsSource).toContain("releaseNotesUrl(");
+    expect(dialogSource).not.toContain("releaseNotesUrl");
+    expect(providerSource).not.toContain("update-notice-popover");
     expect(providerSource).not.toContain("releases/latest");
   });
 
@@ -46,21 +64,22 @@ describe("AppUpdateProvider", () => {
     expect(releaseNotesUrl("v0.13.10")).toBe("https://github.com/zeno528/CGswitch/releases/tag/v0.13.10");
   });
 
-  it("启动自动发现更新时不自动展开，卡片由点击打开", () => {
+  it("启动自动发现更新时不自动弹窗，图标点击直达确认弹窗", () => {
     expect(providerSource).not.toContain("autoOpened");
     expect(providerSource).not.toContain("pinned");
     expect(providerSource).not.toContain("installingHere");
-    expect(providerSource).toContain("const [open, setOpen] = useState(false);");
-    expect(providerSource).toContain("onClick={() => setOpen((value) => !value)}");
-    expect(providerSource).not.toContain("onMouseEnter={() => setHovered(true)}");
-    expect(providerSource).not.toContain("const open = hovered;");
-    expect(providerSource).toContain('aria-label={t("notice.close")}');
+    expect(providerSource).toContain("const [confirming, setConfirming] = useState(false);");
+    expect(providerSource).toContain("onClick={() => setConfirming(true)}");
+    expect(providerSource).not.toContain("onMouseEnter");
+    expect(providerSource).toContain('aria-haspopup="dialog"');
   });
 
-  it("点击卡片外部或关闭按钮可以收起更新卡片", () => {
-    expect(providerSource).toContain("document.addEventListener(\"pointerdown\", closeOnOutsidePointer);");
-    expect(providerSource).toContain("if (noticeRef.current?.contains(event.target as Node)) return;");
-    expect(providerSource).toContain("setOpen(false);");
+  it("悬浮卡片交互已整体移除，弹窗关闭由 Radix onOpenChange 承担", () => {
+    expect(providerSource).not.toContain("closeOnOutsidePointer");
+    expect(providerSource).not.toContain("noticeRef");
+    expect(providerSource).toContain("onOpenChange={setConfirming}");
+    // 更新消失（重查无新版）时收起弹窗，避免下次出现更新时误弹
+    expect(providerSource).toContain("if (!update) setConfirming(false);");
   });
 
   it("更新入口只显示在 Codex 状态旁，不再渲染侧边栏横幅", () => {

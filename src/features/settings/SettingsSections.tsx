@@ -12,6 +12,7 @@ import { AppSwitch } from "../../components/AppSwitch";
 import { TrashIcon } from "../../components/TrashIcon";
 import { updateFailureMessage } from "../updates/updateText";
 import { useAppUpdate, releaseNotesUrl } from "../updates/AppUpdateProvider";
+import { UpdateNotesDialog } from "../updates/UpdateNotesDialog";
 import type { DatabaseBackupInfo, PathInfo, Settings } from "../../types";
 import version from "../../../VERSION?raw";
 
@@ -44,9 +45,27 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
   return (
     <div className="flex flex-col gap-[var(--gap-section)]">
       <SettingsPanelSection id="appearance-language" label={t("general.appearanceGroupTitle")}>
-        <div className="apple-group p-[var(--gap-card)]">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-4">
+        <div className="apple-group px-[var(--gap-card)]">
+          <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
+            <div className="flex items-center justify-between gap-4 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="setting-title">{t("language.title")}</div>
+                  <div className="setting-description mt-0.5">{t("language.description")}</div>
+                </div>
+              </div>
+              <div className="w-72 shrink-0">
+                <AppSelect
+                  value={form.language}
+                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
+                  onChange={(value) => onPatch({ language: value })}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-4">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                   <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
@@ -56,12 +75,12 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                   <div className="setting-description mt-0.5">{t("appearance.description")}</div>
                 </div>
               </div>
-              <div className="apple-group apple-segmented-control inline-flex shrink-0 gap-1 p-1">
+              <div className="apple-group apple-segmented-control inline-flex h-9 w-72 shrink-0 gap-0.5 p-0.5">
                 {themeOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
+                    className="app-selection-state inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
                     data-active={form.theme === option.value ? "true" : undefined}
                     aria-pressed={form.theme === option.value}
                     onClick={() => onPatch({ theme: option.value })}
@@ -72,36 +91,18 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                 ))}
               </div>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
-                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <div className="setting-title">{t("language.title")}</div>
-                  <div className="setting-description mt-0.5">{t("language.description")}</div>
-                </div>
-              </div>
-              <div className="w-44 shrink-0">
-                <AppSelect
-                  value={form.language}
-                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
-                  onChange={(value) => onPatch({ language: value })}
-                />
-              </div>
-            </div>
           </div>
         </div>
       </SettingsPanelSection>
       <SettingsPanelSection id="startup" label={t("general.startupGroupTitle")}>
-        <div className="apple-group p-[var(--gap-card)]">
-          <div className="flex flex-col gap-5">
+        <div className="apple-group px-[var(--gap-card)]">
+          <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
             {[
               ["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power],
               ["silent_start", t("startup.silentTitle"), t("startup.silentDescription"), MoonStar],
               ["minimize_to_tray", t("startup.minimizeTitle"), t("startup.minimizeDescription"), PanelBottomClose],
             ].map(([key, label, description, Icon]) => (
-              <div key={String(key)} className="flex items-center justify-between gap-4">
+              <div key={String(key)} className="flex items-center justify-between gap-4 py-4">
                 <div className="flex items-start gap-3">
                   <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                     <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -260,9 +261,11 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   const { t } = useTranslation("settings");
   // 更新失败提示的文案归 updates 命名空间，故另取一个对应的 t
   const { t: tUpdate } = useTranslation("updates");
-  const { update, checking, installing, check, install } = useAppUpdate();
+  const { update, checking, installing, check } = useAppUpdate();
+  // 与状态栏悬浮卡片一致：升级走确认式弹窗，先看更新日志再安装
+  const [confirming, setConfirming] = useState(false);
   const openRepository = () => void api.openUrl("https://github.com/zeno528/CGSwitch").catch((error) => feedback.error(String(error)));
-  // 检查只负责发现并展示版本号，升级必须由用户点击「立即升级」触发
+  // 检查只负责发现并展示版本号，升级必须由用户点击「立即重启更新」触发
   const checkUpdate = async () => {
     try {
       const found = await check();
@@ -277,7 +280,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <div className="settings-about__hero brand-gradient-surface">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="CGswitch" className="app-logo h-14 w-14 shrink-0" />
+            <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
             <div>
               <div className="apple-wordmark">CGswitch</div>
               <div className="app-version mt-1.5">{t("about.version", { version: version.trim() })}</div>
@@ -293,28 +296,19 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             {t("about.changelog")}
           </button>
-          <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
-            <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
-            {t("about.checkUpdate")}
-          </button>
+          {update ? (
+            <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
+              {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
+              {installing ? t("about.installing") : t("about.upgradeTo")} v{update.version}
+            </button>
+          ) : (
+            <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
+              <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
+              {t("about.checkUpdate")}
+            </button>
+          )}
           </div>
         </div>
-        {update ? (
-          <div className="update-available-reveal mt-3">
-            <div className="update-available-card">
-              <div className="flex min-w-0 items-center gap-2 text-sm">
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
-                  <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-                </span>
-                <span className="font-medium">{t("about.updateAvailable", { version: update.version })}</span>
-              </div>
-              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => void install()}>
-                {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-                {installing ? t("about.installing") : t("about.updateNow")}
-              </button>
-            </div>
-          </div>
-        ) : null}
         <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
       </div>
       <h2 className="setting-title">{t("about.dataAndPaths")}</h2>
@@ -327,6 +321,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
           </button>
         ))}
       </div>
+      <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>
   );
 }

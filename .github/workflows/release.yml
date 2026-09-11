@@ -1,6 +1,7 @@
 # 发版流水线（构建+发布准备）：/release skill 负责跑 bump 脚本与撰写 CHANGELOG 内容
-# （## [Unreleased] 段落，不含版本号与日期）；本工作流承担确定性动作——回填版本标题
-# （## [版本] - 发行日）、校验、三平台构建、创建发行页、上传产物。
+# （## [Unreleased] 段落，不含版本号与日期）；本工作流承担确定性动作——校验、三平台
+# 构建、创建发行页（版本标题行由这里生成）、上传产物。工作流不回写 main，
+# CHANGELOG 的版本标题归档由 /release skill 在下次起草时完成（见 SKILL.md Step 3）。
 # 触发方式：push 到 main 且 VERSION / CHANGELOG.md 有变更时自动触发；
 # 构建完成先建草稿、传资产（用 GITHUB_TOKEN 创建 release/tag）。
 # 自动触发（push）时 release_mode 输入为空，天然停在草稿等人工发布；
@@ -157,38 +158,24 @@ jobs:
           echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
           # 发行日期按维护者时区取当天，即实际发行日（AI 起草日志时无法预知）
           echo "date=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
-      # 版本号与日期是确定性信息，由工作流定：/release skill 只在 CHANGELOG.md 顶部写
-      # ## [Unreleased] 内容段落，这里回填为 ## [<版本>] - <发行日> 并 commit 回 main
-      # （[skip ci] 防止这次 push 再触发本工作流）。重跑时段落已版本化，sed 不命中即跳过
-      - name: 回填 CHANGELOG 版本标题
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          DATE: ${{ steps.version.outputs.date }}
-        run: |
-          sed -i "s/^## \[Unreleased\]$/## [$VERSION] - $DATE/" CHANGELOG.md
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "CHANGELOG.md 无 Unreleased 段落（空日志发版或重跑已回填），跳过回填"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git commit -m "chore(changelog): v$VERSION [skip ci]" -- CHANGELOG.md
-            git push origin HEAD:refs/heads/main
-          fi
-      # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ CHANGELOG.md 对应段落内容
-      # （可选，/release skill 写）+ 安装指南兜底（必带，没写更新日志时用户也能知道下载哪个包）
-      # + GitHub 原生生成的 PR 清单 / 贡献者 / Full Changelog。已存在草稿（重跑场景）则更新，
-      # 已公开则拒绝改动
+      # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ CHANGELOG.md 的 Unreleased
+      # 段落内容（可选，/release skill 写）+ 安装指南兜底（必带，没写更新日志时用户也能知道
+      # 下载哪个包）+ GitHub 原生生成的 PR 清单 / 贡献者 / Full Changelog。已存在草稿（重跑
+      # 场景）则更新，已公开则拒绝改动。CHANGELOG.md 不回写 main，Unreleased 保持原样
       - name: 创建草稿发行页
         run: |
           TAG="v$VERSION"
           NOTES="$(mktemp)"
-          # 提取段落内容时跳过 ## [版本] 标题行本身——标题行统一由工作流生成，
-          # 保证发行页的版本号/日期不依赖（也不重复于）CHANGELOG 里写的内容
-          awk -v v="$VERSION" '
-            index($0, "## [" v "]") == 1 { insec = 1; next }
-            insec && /^## \[/ && index($0, "## [" v "]") != 1 { exit }
+          # 提取 Unreleased 段落内容（到下一个 ## 二级标题为止）；版本标题行不依赖 CHANGELOG，
+          # 统一由下面 printf 生成，保证发行页的版本号/日期确定且不重复
+          awk '
+            index($0, "## [Unreleased]") == 1 { insec = 1; next }
+            insec && /^## \[/ { exit }
             insec { print }
           ' CHANGELOG.md > "$NOTES"
+          # 纯版本段落另存一份：$NOTES 之后会被拼接改写（安装指引 + PR 清单），
+          # latest.json 的 notes 只用干净段落
+          cp "$NOTES" release-notes-section.md
           GUIDE="$(mktemp)"
           cat > "$GUIDE" <<'EOF'
 
@@ -257,8 +244,12 @@ jobs:
           const [version, repository] = process.argv.slice(2);
           const asset = (name) => `https://github.com/${repository}/releases/download/v${version}/${name}`;
           const signature = (name) => fs.readFileSync(`release-assets/${name}`, "utf8").trim();
+          // 应用内升级弹窗展示的更新日志（同一段落也拼进了发行页正文）；
+          // 空日志发版时省略 notes 字段，客户端按无日志兜底
+          const notes = fs.readFileSync("release-notes-section.md", "utf8").trim();
           fs.writeFileSync("release-assets/latest.json", `${JSON.stringify({
             version,
+            notes: notes || undefined,
             platforms: {
               "darwin-x86_64": { url: asset(`CGswitch-v${version}-macOS-x64.app.tar.gz`), signature: signature(`CGswitch-v${version}-macOS-x64.app.tar.gz.sig`) },
               "darwin-aarch64": { url: asset(`CGswitch-v${version}-macOS-arm64.app.tar.gz`), signature: signature(`CGswitch-v${version}-macOS-arm64.app.tar.gz.sig`) },

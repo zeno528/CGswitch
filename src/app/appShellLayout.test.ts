@@ -77,6 +77,15 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-toolbar-group,\n.apple-segmented-control {\n  border-radius: 999px;");
   });
 
+  it("让共享面板的分割线与内容左右内边距对齐", () => {
+    expect(styles).toContain(".apple-panel-section + .apple-panel-section {\n  position: relative;\n  border-top: 0;");
+    expect(styles).toContain(".apple-panel-section + .apple-panel-section::before {\n  content: \"\";\n  position: absolute;\n  top: 0;\n  right: var(--gap-card);\n  left: var(--gap-card);\n  border-top: 1px solid var(--panel-divider);");
+  });
+
+  it("让技能预览器的 Markdown 分割线使用全局分割线", () => {
+    expect(styles).toContain(".skill-markdown-preview hr {\n  border: 0;\n  border-top: 1px solid var(--panel-divider);");
+  });
+
   it("将通知条与页面顶部操作按钮对齐", () => {
     expect(styles).toContain(".app-toast-viewport {\n  position: fixed;\n  top: 2.5rem;");
   });
@@ -120,6 +129,11 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("*::-webkit-scrollbar-thumb {\n  background: var(--scrollbar-thumb);");
     expect(styles).toContain("scrollbar-color: var(--scrollbar-thumb) transparent;");
     expect(styles).not.toContain("*:hover::-webkit-scrollbar-thumb {\n  background: var(--scrollbar-thumb);");
+  });
+
+  it("避免侧栏宽度动画期间重测主区域滚动条占位", () => {
+    expect(source).not.toContain("new ResizeObserver(updateScrollbarSize)");
+    expect(source).toContain("updateScrollbarSize();");
   });
 
   it("让供应商卡片使用略圆的圆角", () => {

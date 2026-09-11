@@ -1,13 +1,11 @@
 /** 应用更新相关文案（状态栏提示、升级流程）。 */
 export default {
   notice: {
-    title: "发现新版本 v{{version}}",
-    description: "下载并安装新版本，完成后自动重启",
-    changelog: "更新日志",
-    updateNow: "立即升级",
+    title: "新版 v{{version}} 已就绪",
+    updateNow: "立即重启更新",
+    later: "稍后",
     installing: "下载安装中…",
-    close: "关闭更新提示",
-    openOnGithub: "在 GitHub 查看最新发行版",
+    noNotes: "本次更新暂无日志",
   },
   toast: {
     updated: "已更新到 v{{version}}",

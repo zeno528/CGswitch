@@ -55,7 +55,7 @@
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
   --sidebar-icon-size: 1.125rem;
-  --brand-logo-size: 1.5rem;
+  --brand-logo-size: 1.375rem;
   --control-height: 2.25rem;
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
@@ -180,6 +180,11 @@ body {
   filter: none;
 }
 
+/* 更新弹窗头部使用浅色渐变，logo 始终保持源图的白色，并带深蓝投影浮在光上。 */
+.app-dialog-hero .app-logo {
+  filter: drop-shadow(0 6px 18px rgb(10 20 80 / 0.65));
+}
+
 .app-version {
   align-items: center;
   border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
@@ -268,6 +273,11 @@ body {
 
 .skill-markdown-preview > * + * {
   margin-top: 0.75rem;
+}
+
+.skill-markdown-preview hr {
+  border: 0;
+  border-top: 1px solid var(--panel-divider);
 }
 
 .skill-markdown-preview h1,
@@ -753,58 +763,6 @@ body.drag-active * {
 
 .update-notice-trigger:active {
   transform: scale(0.94);
-}
-
-/* 状态栏更新图标的交互卡片：点击图标展开，点击关闭按钮或空白处收起。 */
-.update-notice-popover {
-  position: absolute;
-  top: calc(100% + 0.6rem);
-  left: 0;
-  z-index: 30;
-  width: max-content;
-  max-width: min(20rem, calc(100vw - 2rem));
-  border-radius: var(--radius-control);
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  box-shadow:
-    0 8px 24px rgb(0 0 0 / 0.1),
-    0 0 0 1px var(--panel-ring);
-  padding: 0.75rem;
-}
-
-/* 安装中文案变宽时保持两个操作按钮同一行 */
-.update-notice-popover .apple-action-button {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-/* 关于页「发现新版本」升级卡片：只展示版本号，升级由用户点击触发 */
-.update-available-card {
-  align-items: center;
-  min-height: 4rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--panel-ring));
-  background: color-mix(in srgb, var(--accent) 4%, var(--panel-bg));
-  border-radius: var(--radius-control);
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0.625rem;
-}
-
-/* 卡片出现时平滑展开外层大卡片：grid 行高 0fr→1fr 做真实高度过渡，
-   时长/缓动对齐全局 apple-page-enter 进场动画 */
-.update-available-reveal {
-  display: grid;
-  animation: update-card-reveal 280ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.update-available-reveal > .update-available-card {
-  min-height: 0;
-  overflow: hidden;
-}
-
-@keyframes update-card-reveal {
-  from { grid-template-rows: 0fr; opacity: 0; transform: translateY(4px); }
-  to { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
 }
 
 /* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
@@ -1406,6 +1364,16 @@ body.drag-active * {
 }
 
 .apple-panel-section + .apple-panel-section {
+  position: relative;
+  border-top: 0;
+}
+
+.apple-panel-section + .apple-panel-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--gap-card);
+  left: var(--gap-card);
   border-top: 1px solid var(--panel-divider);
 }
 
@@ -1560,6 +1528,63 @@ button:focus-visible {
 .app-dialog-close:hover {
   background: var(--profile-chip-bg);
   color: inherit;
+}
+
+/* 品牌头部弹窗变体（hero 插槽）：大面积渐变 banner 固定在顶（参考 ChatGPT 官网更新弹窗，
+   约占弹窗 1/3 高度），正文在限高区内滚动（走全局滚动条）。
+   宽高跟随窗口且保持稳定比例，不随内容长度变化 */
+.app-dialog-content--hero {
+  width: min(32rem, calc(100vw - 3rem));
+  height: min(33rem, calc(100vh - 3rem));
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+
+.app-dialog-hero {
+  display: flex;
+  flex-shrink: 0;
+  height: 32%;
+  min-height: 7.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+/* hero 标题：白→品牌浅蓝渐变文字 + 投影，浮在渐变光晕上 */
+.app-dialog-content--hero .app-dialog-title {
+  font-size: 21px;
+  letter-spacing: -0.2px;
+  line-height: 1;
+  background: linear-gradient(180deg, #ffffff 30%, #b9c8f7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 12px rgb(80 110 230 / 0.45));
+}
+
+.app-dialog-content--hero .app-dialog-close {
+  color: rgb(255 255 255);
+}
+
+.app-dialog-content--hero .app-dialog-close:hover {
+  background: rgb(255 255 255 / 0.18);
+  color: rgb(255 255 255);
+}
+
+.app-dialog-content--hero .app-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--gap-card);
+}
+
+.app-dialog-content--hero .app-dialog-actions {
+  flex-shrink: 0;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem var(--gap-card) 1.25rem;
 }
 
 .app-button--primary {
@@ -1720,6 +1745,13 @@ button:focus-visible {
   text-align: left;
   cursor: pointer;
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out;
+}
+
+.settings-page .app-select {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding-block: 0;
+  line-height: 1.4;
 }
 
 .app-select-wrap {

@@ -14,6 +14,13 @@ vi.mock("../../api", () => ({
 }));
 
 describe("toAppUpdate", () => {
+  it("透传更新日志：body 映射为 notes，缺失归一为 null", () => {
+    const noop = vi.fn(async () => {});
+    expect(toAppUpdate({ version: "0.16.0", body: "### 新增\n- 弹窗展示更新日志", download: noop, install: noop }).notes)
+      .toBe("### 新增\n- 弹窗展示更新日志");
+    expect(toAppUpdate({ version: "0.16.0", download: noop, install: noop }).notes).toBeNull();
+  });
+
   it("安装成功：下载后先把版本标记原子落盘，再启动安装器", async () => {
     const download = vi.fn(async () => {});
     const install = vi.fn(async () => {});

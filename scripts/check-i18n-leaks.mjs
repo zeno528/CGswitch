@@ -1,4 +1,4 @@
-// i18n 扫描（随 pnpm check 运行），三条防线：
+// i18n 扫描（随 pnpm check 运行），四条防线：
 //   1) 已迁移的代码里不得有硬编码中文 —— 必须走 t()；
 //   2) 英文资源里不得留中文 —— 键对齐测试只保证「两边都有这个键」，不保证值真的翻了；
 //   3) 两种豁免都必须可追溯：整文件 WHITELIST 与英文白名单指向不存在的条目时报错，防止腐烂。
@@ -15,7 +15,7 @@ const LOCALES_PREFIX = "i18n/locales";
 /** 行内豁免标记，写在需要豁免的那一行上（行尾注释即可）。 */
 const EXEMPT_MARK = "i18n-exempt";
 
-/** 尚未迁移的文件。摘除顺序见 docs/i18n-glossary.md 的分期。 */
+/** 尚未迁移的文件，写明理由，迁移一个摘一个。 */
 const WHITELIST = [
   { file: "api/web-mock.ts", reason: "浏览器调试桩，不随应用发行" },
 ];

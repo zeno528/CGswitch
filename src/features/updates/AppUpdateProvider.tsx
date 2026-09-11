@@ -1,10 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Download, LoaderCircle, X } from "lucide-react";
+import { Download } from "lucide-react";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { checkForAppUpdate, UPDATED_VERSION_KEY, type AppUpdate } from "./appUpdate";
 import { updateFailureMessage } from "./updateText";
+import { UpdateNotesDialog } from "./UpdateNotesDialog";
 
 /** 更新日志入口：直接打开对应版本的 GitHub Release 页，避免 /latest 重定向。 */
 export const releaseNotesUrl = (version: string) => `https://github.com/zeno528/CGswitch/releases/tag/v${encodeURIComponent(version.replace(/^v/, ""))}`;
@@ -86,56 +87,30 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
   return <AppUpdateContext.Provider value={{ update, checking, installing, check, install }}>{children}</AppUpdateContext.Provider>;
 }
 
-/** 状态栏更新图标：点击后展开可交互的更新卡片。 */
+/** 状态栏更新图标：点击直接打开更新日志确认弹窗（先看日志，确认后才安装）。 */
 export function UpdateNotice() {
-  const { update, installing, install } = useAppUpdate();
-  const feedback = useFeedback();
+  const { update } = useAppUpdate();
   const { t } = useTranslation("updates");
-  const [open, setOpen] = useState(false);
-  const noticeRef = useRef<HTMLDivElement>(null);
+  const [confirming, setConfirming] = useState(false);
   useEffect(() => {
-    if (!update) setOpen(false);
+    if (!update) setConfirming(false);
   }, [update]);
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (noticeRef.current?.contains(event.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [open]);
   if (!update) return null;
-  const closePopover = () => setOpen(false);
-  const openChangelog = () => {
-    closePopover();
-    void api.openUrl(releaseNotesUrl(update.version)).catch((error) => feedback.error(String(error)));
-  };
   return (
-    <div ref={noticeRef} className="update-notice">
-      <button type="button" className="update-notice-trigger" aria-label={t("notice.title", { version: update.version })} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
+    <div className="update-notice">
+      <button
+        type="button"
+        className="update-notice-trigger"
+        aria-label={t("notice.title", { version: update.version })}
+        aria-expanded={confirming}
+        aria-haspopup="dialog"
+        onClick={() => setConfirming(true)}
+      >
         <span className="grid h-6 w-6 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
           <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
         </span>
       </button>
-      {open ? (
-        <div className="update-notice-popover">
-          <button type="button" className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-[var(--text-primary)]" aria-label={t("notice.close")} onClick={closePopover}>
-            <X className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-          </button>
-          <div className="pr-7 text-sm font-semibold">{t("notice.title", { version: update.version })}</div>
-          <p className="muted meta-xs mt-1">{t("notice.description")}</p>
-          <div className="mt-2.5 flex flex-nowrap gap-2">
-            <button type="button" className="apple-action-button" title={t("notice.openOnGithub")} onClick={openChangelog}>
-              {t("notice.changelog")}
-            </button>
-            <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => void install()}>
-              {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-              {installing ? t("notice.installing") : t("notice.updateNow")}
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>
   );
 }
