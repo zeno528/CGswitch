@@ -55,7 +55,7 @@
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
   --sidebar-icon-size: 1.125rem;
-  --brand-logo-size: 1.5rem;
+  --brand-logo-size: 1.375rem;
   --control-height: 2.25rem;
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
@@ -177,6 +177,11 @@ body {
 }
 
 :root.dark .app-logo {
+  filter: none;
+}
+
+/* 更新弹窗头部使用浅色渐变，logo 始终保持源图的白色。 */
+.app-dialog-hero .app-logo {
   filter: none;
 }
 
@@ -753,35 +758,6 @@ body.drag-active * {
 
 .update-notice-trigger:active {
   transform: scale(0.94);
-}
-
-/* 关于页「发现新版本」升级卡片：只展示版本号，升级由用户点击触发 */
-.update-available-card {
-  align-items: center;
-  min-height: 4rem;
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--panel-ring));
-  background: color-mix(in srgb, var(--accent) 4%, var(--panel-bg));
-  border-radius: var(--radius-control);
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0.625rem;
-}
-
-/* 卡片出现时平滑展开外层大卡片：grid 行高 0fr→1fr 做真实高度过渡，
-   时长/缓动对齐全局 apple-page-enter 进场动画 */
-.update-available-reveal {
-  display: grid;
-  animation: update-card-reveal 280ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
-}
-
-.update-available-reveal > .update-available-card {
-  min-height: 0;
-  overflow: hidden;
-}
-
-@keyframes update-card-reveal {
-  from { grid-template-rows: 0fr; opacity: 0; transform: translateY(4px); }
-  to { grid-template-rows: 1fr; opacity: 1; transform: translateY(0); }
 }
 
 /* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
@@ -1553,8 +1529,8 @@ button:focus-visible {
 .app-dialog-hero {
   display: flex;
   flex-shrink: 0;
-  height: 26%;
-  min-height: 6.5rem;
+  height: 32%;
+  min-height: 7.5rem;
   align-items: center;
   justify-content: center;
   gap: 0.875rem;
@@ -1584,6 +1560,7 @@ button:focus-visible {
 .app-dialog-content--hero .app-dialog-actions {
   flex-shrink: 0;
   justify-content: center;
+  gap: 1rem;
   padding: 1rem var(--gap-card) 1.25rem;
 }
 

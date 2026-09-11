@@ -5,7 +5,7 @@ description: CGswitch 发版流水线（**默认仅本地 commit 为止**）：A
 
 # CGswitch 发版
 
-分工：本 skill 做需要判断的部分——bump 级别建议、CHANGELOG 内容草稿（撰写须由 Agent 完成并经用户确认）、本地 commit、跑 bump-version 命令；`.github/workflows/release.yml` 做确定性的部分——回填版本标题（`## [版本] - 发行日`，发行那一刻才确定的事实）、校验、三平台构建、创建 tag 与草稿发行页、上传资产。草稿不会通知关注者；执行发布那一刻 GitHub 才给关注者发通知邮件。
+分工：本 skill 做需要判断的部分——bump 级别建议、CHANGELOG 内容草稿（撰写须由 Agent 完成并经用户确认）、本地 commit、跑 bump-version 命令、把上一版 Unreleased 段落归档为版本标题；`.github/workflows/release.yml` 做确定性的部分——校验、三平台构建、创建 tag 与草稿发行页（发行页的版本标题行 `## [版本] - 发行日` 由工作流生成，发行那一刻才确定的事实）、上传资产。**工作流不回写 main**；CHANGELOG.md 的版本归档在下次起草时由本 skill 完成。草稿不会通知关注者；执行发布那一刻 GitHub 才给关注者发通知邮件。
 
 工作流由 push 到 main 自动触发（要求 VERSION 与 CHANGELOG.md 有变更且内容齐备，不满足则绿色跳过），构建完停在**草稿**；也可手动 `workflow_dispatch` 触发并可传 `release_mode` 直接预发行/正式发布。工作流用 `GITHUB_TOKEN` 创建 tag 和草稿，不会递归触发自身。
 
@@ -18,7 +18,7 @@ Step 4–6（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
 **角色分工硬约束**：
 
 - **AI**：给 bump 级别建议；用户确认后跑 `node scripts/bump-version.mjs <level>`；起草 CHANGELOG 草稿；写入；commit。**不**直接编辑 `VERSION` / `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json`。
-- **版本号与日期禁写**：CHANGELOG 段落标题固定写 `## [Unreleased]`，不写版本号也不写日期——两者由 Release 工作流在发行时回填为 `## [<版本>] - <发行日>]` 并同步到发行页与 CHANGELOG.md。
+- **版本号与日期禁写**：CHANGELOG 段落标题固定写 `## [Unreleased]`，不写版本号也不写日期——发行页的版本标题行由 Release 工作流生成；CHANGELOG.md 里的归档（`## [<版本>] - <发行日>`）由本 skill 在**下次**起草时完成（见 Step 3）。
 - **用户**：确认 bump 级别（可改 AI 建议）；确认 CHANGELOG 文案（可改）。
 - **递增必须跑脚本命令，禁手写**：`bump-version.mjs` 内已串联 `sync-version.mjs` 同步全部元数据文件，手写会漏。
 - **版本号基线以 git 三态为准**：最新 tag + HEAD VERSION（`git show HEAD:VERSION`）+ working tree VERSION（读 `VERSION`），取三者中**最大值**作为 bump 基线——用户在测试场景可能预先 bump，working tree 会领先 index / HEAD。
@@ -66,11 +66,11 @@ Step 4–6（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
 
 2. 检查脚本输出"版本号已从 X.Y.Z 更新为 A.B.C"，记下 A.B.C 作为本版本号（用 git 三态确认输入基线 = max，避免 working tree 残留干扰）。
 3. 锁文件未跟上的话 AI 跑：`cargo update -p cgswitch --manifest-path src-tauri/Cargo.toml`（lockfile 已对齐可跳过）。
-4. 进入 Step 2 起草 CHANGELOG（标题固定 `## [Unreleased]`，不需要带入版本号——版本号与日期由工作流发行时回填）。
+4. 进入 Step 2 起草 CHANGELOG（标题固定 `## [Unreleased]`，不需要带入版本号——版本标题由发行页承担、归档延后到下次起草）。
 
 ### Step 2: 展示 CHANGELOG 草稿（**等用户确认**，不修改任何文件）
 
-1. AI 展示（段落标题固定 `## [Unreleased]`，版本号与日期由 Release 工作流发行时回填，AI 不写）：
+1. AI 展示（段落标题固定 `## [Unreleased]`，版本号与日期 AI 不写——发行页标题由工作流生成、CHANGELOG 归档在下次起草时回补）：
 
    ┌──────────────────────────────────────────────────────────────┐
    │ CHANGELOG 草稿（用户视角描述，即将写入 CHANGELOG.md 顶部）：│
@@ -111,10 +111,14 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 
 ### Step 3: 写入 CHANGELOG 与本地 commit
 
-1. 在 `CHANGELOG.md` 顶部（文件头部介绍之后）插入 Step 2 已确认的版本段落，标题固定 `## [Unreleased]`（版本号与日期由 Release 工作流发行时回填，**AI 禁写**）。
-2. 提交所有发版文件：`git add VERSION package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md`
+1. **归档上一版**：若 `CHANGELOG.md` 顶部存在带内容的 `## [Unreleased]` 段落，先把它改为版本标题 `## [<上一版本号>] - <发行日期>`（工作流不回写 main，这一步由 AI 在起草时补）：
+   - 上一版本号 = 本次 bump 的基线（Step 0 git 三态 max 的旧值，即 bump 得到的 A.B.C 的前一版）
+   - 发行日期优先查 `gh release view v<上一版本号> --json publishedAt -q .publishedAt`（UTC 时间戳，转成 Asia/Shanghai 当天日期，与发行页口径一致）；查不到（该版本还没发行）用今天日期兜底
+   - 段落内容一字不动，只改标题行
+2. 在归档段落上方插入 Step 2 已确认的新版本段落，标题固定 `## [Unreleased]`（版本号与日期**AI 禁写**；本版发行后由下次起草归档）。
+3. 提交所有发版文件：`git add VERSION package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md`
    提交信息：`chore(release): v<版本>`
-3. **到此停下**：汇报版本号、commit hash、CHANGELOG 段落摘要，**会话停在此处**。**不询问用户是否继续**（避免被读成对扩展动作的暗示），**不主动执行**任何 push / 触发工作流 / 发布操作。Step 4–6 需用户用明确指令单独启动。
+4. **到此停下**：汇报版本号、commit hash、CHANGELOG 段落摘要，**会话停在此处**。**不询问用户是否继续**（避免被读成对扩展动作的暗示），**不主动执行**任何 push / 触发工作流 / 发布操作。Step 4–6 需用户用明确指令单独启动。
 
 ### Step 4: 推送（自动触发构建，停在草稿）— 需用户明确启动才执行
 
@@ -138,7 +142,7 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 
 1. `gh run watch <run-id> --exit-status --interval 30` 放后台执行（约 30-40 分钟），完成时会收到通知。
 2. 构建失败：`gh run view <run-id> --log-failed` 提取报错摘要，报告用户并停止（草稿若已创建则留在草稿态，不影响关注者）。
-3. 构建成功后工作流已自动完成：回填 CHANGELOG 版本标题（`## [版本] - 发行日`）、创建 tag、创建发行页（版本标题 + Full Changelog 链接 + 发行日志 + 安装指南）、上传三平台资产。draft 模式停在草稿；prerelease / latest 模式此刻已自动发布，无需 Step 6。
+3. 构建成功后工作流已自动完成：创建 tag、创建发行页（版本标题 + Full Changelog 链接 + 发行日志 + 安装指南）、上传三平台资产。CHANGELOG.md 不被回写（归档在下次起草的 Step 3 完成）。draft 模式停在草稿；prerelease / latest 模式此刻已自动发布，无需 Step 6。
 
 ### Step 6: 确认与发布 — 需用户明确启动才执行
 
@@ -173,9 +177,9 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 
 **工作流未触发**：push 后 `gh run list --workflow=Release` 查看队列；确认改动包含 VERSION 或 CHANGELOG.md（paths 过滤，普通提交不触发）且推的是 main。手动兜底：`gh workflow run release.yml --ref main`。
 
-**verify 绿色跳过（push 自动触发，`::notice` 提示）**：属正常，两种情况——① VERSION 与 CHANGELOG 顶部段落不一致（如只改其一、提前写未来版本段落）；② 该版本已公开发布（改文案不会重发）。
+**verify 绿色跳过（push 自动触发，`::notice` 提示）**：属正常——该版本（VERSION 对应 tag）已公开发布，重复推送不重发（改 CHANGELOG 文案不会重出发行页）。
 
-**verify 第 0 步失败（手动 dispatch 时 VERSION 为空 / 顶部段落与 VERSION 不一致）**：说明版本号与日志没同步提交。补上 `CHANGELOG.md` 顶部的 `## [Unreleased]` 段落并让 VERSION 一致，提交推送后重新触发。
+**verify 失败（VERSION 为空）**：说明版本号没提交。跑 `node scripts/bump-version.mjs <level>` 后把 VERSION 等发版文件一起提交，推送重新触发。
 
 **草稿已存在（重跑场景）**：工作流会检测到草稿并更新（`gh release edit`），不会重复建。
 

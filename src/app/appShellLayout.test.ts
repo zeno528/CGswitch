@@ -122,6 +122,11 @@ describe("AppShell 布局", () => {
     expect(styles).not.toContain("*:hover::-webkit-scrollbar-thumb {\n  background: var(--scrollbar-thumb);");
   });
 
+  it("避免侧栏宽度动画期间重测主区域滚动条占位", () => {
+    expect(source).not.toContain("new ResizeObserver(updateScrollbarSize)");
+    expect(source).toContain("updateScrollbarSize();");
+  });
+
   it("让供应商卡片使用略圆的圆角", () => {
     expect(styles).toContain(".profile-list > .apple-group,\n.profile-drag-preview {\n  border-radius: var(--radius-card);");
   });

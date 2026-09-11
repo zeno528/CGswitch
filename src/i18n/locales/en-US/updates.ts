@@ -3,7 +3,7 @@ export default {
   notice: {
     title: "Version {{version}} available",
     updateNow: "Update now",
-    later: "Not now",
+    later: "Skip",
     installing: "Downloading…",
     noNotes: "No release notes for this version",
   },

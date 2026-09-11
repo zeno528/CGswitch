@@ -72,14 +72,23 @@ describe("SettingsSections", () => {
     expect(html).not.toContain("备份目录");
   });
 
-  it("手动检查发现新版只展示版本号，升级由用户点击触发", () => {
-    expect(settingsSectionsSource).toContain('t("about.updateNow")');
+  it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
+    expect(settingsSectionsSource).toContain('t("about.upgradeTo")');
+    expect(settingsSectionsSource).not.toContain('t("about.updateNow")');
     expect(settingsSectionsSource).toContain('t("about.changelog")');
     expect(settingsSectionsSource).toContain("releaseNotesUrl(update?.version ?? version.trim())");
     expect(settingsSectionsSource).toContain('if (!found) feedback.success(t("about.upToDate"))');
+    expect(settingsSectionsSource).toMatch(/t\("about\.upgradeTo"\)\}\s+v\{update\.version\}/);
+    expect(settingsSectionsSource).not.toContain('className="app-version" title={t("about.updateAvailable"');
+    expect(settingsSectionsSource).not.toContain("update-available-card");
+    expect(settingsSectionsSource).not.toContain("update-available-reveal");
     // 不再沿用旧逻辑：检查到新版立即自动下载安装
     expect(settingsSectionsSource).not.toContain("正在下载并安装");
     expect(settingsSectionsSource).not.toContain("await update.install()");
+  });
+
+  it("更新弹窗 logo 不跟随全局主题反色", () => {
+    expect(styles).toContain(".app-dialog-hero .app-logo {\n  filter: none;\n}");
   });
 
   it("更新检查支持启动自动检查（可开关）与关于页手动触发并存", () => {

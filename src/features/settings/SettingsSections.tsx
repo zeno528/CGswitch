@@ -280,7 +280,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <div className="settings-about__hero brand-gradient-surface">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="CGswitch" className="app-logo h-14 w-14 shrink-0" />
+            <img src="/logo.svg" alt="CGswitch" className="app-logo h-13 w-13 shrink-0" />
             <div>
               <div className="apple-wordmark">CGswitch</div>
               <div className="app-version mt-1.5">{t("about.version", { version: version.trim() })}</div>
@@ -296,28 +296,19 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
             {t("about.changelog")}
           </button>
-          <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
-            <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
-            {t("about.checkUpdate")}
-          </button>
+          {update ? (
+            <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
+              {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
+              {installing ? t("about.installing") : t("about.upgradeTo")} v{update.version}
+            </button>
+          ) : (
+            <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
+              <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
+              {t("about.checkUpdate")}
+            </button>
+          )}
           </div>
         </div>
-        {update ? (
-          <div className="update-available-reveal mt-3">
-            <div className="update-available-card">
-              <div className="flex min-w-0 items-center gap-2 text-sm">
-                <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
-                  <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
-                </span>
-                <span className="font-medium">{t("about.updateAvailable", { version: update.version })}</span>
-              </div>
-              <button type="button" className="apple-action-button app-button--primary h-8 px-3" disabled={installing} onClick={() => setConfirming(true)}>
-                {installing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" strokeWidth={2} aria-hidden="true" /> : null}
-                {installing ? t("about.installing") : t("about.updateNow")}
-              </button>
-            </div>
-          </div>
-        ) : null}
         <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
       </div>
       <h2 className="setting-title">{t("about.dataAndPaths")}</h2>

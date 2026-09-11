@@ -37,6 +37,7 @@
 | 跟随系统 / 浅色 / 深色 | System / Light / Dark | 主题项，对应 `themeOptions` |
 | 自动检测 / 简体中文 / English | Auto-detect / 简体中文 / English | 语言项，对应 `languageOptions`；与主题的「跟随系统」**有意区分** |
 | 检查更新 | Check for updates | |
+| 升级至 | Update to | 关于页检测到新版本后的入口 |
 | 立即升级 | Update now | |
 | 未设置 | Not set | `profile.model` 等空值占位 |
 | 打开官网 | Open website | |

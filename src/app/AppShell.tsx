@@ -118,9 +118,6 @@ export default function AppShell() {
       document.documentElement.style.setProperty("--scrollbar-size", `${main.offsetWidth - main.clientWidth}px`);
     };
     updateScrollbarSize();
-    const observer = new ResizeObserver(updateScrollbarSize);
-    observer.observe(main);
-    return () => observer.disconnect();
   }, []);
 
   const goProfiles = () => {
