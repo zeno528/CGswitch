@@ -35,6 +35,6 @@ export function toAppUpdate(update: Pick<Update, "version" | "body" | "download"
 
 export async function checkForAppUpdate(): Promise<AppUpdate | null> {
   if (!isTauri) return null;
-  const update = await check({ timeout: 30_000 });
+  const update = await check({ timeout: 10_000 });
   return update ? toAppUpdate(update) : null;
 }
