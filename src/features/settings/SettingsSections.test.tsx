@@ -91,6 +91,16 @@ describe("SettingsSections", () => {
     expect(styles).toContain(".app-dialog-hero .app-logo {\n  filter: none;\n}");
   });
 
+  it("关于页 logo 高度与品牌信息块对齐", () => {
+    expect(settingsSectionsSource).toContain('className="app-logo h-12 w-12 shrink-0"');
+    expect(settingsSectionsSource).not.toContain('className="app-logo h-13 w-13 shrink-0"');
+  });
+
+  it("设置顶部标签栏底线复用全局分割线", () => {
+    expect(settingsViewSource).toContain("border-b border-[var(--panel-divider)]");
+    expect(settingsViewSource).not.toContain("border-b border-[var(--panel-border)]");
+  });
+
   it("更新检查支持启动自动检查（可开关）与关于页手动触发并存", () => {
     const appShellPath = new URL("../../app/AppShell.tsx", import.meta.url);
     const appShellSource = readFileSync(appShellPath, "utf8");
@@ -144,15 +154,39 @@ describe("SettingsSections", () => {
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
     expect(html).toContain('aria-haspopup="listbox"');
-    expect(html).toContain('class="flex items-center justify-between gap-4"');
+    expect(html).toMatch(/class="flex items-center justify-between gap-4(?: [^"]*)?"/);
   });
 
   it("外观与语言设置共享统一的右侧控制列宽度", () => {
     expect(settingsSectionsSource).toContain('<div className="w-72 shrink-0">');
-    expect(settingsSectionsSource).toContain('className="apple-group apple-segmented-control inline-flex w-72 shrink-0 gap-1 p-1"');
-    expect(settingsSectionsSource).toContain('className="app-selection-state inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
+    expect(settingsSectionsSource).toContain('className="apple-group apple-segmented-control inline-flex h-9 w-72 shrink-0 gap-0.5 p-0.5"');
+    expect(settingsSectionsSource).toContain('className="app-selection-state inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
     expect(settingsSectionsSource).not.toContain('<div className="w-44 shrink-0">');
     expect(settingsSectionsSource).not.toContain('className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
+  });
+
+  it("通用设置卡片的分割线位于选项间距中央", () => {
+    expect(settingsSectionsSource).toContain('className="flex flex-col divide-y divide-[var(--panel-divider)]"');
+    expect(settingsSectionsSource).toContain('className="flex items-center justify-between gap-4 py-4"');
+    expect(settingsSectionsSource).not.toContain('className="flex items-center justify-between gap-4 pb-2"');
+    expect(settingsSectionsSource).not.toContain('className="flex items-center justify-between gap-4 pt-2"');
+    expect(settingsSectionsSource).not.toContain('className="flex items-center justify-between gap-4 py-2.5 first:pt-0 last:pb-0"');
+  });
+
+  it("设置卡片使用统一的行内上下留白", () => {
+    const generalSource = settingsSectionsSource.slice(
+      settingsSectionsSource.indexOf("export function SettingsGeneral"),
+      settingsSectionsSource.indexOf("interface SettingsAdvancedProps"),
+    );
+    expect(generalSource).toContain('<div className="apple-group px-[var(--gap-card)]">');
+    expect(generalSource).not.toContain('<div className="apple-group p-[var(--gap-card)]">');
+  });
+
+  it("应用与更新卡片与通用卡片使用相同的上下留白", () => {
+    expect(settingsViewSource).toContain('<div className="apple-group px-[var(--gap-card)]">');
+    expect(settingsViewSource).toContain('className="flex flex-col divide-y divide-[var(--panel-divider)]"');
+    expect(settingsViewSource).toContain('className="flex items-center justify-between gap-4 py-4"');
+    expect(settingsViewSource).not.toContain('className="flex flex-col gap-5"');
   });
 
   it("显示偏好与启动开关统一使用左右设置行", () => {
@@ -161,7 +195,7 @@ describe("SettingsSections", () => {
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
-    expect(html.match(/class="flex items-center justify-between gap-4"/g)).toHaveLength(5);
+    expect(html.match(/flex items-center justify-between gap-4/g)).toHaveLength(5);
     expect(html.match(/role="switch"/g)).toHaveLength(3);
     expect(html.match(/settings-icon-tile/g)).toHaveLength(5);
   });

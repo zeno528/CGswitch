@@ -45,9 +45,9 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
   return (
     <div className="flex flex-col gap-[var(--gap-section)]">
       <SettingsPanelSection id="appearance-language" label={t("general.appearanceGroupTitle")}>
-        <div className="apple-group p-[var(--gap-card)]">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-4">
+        <div className="apple-group px-[var(--gap-card)]">
+          <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
+            <div className="flex items-center justify-between gap-4 py-4">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                   <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
@@ -65,7 +65,7 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center justify-between gap-4 py-4">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                   <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
@@ -75,12 +75,12 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                   <div className="setting-description mt-0.5">{t("appearance.description")}</div>
                 </div>
               </div>
-              <div className="apple-group apple-segmented-control inline-flex w-72 shrink-0 gap-1 p-1">
+              <div className="apple-group apple-segmented-control inline-flex h-9 w-72 shrink-0 gap-0.5 p-0.5">
                 {themeOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className="app-selection-state inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
+                    className="app-selection-state inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
                     data-active={form.theme === option.value ? "true" : undefined}
                     aria-pressed={form.theme === option.value}
                     onClick={() => onPatch({ theme: option.value })}
@@ -95,14 +95,14 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
         </div>
       </SettingsPanelSection>
       <SettingsPanelSection id="startup" label={t("general.startupGroupTitle")}>
-        <div className="apple-group p-[var(--gap-card)]">
-          <div className="flex flex-col gap-5">
+        <div className="apple-group px-[var(--gap-card)]">
+          <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
             {[
               ["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power],
               ["silent_start", t("startup.silentTitle"), t("startup.silentDescription"), MoonStar],
               ["minimize_to_tray", t("startup.minimizeTitle"), t("startup.minimizeDescription"), PanelBottomClose],
             ].map(([key, label, description, Icon]) => (
-              <div key={String(key)} className="flex items-center justify-between gap-4">
+              <div key={String(key)} className="flex items-center justify-between gap-4 py-4">
                 <div className="flex items-start gap-3">
                   <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                     <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -280,7 +280,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <div className="settings-about__hero brand-gradient-surface">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="CGswitch" className="app-logo h-13 w-13 shrink-0" />
+            <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
             <div>
               <div className="apple-wordmark">CGswitch</div>
               <div className="app-version mt-1.5">{t("about.version", { version: version.trim() })}</div>

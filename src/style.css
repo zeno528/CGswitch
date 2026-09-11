@@ -275,6 +275,11 @@ body {
   margin-top: 0.75rem;
 }
 
+.skill-markdown-preview hr {
+  border: 0;
+  border-top: 1px solid var(--panel-divider);
+}
+
 .skill-markdown-preview h1,
 .skill-markdown-preview h2,
 .skill-markdown-preview h3 {
@@ -1359,6 +1364,16 @@ body.drag-active * {
 }
 
 .apple-panel-section + .apple-panel-section {
+  position: relative;
+  border-top: 0;
+}
+
+.apple-panel-section + .apple-panel-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: var(--gap-card);
+  left: var(--gap-card);
   border-top: 1px solid var(--panel-divider);
 }
 
@@ -1722,6 +1737,13 @@ button:focus-visible {
   text-align: left;
   cursor: pointer;
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out;
+}
+
+.settings-page .app-select {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding-block: 0;
+  line-height: 1.4;
 }
 
 .app-select-wrap {
