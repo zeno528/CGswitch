@@ -65,12 +65,28 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-toolbar-group > .apple-icon-button {\n  border-radius: 999px;");
   });
 
-  it("让 Codex 运行状态只显示简单绿色圆点", () => {
-    expect(styles).toContain(".codex-status--running {\n  border-color: color-mix(in srgb, var(--success) 18%, var(--panel-ring));\n  background: color-mix(in srgb, var(--success) 6%, var(--panel-bg));\n}");
-    expect(styles).not.toContain(".codex-status--running {\n  border-color: color-mix(in srgb, var(--success) 18%, var(--panel-ring));\n  background: color-mix(in srgb, var(--success) 6%, var(--panel-bg));\n  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);");
-    expect(styles).toContain(".codex-status--running .codex-status__signal {\n  color: var(--success);\n  background: transparent;");
+  it("让 Codex 状态胶囊使用主题表面,仅圆点承载运行色并让运行圆点呼吸", () => {
+    const capsuleStyles = styles.match(/\.codex-status \{[\s\S]*?\n\}/)?.[0] ?? "";
+    const signalStyles = styles.match(/\.codex-status__signal \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(capsuleStyles).toContain("border: 1px solid var(--panel-border);");
+    expect(capsuleStyles).toContain("background: var(--panel-bg);");
+    expect(styles).not.toContain("color-mix(in srgb, var(--success) 18%, var(--panel-ring))");
+    expect(signalStyles).toContain("color: var(--text-secondary);");
+    expect(signalStyles).toContain("background: transparent;");
+    expect(styles).not.toContain("color-mix(in srgb, var(--text-secondary) 8%, transparent)");
+    expect(styles).toContain(".codex-status--running .codex-status__signal {\n  color: var(--success);\n}");
+    expect(styles).toContain(".codex-status__signal-dot {\n  position: relative;\n  isolation: isolate;\n  width: 0.375rem;\n  height: 0.375rem;");
     expect(styles).toContain(".codex-status--running .codex-status__signal-dot {\n  animation: codex-status-breathe 2.8s ease-in-out infinite;");
-    expect(styles).toContain("0%, 100% { opacity: 0.88; transform: scale(0.96); }\n  50% { opacity: 1; transform: scale(1.02); }");
+    expect(styles).toContain("0%, 100% { transform: scale(1); }\n  50% { transform: scale(1.3); }");
+    expect(styles).toContain(".codex-status__signal-dot::after {");
+    expect(styles).toContain("background: currentColor;");
+    expect(styles).toContain("filter: blur(2px);");
+    expect(styles).toContain(".codex-status--running .codex-status__signal-dot::after {\n  animation: codex-status-breathe-halo 2.8s ease-in-out infinite;");
+    expect(styles).toContain("@keyframes codex-status-breathe-halo {");
+    expect(styles).toContain("0%, 100% { opacity: 0; transform: scale(1); }\n  50% { opacity: 0.1; transform: scale(1.35); }");
+    expect(styles).not.toContain("codex-status-halo");
+    expect(styles).not.toContain("codex-status-sheen");
+    expect(styles).not.toContain(".codex-status--running::after");
   });
 
   it("让主题分段控件与工具栏容器共用药丸圆角", () => {

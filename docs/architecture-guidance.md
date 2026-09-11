@@ -26,7 +26,7 @@
 ### 目录职责
 
 - `settings.json`：应用级设置。
-- `cgswitch.db`：供应商档案、账号和切换事件。
+- `cgswitch.db`：供应商配置数据、账号和切换事件。
 - `cgswitch.db-wal`、`cgswitch.db-shm`：SQLite WAL 运行文件，应用运行时不得手动删除。
 - `backups/config/`：自动备份 `config.toml`。
 - `backups/codex-files/`：自动备份 `auth.json`、`models.json`、catalog 等 Codex 配套文件。

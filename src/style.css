@@ -26,6 +26,9 @@
   --panel-divider: rgba(60, 60, 67, 0.1);
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
+  /* 激活配置卡沿用深色主题的浅色文字层级。 */
+  --active-card-text-primary: #ffffff;
+  --active-card-text-secondary: rgba(255, 255, 255, 0.68);
   --sidebar-bg: #f5f5f5;
   --selection-bg: rgba(0, 122, 255, 0.12);
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
@@ -47,6 +50,8 @@
   --gap-card: 1.25rem;
   /* 主内容区左右间距基准（卡片到侧边栏/窗口边缘的视觉间距） */
   --gap-main: 1rem;
+  /* 操作按钮（药丸）之间的统一间距：弹窗底部与编辑页操作栏共用 */
+  --gap-actions: 0.75rem;
   /* 全局控件与窗口几何：页面、编辑页和侧边栏只从这里取尺寸 */
   --font-size-base: 0.875rem;
   --sidebar-width-expanded: 8rem;
@@ -235,6 +240,12 @@ body {
 .profile-card-meta .apple-chip {
   background: var(--app-bg);
   font-size: 12px;
+  transition: border-color var(--motion-fast) ease;
+}
+
+/* 余额/用量药丸悬停：只提亮细描边，不改变尺寸、背景、文字或布局。 */
+.profile-card-meta .apple-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .profile-card-meta {
@@ -858,7 +869,7 @@ body.drag-active * {
 .apple-edit-toolbar--footer {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
+  gap: var(--gap-actions);
   /* 负水平外边距让操作栏全宽贴卡片边缘；底部由卡片圆角裁切收口 */
   margin-inline: calc(-1 * var(--gap-main));
   background: var(--main-surface-bg);
@@ -987,17 +998,12 @@ body.drag-active * {
   height: 1.75rem;
   align-items: center;
   gap: 0.375rem;
-  border: 1px solid var(--panel-ring);
+  border: 1px solid var(--panel-border);
   border-radius: 999px;
   padding-inline: 0.5rem;
   color: inherit;
-  background: color-mix(in srgb, var(--panel-bg) 90%, transparent);
+  background: var(--panel-bg);
   white-space: nowrap;
-}
-
-.codex-status--running {
-  border-color: color-mix(in srgb, var(--success) 18%, var(--panel-ring));
-  background: color-mix(in srgb, var(--success) 6%, var(--panel-bg));
 }
 
 .codex-status__signal {
@@ -1007,25 +1013,43 @@ body.drag-active * {
   place-items: center;
   border-radius: 50%;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--text-secondary) 8%, transparent);
+  background: transparent;
 }
 
 .codex-status__signal-dot {
-  width: 0.3125rem;
-  height: 0.3125rem;
+  position: relative;
+  isolation: isolate;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: currentColor;
 }
 
+.codex-status__signal-dot::after {
+  position: absolute;
+  inset: -0.125rem;
+  z-index: -1;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  opacity: 0;
+  filter: blur(2px);
+  transform: scale(1);
+  pointer-events: none;
+}
+
 .codex-status--running .codex-status__signal {
   color: var(--success);
-  background: transparent;
 }
 
 .codex-status--running .codex-status__signal-dot {
   animation: codex-status-breathe 2.8s ease-in-out infinite;
   transform-box: fill-box;
   transform-origin: center;
+}
+
+.codex-status--running .codex-status__signal-dot::after {
+  animation: codex-status-breathe-halo 2.8s ease-in-out infinite;
 }
 
 .codex-status__name {
@@ -1044,12 +1068,18 @@ body.drag-active * {
 }
 
 @keyframes codex-status-breathe {
-  0%, 100% { opacity: 0.88; transform: scale(0.96); }
-  50% { opacity: 1; transform: scale(1.02); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+}
+
+@keyframes codex-status-breathe-halo {
+  0%, 100% { opacity: 0; transform: scale(1); }
+  50% { opacity: 0.1; transform: scale(1.35); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .codex-status--running .codex-status__signal-dot { animation: none; }
+  .codex-status--running .codex-status__signal-dot::after { animation: none; }
 }
 
 .apple-group {
@@ -1089,26 +1119,30 @@ body.drag-active * {
   box-shadow: none;
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {
-  color: var(--primary-button-bg);
+.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,
+.profile-drag-preview.brand-gradient-surface .profile-card-content__text {
+  color: var(--active-card-text-primary);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
-  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta,
+.profile-drag-preview.brand-gradient-surface .profile-card-meta {
+  color: var(--active-card-text-secondary);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
+.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
   background: var(--app-bg);
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
 }
 
-/* 激活渐变卡的深色对比度维持现有观感。 */
-:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
-  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip:hover,
+.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
+:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
   background: var(--chip-bg);
 }
 
@@ -1116,22 +1150,18 @@ body.drag-active * {
 .profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
 .profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
-  color: var(--primary-button-bg);
+  color: var(--active-card-text-primary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,
 .profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {
-  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
-  background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);
-  color: var(--primary-button-bg);
+  border-color: color-mix(in srgb, var(--active-card-text-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--active-card-text-primary) 12%, transparent);
+  color: var(--active-card-text-primary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .drag-handle {
-  color: color-mix(in srgb, var(--primary-button-bg) 84%, transparent);
-}
-
-:root.dark .profile-list > .apple-group.brand-gradient-surface .drag-handle {
-  color: color-mix(in srgb, var(--primary-button-bg) 70%, transparent);
+  color: var(--active-card-text-secondary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .chip-success {
@@ -1171,7 +1201,7 @@ body.drag-active * {
   gap: 0.5rem;
   height: var(--control-height);
   justify-content: center;
-  padding-inline: 0.75rem;
+  padding-inline: 16px;
   font-size: var(--font-size-base);
   font-weight: 500;
   transition: background-color var(--motion-fast) ease-out;
@@ -1509,7 +1539,7 @@ button:focus-visible {
 .app-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.625rem;
+  gap: var(--gap-actions);
   margin-top: 0;
 }
 
@@ -1539,6 +1569,13 @@ button:focus-visible {
   padding: 0;
   gap: 0;
   overflow: hidden;
+  /* 描边随内容亮度分段：亮渐变头部一段用暗线勾边（对比不依赖虚化底色，深浅色通用），
+     往下渐隐回落到主题 ring 色。手法 = 透明 border + padding-box/border-box 双层背景（渐变描边标准解法） */
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
+    linear-gradient(180deg, rgb(0 0 0 / 0.2) 0%, rgb(0 0 0 / 0.16) 30%, var(--panel-ring) 44%) border-box;
+  box-shadow: 0 22px 70px rgb(0 0 0 / 0.22);
 }
 
 .app-dialog-hero {
@@ -1555,6 +1592,7 @@ button:focus-visible {
 /* hero 标题：白→品牌浅蓝渐变文字 + 投影，浮在渐变光晕上 */
 .app-dialog-content--hero .app-dialog-title {
   font-size: 21px;
+  font-weight: 550;
   letter-spacing: -0.2px;
   line-height: 1;
   background: linear-gradient(180deg, #ffffff 30%, #b9c8f7);
@@ -1583,7 +1621,6 @@ button:focus-visible {
 .app-dialog-content--hero .app-dialog-actions {
   flex-shrink: 0;
   justify-content: center;
-  gap: 1rem;
   padding: 1rem var(--gap-card) 1.25rem;
 }
 

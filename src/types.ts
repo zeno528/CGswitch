@@ -2,9 +2,9 @@ export interface ProfileSummary {
   id: string;
   name: string;
   kind: "official" | "third_party";
-  /** 官方档案绑定的订阅账号 id；第三方为 null。 */
+  /** 官方配置绑定的订阅账号 id；第三方为 null。 */
   account_id: string | null;
-  /** 官方档案创建时固定的认证来源；旧数据缺失时由 account_id 推断。 */
+  /** 官方配置创建时固定的认证来源；旧数据缺失时由 account_id 推断。 */
   auth_source?: "desktop" | "oauth" | null;
   model: string | null;
   provider: string | null;
@@ -21,9 +21,9 @@ export interface ProfileSummary {
 export interface ProfileDetail {
   id: string;
   name: string;
-  /** 官方档案绑定的订阅账号 id；第三方为 null。 */
+  /** 官方配置绑定的订阅账号 id；第三方为 null。 */
   account_id: string | null;
-  /** 官方档案创建时固定的认证来源。 */
+  /** 官方配置创建时固定的认证来源。 */
   auth_source?: "desktop" | "oauth" | null;
   /** Desktop 配置自身 auth.json 解析出的登录账号。 */
   desktop_login: string | null;

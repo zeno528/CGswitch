@@ -56,7 +56,7 @@ pub struct ProfilePayload {
     /// 供应商自己保存的 models.json 原文（编辑后随供应商应用写入 ~/.codex）。
     #[serde(default)]
     pub raw_catalog: Option<String>,
-    /// Desktop/第三方供应商保存的 auth.json 原文；OAuth 官方档案不吸收 live 快照。
+    /// Desktop/第三方供应商保存的 auth.json 原文；OAuth 官方配置不吸收 live 快照。
     #[serde(default)]
     pub raw_auth: Option<String>,
     /// 历史快照标记；Some(false) 表示用户明确手动接管认证内容。
@@ -167,7 +167,7 @@ pub struct ProfileSummary {
     pub id: String,
     pub name: String,
     pub kind: ProfileKind,
-    /// 官方档案绑定的订阅账号；第三方恒为 None。
+    /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,
     pub auth_source: Option<AuthSource>,
     pub model: Option<String>,
@@ -218,7 +218,7 @@ pub struct ProfileBalanceInfo {
 pub struct ProfileDetail {
     pub id: String,
     pub name: String,
-    /// 官方档案绑定的订阅账号；第三方恒为 None。
+    /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,
     pub auth_source: Option<AuthSource>,
     /// Desktop 配置自身 auth.json 解析出的登录账号；OAuth 由 account_id 管理。

@@ -177,7 +177,7 @@ impl AppContext {
             .insert_profile(template.name, &payload, &timestamp)?;
         self.database
             .set_profile_icon(&summary.id, Some(template.icon), &timestamp)?;
-        // 官方订阅档案创建时可直接绑定账号；第三方忽略绑定参数
+        // 创建官方订阅配置时可直接绑定账号；第三方忽略绑定参数
         if payload.provider_id.is_none() {
             if let Some(account_id) = account_id {
                 self.set_profile_account(&summary.id, Some(account_id))?;
@@ -325,7 +325,7 @@ impl AppContext {
         stored.payload.raw_auth = normalize_auth_override(stored.payload.raw_auth.as_deref());
         // 使用中的第三方供应商：快照没单独保存 auth 时连当前 live auth.json 一起复制，
         // 保证副本应用后凭据与源一致；官方订阅的 auth 由账号动态生成，不复制。
-        // 外部 Codex 官方认证属于全局订阅凭据，不吞进第三方档案（避免副本应用时覆盖官方认证）。
+        // 外部 Codex 官方认证属于全局订阅凭据，不并入第三方配置（避免副本应用时覆盖官方认证）。
         if active && stored.kind == ProfileKind::ThirdParty && stored.payload.raw_auth.is_none() {
             stored.payload.raw_auth = read_optional_text(&self.paths.codex_home.join("auth.json"))
                 .filter(|text| parse_external_auth_json(text).is_none());
@@ -503,7 +503,7 @@ impl AppContext {
         }
         let mut payload = stored.payload;
 
-        // 清空 auth 内容 = 移除档案级覆盖，恢复为账号自动凭据
+        // 清空 auth 内容 = 移除配置级覆盖，恢复为账号自动凭据
         let auth_override = auth_text
             .map(str::trim)
             .and_then(|text| normalize_auth_override(Some(text)));
@@ -521,7 +521,7 @@ impl AppContext {
         let parsed = codex_config::capture_from_document(&document)?;
         // 供应商身份跟随当前配置：用户改了什么名字，胶囊就显示什么；不再用旧库值拦截
         if payload.builtin.is_some() && parsed.provider_id != payload.provider_id {
-            // 改写了内置供应商的 provider 身份后脱离内置模板，按完整快照档案应用
+            // 改写了内置供应商的 provider 身份后脱离内置模板，按完整配置快照应用
             payload.builtin = None;
         }
         payload.provider_id = parsed.provider_id;

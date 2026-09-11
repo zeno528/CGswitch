@@ -687,7 +687,7 @@ pub async fn auth_get_status(
         .await
         .map_err(|error| error.to_string())?;
     let mut status = oauth.0.get_status().await;
-    // Desktop 和 OAuth 即便属于同一账号也同时展示；来源由档案绑定显式决定，不能在状态层合并。
+    // Desktop 和 OAuth 即便属于同一账号也同时展示；来源由配置绑定显式决定，不能在状态层合并。
     let external = app
         .external_codex_auth()
         .map_err(|error| error.to_string())?;

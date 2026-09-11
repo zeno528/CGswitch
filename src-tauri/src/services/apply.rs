@@ -223,7 +223,7 @@ impl AppContext {
         Ok(())
     }
 
-    /// 应用第三方档案时，同一 ChatGPT 账号的 live 认证优先于旧快照，避免覆盖外部刷新令牌。
+    /// 应用第三方配置时，同一 ChatGPT 账号的 live 认证优先于旧快照，避免覆盖外部刷新令牌。
     /// "同一账号"按 (workspace, 用户 sub) 双重判定：同 workspace 多账号时不能只比 workspace。
     pub(super) fn restore_profile_auth(&self, payload: &ProfilePayload) -> AppResult<()> {
         let Some(snapshot) = normalize_auth_override(payload.raw_auth.as_deref()) else {
@@ -249,7 +249,7 @@ impl AppContext {
         self.write_auth_json(&snapshot)
     }
 
-    /// 官方档案的认证归属由创建时固定的来源决定；OAuth 的 live 写入由命令层负责。
+    /// 官方配置的认证归属由创建时固定的来源决定；OAuth 的 live 写入由命令层负责。
     pub(super) fn apply_profile_auth(
         &self,
         payload: &ProfilePayload,
