@@ -1,9 +1,9 @@
 /** 应用更新相关文案（状态栏提示、升级流程）。 */
 export default {
   notice: {
-    title: "发现新版本 v{{version}}",
-    updateNow: "立即升级",
-    later: "暂不升级",
+    title: "新版 v{{version}} 已就绪",
+    updateNow: "立即重启更新",
+    later: "稍后",
     installing: "下载安装中…",
     noNotes: "本次更新暂无日志",
   },

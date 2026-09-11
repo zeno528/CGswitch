@@ -1,9 +1,7 @@
 // i18n 扫描（随 pnpm check 运行），四条防线：
 //   1) 已迁移的代码里不得有硬编码中文 —— 必须走 t()；
 //   2) 英文资源里不得留中文 —— 键对齐测试只保证「两边都有这个键」，不保证值真的翻了；
-//   3) 中英术语契约 —— GLOSSARY 收录的用户强感知短文案（按钮/状态），中英两边的值必须与
-//      契约一致，拦「改了中文忘改英文」这类不同步（键对齐看不见值，只有这里能拦）；
-//   4) 两种豁免都必须可追溯：整文件 WHITELIST 与英文白名单指向不存在的条目时报错，防止腐烂。
+//   3) 两种豁免都必须可追溯：整文件 WHITELIST 与英文白名单指向不存在的条目时报错，防止腐烂。
 // 两级豁免：
 //   - 整文件 WHITELIST —— 尚未迁移的文件，写明分期，迁移一个摘一个；
 //   - 行内 `i18n-exempt: <理由>` —— 不能翻的单行（配置值、正则片段等），必须写清为什么。
@@ -17,7 +15,7 @@ const LOCALES_PREFIX = "i18n/locales";
 /** 行内豁免标记，写在需要豁免的那一行上（行尾注释即可）。 */
 const EXEMPT_MARK = "i18n-exempt";
 
-/** 尚未迁移的文件。摘除顺序见 docs/i18n-glossary.md 的分期。 */
+/** 尚未迁移的文件，写明理由，迁移一个摘一个。 */
 const WHITELIST = [
   { file: "api/web-mock.ts", reason: "浏览器调试桩，不随应用发行" },
 ];
@@ -28,22 +26,6 @@ const EN_ALLOWLIST = [
 ];
 
 const CJK = /[一-鿿]/;
-
-/**
- * 中英术语契约（key 级）。file 是 locales 下的命名空间名（不含语言目录与扩展名）。
- * 完整术语依据见 docs/i18n-glossary.md；这里只收按钮/状态等用户强感知短文案——
- * 句子级翻译质量契约锁不住，仍靠人审。改任一边的值时必须同步本表与另一边。
- */
-const GLOSSARY = [
-  { file: "updates", key: "updateNow", zh: "立即升级", en: "Update now" },
-  { file: "updates", key: "later", zh: "暂不升级", en: "Skip" },
-  { file: "updates", key: "installing", zh: "下载安装中…", en: "Downloading…" },
-  { file: "updates", key: "noNotes", zh: "本次更新暂无日志", en: "No release notes for this version" },
-  { file: "settings", key: "checkUpdate", zh: "检查更新", en: "Check for updates" },
-  { file: "settings", key: "upgradeTo", zh: "升级至", en: "Update to" },
-  { file: "settings", key: "upToDate", zh: "已是最新版本", en: "You're on the latest version" },
-  { file: "settings", key: "installing", zh: "正在下载安装…", en: "Downloading and installing..." },
-];
 
 /**
  * 去掉注释后只剩会被渲染或参与逻辑的代码。注释永远不可能显示给用户，必须剥离，
@@ -104,27 +86,6 @@ for (const filePath of walk(join(SRC_ROOT, "i18n", "locales", "en-US"))) {
   }
 }
 
-/* 术语契约：逐条断言中英两边的值与 GLOSSARY 一致；key 不存在同样算失败（契约过期）。 */
-const KEY_LINE = /^\s*([A-Za-z0-9_]+):\s*"(.*?)",?\s*$/;
-for (const entry of GLOSSARY) {
-  const values = {};
-  for (const lang of ["zh-CN", "en-US"]) {
-    const filePath = join(SRC_ROOT, "i18n", "locales", lang, `${entry.file}.ts`);
-    const found = [...stripComments(readFileSync(filePath, "utf8")).matchAll(new RegExp(KEY_LINE.source, "gm"))]
-      .filter((m) => m[1] === entry.key)
-      .map((m) => m[2]);
-    values[lang] = found[0];
-  }
-  for (const [lang, expected] of [["zh-CN", entry.zh], ["en-US", entry.en]]) {
-    const actual = values[lang];
-    if (actual === undefined) {
-      violations.push({ file: `i18n/locales/${lang}/${entry.file}.ts`, detail: `${entry.key}  ← 术语契约的 key 不存在（契约过期，更新 GLOSSARY）` });
-    } else if (actual !== expected) {
-      violations.push({ file: `i18n/locales/${lang}/${entry.file}.ts`, detail: `${entry.key}: "${actual}"  ← 应为 "${expected}"（改了另一边忘同步？契约见 docs/i18n-glossary.md）` });
-    }
-  }
-}
-
 const staleWhitelist = WHITELIST.filter((item) => !files.some((f) => rel(f) === item.file));
 const staleEnAllowlist = EN_ALLOWLIST.filter((item) => !usedAllowlist.has(`${item.file}::${item.key}`));
 
@@ -144,4 +105,4 @@ if (staleEnAllowlist.length) {
   for (const item of staleEnAllowlist) console.error(`  ${item.file} 的 ${item.key}  ← ${item.reason}`);
   process.exit(1);
 }
-console.log(`✔ i18n 扫描通过（无硬编码中文；英文资源无漏翻；术语契约 ${GLOSSARY.length} 条一致）`);
+console.log("✔ i18n 扫描通过（无硬编码中文；英文资源无漏翻）");

@@ -35,7 +35,7 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).not.toContain("void install()");
     expect(providerSource).toContain("setConfirming(true)");
     expect(providerSource).toContain("<UpdateNotesDialog");
-    // 弹窗：日志 markdown 渲染、无日志兜底、「暂不升级 / 立即升级」双按钮
+    // 弹窗：日志 markdown 渲染、无日志兜底、「稍后 / 立即重启更新」双按钮
     expect(dialogSource).toContain("skill-markdown-preview");
     expect(dialogSource).toContain("<MarkdownPreview>{update.notes}</MarkdownPreview>");
     expect(dialogSource).toContain('t("notice.later")');

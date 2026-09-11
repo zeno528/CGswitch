@@ -265,7 +265,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   // 与状态栏悬浮卡片一致：升级走确认式弹窗，先看更新日志再安装
   const [confirming, setConfirming] = useState(false);
   const openRepository = () => void api.openUrl("https://github.com/zeno528/CGSwitch").catch((error) => feedback.error(String(error)));
-  // 检查只负责发现并展示版本号，升级必须由用户点击「立即升级」触发
+  // 检查只负责发现并展示版本号，升级必须由用户点击「立即重启更新」触发
   const checkUpdate = async () => {
     try {
       const found = await check();
