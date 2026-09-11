@@ -26,6 +26,9 @@
   --panel-divider: rgba(60, 60, 67, 0.1);
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
+  /* 激活配置卡沿用深色主题的浅色文字层级。 */
+  --active-card-text-primary: #ffffff;
+  --active-card-text-secondary: rgba(255, 255, 255, 0.68);
   --sidebar-bg: #f5f5f5;
   --selection-bg: rgba(0, 122, 255, 0.12);
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
@@ -237,6 +240,12 @@ body {
 .profile-card-meta .apple-chip {
   background: var(--app-bg);
   font-size: 12px;
+  transition: border-color var(--motion-fast) ease;
+}
+
+/* 余额/用量药丸悬停：只提亮细描边，不改变尺寸、背景、文字或布局。 */
+.profile-card-meta .apple-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 .profile-card-meta {
@@ -1110,26 +1119,30 @@ body.drag-active * {
   box-shadow: none;
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {
-  color: var(--primary-button-bg);
+.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,
+.profile-drag-preview.brand-gradient-surface .profile-card-content__text {
+  color: var(--active-card-text-primary);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
-  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta,
+.profile-drag-preview.brand-gradient-surface .profile-card-meta {
+  color: var(--active-card-text-secondary);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
+.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
   background: var(--app-bg);
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
 }
 
-/* 激活渐变卡的深色对比度维持现有观感。 */
-:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
-  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip:hover,
+.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
-:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
+:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
+:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
   background: var(--chip-bg);
 }
 
@@ -1137,22 +1150,18 @@ body.drag-active * {
 .profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
 .profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
-  color: var(--primary-button-bg);
+  color: var(--active-card-text-primary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,
 .profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {
-  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
-  background: color-mix(in srgb, var(--primary-button-bg) 12%, transparent);
-  color: var(--primary-button-bg);
+  border-color: color-mix(in srgb, var(--active-card-text-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--active-card-text-primary) 12%, transparent);
+  color: var(--active-card-text-primary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .drag-handle {
-  color: color-mix(in srgb, var(--primary-button-bg) 84%, transparent);
-}
-
-:root.dark .profile-list > .apple-group.brand-gradient-surface .drag-handle {
-  color: color-mix(in srgb, var(--primary-button-bg) 70%, transparent);
+  color: var(--active-card-text-secondary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .chip-success {

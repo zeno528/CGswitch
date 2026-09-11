@@ -26,13 +26,12 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toContain(".profile-drag-preview.is-active {");
   });
 
-  it("浅色激活卡提高辅助信息对比度并保留余额药丸底色", () => {
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: color-mix(in srgb, var(--primary-button-bg) 84%, transparent);");
-    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 72%, transparent);");
-    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
-    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: color-mix(in srgb, var(--primary-button-bg) 70%, transparent);");
+  it("激活卡使用深色主题的浅色文字层级", () => {
+    expect(styles).toContain("--active-card-text-primary: #ffffff;");
+    expect(styles).toContain("--active-card-text-secondary: rgba(255, 255, 255, 0.68);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--active-card-text-secondary);");
+    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--active-card-text-secondary);");
   });
 
   it("激活时不显示描边，但悬停时保留描边", () => {
@@ -47,20 +46,17 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("提高渐变卡片的文字与图标对比度", () => {
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {\n  color: var(--primary-button-bg);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: color-mix(in srgb, var(--primary-button-bg) 88%, transparent);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--active-card-text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,\n.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {");
   });
 
-  it("胶囊底色统一定义在 --chip-bg，浅色下余额用量药丸改用页面底色融入卡片", () => {
+  it("胶囊底色统一定义在 --chip-bg，激活卡使用浅色药丸文字", () => {
     expect(styles).toContain("--chip-bg: #e9e9e6;");
     expect(styles).toContain(".apple-chip {\n  align-items: center;\n  background: var(--chip-bg);");
     expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--app-bg);\n  font-size: 12px;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
-    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
   });
 
   it("让浅色模式的用量成功百分比使用高对比度绿色", () => {
