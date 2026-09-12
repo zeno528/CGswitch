@@ -26,6 +26,7 @@ export default function AppShell() {
   const [profilesReset, setProfilesReset] = useState(0);
   const [mcpReset, setMcpReset] = useState(0);
   const [skillCache, setSkillCache] = useState<SkillSummary[] | null>(null);
+  const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
   const { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
@@ -61,6 +62,7 @@ export default function AppShell() {
           // 内容初始化不依赖窗口显示成功。
         }
       }
+      setStartupReady(true);
       delayedAuth = window.setTimeout(() => {
         if (!cancelled) void refreshAuthStatus();
       }, 0);
@@ -121,24 +123,29 @@ export default function AppShell() {
   }, []);
 
   const goProfiles = () => {
+    if (view === "profiles") return;
     setProfilesReset((value) => value + 1);
     setView("profiles");
   };
 
   const goMcp = () => {
+    if (view === "mcp") return;
     setMcpReset((value) => value + 1);
     setView("mcp");
   };
 
   const goPlugins = () => {
+    if (view === "plugins") return;
     setView("plugins");
   };
 
   const goSkills = () => {
+    if (view === "skills") return;
     setView("skills");
   };
 
   const goSettings = (section: "general" | "account" = "general") => {
+    if (view === "settings") return;
     setSettingsInitialSection(section);
     setView("settings");
   };
@@ -147,8 +154,8 @@ export default function AppShell() {
 
   return (
     <FeedbackProvider>
-      {/* settings 就绪后启动静默检查一次更新，发现新版由状态栏图标提示；checkForAppUpdate 内部已守卫非 Tauri 环境 */}
-      <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update)}>
+      {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
+      <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
         <div className="apple-window-chrome">
           {isMacWindow ? <div className="apple-chrome-inset" data-tauri-drag-region aria-hidden="true" /> : null}

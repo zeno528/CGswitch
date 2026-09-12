@@ -13,6 +13,19 @@ describe("AppShell 布局", () => {
     expect(source).toContain('className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5"');
   });
 
+  it("重复点击当前侧栏页面时不重置页面", () => {
+    for (const view of ["profiles", "mcp", "plugins", "skills", "settings"]) {
+      expect(source).toContain(`if (view === "${view}") return;`);
+    }
+  });
+
+  it("首屏完成后才启动自动更新检查", () => {
+    expect(source).toContain("const [startupReady, setStartupReady] = useState(false);");
+    expect(source).toContain("setStartupReady(true);");
+    expect(source).toContain('<AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>');
+    expect(source.indexOf("setStartupReady(true);")).toBeGreaterThan(source.indexOf("await appWindow?.show();"));
+  });
+
   it("移除侧栏激活装饰条，并固定悬浮卡片为普通字重", () => {
     expect(source).not.toContain("apple-sidebar-indicator");
     expect(source).toContain('const navClass = "apple-sidebar-nav-button app-selection-state";');

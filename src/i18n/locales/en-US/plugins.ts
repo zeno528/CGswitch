@@ -65,6 +65,8 @@ export default {
     recommendedHint: "These marketplaces follow the official Codex marketplace.json spec. Add one, then open its catalog to browse and install.",
     addedTitle: "Added marketplaces",
     addedCountAria: "Added marketplaces: {{count}}",
+    pluginCount: "Plugins: {{count}}",
+    pluginCountUnavailable: "Plugin count unavailable",
     removeAria: "Remove plugin marketplace {{name}}",
     empty: "No Codex marketplace added yet.",
     foundUpdates: "Plugin updates available: {{count}}",

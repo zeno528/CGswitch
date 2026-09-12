@@ -5,7 +5,13 @@ import { AppDialog } from "../../components/AppDialog";
 import { useAppUpdate } from "./AppUpdateProvider";
 
 // 与 SkillsView 一致：markdown 渲染懒加载，不进主 bundle
-const MarkdownPreview = lazy(() => import("react-markdown"));
+const loadMarkdownPreview = () => import("react-markdown");
+const MarkdownPreview = lazy(loadMarkdownPreview);
+
+/** 更新检查发现日志后预热渲染模块；失败不影响更新检查，弹窗打开时仍会按原逻辑重试。 */
+export function preloadUpdateNotesRenderer() {
+  void loadMarkdownPreview().catch(() => undefined);
+}
 
 interface UpdateNotesDialogProps {
   open: boolean;

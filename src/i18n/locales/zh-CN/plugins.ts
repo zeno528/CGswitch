@@ -65,6 +65,8 @@ export default {
     recommendedHint: "这些市场采用 Codex 官方 marketplace.json 规范，添加后进入目录即可浏览和安装。",
     addedTitle: "已添加的插件市场",
     addedCountAria: "{{count}} 个已添加插件市场",
+    pluginCount: "{{count}} 个插件",
+    pluginCountUnavailable: "插件数量暂不可用",
     removeAria: "卸载插件市场 {{name}}",
     empty: "暂未添加 Codex 插件市场。",
     foundUpdates: "发现 {{count}} 个可升级插件",

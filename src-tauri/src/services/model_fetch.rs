@@ -26,7 +26,7 @@ const ERROR_BODY_MAX_CHARS: usize = 512;
 pub async fn fetch_models(base_url: &str, api_key: &str) -> Result<Vec<String>, String> {
     let candidates = build_models_url_candidates(base_url)?;
     if api_key.trim().is_empty() {
-        return Err("请先填写 API 密钥再获取模型列表".to_string());
+        return Err("请先填写 API Key 再获取模型列表".to_string());
     }
 
     let client = reqwest::Client::builder()

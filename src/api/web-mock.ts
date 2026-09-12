@@ -380,7 +380,7 @@ async function testOpenCodeConnection(
       ok,
       latency_ms,
       status: res.status,
-      error: ok ? null : res.status === 401 || res.status === 403 ? "API 密钥无效" : `接口返回 HTTP ${res.status}`,
+      error: ok ? null : res.status === 401 || res.status === 403 ? "API Key 无效" : `接口返回 HTTP ${res.status}`,
     };
   } catch {
     return {
@@ -698,7 +698,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "test_provider_connection": {
       const apiKey = String(args?.apiKey ?? "");
       const baseUrl = String(args?.baseUrl ?? "");
-      if (!apiKey.trim()) throw new Error("请填写 API 密钥");
+      if (!apiKey.trim()) throw new Error("请填写 API Key");
       if (!baseUrl.trim()) throw new Error("请填写调用地址");
       if (isOpenCodeGoBaseUrl(baseUrl.trim())) {
         return (await testOpenCodeConnection(baseUrl.trim(), apiKey.trim())) as T;
@@ -727,7 +727,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         return { ok: true, latency_ms: 12, status: 200, error: null } as T;
       }
       const apiKey = args?.apiKey !== undefined ? String(args.apiKey) : "saved-key";
-      if (!apiKey.trim()) throw new Error("请填写 API 密钥");
+      if (!apiKey.trim()) throw new Error("请填写 API Key");
       const baseUrl = args?.baseUrl !== undefined ? String(args.baseUrl) : "https://api.example.com";
       if (!baseUrl.trim()) throw new Error("请填写调用地址");
       if (isOpenCodeGoBaseUrl(baseUrl.trim())) {
@@ -762,7 +762,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           return { ok: true, latency_ms, status: res.status, error: null } as T;
         }
         if (res.status === 401 || res.status === 403) {
-          return { ok: false, latency_ms, status: res.status, error: "API 密钥无效" } as T;
+          return { ok: false, latency_ms, status: res.status, error: "API Key 无效" } as T;
         }
         return { ok: false, latency_ms, status: res.status, error: `接口返回 HTTP ${res.status}` } as T;
       } catch {

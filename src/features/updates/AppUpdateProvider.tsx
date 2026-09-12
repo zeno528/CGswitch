@@ -5,7 +5,7 @@ import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { checkForAppUpdate, UPDATED_VERSION_KEY, type AppUpdate } from "./appUpdate";
 import { updateFailureMessage } from "./updateText";
-import { UpdateNotesDialog } from "./UpdateNotesDialog";
+import { preloadUpdateNotesRenderer, UpdateNotesDialog } from "./UpdateNotesDialog";
 
 /** 更新日志入口：直接打开对应版本的 GitHub Release 页，避免 /latest 重定向。 */
 export const releaseNotesUrl = (version: string) => `https://github.com/zeno528/CGswitch/releases/tag/v${encodeURIComponent(version.replace(/^v/, ""))}`;
@@ -28,7 +28,7 @@ export function useAppUpdate() {
   return value;
 }
 
-export function AppUpdateProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
+export function AppUpdateProvider({ enabled, ready = true, children }: { enabled: boolean; ready?: boolean; children: ReactNode }) {
   const feedback = useFeedback();
   const { t } = useTranslation("updates");
   const [update, setUpdate] = useState<AppUpdate | null>(null);
@@ -45,6 +45,7 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
     try {
       const found = await checkForAppUpdate();
       setUpdate(found);
+      if (found?.notes) preloadUpdateNotesRenderer();
       return found;
     } finally {
       checkingRef.current = false;
@@ -63,6 +64,7 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
   // 标记由后端原子落盘（Windows 安装器会立即杀进程，localStorage 异步提交可能丢）；
   // 旧版本写在 localStorage 的键也兜底消费一次，覆盖升级过渡期
   useEffect(() => {
+    if (!ready) return;
     void (async () => {
       const legacy = localStorage.getItem(UPDATED_VERSION_KEY);
       if (legacy) localStorage.removeItem(UPDATED_VERSION_KEY);
@@ -70,7 +72,7 @@ export function AppUpdateProvider({ enabled, children }: { enabled: boolean; chi
       if (!updatedVersion) return;
       feedback.success(t("toast.updated", { version: updatedVersion }));
     })();
-  }, [feedback, t]);
+  }, [feedback, ready, t]);
 
   const install = useCallback(async () => {
     if (!update || installing) return;

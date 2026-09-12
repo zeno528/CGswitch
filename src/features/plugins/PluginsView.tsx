@@ -564,6 +564,7 @@ function PluginMarketplaceView({
   const [marketplaces, setMarketplaces] = useState<PluginMarketplace[]>([]);
   const [marketplacesLoaded, setMarketplacesLoaded] = useState(false);
   const [marketplacesError, setMarketplacesError] = useState("");
+  const [marketplacePluginCounts, setMarketplacePluginCounts] = useState<Record<string, number | null>>({});
   const [adding, setAdding] = useState("");
   const [removing, setRemoving] = useState("");
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -587,6 +588,22 @@ function PluginMarketplaceView({
   };
 
   useEffect(() => { void refreshMarketplaces(); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setMarketplacePluginCounts({});
+    void Promise.all(marketplaces.map(async (marketplace) => {
+      try {
+        const plugins = await api.listMarketplacePlugins(marketplace.name, marketplace.root);
+        return [marketplace.name, plugins.length] as const;
+      } catch {
+        return [marketplace.name, null] as const;
+      }
+    })).then((entries) => {
+      if (!cancelled) setMarketplacePluginCounts(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  }, [marketplaces]);
 
   useEffect(() => {
     if (!selectedMarketplace && contentRef.current) contentRef.current.scrollTop = scrollTop.current;
@@ -757,42 +774,54 @@ function PluginMarketplaceView({
               {marketplacesError ? <p className="muted mt-2 text-sm">{marketplacesError}</p> : null}
               {marketplaces.length ? (
                 <div className="mt-3 space-y-2">
-                  {marketplaces.map((marketplace) => (
-                    <div key={marketplace.name} className="rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
-                            <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
-                            {marketplace.kind === "third-party" ? (
-                              <button
-                                type="button"
-                                className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]"
-                                title={t("action.removeMarket")}
-                                aria-label={t("market.removeAria", { name: marketplace.display_name ?? marketplace.name })}
-                                disabled={Boolean(removing)}
-                                onClick={() => void removeMarketplace(marketplace)}
-                              >
-                                {removing === marketplace.name ? <LoadingSpinner /> : <TrashIcon />}
-                              </button>
-                            ) : null}
+                  {marketplaces.map((marketplace) => {
+                    const pluginCount = marketplacePluginCounts[marketplace.name];
+                    return (
+                      <div key={marketplace.name} className="rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
+                              <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
+                              {pluginCount === undefined ? (
+                                <span role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner /></span>
+                              ) : pluginCount === null ? (
+                                <span className="apple-chip" aria-label={t("market.pluginCountUnavailable")}>—</span>
+                              ) : (
+                                <span className="apple-chip" aria-label={t("marketDetail.browsableAria", { count: pluginCount })}>
+                                  {t("market.pluginCount", { count: pluginCount })}
+                                </span>
+                              )}
+                              {marketplace.kind === "third-party" ? (
+                                <button
+                                  type="button"
+                                  className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]"
+                                  title={t("action.removeMarket")}
+                                  aria-label={t("market.removeAria", { name: marketplace.display_name ?? marketplace.name })}
+                                  disabled={Boolean(removing)}
+                                  onClick={() => void removeMarketplace(marketplace)}
+                                >
+                                  {removing === marketplace.name ? <LoadingSpinner /> : <TrashIcon />}
+                                </button>
+                              ) : null}
+                            </div>
+                            {marketplace.description ? <div className="muted mt-1 break-words text-sm">{marketplace.description}</div> : null}
                           </div>
-                          {marketplace.description ? <div className="muted mt-1 break-words text-sm">{marketplace.description}</div> : null}
+                          <button type="button" className="apple-action-button shrink-0" onClick={() => openMarketplace(marketplace)}>
+                            <ChevronRight className="h-4 w-4" strokeWidth={2} />
+                            {t("action.browse")}
+                          </button>
                         </div>
-                        <button type="button" className="apple-action-button shrink-0" onClick={() => openMarketplace(marketplace)}>
-                          <ChevronRight className="h-4 w-4" strokeWidth={2} />
-                          {t("action.browse")}
-                        </button>
+                        {marketplace.source_url ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="mono muted meta-xs break-all">{marketplace.source_url}</span>
+                            <SourceLink source={marketplace.source_url} />
+                          </div>
+                        ) : null}
+                        <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
                       </div>
-                      {marketplace.source_url ? (
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          <span className="mono muted meta-xs break-all">{marketplace.source_url}</span>
-                          <SourceLink source={marketplace.source_url} />
-                        </div>
-                      ) : null}
-                      <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : marketplacesLoaded && !marketplacesError ? <p className="muted mt-2 text-sm">{t("market.empty")}</p> : null}
             </div>

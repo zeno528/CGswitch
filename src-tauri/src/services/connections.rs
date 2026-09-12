@@ -253,7 +253,7 @@ async fn test_opencode_connection(
             } else if status == reqwest::StatusCode::UNAUTHORIZED
                 || status == reqwest::StatusCode::FORBIDDEN
             {
-                Some("API 密钥无效".to_string())
+                Some("API Key 无效".to_string())
             } else {
                 Some(format!("接口返回 HTTP {status}"))
             };
@@ -311,7 +311,7 @@ async fn query_balance_endpoint(
             if status == reqwest::StatusCode::UNAUTHORIZED
                 || status == reqwest::StatusCode::FORBIDDEN
             {
-                return Err(app_err!("API 密钥无效或无权查询{label}（HTTP {status}）"));
+                return Err(app_err!("API Key 无效或无权查询{label}（HTTP {status}）"));
             }
             let message = response
                 .json::<serde_json::Value>()
@@ -419,7 +419,7 @@ async fn test_models_endpoint(base_url: &str, api_key: &str) -> AppResult<Profil
                     ok: false,
                     latency_ms,
                     status: Some(status.as_u16()),
-                    error: Some("API 密钥无效".to_string()),
+                    error: Some("API Key 无效".to_string()),
                 })
             } else {
                 Ok(ProfileConnectionResult {
@@ -454,7 +454,7 @@ pub async fn test_provider_connection(
     }
     let api_key = api_key.trim();
     if api_key.is_empty() {
-        return Err(app_err!("请填写 API 密钥"));
+        return Err(app_err!("请填写 API Key"));
     }
     test_models_endpoint(base_url, api_key).await
 }
@@ -826,12 +826,12 @@ impl AppContext {
             Some(value) => {
                 let value = value.trim();
                 if value.is_empty() {
-                    return Err(app_err!("请填写 API 密钥"));
+                    return Err(app_err!("请填写 API Key"));
                 }
                 value.to_string()
             }
             None => stored_provider_api_key(payload)
-                .ok_or_else(|| app_err!("该供应商没有配置 API 密钥，请先填写后再测试"))?,
+                .ok_or_else(|| app_err!("该供应商没有配置 API Key，请先填写后再测试"))?,
         };
 
         test_models_endpoint(&base_url, &api_key).await
@@ -970,7 +970,7 @@ impl AppContext {
             .ok_or_else(|| app_err!("该供应商缺少配置数据"))?;
         let detail = parse_provider_detail(body)?;
         let api_key = stored_provider_api_key(payload)
-            .ok_or_else(|| app_err!("该供应商没有配置 API 密钥，无法查询余额/用量"))?;
+            .ok_or_else(|| app_err!("该供应商没有配置 API Key，无法查询余额/用量"))?;
         let client = http_client()?;
         let start = std::time::Instant::now();
         let base = detail

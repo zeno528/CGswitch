@@ -1070,7 +1070,7 @@ async fn balance_rejects_unsupported_or_keyless() {
         .get_profile_balance(&keyless.id, &oauth)
         .await
         .unwrap_err();
-    assert!(error.0.contains("没有配置 API 密钥"));
+    assert!(error.0.contains("没有配置 API Key"));
 }
 
 #[test]
@@ -2323,7 +2323,7 @@ fn keyless_builtin_saves_to_db_but_apply_requires_key() {
     assert!(detail.config_fragment.contains("<你的 DeepSeek API Key>"));
 
     let error = context.apply_profile(&profile.id).unwrap_err();
-    assert!(error.0.contains("尚未配置 API 密钥"));
+    assert!(error.0.contains("尚未配置 API Key"));
     assert_eq!(
         std::fs::read_to_string(context.paths.codex_config()).unwrap(),
         "model = \"other\"\n"

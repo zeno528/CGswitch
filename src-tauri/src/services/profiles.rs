@@ -218,7 +218,7 @@ impl AppContext {
         }
         if base_url.is_some() || api_key.is_some() {
             let body = payload.provider_body.as_deref().ok_or_else(|| {
-                app_err!("配置中缺少 model_providers 段落，无法写入调用地址/密钥")
+                app_err!("配置中缺少 model_providers 段落，无法写入调用地址/API Key")
             })?;
             payload.provider_body =
                 Some(codex_config::update_provider_body(body, base_url, api_key)?);
@@ -596,7 +596,7 @@ impl AppContext {
                     Some(codex_config::update_provider_body(body, base_url, api_key)?);
             }
         } else if base_url.is_some() || api_key.is_some() {
-            return Err(app_err!("该供应商缺少配置，无法修改调用地址或密钥"));
+            return Err(app_err!("该供应商缺少配置，无法修改调用地址或 API Key"));
         }
         let write_back = (base_url.is_some() || api_key.is_some())
             && payload.provider_id.is_some()

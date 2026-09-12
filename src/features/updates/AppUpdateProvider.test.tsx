@@ -51,6 +51,19 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("feedback.error(updateFailureMessage(error, t))");
   });
 
+  it("发现有日志的更新后预热 Markdown 渲染模块，不增加更新日志网络请求", () => {
+    expect(providerSource).toContain("if (found?.notes) preloadUpdateNotesRenderer();");
+    expect(dialogSource).toContain("export function preloadUpdateNotesRenderer()");
+    expect(dialogSource).toContain("loadMarkdownPreview().catch(() => undefined)");
+    expect(dialogSource).not.toContain("fetch(");
+  });
+
+  it("升级标记也等首屏完成后再消费", () => {
+    expect(providerSource).toContain("if (!ready) return;");
+    expect(providerSource).toContain("api.takeUpdateMarker()");
+    expect(providerSource.indexOf("if (!ready) return;")).toBeLessThan(providerSource.indexOf("api.takeUpdateMarker()"));
+  });
+
   it("GitHub 入口只在设置-关于页，弹窗内不再有更新日志按钮，悬浮卡片已移除", () => {
     const settingsSource = readFileSync(new URL("../settings/SettingsSections.tsx", import.meta.url), "utf8");
     expect(settingsSource).toContain("releaseNotesUrl(");

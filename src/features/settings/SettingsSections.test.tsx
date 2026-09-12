@@ -106,7 +106,8 @@ describe("SettingsSections", () => {
   it("更新检查支持启动自动检查（可开关）与关于页手动触发并存", () => {
     const appShellPath = new URL("../../app/AppShell.tsx", import.meta.url);
     const appShellSource = readFileSync(appShellPath, "utf8");
-    expect(appShellSource).toContain("<AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update)}>");
+    // 完整 JSX 串由 appShellLayout.test.ts 独家断言；这里只验证开关由设置项驱动。
+    expect(appShellSource).toContain("enabled={Boolean(state?.settings.auto_check_update)");
     expect(settingsSectionsSource).not.toContain("useEffect(() => { void checkUpdate(); }, []);");
   });
 

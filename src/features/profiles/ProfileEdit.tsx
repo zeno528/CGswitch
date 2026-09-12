@@ -112,7 +112,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
 
   const selectedPreset = useMemo(() => builtinPresets.find((preset) => preset.kind === presetKind) ?? null, [presetKind]);
   const isCustom = create && presetKind === "custom";
-  const isOfficial = create ? presetKind === "chatgpt" : detail?.provider === null;
+  const isOfficial = create ? presetKind === "chatgpt" : profile?.kind === "official";
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
   const showProviderFields = create ? (isCustom || Boolean(selectedPreset?.base_url)) : Boolean(detail?.provider);
   const showLongContextOverride = isOfficial;
@@ -211,7 +211,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
         let initialMcpSection = "";
         try { initialMcpSection = (await api.getMcpSectionToml()).trim(); setMcpSection(initialMcpSection); } catch { /* backend falls back on save */ }
         setPresetKind("custom");
-        setName(t("edit.customProviderName"));
+        setName("");
         setSelectedIcon("custom");
         setConfigText(withMcpSection(customConfigTemplate, initialMcpSection));
         setPresetFragment(customConfigTemplate);
@@ -360,10 +360,10 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     setCatalogTouched(false);
     setAuthText("");
     setAuthInitial("");
-    setName(preset.name);
+    setName(kind === "custom" ? "" : preset.name);
     setBaseUrl(preset.base_url);
     setApiKey("");
-    setModelValue(preset.model);
+    setModelValue(kind === "custom" ? "" : preset.model);
     setFetchedModels([]);
     setAdminUrl(preset.admin_url ?? "");
     setSelectedIcon(preset.icon);
@@ -509,6 +509,24 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     finally { setSavingBalance(false); }
   };
 
+  const notifySaved = (message: string) => {
+    const missingApiKey = !apiKey.trim();
+    const missingBaseUrl = !baseUrl.trim();
+    if (!isOfficial && showProviderFields && (missingApiKey || missingBaseUrl)) {
+      const fields = missingApiKey && missingBaseUrl
+        ? t("edit.apiKeyAndRequestUrl")
+        : missingApiKey
+          ? t("edit.apiKeyLabel")
+          : t("edit.requestUrlLabel");
+      feedback.warning(t("edit.savedWithMissingFields", {
+        message: create ? t("edit.providerAdded") : t("edit.providerUpdated"),
+        fields,
+      }));
+      return;
+    }
+    feedback.success(message);
+  };
+
   const save = async () => {
     if (saving || !canSave) return;
     if (create && isCustom && !configText.trim()) { feedback.error(t("edit.saveConfigRequired")); return; }
@@ -517,7 +535,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
       if (create && isCustom) {
         const created = await api.addCustomProfile(name.trim() || t("edit.customProviderName"), configText, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, liveCatalogPath && catalogText.trim() ? catalogText : null, authText.trim() ? authText : null);
         if (fetchedModels.length) await api.setProfileFetchedModels(created.id, fetchedModels);
-        feedback.success(t("edit.customProviderAdded"));
+        notifySaved(t("edit.customProviderAdded"));
       } else if (create) {
         const created = await api.addBuiltinProfile(presetKind, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
         const customName = name.trim();
@@ -528,7 +546,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
         }
         if (fetchedModels.length) await api.setProfileFetchedModels(created.id, fetchedModels);
         if (showBalance) await api.setProfileShowBalance(created.id, true);
-        feedback.success(t("edit.builtinProviderAdded"));
+        notifySaved(t("edit.builtinProviderAdded"));
       } else {
         const hasProvider = Boolean(detail?.provider);
         await api.updateProfile(profile!.id, name, hasProvider ? baseUrl : undefined, hasProvider ? apiKey : undefined, adminUrl.trim() || undefined);
@@ -538,7 +556,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
           if (!boundAccountId) throw new Error(t("edit.oauthAccountRequired"));
           await api.setProfileAccount(profile!.id, boundAccountId);
         }
-        feedback.success(t("edit.providerUpdated"));
+        notifySaved(t("edit.providerUpdated"));
       }
       onChanged();
       onBack();
@@ -578,7 +596,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                       {t("edit.getApiKey")}
                     </button>
                   ) : null}
-                  <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5" disabled={testing || !apiKey.trim() || !baseUrl.trim()} onClick={() => void testConnection()}>
+                  <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5" disabled={testing || !apiKey.trim() || !baseUrl.trim()} title={!apiKey.trim() || !baseUrl.trim() ? t("edit.checkProviderFields") : undefined} onClick={() => void testConnection()}>
                     {testing ? <LoadingSpinner /> : <Wifi className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
                     {t("edit.testConnection")}
                   </button>
