@@ -1,12 +1,13 @@
 #!/bin/sh
 # 提交前检查（硬闸门，由 git 执行，不分代码来源：人、Claude、其他 AI 都要过）。
 # 按暂存内容分级，只跑能真正校验到本次改动的链：
-#   - 暂存含 src-tauri/ → 全量 pnpm check（含 cargo fmt/clippy/测试，较慢）
+#   - 暂存含 src-tauri/ 代码/配置 → 全量 pnpm check（含 cargo fmt/clippy/测试，较慢）
 #   - 暂存含前端代码或其配置（src/ scripts/ package.json lockfile tsconfig vite.config index.html）
 #     → 前端链（样式 + i18n + typecheck + 单测，约 6 秒）
-#   - 其余（纯文档/忽略规则/资源，如 README、.gitignore、docs/、归档/、public/、.github/）
+#   - 其余（纯文档/忽略规则/资源，如 README、.gitignore、docs/、归档/、public/、.github/、图片资产）
 #     → 检查链覆盖不到，直接放行
-# 混合提交命中最重的一档；--no-verify 仍是逃生门。
+# 图片资产（src-tauri/icons 等 *.svg *.png *.bmp *.ico *.icns）不进 Rust 编译，
+# 单独提交时不触发全量检查；与代码混合提交时仍命中最重的一档。--no-verify 仍是逃生门。
 # 本文件是正本（随仓库分发）；本机副本由 `pnpm hooks:sync` 安装到 .git/hooks/。
 set -e
 cd "$(git rev-parse --show-toplevel)" || exit 1
@@ -17,7 +18,10 @@ if [ -z "$STAGED" ]; then
   exit 0
 fi
 
-if echo "$STAGED" | grep -q '^src-tauri/'; then
+# src-tauri/ 里剔除图片资产后剩下的才算代码/配置改动
+SRC_TAURI_CODE=$(echo "$STAGED" | grep '^src-tauri/' | grep -ivE '\.(svg|png|bmp|ico|icns)$' || true)
+
+if [ -n "$SRC_TAURI_CODE" ]; then
   echo "[pre-commit] 检测到 src-tauri/ 改动 → 全量 pnpm check（含 Rust 链，请稍候）"
   pnpm check
 elif echo "$STAGED" | grep -qE '^(src/|scripts/|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.|vite\.config\.|index\.html)'; then
