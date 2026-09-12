@@ -21,6 +21,20 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain("await api.reorderProfiles(next.map((item) => item.id));\n      await onRefresh();");
   });
 
+  it("切换后先更新激活高亮，再按需重启并合并成功通知", () => {
+    const applyStart = source.indexOf("const applyProfile = async");
+    const applyEnd = source.indexOf("const removeProfile = async", applyStart);
+    const applySource = source.slice(applyStart, applyEnd);
+    const refreshIndex = applySource.indexOf("await onRefresh();");
+    const restartIndex = applySource.indexOf("if (state.settings.auto_restart)");
+
+    expect(refreshIndex).toBeGreaterThan(-1);
+    expect(restartIndex).toBeGreaterThan(refreshIndex);
+    expect(applySource).toContain('feedback.success(t("feedback.switchSuccess"))');
+    expect(applySource).toContain('feedback.success(t("feedback.switchRestarted"))');
+    expect(applySource).not.toContain('feedback.success(t("feedback.switchSuccess"));\n      if (state.settings.auto_restart)');
+  });
+
   it("激活卡的拖拽预览复用品牌渐变且不再覆盖旧底色", () => {
     expect(source).toContain('active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover"');
     expect(source).not.toContain('active ? "is-active is-drag-hover" : "is-drag-hover"');

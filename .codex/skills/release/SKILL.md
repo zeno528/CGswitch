@@ -1,6 +1,6 @@
 ---
 name: release
-description: CGswitch 发版流水线（**默认仅本地 commit 为止**）：AI 读 CHANGELOG 历史与 git 三态（最新 tag / HEAD VERSION / working tree VERSION），**单次弹窗合并确认** bump 级别 + CHANGELOG 草稿（一次 AskUserQuestion 问完）→ 确认后**一次性执行**：跑 `node scripts/bump-version.mjs <level>`（**禁止手写**）→ 写入 CHANGELOG + 本地 commit。**写入本地 commit 即终止**；AI 不主动询问、不主动执行任何 push / 盯构建 / 发布动作。push 到 main 后 Release 工作流自动触发（构建完停在草稿），公开发布仍须用户确认。当用户说"发版"、"发行"、"release"、"发个新版本"、"发布新版本"时使用。
+description: CGswitch 发版流水线（**默认仅本地 commit 为止**）：AI 读 CHANGELOG 历史与 git 三态（最新 tag / HEAD VERSION / working tree VERSION），CHANGELOG 草稿以**实际代码 diff**（`git diff <上一tag>..HEAD` 逐文件阅读）为唯一依据、commit 信息不可信，**单次弹窗合并确认** bump 级别 + CHANGELOG 草稿（一次 AskUserQuestion 问完）→ 确认后**一次性执行**：跑 `node scripts/bump-version.mjs <level>`（**禁止手写**）→ 写入 CHANGELOG + 本地 commit。**写入本地 commit 即终止**；AI 不主动询问、不主动执行任何 push / 盯构建 / 发布动作。push 到 main 后 Release 工作流自动触发（构建完停在草稿），公开发布仍须用户确认。当用户说"发版"、"发行"、"release"、"发个新版本"、"发布新版本"时使用。
 ---
 
 # CGswitch 发版
@@ -25,6 +25,7 @@ Step 2–4（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
 - **发版 commit 只许发版文件（硬约束）**：见 Step 1 第 4 步——只 add 6 个发版文件，工作区其他改动一律不进本 commit。
 - **递增必须跑脚本命令，禁手写**：`bump-version.mjs` 内已串联 `sync-version.mjs` 同步全部元数据文件，手写会漏。
 - **版本号基线以 git 三态为准**：最新 tag + HEAD VERSION（`git show HEAD:VERSION`）+ working tree VERSION（读 `VERSION`），取三者中**最大值**作为 bump 基线——用户在测试场景可能预先 bump，working tree 会领先 index / HEAD。
+- **CHANGELOG 只认代码 diff，不认 commit 信息（硬约束）**：commit 标题/信息可能挂错（历史案例：标题写「优化发版流程描述」的提交实际改了 16 个代码文件）。起草草稿与进/不进清单必须以实际代码改动为唯一依据——先 `git diff <上一tag>..HEAD --stat` 总览，再逐个**代码文件**读完整 diff；commit 列表仅用于确定范围与计数，禁止作为内容依据。
 
 本 skill 不限定分支：在任何分支触发都只执行本地流程（bump + CHANGELOG + commit）。分支切换、push、工作流触发、盯构建、发布由用户自行决定，AI 不主动执行也不主动询问。
 
@@ -38,7 +39,7 @@ Step 2–4（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
    - working tree VERSION：读 `VERSION`
    - 最新 tag 解析出的版本号
    - 三者取 max 作为 bump 基线
-3. 拉自上一 tag 起的 commit 列表：`git log <上一tag>..HEAD --oneline --no-merges`（首个版本用全部历史）。
+3. 拉自上一 tag 起的 commit 列表：`git log <上一tag>..HEAD --oneline --no-merges`（首个版本用全部历史）——仅用于确定范围与计数。**CHANGELOG 内容禁止依据 commit 标题/信息**：必须逐文件阅读 `git diff <上一tag>..HEAD` 的实际代码改动（先 `--stat` 总览，再逐个代码文件读完整 diff，见上方硬约束）。
 4. 拉 `CHANGELOG.md` 最近 5–8 段已发布段落作为"项目自有的 minor / patch / major 量级参照"，并检查顶部是否已有带内容的 `## [Unreleased]` 段落；若三态基线领先最新 tag（疑似上次准备好未发行的残留），用 `gh release view v<基线版本>` 核实是否已发行，据此在展示里说明归档方案（归档为版本标题，或从未发行则并入新段）。
 5. **单次展示**（一条消息里同时给出）：
 
@@ -70,7 +71,7 @@ CHANGELOG 写作规则：
 
 - 用用户视角描述变更（"新增 xxx 功能"），不要照抄 commit 标题。
 - 空分区整节省略；可用分区：新增 / 修复 / 界面与样式 / 性能优化 / 重构 / 移除 / 安全；都不匹配时可自拟简洁分区名（如 文档 / 依赖升级）。
-- **不进入 CHANGELOG 的提交**（无用户可见影响）：
+- **不进入 CHANGELOG 的改动**（从 diff 判断，非 commit 标题；无用户可见影响）：
   - 纯版本号 bump（`chore(release): vX.Y.Z`）
   - 纯 CI / 工作流变更
   - 纯文档类提交

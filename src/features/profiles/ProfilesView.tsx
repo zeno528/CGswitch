@@ -159,16 +159,18 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
     finally { setBusy(false); }
   };
 
-  const restart = async (force = false) => {
-    if (busy && !force) return;
+  const restart = async (force = false, notifySuccess = true) => {
+    if (busy && !force) return false;
     setBusy(true);
     setRestarting(true);
     try {
       await api.restartCodex();
-      feedback.success(t("feedback.codexRestarted"));
+      if (notifySuccess) feedback.success(t("feedback.codexRestarted"));
       await onRefresh();
+      return true;
     } catch (error) {
       feedback.error(String(error));
+      return false;
     } finally {
       setRestarting(false);
       setBusy(false);
@@ -180,9 +182,12 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
     setBusy(true);
     try {
       await api.applyProfile(profile.id);
-      feedback.success(t("feedback.switchSuccess"));
-      if (state.settings.auto_restart) await restart(true);
       await onRefresh();
+      if (state.settings.auto_restart) {
+        if (await restart(true, false)) feedback.success(t("feedback.switchRestarted"));
+      } else {
+        feedback.success(t("feedback.switchSuccess"));
+      }
     } catch (error) { feedback.error(String(error)); }
     finally { setBusy(false); }
   };
