@@ -2,10 +2,10 @@ import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } 
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, indentOnInput, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
-import { forEachDiagnostic, lintGutter, lintKeymap, linter, type Diagnostic } from "@codemirror/lint";
+import { forEachDiagnostic, lintKeymap, linter, setDiagnosticsEffect, type Diagnostic } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
-import { crosshairCursor, drawSelection, EditorView, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as editorPlaceholder, rectangularSelection, dropCursor, type ViewUpdate } from "@codemirror/view";
+import { Compartment, EditorState, RangeSet, StateField } from "@codemirror/state";
+import { crosshairCursor, Decoration, drawSelection, EditorView, gutterLineClass, GutterMarker, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as editorPlaceholder, rectangularSelection, dropCursor, type ViewUpdate } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import i18next from "i18next";
@@ -44,6 +44,52 @@ const basicSetup = [
     ...lintKeymap,
   ]),
 ];
+
+class DiagnosticErrorGutterMarker extends GutterMarker {
+  elementClass = "cm-diagnostic-error-gutter";
+
+  eq(other: GutterMarker) {
+    return other instanceof DiagnosticErrorGutterMarker;
+  }
+}
+
+const diagnosticErrorGutterMarker = new DiagnosticErrorGutterMarker();
+
+function diagnosticLineDecorations(doc: EditorState["doc"], diagnostics: readonly Diagnostic[]) {
+  const lineDecorations = [];
+  const lineNumberMarkers = [];
+  const seenLines = new Set<number>();
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity !== "error") continue;
+    const line = doc.lineAt(diagnostic.from);
+    if (seenLines.has(line.from)) continue;
+    seenLines.add(line.from);
+    lineDecorations.push(Decoration.line({ class: "cm-diagnostic-error-line" }).range(line.from));
+    lineNumberMarkers.push(diagnosticErrorGutterMarker.range(line.from));
+  }
+  return {
+    content: Decoration.set(lineDecorations, true),
+    lineNumbers: RangeSet.of(lineNumberMarkers, true),
+  };
+}
+
+const diagnosticLineDecorationsField = StateField.define<ReturnType<typeof diagnosticLineDecorations>>({
+  create: () => ({ content: Decoration.none, lineNumbers: RangeSet.empty }),
+  update(value, transaction) {
+    const mapped = {
+      content: value.content.map(transaction.changes),
+      lineNumbers: value.lineNumbers.map(transaction.changes),
+    };
+    for (const effect of transaction.effects) {
+      if (effect.is(setDiagnosticsEffect)) return diagnosticLineDecorations(transaction.state.doc, effect.value);
+    }
+    return mapped;
+  },
+  provide: (field) => [
+    EditorView.decorations.from(field, (value) => value.content),
+    gutterLineClass.from(field, (value) => value.lineNumbers),
+  ],
+});
 
 export interface ConfigTextEditorHandle {
   focusFirstDiagnostic: () => void;
@@ -239,7 +285,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           editorPlaceholder(placeholder ?? t("editor.placeholder")),
           language === "toml" ? StreamLanguage.define(toml) : json(),
           language === "toml" ? tomlDiagnostics : jsonDiagnostics,
-          lintGutter(),
+          diagnosticLineDecorationsField,
           ...(dark ? [oneDark] : []),
           EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !syncingValueRef.current) onChangeRef.current(update.state.doc.toString());

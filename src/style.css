@@ -62,6 +62,8 @@
   --sidebar-icon-size: 1.125rem;
   --brand-logo-size: 1.375rem;
   --control-height: 2.25rem;
+  /* 输入类控件（.app-input/.app-select）最小高：行高 1.6 + 上下 padding + 边框，允许换行到两行 */
+  --input-min-height: calc(1.6em + 1rem + 2px);
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
@@ -1777,7 +1779,7 @@ button:focus-visible {
   display: flex;
   width: 100%;
   height: auto;
-  min-height: var(--control-height);
+  min-height: var(--input-min-height);
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
@@ -1824,7 +1826,7 @@ button:focus-visible {
 }
 
 .app-select:disabled { cursor: not-allowed; opacity: 0.5; }
-.app-select__label { display: flex; min-width: 0; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-select__label { display: flex; min-width: 0; min-height: 1.6em; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-select-wrap[data-open="true"] { z-index: 30; }
 .app-select-wrap[data-open="true"] .app-select__icon { color: var(--accent); transform: rotate(180deg); }
 
@@ -2028,7 +2030,7 @@ button:focus-visible {
 
 .app-input {
   width: 100%;
-  min-height: var(--control-height);
+  min-height: var(--input-min-height);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
   background: var(--input-bg);
@@ -2154,7 +2156,6 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 /* 行号列宽随位数自适应（min-width 保住 24px 紧凑观感）；固定宽度会让三位以上行号
    被 .cm-gutter 的 overflow: hidden 裁掉末位 */
 .cm-gutters .cm-lineNumbers { width: auto; min-width: 1.5rem; flex: 0 0 auto; }
-.cm-gutters .cm-gutter-lint { width: 1rem; min-width: 1rem; flex: 0 0 1rem; }
 .cm-gutters .cm-foldGutter { width: 0.875rem; min-width: 0.875rem; flex: 0 0 0.875rem; }
 .cm-gutters .cm-gutterElement { box-sizing: border-box; }
 /* padding: 0 必须带 .cm-editor 前缀压过 CodeMirror 运行时注入的主题样式
@@ -2163,6 +2164,14 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .cm-editor .cm-gutters .cm-lineNumbers .cm-gutterElement { width: auto; min-width: 1.5rem; padding: 0; }
 .cm-activeLine,
 .cm-activeLineGutter { background-color: var(--selection-bg) !important; }
+.cm-editor .cm-diagnostic-error-line { background-color: color-mix(in srgb, var(--danger) 10%, transparent) !important; }
+.cm-editor .cm-gutters .cm-diagnostic-error-gutter {
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent) !important;
+}
+.cm-editor .cm-lineNumbers .cm-diagnostic-error-gutter {
+  color: var(--danger);
+  font-weight: 700;
+}
 
 .app-switch {
   display: inline-flex;

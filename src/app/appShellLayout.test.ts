@@ -161,7 +161,8 @@ describe("AppShell 布局", () => {
     expect(profileEditSource).not.toContain("(!create || selectedPreset?.base_url)");
   });
 
-  it("官网地址按钮复用配置卡片的高亮按钮样式", () => {
-    expect(profileEditSource).toContain('className="apple-icon-button !h-6 !w-7 shrink-0 text-accent disabled:opacity-40"');
+  it("官网地址按钮复用行内按钮样式并显示文案", () => {
+    expect(profileEditSource).toContain('className="apple-inline-btn apple-inline-btn--quiet !h-5 shrink-0"');
+    expect(profileEditSource).toContain('{t("card.openWebsite")}');
   });
 });

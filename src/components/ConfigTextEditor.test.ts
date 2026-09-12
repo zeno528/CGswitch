@@ -42,6 +42,14 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain("const previousScrollTop = editor.scrollDOM.scrollTop");
     expect(editorSource).toContain("editor.scrollDOM.scrollTop = previousScrollTop");
   });
+
+  it("用错误行高亮和红色粗体行号替代独立错误 gutter", () => {
+    expect(editorSource).not.toContain("lintGutter()");
+    expect(editorSource).toContain("setDiagnosticsEffect");
+    expect(editorSource).toContain("gutterLineClass");
+    expect(editorSource).toContain("cm-diagnostic-error-line");
+    expect(editorSource).toContain("cm-diagnostic-error-gutter");
+  });
 });
 
 describe("collectJsonDiagnostics", () => {

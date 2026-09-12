@@ -81,6 +81,7 @@ export const customCatalogTemplate = `{
 // 中文展示名用 getter 延迟走 t()：本模块在 setupI18n 之前加载，且语言切换后需取到新值。
 // 品牌名（ChatGPT/DeepSeek 等）中英一致，保持纯字符串。
 export const builtinPresets: BuiltinPreset[] = [
+  { kind: "custom", get name() { return i18next.t("preset.custom"); }, provider: null, icon: "custom", base_url: "", admin_url: null, model: "自定义" }, // i18n-exempt: 模型名会写入 config.toml，不能随界面语言变化
   { kind: "chatgpt", name: "ChatGPT", provider: null, icon: "openai-chatgpt", base_url: "", admin_url: "https://openai.com/chatgpt/pricing", model: "gpt-5.6" },
   { kind: "deepseek", name: "DeepSeek", provider: "deepseek", icon: "deepseek", base_url: "https://api.deepseek.com/", admin_url: "https://platform.deepseek.com", model: "deepseek-flash" },
   { kind: "minimax", name: "MiniMax CN", provider: "minimax", icon: "minimax", base_url: "https://api.minimaxi.com/v1", admin_url: "https://platform.minimaxi.com", model: "MiniMax-M3" },
@@ -92,7 +93,6 @@ export const builtinPresets: BuiltinPreset[] = [
   { kind: "qwen", get name() { return i18next.t("preset.qwen"); }, provider: "Model_Studio_Token_Plan_Personal", icon: "qwen", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://bailian.console.aliyun.com", model: "qwen3.8-max" },
   { kind: "hunyuan", get name() { return i18next.t("preset.hunyuan"); }, provider: "hy3-tokenhub", icon: "hunyuan", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey", model: "hy3" },
   { kind: "doubao", get name() { return i18next.t("preset.doubao"); }, provider: "volcengine-coding-plan", icon: "volcengine", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey", model: "ark-code-latest" },
-  { kind: "custom", get name() { return i18next.t("preset.custom"); }, provider: null, icon: "custom", base_url: "", admin_url: null, model: "自定义" }, // i18n-exempt: 模型名会写入 config.toml，不能随界面语言变化
 ];
 
 export function builtinPresetByKind(kind: string): BuiltinPreset | undefined {
