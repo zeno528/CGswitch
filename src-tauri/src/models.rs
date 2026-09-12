@@ -173,6 +173,8 @@ pub struct ProfileSummary {
     pub model: Option<String>,
     pub provider: Option<String>,
     pub reasoning_effort: Option<String>,
+    /// 供应商是否已配置非空 API 端点
+    pub has_base_url: bool,
     /// 供应商是否已配置有效 API 密钥（占位符视为未配置）
     pub has_key: bool,
     pub admin_url: Option<String>,

@@ -26,6 +26,7 @@ const webProfiles: ProfileSummary[] = [
     model: "glm-5.3",
     provider: "ZAI",
     reasoning_effort: "high",
+    has_base_url: true,
     has_key: true,
     admin_url: "https://open.bigmodel.cn/console",
     show_balance: false,
@@ -41,6 +42,7 @@ const webProfiles: ProfileSummary[] = [
     model: "glm-5-turbo",
     provider: "ZAI",
     reasoning_effort: "low",
+    has_base_url: true,
     has_key: false,
     admin_url: null,
     show_balance: false,
@@ -57,6 +59,7 @@ const webProfiles: ProfileSummary[] = [
     model: "gpt-5.6",
     provider: null,
     reasoning_effort: "medium",
+    has_base_url: false,
     has_key: false,
     admin_url: null,
     show_balance: false,
@@ -349,6 +352,24 @@ function connectionErrorFromBody(value: unknown): string | null {
   return null;
 }
 
+function providerHttpErrorMessage(status: number): string {
+  if (status === 401) return "认证失败，请检查 API Key 后重试";
+  if (status === 403) return "服务商拒绝了请求，请检查后重试";
+  if (status === 404) return "API 端点不存在或路径不正确，请检查后重试";
+  return "请求未成功，请检查 API 端点、API Key 或网络后重试";
+}
+
+function providerEndpointFormatError(baseUrl: string): ProfileConnectionResult | null {
+  let protocol: string | null = null;
+  try {
+    protocol = new URL(baseUrl).protocol;
+  } catch {
+    // 非法 URL 视作格式无效
+  }
+  if (protocol === "http:" || protocol === "https:") return null;
+  return { ok: false, latency_ms: null, status: null, error: "API 端点格式无效，请检查后重试" };
+}
+
 function isOpenCodeGoBaseUrl(baseUrl: string): boolean {
   return baseUrl.replace(/\/+$/, "").toLowerCase() === "https://opencode.ai/zen/go/v1";
 }
@@ -380,7 +401,7 @@ async function testOpenCodeConnection(
       ok,
       latency_ms,
       status: res.status,
-      error: ok ? null : res.status === 401 || res.status === 403 ? "API Key 无效" : `接口返回 HTTP ${res.status}`,
+      error: ok ? null : providerHttpErrorMessage(res.status),
     };
   } catch {
     return {
@@ -605,6 +626,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         model: "glm-5.3",
         provider: "ZAI",
         reasoning_effort: "high",
+        has_base_url: true,
         has_key: true,
         admin_url: null,
         show_balance: false,
@@ -620,7 +642,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (!preset) throw new Error("未知的内置供应商类型");
       const rawKey = String(args?.apiKey ?? "");
       const apiKey = preset.provider ? rawKey : null;
-      const rawBaseUrl = String(args?.baseUrl ?? "");
+      const rawBaseUrl = String(args?.baseUrl ?? "").trim();
       const baseUrl = preset.provider ? rawBaseUrl || preset.base_url : null;
       const rawAdminUrl = String(args?.adminUrl ?? "");
       const adminUrl = rawAdminUrl || preset.admin_url;
@@ -636,6 +658,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         model: preset.model,
         provider: preset.provider,
         reasoning_effort: "high",
+        has_base_url: Boolean(baseUrl),
         has_key: preset.provider ? Boolean(rawKey.trim()) : false,
         admin_url: adminUrl,
         show_balance: false,
@@ -654,15 +677,20 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "add_custom_profile": {
       const now = new Date().toISOString();
+      const configText = String(args?.configText ?? "");
+      const provider = /^\s*model_provider\s*=\s*["']([^"']+)["']/m.exec(configText)?.[1] ?? null;
+      const baseUrl = typeof args?.baseUrl === "string" ? args.baseUrl.trim() : "";
+      const apiKey = typeof args?.apiKey === "string" ? args.apiKey.trim() : "";
       const profile: ProfileSummary = {
         id: `profile-${Date.now()}`,
         name: String(args?.name ?? "自定义供应商"),
         kind: "third_party",
         account_id: null,
         model: null,
-        provider: null,
+        provider,
         reasoning_effort: null,
-        has_key: Boolean(args?.apiKey),
+        has_base_url: Boolean(baseUrl),
+        has_key: Boolean(apiKey),
         admin_url:
           typeof args?.adminUrl === "string" && args.adminUrl ? args.adminUrl : null,
         show_balance: false,
@@ -672,13 +700,11 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       };
       webProfiles.push(profile);
       webDetails[profile.id] = {
-        base_url:
-          typeof args?.baseUrl === "string" && args.baseUrl ? args.baseUrl : null,
-        api_key:
-          typeof args?.apiKey === "string" && args.apiKey ? args.apiKey : null,
+        base_url: baseUrl || null,
+        api_key: apiKey || null,
         model_values: {},
-        config_fragment: String(args?.configText ?? ""),
-        raw_config: String(args?.configText ?? ""),
+        config_fragment: configText,
+        raw_config: configText,
         raw_catalog:
           typeof args?.catalogText === "string" && args.catalogText ? args.catalogText : null,
         raw_auth: typeof args?.authText === "string" && args.authText ? args.authText : null,
@@ -699,7 +725,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const apiKey = String(args?.apiKey ?? "");
       const baseUrl = String(args?.baseUrl ?? "");
       if (!apiKey.trim()) throw new Error("请填写 API Key");
-      if (!baseUrl.trim()) throw new Error("请填写调用地址");
+      if (!baseUrl.trim()) throw new Error("请填写 API 端点");
+      const endpointFormatError = providerEndpointFormatError(baseUrl.trim());
+      if (endpointFormatError) return endpointFormatError as T;
       if (isOpenCodeGoBaseUrl(baseUrl.trim())) {
         return (await testOpenCodeConnection(baseUrl.trim(), apiKey.trim())) as T;
       }
@@ -729,7 +757,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const apiKey = args?.apiKey !== undefined ? String(args.apiKey) : "saved-key";
       if (!apiKey.trim()) throw new Error("请填写 API Key");
       const baseUrl = args?.baseUrl !== undefined ? String(args.baseUrl) : "https://api.example.com";
-      if (!baseUrl.trim()) throw new Error("请填写调用地址");
+      if (!baseUrl.trim()) throw new Error("请填写 API 端点");
+      const endpointFormatError = providerEndpointFormatError(baseUrl.trim());
+      if (endpointFormatError) return endpointFormatError as T;
       if (isOpenCodeGoBaseUrl(baseUrl.trim())) {
         return (await testOpenCodeConnection(baseUrl.trim(), apiKey.trim())) as T;
       }
@@ -752,7 +782,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
               ok: false,
               latency_ms,
               status: res.status,
-              error: `接口返回 HTTP ${res.status}，但响应不是有效的 JSON（请检查调用地址）`,
+              error: providerHttpErrorMessage(res.status),
             } as T;
           }
           const error = connectionErrorFromBody(json);
@@ -761,10 +791,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           }
           return { ok: true, latency_ms, status: res.status, error: null } as T;
         }
-        if (res.status === 401 || res.status === 403) {
-          return { ok: false, latency_ms, status: res.status, error: "API Key 无效" } as T;
-        }
-        return { ok: false, latency_ms, status: res.status, error: `接口返回 HTTP ${res.status}` } as T;
+        return { ok: false, latency_ms, status: res.status, error: providerHttpErrorMessage(res.status) } as T;
       } catch {
         return {
           ok: false,
@@ -906,8 +933,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       profile.name = String(args?.name ?? profile.name);
       const detail = webDetails[profile.id];
       if (detail) {
-        if (typeof args?.baseUrl === "string") detail.base_url = args.baseUrl || null;
-        if (typeof args?.apiKey === "string") detail.api_key = args.apiKey || null;
+        if (typeof args?.baseUrl === "string") detail.base_url = args.baseUrl.trim() || null;
+        if (typeof args?.apiKey === "string") detail.api_key = args.apiKey.trim() || null;
+        profile.has_base_url = Boolean(detail.base_url?.trim());
+        profile.has_key = Boolean(detail.api_key?.trim());
       }
       if (typeof args?.adminUrl === "string") profile.admin_url = args.adminUrl || null;
       return { ...profile } as T;

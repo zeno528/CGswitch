@@ -40,8 +40,8 @@ export default {
   },
   codex: {
     sectionTitle: "Application & updates",
-    autoRestartTitle: "Restart Codex automatically after applying",
-    autoRestartDescription: "When on, applying a config restarts Codex so it takes effect; when off, the config is only saved and you can restart manually later.",
+    autoRestartTitle: "Restart Codex automatically after switching",
+    autoRestartDescription: "When on, switching configurations automatically restarts Codex; when off, restart Codex manually for the change to take effect.",
     autoCheckTitle: "Check for updates automatically",
     autoCheckDescription: "Check for new versions at startup and show an update hint next to the Codex status.",
   },

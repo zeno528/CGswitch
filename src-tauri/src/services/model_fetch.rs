@@ -90,7 +90,7 @@ const KNOWN_MODELS_URLS: &[(&str, &str)] = &[(
 pub fn build_models_url_candidates(base_url: &str) -> Result<Vec<String>, String> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return Err("请求地址为空".to_string());
+        return Err("API 端点为空".to_string());
     }
 
     let mut candidates = Vec::new();

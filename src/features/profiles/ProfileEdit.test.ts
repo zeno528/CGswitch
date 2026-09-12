@@ -46,7 +46,7 @@ describe("ProfileEdit 用量查询", () => {
     expect(enLocale).toContain('balanceAutoRefresh: "Shown on provider cards; refreshes when the window is active"');
   });
 
-  it("新建和编辑配置缺少密钥或调用地址时只发合并通知并仍允许保存", () => {
+  it("新建和编辑配置缺少密钥或 API 端点时只发合并通知并仍允许保存", () => {
     expect(source).toContain("const notifySaved = (message: string) => {");
     expect(source).toContain("if (!isOfficial && showProviderFields && (missingApiKey || missingBaseUrl)) {");
     expect(source).toContain('feedback.warning(t("edit.savedWithMissingFields", {');

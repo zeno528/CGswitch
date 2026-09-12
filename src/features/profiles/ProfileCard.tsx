@@ -101,8 +101,8 @@ export function ProfileCardContent({
 interface ProfileCardActionsProps {
   active: boolean;
   busy: boolean;
-  connectionDimmed: boolean;
-  connectionTitle: string;
+  profile: ProfileSummary;
+  subscriptionAuthed: boolean;
   testing: boolean;
   dragging?: boolean;
   onApply?: () => void;
@@ -111,13 +111,18 @@ interface ProfileCardActionsProps {
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, connectionDimmed, connectionTitle, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, profile, subscriptionAuthed, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
+  const connectionDisabled = !profile.provider ? !subscriptionAuthed : !profile.has_base_url || !profile.has_key;
+  const connectionTitle = !profile.provider
+    ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified")
+    : !profile.has_base_url ? t("connection.missingApiEndpointWarning")
+      : !profile.has_key ? t("connection.missingApiKeyWarning") : t("connection.test");
   return (
     <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
       <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />{t("actions.inUse")}</> : t("actions.switch")}</button>
       <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
-      <button type="button" className={`apple-icon-button enabled:hover:bg-(--profile-chip-bg) disabled:cursor-not-allowed disabled:opacity-40 ${connectionDimmed ? "text-[var(--text-secondary)]" : "text-accent"}`} disabled={connectionDimmed || busy || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
+      <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:bg-(--profile-chip-bg) enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || busy || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
       <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
     </div>
   );
@@ -140,7 +145,6 @@ export default function ProfileCard({
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
   const [testing, setTesting] = useState(false);
-  const [connectionState, setConnectionState] = useState<"unknown" | "ok" | "fail">("unknown");
   const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>([]);
   const [balanceError, setBalanceError] = useState("");
   const balanceFetchingRef = useRef(false);
@@ -197,20 +201,17 @@ export default function ProfileCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, profile.id, profile.show_balance, supportsBalance]);
 
-  useEffect(() => setConnectionState("unknown"), [profile.id]);
-
-  const connectionDimmed = !profile.provider ? !subscriptionAuthed : connectionState === "fail" || !profile.has_key;
-  const connectionTitle = !profile.provider
-    ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified")
-    : !profile.has_key ? t("connection.missingApiKeyWarning") : t("connection.test");
   const testConnection = async () => {
     if (testing) return;
     if (!profile.provider && !subscriptionAuthed) {
       feedback.warning(t("connection.subscriptionWarning"));
       return;
     }
+    if (profile.provider && !profile.has_base_url) {
+      feedback.warning(t("edit.baseUrlRequired"));
+      return;
+    }
     if (profile.provider && !profile.has_key) {
-      setConnectionState("fail");
       feedback.warning(t("connection.missingApiKeyWarning"));
       return;
     }
@@ -218,14 +219,11 @@ export default function ProfileCard({
     try {
       const result = await api.testProfileConnection(profile.id);
       if (result.ok) {
-        setConnectionState("ok");
         feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
       } else {
-        setConnectionState("fail");
         feedback.error(t("connection.failed", { error: result.error ?? t("connection.unknownError") }));
       }
     } catch (error) {
-      setConnectionState("fail");
       feedback.error(t("connection.testFailed", { error: String(error) }));
     } finally {
       setTesting(false);
@@ -254,7 +252,7 @@ export default function ProfileCard({
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />
-      <ProfileCardActions active={active} busy={busy} connectionDimmed={connectionDimmed} connectionTitle={connectionTitle} testing={testing} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
+      <ProfileCardActions active={active} busy={busy} profile={profile} subscriptionAuthed={subscriptionAuthed} testing={testing} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
     </article>
   );
 }

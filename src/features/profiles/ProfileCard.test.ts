@@ -73,4 +73,10 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain("focus-within:pointer-events-auto focus-within:opacity-100");
     expect(source).not.toContain("group-focus-within:");
   });
+
+  it("仅在端点或 API Key 缺失时禁用连通测试", () => {
+    expect(source).toContain("const connectionDisabled = !profile.provider ? !subscriptionAuthed : !profile.has_base_url || !profile.has_key;");
+    expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
+    expect(source).not.toContain("missingApiCredentialsWarning");
+  });
 });

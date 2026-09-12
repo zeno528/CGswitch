@@ -22,10 +22,7 @@ interface ProfilesViewProps {
 }
 
 function ProfileDragPreview({ profile, width, height, active, busy, subscriptionAuthed, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; subscriptionAuthed: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
-  const { t } = useTranslation("profiles");
   const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
-  const connectionDimmed = !profile.provider ? !subscriptionAuthed : !profile.has_key;
-  const connectionTitle = !profile.provider ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified") : !profile.has_key ? t("connection.missingApiKeyWarning") : t("connection.test");
   return (
     <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
       <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
@@ -38,7 +35,7 @@ function ProfileDragPreview({ profile, width, height, active, busy, subscription
         balanceError={balanceError}
         onOpenAdmin={onOpenAdmin}
       />
-      <ProfileCardActions active={active} busy={busy} connectionDimmed={connectionDimmed} connectionTitle={connectionTitle} testing={false} dragging />
+      <ProfileCardActions active={active} busy={busy} profile={profile} subscriptionAuthed={subscriptionAuthed} testing={false} dragging />
     </div>
   );
 }

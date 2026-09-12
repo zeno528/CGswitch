@@ -788,6 +788,7 @@ fn summary(
         model: display_text(payload.model_values.get("model")),
         provider: payload.provider_id.clone(),
         reasoning_effort: display_text(payload.model_values.get("model_reasoning_effort")),
+        has_base_url: payload_has_base_url(payload),
         has_key: payload_has_key(payload),
         admin_url: payload.admin_url.clone(),
         show_balance: payload.show_balance,
@@ -795,6 +796,20 @@ fn summary(
         created_at: created_at.into(),
         updated_at: updated_at.into(),
     }
+}
+
+fn payload_has_base_url(payload: &ProfilePayload) -> bool {
+    let Some(body) = payload.provider_body.as_deref() else {
+        return false;
+    };
+    let Ok(document) = body.parse::<toml_edit::DocumentMut>() else {
+        return false;
+    };
+    document
+        .as_table()
+        .get("base_url")
+        .and_then(toml_edit::Item::as_str)
+        .is_some_and(|url| !url.trim().is_empty())
 }
 
 fn payload_has_key(payload: &ProfilePayload) -> bool {
@@ -942,6 +957,7 @@ mod tests {
             ProfileKind::Official
         );
         assert_eq!(db.profile(&third_id).unwrap().kind, ProfileKind::ThirdParty);
+        assert!(!profile_summary(&db.profile(&third_id).unwrap()).has_base_url);
 
         let account = StoredAccount {
             id: "acc-1".into(),
@@ -971,6 +987,24 @@ mod tests {
         db.set_active_profile(None).unwrap();
         db.set_default_account(None).unwrap();
         assert_eq!(db.app_state().unwrap(), (None, None));
+    }
+
+    #[test]
+    fn profile_summary_reports_non_empty_provider_endpoint() {
+        let payload = ProfilePayload {
+            provider_id: Some("ZAI".into()),
+            provider_body: Some("base_url = \"https://api.example\"".into()),
+            ..Default::default()
+        };
+        let summary_with_url = summary("id", "name", &payload, None, None, "1", "1");
+        assert!(summary_with_url.has_base_url);
+
+        let empty_payload = ProfilePayload {
+            provider_id: Some("ZAI".into()),
+            provider_body: Some("base_url = \"  \"".into()),
+            ..Default::default()
+        };
+        assert!(!summary("id", "name", &empty_payload, None, None, "1", "1").has_base_url);
     }
 
     /// 构造带 sub 的 id_token（迁移回填的数据源）

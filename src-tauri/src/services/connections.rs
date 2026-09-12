@@ -56,7 +56,10 @@ fn preferred_deepseek_balance(mut balances: Vec<ProfileBalanceInfo>) -> Vec<Prof
 
 #[cfg(test)]
 mod tests {
-    use super::preferred_deepseek_balance;
+    use super::{
+        preferred_deepseek_balance, provider_http_error_message, provider_request_error_message,
+        subscription_http_error_message, subscription_request_error_message,
+    };
     use crate::models::ProfileBalanceInfo;
 
     fn balance(currency: &str, total: &str) -> ProfileBalanceInfo {
@@ -97,6 +100,71 @@ mod tests {
         assert_eq!(filtered.len(), 2);
         assert_eq!(filtered[0].currency, "CNY");
         assert_eq!(filtered[0].total_balance, "0.00");
+    }
+
+    #[test]
+    fn provider_connection_errors_use_actionable_messages() {
+        assert_eq!(
+            provider_http_error_message(reqwest::StatusCode::UNAUTHORIZED),
+            "认证失败，请检查 API Key 后重试"
+        );
+        assert_eq!(
+            provider_http_error_message(reqwest::StatusCode::FORBIDDEN),
+            "服务商拒绝了请求，请检查后重试"
+        );
+        assert_eq!(
+            provider_http_error_message(reqwest::StatusCode::NOT_FOUND),
+            "API 端点不存在或路径不正确，请检查后重试"
+        );
+        assert_eq!(
+            provider_http_error_message(reqwest::StatusCode::BAD_REQUEST),
+            "请求未成功，请检查 API 端点、API Key 或网络后重试"
+        );
+
+        let error = reqwest::Client::new()
+            .get("not a valid URL")
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            provider_request_error_message(&error),
+            "API 端点格式无效，请检查后重试"
+        );
+    }
+
+    #[test]
+    fn subscription_connection_errors_use_subscription_specific_messages() {
+        assert_eq!(
+            subscription_http_error_message(reqwest::StatusCode::UNAUTHORIZED, ""),
+            "ChatGPT 登录已失效，请重新登录"
+        );
+        assert_eq!(
+            subscription_http_error_message(
+                reqwest::StatusCode::FORBIDDEN,
+                "unsupported_country_region_territory"
+            ),
+            "ChatGPT 访问受到地区限制，请开启系统代理后重试"
+        );
+        assert_eq!(
+            subscription_http_error_message(reqwest::StatusCode::FORBIDDEN, ""),
+            "ChatGPT 订阅请求被拒绝，请重新登录后重试"
+        );
+        assert_eq!(
+            subscription_http_error_message(reqwest::StatusCode::TOO_MANY_REQUESTS, ""),
+            "请求过于频繁，请稍后重试"
+        );
+        assert_eq!(
+            subscription_http_error_message(reqwest::StatusCode::BAD_GATEWAY, ""),
+            "ChatGPT 订阅服务暂时不可用，请稍后重试"
+        );
+
+        let error = reqwest::Client::new()
+            .get("not a valid URL")
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            subscription_request_error_message(&error),
+            "ChatGPT 订阅请求未完成，请稍后重试"
+        );
     }
 }
 
@@ -185,6 +253,51 @@ fn reqwest_error_message(error: &reqwest::Error) -> String {
     }
 }
 
+fn provider_http_error_message(status: reqwest::StatusCode) -> &'static str {
+    match status {
+        reqwest::StatusCode::UNAUTHORIZED => "认证失败，请检查 API Key 后重试",
+        reqwest::StatusCode::FORBIDDEN => "服务商拒绝了请求，请检查后重试",
+        reqwest::StatusCode::NOT_FOUND => "API 端点不存在或路径不正确，请检查后重试",
+        _ => "请求未成功，请检查 API 端点、API Key 或网络后重试",
+    }
+}
+
+fn provider_request_error_message(error: &reqwest::Error) -> &'static str {
+    if error.is_builder() {
+        "API 端点格式无效，请检查后重试"
+    } else if error.is_timeout() {
+        "连接 API 端点超时，请检查后重试"
+    } else if error.is_connect() {
+        "无法访问 API 端点，请检查后重试"
+    } else {
+        "请求未成功，请检查 API 端点、API Key 或网络后重试"
+    }
+}
+
+fn subscription_http_error_message(status: reqwest::StatusCode, body: &str) -> &'static str {
+    if body.contains("unsupported_country_region_territory") {
+        "ChatGPT 访问受到地区限制，请开启系统代理后重试"
+    } else {
+        match status {
+            reqwest::StatusCode::UNAUTHORIZED => "ChatGPT 登录已失效，请重新登录",
+            reqwest::StatusCode::FORBIDDEN => "ChatGPT 订阅请求被拒绝，请重新登录后重试",
+            reqwest::StatusCode::TOO_MANY_REQUESTS => "请求过于频繁，请稍后重试",
+            status if status.is_server_error() => "ChatGPT 订阅服务暂时不可用，请稍后重试",
+            _ => "ChatGPT 订阅请求未完成，请稍后重试",
+        }
+    }
+}
+
+fn subscription_request_error_message(error: &reqwest::Error) -> &'static str {
+    if error.is_timeout() {
+        "连接 ChatGPT 订阅服务超时，请检查系统代理设置后重试"
+    } else if error.is_connect() {
+        "无法访问 ChatGPT 订阅服务，请检查系统代理设置后重试"
+    } else {
+        "ChatGPT 订阅请求未完成，请稍后重试"
+    }
+}
+
 /// 从 2xx 的 JSON 响应体里识别供应商级错误（OpenAI 风格 `error` 或智谱风格 `code/success`）。
 pub(crate) fn connection_error_from_body(value: &serde_json::Value) -> Option<String> {
     if let Some(error) = value.get("error") {
@@ -248,15 +361,7 @@ async fn test_opencode_connection(
                     reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNPROCESSABLE_ENTITY
                 ) && body.to_ascii_lowercase().contains("max_output_tokens");
             let ok = status.is_success() || probe_validation_rejection;
-            let error = if ok {
-                None
-            } else if status == reqwest::StatusCode::UNAUTHORIZED
-                || status == reqwest::StatusCode::FORBIDDEN
-            {
-                Some("API Key 无效".to_string())
-            } else {
-                Some(format!("接口返回 HTTP {status}"))
-            };
+            let error = (!ok).then(|| provider_http_error_message(status).to_string());
 
             Ok(ProfileConnectionResult {
                 ok,
@@ -269,7 +374,7 @@ async fn test_opencode_connection(
             ok: false,
             latency_ms: None,
             status: error.status().map(|status| status.as_u16()),
-            error: Some(reqwest_error_message(&error)),
+            error: Some(provider_request_error_message(&error).to_string()),
         }),
     }
 }
@@ -407,37 +512,27 @@ async fn test_models_endpoint(base_url: &str, api_key: &str) -> AppResult<Profil
                         ok: false,
                         latency_ms,
                         status: Some(status.as_u16()),
-                        error: Some(format!(
-                            "接口返回 HTTP {status}，但响应不是有效的 JSON（请检查调用地址）"
-                        )),
+                        error: Some(
+                            "请求未成功，请检查 API 端点、API Key 或网络后重试".to_string(),
+                        ),
                     }),
                 }
-            } else if status == reqwest::StatusCode::UNAUTHORIZED
-                || status == reqwest::StatusCode::FORBIDDEN
-            {
-                Ok(ProfileConnectionResult {
-                    ok: false,
-                    latency_ms,
-                    status: Some(status.as_u16()),
-                    error: Some("API Key 无效".to_string()),
-                })
             } else {
                 Ok(ProfileConnectionResult {
                     ok: false,
                     latency_ms,
                     status: Some(status.as_u16()),
-                    error: Some(format!("接口返回 HTTP {status}")),
+                    error: Some(provider_http_error_message(status).to_string()),
                 })
             }
         }
         Err(error) => {
             let status = error.status().map(|status| status.as_u16());
-            let error_message = reqwest_error_message(&error);
             Ok(ProfileConnectionResult {
                 ok: false,
                 latency_ms: None,
                 status,
-                error: Some(error_message),
+                error: Some(provider_request_error_message(&error).to_string()),
             })
         }
     }
@@ -450,7 +545,7 @@ pub async fn test_provider_connection(
 ) -> AppResult<ProfileConnectionResult> {
     let base_url = base_url.trim();
     if base_url.is_empty() {
-        return Err(app_err!("请填写调用地址"));
+        return Err(app_err!("请填写 API 端点"));
     }
     let api_key = api_key.trim();
     if api_key.is_empty() {
@@ -587,14 +682,14 @@ fn provider_origin(base: &str) -> AppResult<String> {
     let authority_start = base
         .find("://")
         .map(|index| index + 3)
-        .ok_or_else(|| app_err!("用量查询失败：供应商调用地址无效"))?;
+        .ok_or_else(|| app_err!("用量查询失败：供应商 API 端点无效"))?;
     let origin_end = base[authority_start..]
         .find('/')
         .map(|index| authority_start + index)
         .unwrap_or(base.len());
     let origin = &base[..origin_end];
     if !origin.starts_with("http://") && !origin.starts_with("https://") {
-        return Err(app_err!("用量查询失败：供应商调用地址无效"));
+        return Err(app_err!("用量查询失败：供应商 API 端点无效"));
     }
     Ok(origin.to_string())
 }
@@ -813,14 +908,14 @@ impl AppContext {
             Some(value) => {
                 let value = value.trim();
                 if value.is_empty() {
-                    return Err(app_err!("请填写调用地址"));
+                    return Err(app_err!("请填写 API 端点"));
                 }
                 value.to_string()
             }
             None => detail
                 .base_url
                 .filter(|value| !value.trim().is_empty())
-                .ok_or_else(|| app_err!("该供应商没有配置调用地址"))?,
+                .ok_or_else(|| app_err!("该供应商没有配置 API 端点"))?,
         };
         let api_key = match api_key_override {
             Some(value) => {
@@ -838,8 +933,8 @@ impl AppContext {
     }
 
     /// 验证 ChatGPT 订阅认证连通性：用当前 access_token 请求 Codex 官方后端用量端点
-    /// （Codex CLI 后台轮询同一个端点）。2xx 可用；401/403 登录失效或地区拦截；
-    /// 网络错误提示代理/网络问题。仅手动点击测试时调用，不参与切换流程。
+    /// （Codex CLI 后台轮询同一个端点）。2xx 可用；非 2xx 和网络错误按订阅链路分类提示。
+    /// 仅手动点击测试时调用，不参与切换流程。
     pub async fn test_subscription_connection(
         &self,
         access_token: &str,
@@ -860,28 +955,19 @@ impl AppContext {
                         status: Some(status.as_u16()),
                         error: None,
                     })
-                } else if status == reqwest::StatusCode::UNAUTHORIZED
-                    || status == reqwest::StatusCode::FORBIDDEN
-                {
-                    let text = response.text().await.unwrap_or_default();
-                    let error = if text.contains("unsupported_country_region_territory") {
-                        "认证请求被地区限制拦截。请开启系统代理并确认节点位于 ChatGPT 支持的地区后重试。"
-                            .to_string()
+                } else {
+                    let text = if status == reqwest::StatusCode::UNAUTHORIZED
+                        || status == reqwest::StatusCode::FORBIDDEN
+                    {
+                        response.text().await.unwrap_or_default()
                     } else {
-                        "ChatGPT 登录已失效，请重新登录".to_string()
+                        String::new()
                     };
                     Ok(ProfileConnectionResult {
                         ok: false,
                         latency_ms,
                         status: Some(status.as_u16()),
-                        error: Some(error),
-                    })
-                } else {
-                    Ok(ProfileConnectionResult {
-                        ok: false,
-                        latency_ms,
-                        status: Some(status.as_u16()),
-                        error: Some(format!("接口返回 HTTP {status}")),
+                        error: Some(subscription_http_error_message(status, &text).to_string()),
                     })
                 }
             }
@@ -891,7 +977,7 @@ impl AppContext {
                     ok: false,
                     latency_ms: None,
                     status,
-                    error: Some(reqwest_error_message(&error)),
+                    error: Some(subscription_request_error_message(&error).to_string()),
                 })
             }
         }

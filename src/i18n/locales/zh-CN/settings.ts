@@ -40,8 +40,8 @@ export default {
   },
   codex: {
     sectionTitle: "应用与更新",
-    autoRestartTitle: "应用配置后自动重启 Codex",
-    autoRestartDescription: "开启后应用配置会自动重启 Codex 生效；关闭则只保存配置，稍后可手动重启。",
+    autoRestartTitle: "切换配置后自动重启 Codex",
+    autoRestartDescription: "开启后，切换配置会自动重启 Codex；关闭后需手动重启 Codex 才能生效。",
     autoCheckTitle: "自动检查更新",
     autoCheckDescription: "启动时检查新版本，发现后在 Codex 状态旁提示更新。",
   },

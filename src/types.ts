@@ -9,6 +9,8 @@ export interface ProfileSummary {
   model: string | null;
   provider: string | null;
   reasoning_effort: string | null;
+  /** 供应商是否已配置非空 API 端点。 */
+  has_base_url: boolean;
   has_key: boolean;
   admin_url: string | null;
   /** 供应商级开关：是否在卡片显示并自动刷新余额/用量。 */
