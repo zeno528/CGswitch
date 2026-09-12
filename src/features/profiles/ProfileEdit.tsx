@@ -14,7 +14,6 @@ import {
   builtinPresets,
   customCatalogTemplate,
   customConfigTemplate,
-  usageQueryProviders,
 } from "../../presets";
 import { patchModelValue, patchProviderFields, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
 import type { EditorDiagnosticSummary, ManagedAccount, ProfileDetail, ProfileSummary } from "../../types";
@@ -101,7 +100,8 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
   const [patchingSystemProxy, setPatchingSystemProxy] = useState(false);
   const [contextMgmtEnabled, setContextMgmtEnabled] = useState(false);
   const [patchingContextMgmt, setPatchingContextMgmt] = useState(false);
-  const [showBalance, setShowBalance] = useState(false);
+  // 新增态默认开启余额显示（开关仅对支持的供应商渲染）；编辑态仍由 loaded.show_balance 覆盖。
+  const [showBalance, setShowBalance] = useState(create);
   const [savingBalance, setSavingBalance] = useState(false);
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnosticSummary>({ count: 0, firstLine: null });
   const [mcpSection, setMcpSection] = useState("");
@@ -116,8 +116,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
   const showProviderFields = create ? (isCustom || Boolean(selectedPreset?.base_url)) : Boolean(detail?.provider);
   const showLongContextOverride = isOfficial;
-  const supportsBalance = isOfficial || balanceQueryProviders.has(detail?.provider ?? "");
-  const isUsageProvider = usageQueryProviders.has(detail?.provider ?? "");
+  const supportsBalance = create ? presetKind === "chatgpt" || balanceQueryProviders.has(selectedPreset?.provider ?? "") : isOfficial || balanceQueryProviders.has(detail?.provider ?? "");
   // 创建态下预设的 config 原文统一从后端取（单源真相），避免与 Rust 模板双份维护。
   // 与 configText 同源同时设置（selectPreset 内 await 后一起 set），防止异步晚到
   // 触发 configText !== liveConfigFragment 的误判
@@ -354,6 +353,8 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     }
     if (requestId !== presetTemplateRequest.current) return;
     setPresetKind(kind);
+    // 重置为该预设的默认值：支持余额查询的预设默认开启（与 supportsBalance 渲染条件同一规则）
+    setShowBalance(kind === "chatgpt" || balanceQueryProviders.has(preset.provider ?? ""));
     if (kind !== "chatgpt") setBoundAccountId(null);
     setConfigTouched(false);
     setCatalogTouched(false);
@@ -499,8 +500,9 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
   };
 
   const toggleBalance = async (enabled: boolean) => {
-    if (savingBalance || !profile) return;
+    if (savingBalance) return;
     setShowBalance(enabled);
+    if (create || !profile) return;
     setSavingBalance(true);
     try { await api.setProfileShowBalance(profile.id, enabled); }
     catch (error) { setShowBalance(!enabled); feedback.error(String(error)); }
@@ -525,6 +527,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
           await api.updateProfileConfig(created.id, configText, liveCatalogPath ? catalogText || null : null, authTextToSave);
         }
         if (fetchedModels.length) await api.setProfileFetchedModels(created.id, fetchedModels);
+        if (showBalance) await api.setProfileShowBalance(created.id, true);
         feedback.success(t("edit.builtinProviderAdded"));
       } else {
         const hasProvider = Boolean(detail?.provider);
@@ -608,7 +611,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
             ) : null}
             {isOfficial ? <div className="mt-4"><div className="field-label mb-1.5">{t("edit.authMethodLabel")}</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder={t("card.authDesktop")} renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder={t("edit.selectOauthAccount")} renderLabel={renderAccountLabel} /> : <div className="app-input flex min-w-0 items-center gap-2"><Monitor className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{t("card.authDesktop")}</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
             {(!create || Boolean(selectedPreset?.admin_url)) ? <div className="mt-4"><div className="mb-1.5 flex items-center gap-2"><span className="field-label">{t("edit.adminUrlLabel")}</span><button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5 shrink-0" disabled={!adminUrl.trim()} title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={() => void api.openUrl(adminUrl.trim()).catch((error) => feedback.error(String(error)))}><ExternalLink className="h-3 w-3" strokeWidth={2} aria-hidden="true" />{t("card.openWebsite")}</button></div><input className="app-input" placeholder={t("edit.adminUrlPlaceholder")} value={adminUrl} onChange={(event) => setAdminUrl(event.target.value)} /></div> : null}
-            {!create && supportsBalance ? <div className="app-input mt-4 flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2"><span className="text-sm font-semibold">{isOfficial ? t("edit.balanceChatgpt") : isUsageProvider ? t("edit.balanceUsage") : t("edit.balanceBoth")}</span><span className="muted truncate text-xs" title={t("edit.balanceAutoRefreshTitle")}>{t("edit.balanceAutoRefresh")}</span></div><AppSwitch checked={showBalance} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
+              {supportsBalance ? <div className="mt-4 flex min-h-[var(--input-min-height)] items-center justify-between gap-4"><div className="min-w-0"><div className="setting-title">{t("edit.balanceUsage")}</div><div className="setting-description mt-0.5">{t("edit.balanceAutoRefresh")}</div></div><AppSwitch checked={showBalance} disabled={saving || savingBalance} label={t("edit.balanceUsage")} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>
             <div className="apple-panel-section flex flex-col">
               <div className="flex items-center justify-between gap-3">
