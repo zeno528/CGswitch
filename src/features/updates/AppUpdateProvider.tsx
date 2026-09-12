@@ -106,9 +106,10 @@ export function UpdateNotice() {
         aria-haspopup="dialog"
         onClick={() => setConfirming(true)}
       >
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-success text-[var(--panel-bg)]">
+        <span className="update-notice-trigger__icon grid h-6 w-6 place-items-center rounded-full bg-success text-[var(--active-card-text-primary)]">
           <Download className="h-3 w-3" strokeWidth={2.5} aria-hidden="true" />
         </span>
+        <span className="field-label update-notice-label">{t("notice.available")}</span>
       </button>
       <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>

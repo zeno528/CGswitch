@@ -759,20 +759,29 @@ body.drag-active * {
 }
 
 .update-notice-trigger {
-  display: grid;
-  width: var(--icon-button-size);
-  height: var(--icon-button-size);
-  place-items: center;
-  border-radius: 50%;
+  display: inline-flex;
+  min-width: var(--icon-button-size);
+  min-height: var(--icon-button-size);
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 999px;
+  padding-inline: 0.25rem;
+}
+
+.update-notice-label {
+  font-weight: 550;
+}
+
+.update-notice-trigger__icon {
   transition: transform var(--motion-fast) ease-out;
 }
 
-.update-notice-trigger:hover,
-.update-notice-trigger:focus-visible {
+.update-notice-trigger:hover .update-notice-trigger__icon,
+.update-notice-trigger:focus-visible .update-notice-trigger__icon {
   transform: scale(1.04);
 }
 
-.update-notice-trigger:active {
+.update-notice-trigger:active .update-notice-trigger__icon {
   transform: scale(0.94);
 }
 

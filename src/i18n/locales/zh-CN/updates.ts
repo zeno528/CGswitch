@@ -2,6 +2,7 @@
 export default {
   notice: {
     title: "新版 v{{version}} 已就绪",
+    available: "有新版本",
     updateNow: "立即重启更新",
     later: "稍后",
     installing: "下载安装中…",
