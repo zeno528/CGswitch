@@ -117,8 +117,11 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
    - 发行日期优先查 `gh release view v<上一版本号> --json publishedAt -q .publishedAt`（UTC 时间戳，转成 Asia/Shanghai 当天日期，与发行页口径一致）；查不到（该版本还没发行）用今天日期兜底
    - 段落内容一字不动，只改标题行
 2. 在归档段落上方插入 Step 2 已确认的新版本段落，标题固定 `## [Unreleased]`（版本号与日期**AI 禁写**；本版发行后由下次起草归档）。
-3. 提交所有发版文件：`git add VERSION package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md`
+3. 提交发版文件（**硬约束：只许这 6 个文件，多一个都不行**）：
+   `git add VERSION package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json CHANGELOG.md`
    提交信息：`chore(release): v<版本>`
+   - **禁止** `git add -A` / `git add .` / 任何路径通配或目录级 add；工作区其他一切改动（代码、测试、i18n、样式、新文件等）一律不得进入本 commit，保持原样留在工作区。
+   - add 后先 `git status --short` 核对暂存区只含上述 6 个文件；发现多余文件必须 `git restore --staged <文件>` 摘掉后再提交。
 4. **到此停下**：汇报版本号、commit hash、CHANGELOG 段落摘要，**会话停在此处**。**不询问用户是否继续**（避免被读成对扩展动作的暗示），**不主动执行**任何 push / 触发工作流 / 发布操作。Step 4–6 需用户用明确指令单独启动。
 
 ### Step 4: 推送（自动触发构建，停在草稿）— 需用户明确启动才执行
