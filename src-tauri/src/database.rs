@@ -599,14 +599,35 @@ impl Database {
             "INSERT INTO app_state(singleton, active_profile_id, default_account_id)
              VALUES(?1, ?2, ?3)",
         )?;
-        copy_table(
-            &source,
-            &transaction,
-            "profiles",
-            "SELECT id, name, payload_json, icon, kind, account_id, created_at, updated_at FROM profiles",
-            "INSERT INTO profiles(id, name, payload_json, icon, kind, account_id, created_at, updated_at)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        )?;
+        // 备份带 sort_order 则原样复制（保留卡片排序）；旧 schema 备份无此列，落列默认 0（创建顺序）
+        let source_has_sort_order: i64 = source
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('profiles') WHERE name = 'sort_order'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+        if source_has_sort_order > 0 {
+            copy_table(
+                &source,
+                &transaction,
+                "profiles",
+                "SELECT id, name, payload_json, icon, kind, account_id, created_at, updated_at, sort_order
+                 FROM profiles",
+                "INSERT INTO profiles(id, name, payload_json, icon, kind, account_id, created_at,
+                                      updated_at, sort_order)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?;
+        } else {
+            copy_table(
+                &source,
+                &transaction,
+                "profiles",
+                "SELECT id, name, payload_json, icon, kind, account_id, created_at, updated_at FROM profiles",
+                "INSERT INTO profiles(id, name, payload_json, icon, kind, account_id, created_at, updated_at)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            )?;
+        }
         copy_table(
             &source,
             &transaction,

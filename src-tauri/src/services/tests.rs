@@ -1496,6 +1496,45 @@ fn export_and_restore_database_round_trip() {
         .is_err());
 }
 
+/// 恢复备份必须还原备份时的卡片排序（sort_order 随备份走）
+#[test]
+fn restore_database_preserves_profile_order() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+
+    let context = AppContext::new(paths).unwrap();
+    let a = context.capture_profile("A").unwrap();
+    let b = context.capture_profile("B").unwrap();
+    let c = context.capture_profile("C").unwrap();
+    // 拖成 C、A、B 并落库
+    context
+        .reorder_profiles(&[c.id.clone(), a.id.clone(), b.id.clone()])
+        .unwrap();
+    let exported = context.export_database().unwrap();
+    let name = exported.file_name().unwrap().to_string_lossy().into_owned();
+
+    // 破坏现场：改回创建顺序，确保恢复结果只能来自备份而不是巧合
+    context
+        .reorder_profiles(&[a.id.clone(), b.id.clone(), c.id.clone()])
+        .unwrap();
+
+    context.restore_database(&name).unwrap();
+    let names: Vec<String> = context
+        .database
+        .profiles()
+        .unwrap()
+        .into_iter()
+        .map(|profile| profile.name)
+        .collect();
+    assert_eq!(
+        names,
+        vec!["C".to_string(), "A".to_string(), "B".to_string()]
+    );
+}
+
 #[test]
 fn apply_builtin_profile_writes_exact_config_and_catalog() {
     let home = tempfile::tempdir().unwrap();
