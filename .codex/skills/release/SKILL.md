@@ -20,6 +20,7 @@ Step 4–6（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
 - **AI**：给 bump 级别建议；用户确认后跑 `node scripts/bump-version.mjs <level>`；起草 CHANGELOG 草稿；写入；commit。**不**直接编辑 `VERSION` / `package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json`。
 - **版本号与日期禁写**：CHANGELOG 段落标题固定写 `## [Unreleased]`，不写版本号也不写日期——发行页的版本标题行由 Release 工作流生成；CHANGELOG.md 里的归档（`## [<版本>] - <发行日>`）由本 skill 在**下次**起草时完成（见 Step 3）。
 - **用户**：确认 bump 级别（可改 AI 建议）；确认 CHANGELOG 文案（可改）。
+- **确认点必须弹窗（硬约束）**：所有需要用户拍板的选择（Step 0 bump 级别、Step 2 CHANGELOG 文案、Step 6 发布确认），AI 在消息里展示完整详情后，必须用 **AskUserQuestion 弹窗**列出可选项让用户**点选**，禁止只发文本等自由回复。推荐选项放首位并标注（Recommended）；完整详情（状态框、草稿全文、资产清单）仍先在弹窗前的消息里展示，弹窗选项的 description 放关键取舍信息。
 - **递增必须跑脚本命令，禁手写**：`bump-version.mjs` 内已串联 `sync-version.mjs` 同步全部元数据文件，手写会漏。
 - **版本号基线以 git 三态为准**：最新 tag + HEAD VERSION（`git show HEAD:VERSION`）+ working tree VERSION（读 `VERSION`），取三者中**最大值**作为 bump 基线——用户在测试场景可能预先 bump，working tree 会领先 index / HEAD。
 
@@ -51,7 +52,7 @@ Step 4–6（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
    │ 依据：参照 v0.6.0（...）+ 当前 commit 列表的关键特征         │
    └──────────────────────────────────────────────────────────────┘
 
-6. 等用户明确"OK / 确认 / 就这样"或修改建议级别后才能进入 Step 1。
+6. 展示后必须用 AskUserQuestion 弹窗让用户点选级别：选项按实际情况给（如「沿用基线 X.Y.Z（Recommended）」「patch → X.Y.Z+1」「minor」「major」），每项 description 写清关键取舍；用户点选后才进入 Step 1。
 7. **硬约束**：本步骤**禁止**修改任何文件、**禁止**跑 `bump-version.mjs`。
 
 ### Step 1: 跑 bump-version 命令（**用户确认级别后 AI 执行**）
@@ -83,7 +84,7 @@ Step 4–6（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
    │ - <commit hash> <标题> — 进 / 不进（理由）                   │
    └──────────────────────────────────────────────────────────────┘
 
-3. 等用户明确"OK / 确认 / 就这样"或修改文案后才能进入 Step 3。
+3. 展示后必须用 AskUserQuestion 弹窗让用户点选：「确认写入」/「需要修改」（修改意见走 Other 自由输入或下一轮消息给出）；点选确认后才进入 Step 3。
 4. **硬约束**：本步骤**禁止**编辑 `CHANGELOG.md` 或任何文件。
 
 CHANGELOG 写作规则：
@@ -151,9 +152,9 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 1. 展示给用户（这一步必须等用户明确确认，不得自动发布）：
    - `gh release view v<版本> --json name,isDraft,assets` 的资产清单（文件名 + 大小）
    - 发行日志全文预览
-2. 用户确认后执行：`gh release edit v<版本> --draft=false --latest`
+2. 必须用 AskUserQuestion 弹窗让用户点选：「正式发布（--latest）」/「预发布（--prerelease）」/「暂不发布」；点选后才执行对应命令（正式发布 `gh release edit v<版本> --draft=false --latest`）。
 3. 变体处理：
-   - 用户说"预发布"：加 `--prerelease`，去掉 `--latest`
+   - 用户点选「预发布」：加 `--prerelease`，去掉 `--latest`
    - 用户要改日志：改 `CHANGELOG.md` 对应版本段落，提交推送后工作流自动重跑，用新段落更新既有草稿后再发布
 4. 发布后告知用户：关注者通知已发出，附 release 页面链接 `https://github.com/zeno528/CGswitch/releases/tag/v<版本>`
 
@@ -161,9 +162,9 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 
 **场景 A（默认流程）**：用户说"发版"
 
-1. **Step 0**：AI 看 git 三态（最新 tag `v0.7.1` / HEAD VERSION `0.7.2` / working tree VERSION `0.7.3`，取 max = `0.7.3`） + `git log v0.7.1..HEAD` + `CHANGELOG.md` 最近段落 → 单次展示"建议 patch（依据：参照 v0.7.1 类似量级，单 `fix:` commit）" → 用户回复"OK"
+1. **Step 0**：AI 看 git 三态（最新 tag `v0.7.1` / HEAD VERSION `0.7.2` / working tree VERSION `0.7.3`，取 max = `0.7.3`） + `git log v0.7.1..HEAD` + `CHANGELOG.md` 最近段落 → 单次展示"建议 patch（依据：参照 v0.7.1 类似量级，单 `fix:` commit）" → AskUserQuestion 弹窗点选确认级别
 2. **Step 1**：AI 跑 `node scripts/bump-version.mjs patch` → 输出"版本号已从 0.7.3 更新为 0.7.4" → AI 记下 `0.7.4` 带入 Step 2
-3. **Step 2**：AI 展示 CHANGELOG 草稿 `## [Unreleased]` + 内容 + 进/不进 → 用户回复"OK"
+3. **Step 2**：AI 展示 CHANGELOG 草稿 `## [Unreleased]` + 内容 + 进/不进 → AskUserQuestion 弹窗点选「确认写入」
 4. **Step 3**：AI 写入 `CHANGELOG.md` + `git commit -m "chore(release): v0.7.4"`
 5. **到此停下**：汇报版本号、commit hash、CHANGELOG 段落摘要，**会话终止**。不询问、不执行 push / 触发工作流 / 发布；这些动作必须等用户在下一轮显式启动（例如"推上去"、"继续"）。
 
@@ -171,7 +172,7 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 
 1. **Step 4**：`git push origin main` → Release 工作流自动触发（构建完停在草稿）
 2. **Step 5**：后台 `gh run watch` 盯 Release 工作流至全绿（工作流自动建 tag、草稿并上传 4 个资产）
-3. **Step 6**：展示 4 个资产（Windows setup/msi、macOS x64/arm64 dmg）+ 日志全文，等确认 → 用户回复"发布" → `gh release edit v0.7.4 --draft=false --latest`，报告链接
+3. **Step 6**：展示 4 个资产（Windows setup/msi、macOS x64/arm64 dmg）+ 日志全文 → AskUserQuestion 弹窗点选「正式发布」 → `gh release edit v0.7.4 --draft=false --latest`，报告链接
 
 ## Troubleshooting
 
