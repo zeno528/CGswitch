@@ -202,7 +202,7 @@ export default function ProfileCard({
   const connectionDimmed = !profile.provider ? !subscriptionAuthed : connectionState === "fail" || !profile.has_key;
   const connectionTitle = !profile.provider
     ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified")
-    : !profile.has_key ? t("connection.missingApiKeyHint") : t("connection.test");
+    : !profile.has_key ? t("connection.missingApiKeyWarning") : t("connection.test");
   const testConnection = async () => {
     if (testing) return;
     if (!profile.provider && !subscriptionAuthed) {

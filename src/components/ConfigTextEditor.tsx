@@ -45,49 +45,28 @@ const basicSetup = [
   ]),
 ];
 
-class DiagnosticErrorGutterMarker extends GutterMarker {
+const diagnosticErrorGutterMarker = new (class extends GutterMarker {
   elementClass = "cm-diagnostic-error-gutter";
-
-  eq(other: GutterMarker) {
-    return other instanceof DiagnosticErrorGutterMarker;
-  }
-}
-
-const diagnosticErrorGutterMarker = new DiagnosticErrorGutterMarker();
+})();
 
 function diagnosticLineDecorations(doc: EditorState["doc"], diagnostics: readonly Diagnostic[]) {
-  const lineDecorations = [];
-  const lineNumberMarkers = [];
-  const seenLines = new Set<number>();
-  for (const diagnostic of diagnostics) {
-    if (diagnostic.severity !== "error") continue;
-    const line = doc.lineAt(diagnostic.from);
-    if (seenLines.has(line.from)) continue;
-    seenLines.add(line.from);
-    lineDecorations.push(Decoration.line({ class: "cm-diagnostic-error-line" }).range(line.from));
-    lineNumberMarkers.push(diagnosticErrorGutterMarker.range(line.from));
-  }
+  const lineStarts = [...new Set(diagnostics.filter(({ severity }) => severity === "error").map(({ from }) => doc.lineAt(from).from))];
   return {
-    content: Decoration.set(lineDecorations, true),
-    lineNumbers: RangeSet.of(lineNumberMarkers, true),
+    content: Decoration.set(lineStarts.map((from) => Decoration.line({ class: "cm-diagnostic-error-line" }).range(from)), true),
+    gutters: RangeSet.of(lineStarts.map((from) => diagnosticErrorGutterMarker.range(from)), true),
   };
 }
 
 const diagnosticLineDecorationsField = StateField.define<ReturnType<typeof diagnosticLineDecorations>>({
-  create: () => ({ content: Decoration.none, lineNumbers: RangeSet.empty }),
+  create: () => ({ content: Decoration.none, gutters: RangeSet.empty }),
   update(value, transaction) {
-    const mapped = {
-      content: value.content.map(transaction.changes),
-      lineNumbers: value.lineNumbers.map(transaction.changes),
-    };
-    for (const effect of transaction.effects) {
-      if (effect.is(setDiagnosticsEffect)) return diagnosticLineDecorations(transaction.state.doc, effect.value);
-    }
-    return mapped;
+    const diagnosticEffect = transaction.effects.find((effect) => effect.is(setDiagnosticsEffect));
+    if (diagnosticEffect?.is(setDiagnosticsEffect)) return diagnosticLineDecorations(transaction.state.doc, diagnosticEffect.value);
+    return { content: value.content.map(transaction.changes), gutters: value.gutters.map(transaction.changes) };
   },
   provide: (field) => [
     EditorView.decorations.from(field, (value) => value.content),
-    gutterLineClass.from(field, (value) => value.lineNumbers),
+    gutterLineClass.from(field, (value) => value.gutters),
   ],
 });
 

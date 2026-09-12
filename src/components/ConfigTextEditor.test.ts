@@ -47,6 +47,7 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).not.toContain("lintGutter()");
     expect(editorSource).toContain("setDiagnosticsEffect");
     expect(editorSource).toContain("gutterLineClass");
+    expect(editorSource).toContain("value.gutters.map(transaction.changes)");
     expect(editorSource).toContain("cm-diagnostic-error-line");
     expect(editorSource).toContain("cm-diagnostic-error-gutter");
   });

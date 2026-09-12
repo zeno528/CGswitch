@@ -66,7 +66,6 @@ export default {
   connection: {
     testSubscription: "Test subscription authentication connectivity",
     subscriptionUnverified: "ChatGPT subscription not verified",
-    missingApiKeyHint: "Missing API key, click for details",
     test: "Test connectivity",
     subscriptionWarning: "ChatGPT subscription authentication is incomplete. Sign in from Settings first.",
     missingApiKeyWarning: "No API key configured yet. Fill it in before testing.",

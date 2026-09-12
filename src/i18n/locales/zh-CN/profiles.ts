@@ -66,7 +66,6 @@ export default {
   connection: {
     testSubscription: "测试订阅认证连通性",
     subscriptionUnverified: "尚未认证 ChatGPT 订阅",
-    missingApiKeyHint: "缺少 API 密钥，点击查看提示",
     test: "测试连通性",
     subscriptionWarning: "尚未完成 ChatGPT 订阅认证，请先到设置页登录",
     missingApiKeyWarning: "还没有配置 API 密钥，请先填写后再测试",

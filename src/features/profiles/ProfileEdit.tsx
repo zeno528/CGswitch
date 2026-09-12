@@ -563,7 +563,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.protocolLabel")}</label>
                 <div className="app-input flex min-w-0 items-center gap-2">
                   <Webhook className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
-                  <span className="shrink-0 text-xs font-medium text-(--text-secondary)">{t("edit.protocolResponses")}</span>
+                  <span className="shrink-0 font-medium text-(--text-secondary)">{t("edit.protocolResponses")}</span>
                 </div>
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.requestUrlLabel")}</label>
                 <input className="app-input" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
