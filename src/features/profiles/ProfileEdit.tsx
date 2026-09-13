@@ -100,8 +100,8 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
   const [patchingSystemProxy, setPatchingSystemProxy] = useState(false);
   const [contextMgmtEnabled, setContextMgmtEnabled] = useState(false);
   const [patchingContextMgmt, setPatchingContextMgmt] = useState(false);
-  // 新增态默认开启余额显示（开关仅对支持的供应商渲染）；编辑态仍由 loaded.show_balance 覆盖。
-  const [showBalance, setShowBalance] = useState(create);
+  // 新增态默认开启余额显示；编辑态先复用列表值，避免详情加载后才从关闭态播放到已存开启态。
+  const [showBalance, setShowBalance] = useState(create || Boolean(profile?.show_balance));
   const [savingBalance, setSavingBalance] = useState(false);
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnosticSummary>({ count: 0, firstLine: null });
   const [mcpSection, setMcpSection] = useState("");
