@@ -39,6 +39,143 @@ pub fn running_process_ids(ids: &[u32]) -> Vec<u32> {
         .collect()
 }
 
+/// 优雅退出的等待上限：超过则强杀兜底（弹退出确认框、托盘拦截、headless bug 等
+/// 场景下优雅请求会失效，强杀兜底保证重启必然成功）。
+pub const GRACEFUL_EXIT_TIMEOUT_MS: u64 = 4_000;
+
+/// 强杀后的退出等待上限。SIGKILL/Terminate 几乎即时，5 秒只是防御性上限。
+pub const FORCE_EXIT_TIMEOUT_MS: u64 = 5_000;
+
+/// 结束 Codex 进程的先礼后兵阶梯：请求优雅退出 → 等待 → 超时强杀兜底。
+/// 返回 true 表示目标进程已全部退出。
+pub fn shutdown_process_ids(ids: &[u32]) -> bool {
+    shutdown_process_ids_with(
+        ids,
+        GRACEFUL_EXIT_TIMEOUT_MS,
+        FORCE_EXIT_TIMEOUT_MS,
+        request_graceful_quit,
+        terminate_process_ids,
+        running_process_ids,
+        std::thread::sleep,
+    )
+}
+
+/// 请求 Codex 优雅退出，返回是否成功发出请求（能否真正退出由调用方轮询判定）。
+/// - Windows：向 Codex 进程的可见顶层窗口投 WM_CLOSE，Electron 主进程收到后走
+///   window-all-closed → app.quit() 完整退出流程；helper 进程（gpu/network 等）
+///   没有顶层窗口，天然只会命中主进程。
+/// - macOS：osascript 发 AppleEvent quit（等同 Cmd+Q），对 Electron 的 Codex.app
+///   与原生的 ChatGPT.app 通吃；AppleScript `with timeout` 自我限定 3 秒，
+///   应用弹退出确认框时 osascript 自行超时退出，不会挂住。
+pub fn request_graceful_quit(ids: &[u32]) -> bool {
+    #[cfg(windows)]
+    {
+        post_close_messages(ids)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = ids;
+        macos_request_quit()
+    }
+}
+
+#[cfg(windows)]
+fn post_close_messages(ids: &[u32]) -> bool {
+    use std::collections::HashSet;
+
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::core::BOOL;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
+    };
+
+    struct CloseTargets {
+        pids: HashSet<u32>,
+        posted: bool,
+    }
+    // EnumWindows 同步回调：在返回前于同一线程依次执行，通过 LPARAM 传上下文。
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: lparam 指向本线程栈上的 CloseTargets，EnumWindows 返回前不会再被使用
+        let targets = unsafe { &mut *(lparam.0 as *mut CloseTargets) };
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid != 0 && targets.pids.contains(&pid) && unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            let _ = unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) };
+            targets.posted = true;
+        }
+        true.into()
+    }
+
+    let mut targets = CloseTargets {
+        pids: ids.iter().copied().collect(),
+        posted: false,
+    };
+    let enumerated = unsafe {
+        EnumWindows(
+            Some(enum_proc),
+            LPARAM(&mut targets as *mut CloseTargets as isize),
+        )
+    };
+    if enumerated.is_err() {
+        return false;
+    }
+    targets.posted
+}
+
+#[cfg(not(windows))]
+fn macos_request_quit() -> bool {
+    let Some(app) = macos_app_candidate() else {
+        return false;
+    };
+    let Some(name) = app.file_stem().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    let name = name.replace('\\', "\\\\").replace('"', "\\\"");
+    // spawn 不等待：osascript 由 with timeout 自我限定生命周期，目标进程被强杀后
+    // 会立即收到错误退出，不会残留
+    Command::new("osascript")
+        .args([
+            "-e",
+            "with timeout of 3 seconds",
+            "-e",
+            &format!("quit app \"{name}\""),
+            "-e",
+            "end timeout",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .is_ok()
+}
+
+pub fn shutdown_process_ids_with<F, G, W, S>(
+    ids: &[u32],
+    graceful_timeout_ms: u64,
+    force_timeout_ms: u64,
+    request_quit: F,
+    terminate: G,
+    mut running: W,
+    mut sleep: S,
+) -> bool
+where
+    F: Fn(&[u32]) -> bool,
+    G: Fn(&[u32]),
+    W: FnMut(&[u32]) -> Vec<u32>,
+    S: FnMut(Duration),
+{
+    if ids.is_empty() {
+        return true;
+    }
+    if request_quit(ids)
+        && wait_for_exit_with(ids, graceful_timeout_ms, 100, &mut running, &mut sleep)
+    {
+        return true;
+    }
+    terminate(ids);
+    wait_for_exit_with(ids, force_timeout_ms, 100, &mut running, &mut sleep)
+}
+
 fn process_system() -> System {
     System::new_with_specifics(
         // 只需要进程可执行文件路径判断 Codex 桌面进程；不刷新 CPU/内存/磁盘等无关数据，
@@ -72,16 +209,6 @@ where
         }
         sleep(Duration::from_millis(interval_ms));
     }
-}
-
-pub fn wait_for_exit(ids: &[u32], timeout_ms: u64, interval_ms: u64) -> bool {
-    wait_for_exit_with(
-        ids,
-        timeout_ms,
-        interval_ms,
-        running_process_ids,
-        std::thread::sleep,
-    )
 }
 
 pub fn wait_for_running_with<F, S>(
@@ -456,5 +583,110 @@ mod tests {
     #[test]
     fn wait_for_running_times_out_when_launch_does_not_create_a_process() {
         assert!(!wait_for_running_with(0, 0, || false, |_| {}));
+    }
+
+    #[test]
+    fn shutdown_ladder_returns_true_without_processes() {
+        let quit = std::cell::Cell::new(0);
+        let kill = std::cell::Cell::new(0);
+        assert!(shutdown_process_ids_with(
+            &[],
+            1_000,
+            1_000,
+            |_| {
+                quit.set(quit.get() + 1);
+                true
+            },
+            |_| kill.set(kill.get() + 1),
+            |_| Vec::new(),
+            |_| {},
+        ));
+        assert_eq!(quit.get(), 0);
+        assert_eq!(kill.get(), 0);
+    }
+
+    #[test]
+    fn shutdown_ladder_exits_gracefully_without_force_kill() {
+        let quit = std::cell::Cell::new(0);
+        let kill = std::cell::Cell::new(0);
+        let mut checks = 0u32;
+        assert!(shutdown_process_ids_with(
+            &[7],
+            1_000,
+            1_000,
+            |_| {
+                quit.set(quit.get() + 1);
+                true
+            },
+            |_| kill.set(kill.get() + 1),
+            |_| {
+                checks += 1;
+                if checks >= 2 {
+                    Vec::new()
+                } else {
+                    vec![7]
+                }
+            },
+            |_| {},
+        ));
+        assert_eq!(quit.get(), 1);
+        assert_eq!(kill.get(), 0);
+    }
+
+    #[test]
+    fn shutdown_ladder_escalates_to_force_kill_on_graceful_timeout() {
+        let kill = std::cell::Cell::new(0);
+        assert!(shutdown_process_ids_with(
+            &[7],
+            0,
+            1_000,
+            |_| true,
+            |_| kill.set(kill.get() + 1),
+            |ids| if kill.get() == 0 {
+                ids.to_vec()
+            } else {
+                Vec::new()
+            },
+            |_| {},
+        ));
+        assert_eq!(kill.get(), 1);
+    }
+
+    #[test]
+    fn shutdown_ladder_fails_when_force_kill_also_times_out() {
+        assert!(!shutdown_process_ids_with(
+            &[7],
+            0,
+            0,
+            |_| true,
+            |_| {},
+            |ids| ids.to_vec(),
+            |_| {},
+        ));
+    }
+
+    #[test]
+    fn shutdown_ladder_skips_graceful_wait_when_request_unavailable() {
+        // Windows headless（MainWindowHandle=0）等场景：无窗口可投递，直接强杀兜底
+        let quit = std::cell::Cell::new(0);
+        let kill = std::cell::Cell::new(0);
+        assert!(shutdown_process_ids_with(
+            &[7],
+            1_000,
+            1_000,
+            |_| {
+                quit.set(quit.get() + 1);
+                false
+            },
+            |_| kill.set(kill.get() + 1),
+            |ids| if kill.get() == 0 {
+                ids.to_vec()
+            } else {
+                Vec::new()
+            },
+            |_| {},
+        ));
+        assert_eq!(quit.get(), 1);
+        assert_eq!(kill.get(), 1);
     }
 }

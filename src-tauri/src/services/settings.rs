@@ -68,9 +68,9 @@ impl AppContext {
         self.sync_active_profile_from_live_locked()?;
         let process_ids = codex_process::find_process_ids(None);
         if !process_ids.is_empty() {
-            codex_process::terminate_process_ids(&process_ids);
-            // 固定等待 5 秒（可配置的“重启等待超时”已移除）
-            let exited = codex_process::wait_for_exit(&process_ids, 5_000, 100);
+            // 先礼后兵：优雅退出请求（WM_CLOSE / AppleEvent quit）→ 超时强杀兜底；
+            // Codex 未运行时本段整体跳过，直接走下方启动流程
+            let exited = codex_process::shutdown_process_ids(&process_ids);
             if !exited {
                 let message = "Codex 未在超时时间内退出，已取消重新启动";
                 self.database.record_event(

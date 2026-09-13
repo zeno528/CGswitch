@@ -1,0 +1,213 @@
+# 分支测试发行流水线：从非 main 分支构建三平台安装包并发布（草稿或预发行），供测试验证。
+# 与正式 Release（release.yml）完全独立：
+#   - tag 形如 v<版本>-<分支名>.<构建号>（如 v0.16.4-feat-graceful-restart.12），不与正式 tag 冲突；
+#   - 不生成 latest.json 升级源、不占用 latest 指针，不影响正式用户的升级链路；
+#   - 不读 CHANGELOG Unreleased（测试构建没有版本日志），发行说明只带分支/提交信息与安装指引。
+# 触发方式：仅手动。Actions UI → 选择分支 → Run workflow；从 main 触发会被 guard 拒绝。
+# CLI：gh workflow run release-branch.yml --ref <分支> -f release_mode=<draft|prerelease>
+# 同一构建号重跑会就地更新已有草稿/预发行（tag 含构建号，重跑不改号）；已手动转正的发行会被拒绝修改。
+name: Release Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_mode:
+        description: 发行模式（draft=停在草稿 / prerelease=自动预发行）
+        type: choice
+        options:
+          - draft
+          - prerelease
+        default: draft
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-branch-${{ github.ref }}
+  # 测试构建：同分支新构建启动即取消旧构建，避免无意义的并行烧机时
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: 禁止从 main 分支发行
+        shell: bash
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: |
+          [ "$RELEASE_REF" != "refs/heads/main" ] || {
+            echo "::error::本工作流仅供非 main 分支测试发行，正式发行请走 Release 工作流"
+            exit 1
+          }
+      - uses: actions/checkout@v7
+      - name: 校验 VERSION
+        shell: bash
+        run: |
+          VERSION="$(cat VERSION)"
+          [ -n "$VERSION" ] || { echo "::error::VERSION 文件为空"; exit 1; }
+
+  build:
+    needs: verify
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            upload-paths: |
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe.sig
+          - name: macos-arm64
+            os: macos-latest
+            rust-target: aarch64-apple-darwin
+            upload-paths: |
+              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+          - name: macos-x64
+            os: macos-latest
+            rust-target: x86_64-apple-darwin
+            upload-paths: |
+              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+        shell: bash
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      # 必须在 src-tauri 下执行：rust-toolchain.toml 固定了工具链，目标要装到该工具链
+      - run: rustup target add ${{ matrix.rust-target }}
+        shell: bash
+        working-directory: src-tauri
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm tauri build --target ${{ matrix.rust-target }}
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_BUNDLER_DMG_IGNORE_CI: "true"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bundle-${{ matrix.name }}
+          # 只上传安装包产物，避免把 .app 内的图标/脚本等打包文件一并传进发行页
+          path: ${{ matrix.upload-paths }}
+          retention-days: 1
+          if-no-files-found: error
+
+  release:
+    # 校验和所有平台构建成功后才会执行；任何失败都不会创建发行。
+    # tag 由 git push 创建（releases API 的 --target 在 GITHUB_TOKEN 下受 workflow-scope
+    # 限制会 403，见 cli/cli#9514；git 协议不受限）；release 不带 --target 挂到已有 tag。
+    # 用 GITHUB_TOKEN 创建 release/tag 不会再次触发任何工作流（官方防递归机制）。
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - id: meta
+        name: 生成测试 tag
+        shell: bash
+        run: |
+          VERSION="$(cat VERSION)"
+          # 分支名清洗为 tag 片段：非字母数字连字符统一替换为 -，超长截断；
+          # 全部被清洗掉（如纯中文分支名）时兜底 dev
+          SLUG="$(printf '%s' "$GITHUB_REF_NAME" | sed 's/[^a-zA-Z0-9-]/-/g; s/-\{2,\}/-/g; s/^-//; s/-$//' | cut -c1-40)"
+          [ -n "$SLUG" ] || SLUG="dev"
+          echo "tag=v${VERSION}-${SLUG}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+      - name: 创建发行页
+        shell: bash
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi
+          NOTES="$(mktemp)"
+          GUIDE="$(mktemp)"
+          cat > "$GUIDE" <<'EOF'
+
+          ---
+
+          ## 下载安装指引（测试构建）
+
+          | 系统 | 下载 | 安装 |
+          | --- | --- | --- |
+          | Windows | `CGswitch-__TAG__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `CGswitch-__TAG__-Windows.msi` |
+          | macOS | Apple 芯片：`CGswitch-__TAG__-macOS-arm64.dmg`<br>Intel：`CGswitch-__TAG__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
+          EOF
+          sed -i "s/__TAG__/$TAG/g" "$GUIDE"
+          {
+            printf '## %s（分支测试构建）\n\n' "$TAG"
+            printf -- '- 分支：%s\n- 提交：%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA"
+            cat "$GUIDE"
+          } > "$NOTES"
+          # PR 清单 / Full Changelog 用 GitHub 原生 API 生成后拼到说明末尾（同 release.yml）
+          printf '\n' >> "$NOTES"
+          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body >> "$NOTES"
+          INFO="$(gh release view "$TAG" --json isDraft,isPrerelease 2>/dev/null || true)"
+          if [ -z "$INFO" ]; then
+            gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES"
+          else
+            IS_DRAFT="$(printf '%s' "$INFO" | jq -r .isDraft)"
+            IS_PRE="$(printf '%s' "$INFO" | jq -r .isPrerelease)"
+            # 同构建号重跑：草稿或预发行就地更新说明；已手动转正则拒绝
+            if [ "$IS_DRAFT" = true ] || [ "$IS_PRE" = true ]; then
+              gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES"
+            else
+              echo "::error::发行 $TAG 已被手动转为正式发行，拒绝修改；重跑工作流生成新构建号。"
+              exit 1
+            fi
+          fi
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: 整理发行资产名称
+        shell: bash
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          mkdir -p release-assets
+          copy_asset() { cp "$(find "$1" -type f -name "$2" -print -quit)" "$3"; }
+          # 资产名带 tag（含分支名与构建号），与正式版安装包名明确区分
+          copy_asset artifacts/bundle-windows-x64 '*.exe' "release-assets/CGswitch-$TAG-Windows-setup.exe"
+          copy_asset artifacts/bundle-windows-x64 '*.msi' "release-assets/CGswitch-$TAG-Windows.msi"
+          copy_asset artifacts/bundle-windows-x64 '*.exe.sig' "release-assets/CGswitch-$TAG-Windows-setup.exe.sig"
+          copy_asset artifacts/bundle-macos-x64 '*.dmg' "release-assets/CGswitch-$TAG-macOS-x64.dmg"
+          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz' "release-assets/CGswitch-$TAG-macOS-x64.app.tar.gz"
+          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz.sig' "release-assets/CGswitch-$TAG-macOS-x64.app.tar.gz.sig"
+          copy_asset artifacts/bundle-macos-arm64 '*.dmg' "release-assets/CGswitch-$TAG-macOS-arm64.dmg"
+          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz' "release-assets/CGswitch-$TAG-macOS-arm64.app.tar.gz"
+          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz.sig' "release-assets/CGswitch-$TAG-macOS-arm64.app.tar.gz.sig"
+          # 不生成 latest.json：测试构建不进入正式升级源
+          find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
+      - name: 上传产物
+        run: gh release upload "$TAG" release-assets/* --clobber
+        shell: bash
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+      # draft（默认，含 UI/CLI 未传参）到此为止：草稿就绪，自行确认后手动发布；
+      # prerelease 构建完自动以预发行公开（不占 latest 指针，不打扰正式用户）
+      - name: 按模式发布
+        if: github.event.inputs.release_mode == 'prerelease'
+        shell: bash
+        run: |
+          gh release edit "$TAG" --draft=false --prerelease
+          echo "已作为预发行发布（不占用 latest 指针）：https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}

@@ -530,8 +530,10 @@ pub async fn apply_profile(
         .map_err(|error| error.to_string())
 }
 
+/// 重启期间后端会阻塞数秒（优雅退出等待 + 启动轮询），必须 async 跑到 tokio
+/// 线程池：同步命令在主线程内联执行，会把窗口消息泵占死导致整窗无响应
 #[tauri::command]
-pub fn restart_codex(state: State<'_, AppContext>) -> AppResult<()> {
+pub async fn restart_codex(state: State<'_, AppContext>) -> AppResult<()> {
     state.restart_codex()
 }
 
