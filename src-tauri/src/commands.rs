@@ -530,11 +530,14 @@ pub async fn apply_profile(
         .map_err(|error| error.to_string())
 }
 
-/// 重启期间后端会阻塞数秒（优雅退出等待 + 启动轮询），必须 async 跑到 tokio
-/// 线程池：同步命令在主线程内联执行，会把窗口消息泵占死导致整窗无响应
+/// 重启期间后端会阻塞数秒（优雅退出等待 + 启动轮询），必须放到专用 blocking
+/// 线程：同步命令在主线程内联执行，会把窗口消息泵占死导致整窗无响应。
 #[tauri::command]
 pub async fn restart_codex(state: State<'_, AppContext>) -> AppResult<()> {
-    state.restart_codex()
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.restart_codex())
+        .await
+        .map_err(|error| app_err!("Codex 重启任务失败: {error}"))?
 }
 
 /// MCP 服务器管理：直接读写 live ~/.codex/config.toml 的 [mcp_servers.*] 段。
@@ -786,7 +789,7 @@ pub fn take_update_marker(state: State<'_, AppContext>) -> AppResult<Option<Stri
 }
 
 #[tauri::command]
-pub fn save_settings(
+pub async fn save_settings(
     app: AppHandle,
     settings: Settings,
     state: State<'_, AppContext>,
@@ -803,7 +806,10 @@ pub fn save_settings(
     ) {
         return Err(app_err!("不支持的备份保留数量"));
     }
-    let saved = state.save_settings(&settings)?;
+    let state = state.inner().clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || state.save_settings(&settings))
+        .await
+        .map_err(|error| app_err!("设置保存任务失败: {error}"))??;
     sync_autostart(&app, &saved)?;
     Ok(saved)
 }

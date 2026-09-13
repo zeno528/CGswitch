@@ -67,11 +67,14 @@ impl AppContext {
             .map_err(|_| app_err!("操作锁已损坏"))?;
         self.sync_active_profile_from_live_locked()?;
         let process_ids = codex_process::find_process_ids(None);
+        let running_app_path = codex_process::running_app_path(&process_ids)
+            .map(|path| path.to_string_lossy().into_owned());
+        let mut force_killed = false;
         if !process_ids.is_empty() {
             // 先礼后兵：优雅退出请求（WM_CLOSE / AppleEvent quit）→ 超时强杀兜底；
             // Codex 未运行时本段整体跳过，直接走下方启动流程
-            let exited = codex_process::shutdown_process_ids(&process_ids);
-            if !exited {
+            let outcome = codex_process::shutdown_process_ids(&process_ids);
+            if outcome == codex_process::ShutdownOutcome::Timeout {
                 let message = "Codex 未在超时时间内退出，已取消重新启动";
                 self.database.record_event(
                     None,
@@ -82,9 +85,11 @@ impl AppContext {
                 )?;
                 return Err(app_err!("{message}"));
             }
+            // 优雅路径静默失效（权限被拒/托盘拦截/headless）时唯一可观测的痕迹
+            force_killed = outcome == codex_process::ShutdownOutcome::Forced;
         }
         let result = (|| {
-            codex_process::launch_codex(None)?;
+            codex_process::launch_codex(running_app_path.as_deref())?;
             if codex_process::wait_for_running(10_000, 100) {
                 Ok(())
             } else {
@@ -92,7 +97,11 @@ impl AppContext {
             }
         })();
         let status = if result.is_ok() { "success" } else { "failed" };
-        let message = result.as_ref().err().map(|error| error.0.clone());
+        let message = result
+            .as_ref()
+            .err()
+            .map(|error| error.0.clone())
+            .or_else(|| force_killed.then(|| "codex exited via force kill".to_string()));
         self.database.record_event(
             None,
             "restart",
