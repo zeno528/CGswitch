@@ -19,8 +19,13 @@ import version from "../../../VERSION?raw";
 // as const 必需：labelKey 若推断为 string，typed t() 会拒绝（键名无法在编译期校验）。
 const themeOptions = [{ labelKey: "theme.system", value: "system" }, { labelKey: "theme.light", value: "light" }, { labelKey: "theme.dark", value: "dark" }] as const;
 const languageOptions = [{ labelKey: "language.system", value: "system" }, { labelKey: "language.zh", value: "zh-CN" }, { labelKey: "language.en", value: "en-US" }] as const;
-// Rust 下发的 PathInfo.label 数据值，用于比对而非展示
-const BACKUP_DIR_LABEL = "备份目录"; // i18n-exempt: 数据标签比较值，不是界面文案
+// Rust 下发的 PathInfo.label（i18n key）数据值，用于比对而非展示
+const BACKUP_DIR_LABEL = "about.paths.backups"; // i18n-exempt: 数据标签比较值，不是界面文案
+
+// PathInfo.label 约定为 about.paths.* i18n key（Rust path_info 下发）。强类型 t 只收
+// 已知 key，动态值经此处受控断言；约定外的取值原样回退，不把脏数据渲染成字面 key
+const pathLabel = (t: (key: "about.paths.appData") => string, label: string): string =>
+  label.startsWith("about.paths.") ? t(label as "about.paths.appData") : label;
 
 export const backupTitle = (name: string) => name.replace(/^(?:cg-backup-|cgswitch-export-)/, "").replace(/\.db$/, "");
 export const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
@@ -314,8 +319,8 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <h2 className="setting-title">{t("about.dataAndPaths")}</h2>
       <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">
         {paths.filter((item) => item.label !== BACKUP_DIR_LABEL).map((item) => (
-          <button key={item.label} type="button" className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/8" disabled={Boolean(openingPath)} title={t("about.openPath", { label: item.label })} onClick={() => onOpenPath(item)}>
-            <span className="shrink-0 text-sm font-medium">{item.label}</span>
+          <button key={item.label} type="button" className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/8" disabled={Boolean(openingPath)} title={t("about.openPath", { label: pathLabel(t, item.label) })} onClick={() => onOpenPath(item)}>
+            <span className="shrink-0 text-sm font-medium">{pathLabel(t, item.label)}</span>
             <span className="mono muted meta-xs min-w-0 flex-1 truncate" title={item.path}>{item.path.replace(/^\/(Users|home)\/[^/]+/, "~")}</span>
             {openingPath === item.path ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-accent" strokeWidth={2} /> : <FolderOpen className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} />}
           </button>

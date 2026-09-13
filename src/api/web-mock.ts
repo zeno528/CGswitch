@@ -69,10 +69,12 @@ const webProfiles: ProfileSummary[] = [
   },
 ];
 
+// label 是 i18n key，由前端 t() 翻译展示；与 Rust path_info（services/settings.rs）保持一致
 const webPaths = [
-  { label: "应用数据目录", path: "C:\\Users\\<user>\\.cgswitch" },
-  { label: "备份目录", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
-  { label: "Codex 配置", path: "C:\\Users\\<user>\\.codex\\config.toml" },
+  { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
+  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+  { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
+  { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
 ];
 
 function patchContextOverrideForWeb(text: string, enabled: boolean, compactTokenLimit: number): string {
