@@ -763,10 +763,9 @@ pub fn open_url(url: String) -> AppResult<()> {
             return Err(app_err!("无法打开系统浏览器"));
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&url).spawn();
-        let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
     }
     Ok(())
 }
