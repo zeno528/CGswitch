@@ -271,7 +271,7 @@ impl CodexOAuthManager {
             database,
         };
         if let Err(error) = manager.load_accounts() {
-            eprintln!("[auth] 加载认证账号失败: {error}");
+            tauri_plugin_log::log::warn!("[auth] 加载认证账号失败: {error}");
         }
         manager
     }
@@ -579,7 +579,7 @@ impl CodexOAuthManager {
                 if account.auth_json.as_deref() != Some(text.as_str()) {
                     account.auth_json = Some(text.clone());
                     if let Err(error) = self.save_account(account) {
-                        eprintln!("[auth] 缓存 auth.json 失败: {error}");
+                        tauri_plugin_log::log::warn!("[auth] 缓存 auth.json 失败: {error}");
                     }
                 }
             }
