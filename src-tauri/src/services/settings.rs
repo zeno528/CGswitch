@@ -7,6 +7,16 @@ use super::{
 fn open_in_file_explorer(path: &Path) -> AppResult<()> {
     #[cfg(windows)]
     {
+        // 目录直接打开自身；SHOpenFolderAndSelectItems 的语义是「打开父目录并
+        // 选中目标」，只适合文件，目录走它会落在上一层还得再点一次进去
+        if path.is_dir() {
+            return std::process::Command::new("explorer")
+                .arg(path)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| app_err!("无法打开资源管理器：{error}"));
+        }
+
         use windows::{
             core::HSTRING,
             Win32::{
@@ -16,11 +26,8 @@ fn open_in_file_explorer(path: &Path) -> AppResult<()> {
         };
 
         let _ = unsafe { CoInitialize(None) };
-        let folder = if path.is_file() {
-            path.parent().unwrap_or(path)
-        } else {
-            path
-        };
+        // 走到这里必然是文件：打开其父目录并选中该文件
+        let folder = path.parent().unwrap_or(path);
         let folder_text = HSTRING::from(folder);
         let folder_id = unsafe { ILCreateFromPathW(&folder_text) };
         if folder_id.is_null() {
@@ -49,7 +56,7 @@ fn open_in_file_explorer(path: &Path) -> AppResult<()> {
         result.map_err(|error| app_err!("无法打开资源管理器：{error}"))
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(path)
@@ -183,18 +190,23 @@ impl AppContext {
     }
 
     pub(super) fn path_info(&self) -> Vec<PathInfo> {
+        // label 是 i18n key，由前端翻译展示；对应 src/i18n/locales/*/settings.ts 的 about.paths.*
         vec![
             PathInfo {
-                label: "应用数据目录".into(),
+                label: "about.paths.codexConfig".into(),
+                path: self.paths.codex_config().display().to_string(),
+            },
+            PathInfo {
+                label: "about.paths.appData".into(),
                 path: self.paths.root.display().to_string(),
             },
             PathInfo {
-                label: "备份目录".into(),
+                label: "about.paths.backups".into(),
                 path: self.paths.root.join("backups").display().to_string(),
             },
             PathInfo {
-                label: "Codex 配置".into(),
-                path: self.paths.codex_config().display().to_string(),
+                label: "about.paths.logs".into(),
+                path: self.paths.logs.display().to_string(),
             },
         ]
     }

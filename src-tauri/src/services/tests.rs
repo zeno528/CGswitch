@@ -912,7 +912,7 @@ fn only_exposed_paths_can_be_opened() {
     let home = tempfile::tempdir().unwrap();
     let context = AppContext::new(crate::paths::from_home(home.path()).unwrap()).unwrap();
 
-    // 设置页只暴露三处：应用数据目录 / Codex 配置 / 备份目录（见 path_info）
+    // 设置页只暴露四处：应用数据目录 / 备份目录 / 日志目录 / Codex 配置（见 path_info）
     assert!(context.is_managed_path(&context.paths.root.display().to_string()));
     assert!(context.is_managed_path(&context.paths.codex_config().display().to_string()));
     assert!(context.is_managed_path(&context.paths.root.join("backups").display().to_string()));
@@ -2912,4 +2912,22 @@ base_url = "https://api.example"
             .as_deref(),
         Some("acc-1")
     );
+}
+
+#[test]
+fn path_info_includes_log_dir_and_open_path_allows_it() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    assert!(paths.logs.exists());
+    let context = AppContext::new(paths).unwrap();
+
+    let info = context.path_info();
+    let logs = info
+        .iter()
+        .find(|item| item.label == "about.paths.logs")
+        .expect("path_info 应包含日志目录条目");
+    assert!(logs.path.ends_with("logs"));
+    // 白名单由 path_info 驱动：日志目录出现即可被 open_path 打开
+    assert!(context.is_managed_path(&logs.path));
 }
