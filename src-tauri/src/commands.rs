@@ -32,6 +32,7 @@ async fn test_account_connection(
 ) -> AppResult<ProfileConnectionResult> {
     // live auth.json / 缓存快照里的 account_id 是 workspace ID，行 id 与之解耦后需先换算
     let workspace = manager.workspace_of(account_id).await;
+    let log_context = format!("account={account_id}");
     let mut tokens = Vec::with_capacity(2);
     if let Some(token) = state.external_codex_access_token_for_account(&workspace)? {
         tokens.push(token);
@@ -46,7 +47,9 @@ async fn test_account_connection(
         }
     }
     for token in tokens {
-        let result = state.test_subscription_connection(&token).await?;
+        let result = state
+            .test_subscription_connection(&token, &log_context)
+            .await?;
         if !should_try_next_account_credential(&result) {
             return Ok(result);
         }
@@ -59,7 +62,9 @@ async fn test_account_connection(
     let auth = parse_external_auth_json(&auth_json)
         .filter(|auth| auth.account_id == workspace)
         .ok_or_else(|| app_err!("刷新后账号标识不匹配"))?;
-    state.test_subscription_connection(&auth.access_token).await
+    state
+        .test_subscription_connection(&auth.access_token, &log_context)
+        .await
 }
 
 #[tauri::command]
@@ -291,7 +296,10 @@ pub async fn test_profile_connection(
                 let token = state
                     .external_codex_access_token()?
                     .ok_or_else(|| app_err!("未检测到有效的 Codex Desktop 认证"))?;
-                state.test_subscription_connection(&token).await
+                let log_context = format!("profile={id}");
+                state
+                    .test_subscription_connection(&token, &log_context)
+                    .await
             }
             None => Err(app_err!("官方配置缺少认证来源")),
         };

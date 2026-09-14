@@ -79,4 +79,14 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
+
+  it("登录失效错误直接按后端契约前缀判定", () => {
+    expect(source).toContain('const authInvalid = isSubscriptionProfile && balanceError.startsWith("[auth_invalid]");');
+  });
+
+  it("登录失效时余额卡片显示失效文案并复用重启链路拉起 Codex", () => {
+    expect(source).toContain('authInvalid ? <span className="chip-danger">{t("balance.authInvalid")}</span>');
+    expect(source).toContain('title={authInvalid ? t("balance.authInvalidTooltip")');
+    expect(source).toContain("if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.();");
+  });
 });
