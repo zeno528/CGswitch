@@ -312,7 +312,7 @@ impl AppContext {
             .map(|_| ())
     }
 
-    /// 完整复制供应商（配置、关联文件、图标、账号绑定），新供应商名加“副本”后缀，同名时追加序号。
+    /// 完整复制供应商（配置、关联文件、图标、账号绑定），新供应商名加 `copy` 后缀，同名时追加序号。
     pub fn duplicate_profile(&self, id: &str) -> AppResult<ProfileSummary> {
         // 使用中的供应商：先把 live 的 config/models.json 改动同步回快照，副本取到最新状态
         let active = self.is_active_profile(id)?;
@@ -331,14 +331,18 @@ impl AppContext {
                 .filter(|text| parse_external_auth_json(text).is_none());
         }
         let profiles = self.database.profiles()?;
-        let base: String = stored.name.trim().chars().take(47).collect();
-        let mut candidate = format!("{base} 副本");
+        let source_index = profiles
+            .iter()
+            .position(|profile| profile.id == id)
+            .ok_or_else(|| app_err!("供应商配置不存在"))?;
+        let base: String = stored.name.trim().chars().take(45).collect();
+        let mut candidate = format!("{base} copy");
         let mut counter = 2;
         while profiles
             .iter()
             .any(|profile| profile.name.eq_ignore_ascii_case(&candidate))
         {
-            candidate = format!("{base} 副本 {counter}");
+            candidate = format!("{base} copy {counter}");
             counter += 1;
         }
         let timestamp = now_ms().to_string();
@@ -355,6 +359,9 @@ impl AppContext {
                 &timestamp,
             )?;
         }
+        let mut ordered_ids: Vec<String> = profiles.into_iter().map(|profile| profile.id).collect();
+        ordered_ids.insert(source_index + 1, summary.id.clone());
+        self.database.reorder_profiles(&ordered_ids, &timestamp)?;
         self.database.record_event(
             Some(&summary.id),
             "duplicate",

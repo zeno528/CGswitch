@@ -916,14 +916,21 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const now = new Date().toISOString();
+      const base = profile.name.trim().slice(0, 45);
+      let name = `${base} copy`;
+      let counter = 2;
+      while (webProfiles.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+        name = `${base} copy ${counter}`;
+        counter += 1;
+      }
       const copy: ProfileSummary = {
         ...profile,
         id: `profile-${Date.now()}`,
-        name: `${profile.name} 副本`,
+        name,
         created_at: now,
         updated_at: now,
       };
-      webProfiles.push(copy);
+      webProfiles.splice(webProfiles.indexOf(profile) + 1, 0, copy);
       if (webDetails[profile.id]) webDetails[copy.id] = { ...webDetails[profile.id] };
       return copy as T;
     }

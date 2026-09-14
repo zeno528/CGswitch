@@ -2790,7 +2790,7 @@ fn update_profile_saves_and_clears_admin_url() {
 }
 
 #[test]
-fn duplicate_profile_copies_payload_with_suffix() {
+fn duplicate_profile_copies_payload_with_copy_suffix_and_inserts_after_source() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();
     paths.ensure().unwrap();
@@ -2809,7 +2809,12 @@ base_url = "https://api.example"
     )
     .unwrap();
     let context = AppContext::new(paths).unwrap();
+    let before = context.capture_profile("Before").unwrap();
     let profile = context.capture_profile("GLM").unwrap();
+    let after = context.capture_profile("After").unwrap();
+    context
+        .reorder_profiles(&[before.id.clone(), profile.id.clone(), after.id.clone()])
+        .unwrap();
     context
         .update_profile(
             &profile.id,
@@ -2824,7 +2829,15 @@ base_url = "https://api.example"
         .unwrap();
 
     let dup = context.duplicate_profile(&profile.id).unwrap();
-    assert_eq!(dup.name, "GLM 副本");
+    assert_eq!(dup.name, "GLM copy");
+    let ordered_names: Vec<String> = context
+        .database
+        .profiles()
+        .unwrap()
+        .into_iter()
+        .map(|item| item.name)
+        .collect();
+    assert_eq!(ordered_names, ["Before", "GLM", "GLM copy", "After"]);
     assert_eq!(
         dup.admin_url.as_deref(),
         Some("https://console.example.com")
@@ -2836,7 +2849,7 @@ base_url = "https://api.example"
 
     std::thread::sleep(std::time::Duration::from_millis(2));
     let dup2 = context.duplicate_profile(&profile.id).unwrap();
-    assert_eq!(dup2.name, "GLM 副本 2");
+    assert_eq!(dup2.name, "GLM copy 2");
 }
 
 #[test]
