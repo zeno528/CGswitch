@@ -2,7 +2,9 @@
 # 与正式 Release（release.yml）完全独立：
 #   - tag 形如 v<版本>-<分支名>.<构建号>（如 v0.16.4-feat-graceful-restart.12），不与正式 tag 冲突；
 #   - 不生成 latest.json 升级源、不占用 latest 指针，不影响正式用户的升级链路；
-#   - 不读 CHANGELOG Unreleased（测试构建没有版本日志），发行说明只带分支/提交信息与安装指引。
+#   - 不读 CHANGELOG（测试构建没有版本日志）：发行说明 = 分支/提交信息 + 从提交信息提取的
+#     变更列表 + 安装指引 + 一行 compare 链接；变更列表取自上次本分支测试构建以来，
+#     首次构建回落到与 main 的分叉点。
 # 触发方式：仅手动。Actions UI → 选择分支 → Run workflow；从 main 触发会被 guard 拒绝。
 # CLI：gh workflow run release-branch.yml --ref <分支> -f release_mode=<draft|prerelease>
 # 同一构建号重跑会就地更新已有草稿/预发行（tag 含构建号，重跑不改号）；已手动转正的发行会被拒绝修改。
@@ -115,7 +117,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 变更列表要读本分支提交历史与历史 tag：默认 fetch-depth 1 只有单个提交且不带 tag，
+      # 0 = all history for all branches and tags（actions/checkout 的 fetch-depth 定义）
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - id: meta
         name: 生成测试 tag
         shell: bash
@@ -126,10 +132,12 @@ jobs:
           SLUG="$(printf '%s' "$GITHUB_REF_NAME" | sed 's/[^a-zA-Z0-9-]/-/g; s/-\{2,\}/-/g; s/^-//; s/-$//' | cut -c1-40)"
           [ -n "$SLUG" ] || SLUG="dev"
           echo "tag=v${VERSION}-${SLUG}.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
       - name: 创建发行页
         shell: bash
         env:
           TAG: ${{ steps.meta.outputs.tag }}
+          SLUG: ${{ steps.meta.outputs.slug }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -138,6 +146,7 @@ jobs:
           fi
           NOTES="$(mktemp)"
           GUIDE="$(mktemp)"
+          CHANGES="$(mktemp)"
           cat > "$GUIDE" <<'EOF'
 
           ---
@@ -150,14 +159,44 @@ jobs:
           | macOS | Apple 芯片：`CGswitch-__TAG__-macOS-arm64.dmg`<br>Intel：`CGswitch-__TAG__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
           EOF
           sed -i "s/__TAG__/$TAG/g" "$GUIDE"
+          # 变更列表基准 = 上次本分支测试构建的 tag：按 tag 创建时间倒序取最新一个，
+          # 并排除本次构建号的 tag（同号重跑时它已存在，不排除会把范围取成空）。
+          # 该分支从没构建过则回落到与 main 的分叉点。
+          # 注意：Actions 的 bash 默认 -eo pipefail，grep 无匹配返回 1 会中断步骤。
+          BASE_TAG="$(git tag -l "v*-$SLUG.[0-9]*" --sort=-creatordate | grep -vx "$TAG" | head -1 || true)"
+          if [ -n "$BASE_TAG" ]; then
+            BASE="$BASE_TAG"
+            BASE_DESC="相对 $BASE_TAG"
+          else
+            git fetch --no-tags origin main 2>/dev/null || true
+            BASE="$(git merge-base origin/main HEAD)"
+            BASE_DESC="相对 main 分叉点 $(git rev-parse --short "$BASE")"
+          fi
+          # 基准解析不了就报错退出：否则 git log 空输出会被下面的过滤器吞掉，
+          # 发行说明会谎报「无新增提交」
+          git rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || {
+            echo "::error::变更日志基准 $BASE 无法解析"
+            exit 1
+          }
+          # --no-merges：合并提交对测试者无信息量；发版/日志提交同理，一并滤掉
+          git log --no-merges --format='%s' "$BASE..HEAD" \
+            | grep -vE '^(chore\((release|changelog)\)|Merge pull request|🔖 )' > "$CHANGES" || true
+          COUNT="$(grep -c . "$CHANGES" || true)"
+
           {
             printf '## %s（分支测试构建）\n\n' "$TAG"
-            printf -- '- 分支：%s\n- 提交：%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA"
+            printf -- '- 分支：%s\n- 提交：%s\n- 变更：%s，%s 个提交\n' \
+              "$GITHUB_REF_NAME" "${GITHUB_SHA:0:7}" "$BASE_DESC" "$COUNT"
+            printf '\n### 本次变更\n\n'
+            if [ "$COUNT" -gt 0 ]; then
+              sed 's/^/- /' "$CHANGES"
+            else
+              printf '本次构建相对上次无新增提交。\n'
+            fi
             cat "$GUIDE"
+            printf '\n---\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' \
+              "$GITHUB_REPOSITORY" "$BASE" "$TAG"
           } > "$NOTES"
-          # PR 清单 / Full Changelog 用 GitHub 原生 API 生成后拼到说明末尾（同 release.yml）
-          printf '\n' >> "$NOTES"
-          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body >> "$NOTES"
           INFO="$(gh release view "$TAG" --json isDraft,isPrerelease 2>/dev/null || true)"
           if [ -z "$INFO" ]; then
             gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES"
