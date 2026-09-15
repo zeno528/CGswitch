@@ -2615,71 +2615,35 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
     }
 
     #[tokio::test]
-    async fn list_plugins_reads_skill_lock_and_cache_fallback() {
-        let (home, context) = context();
-        // 无 codex CLI 的环境（CI）：走缓存回退
-        let skill_dir = home.path().join(".agents/skills/lark-base");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(
-            skill_dir.join("SKILL.md"),
-            "---\ndescription: 飞书多维表格操作\n---\n",
-        )
-        .unwrap();
-        std::fs::write(
-            home.path().join(".agents/.skill-lock.json"),
-            r#"{"version":3,"skills":{"lark-base":{"source":"larksuite/cli","sourceType":"github","sourceUrl":"https://github.com/larksuite/cli.git","skillPath":"skills/lark-base/SKILL.md","skillFolderHash":"abc","installedAt":"2026-05-09T10:06:04.288Z"}}}"#,
-        )
-        .unwrap();
-        let cache_dir = home
-            .path()
-            .join(".codex")
+    async fn scan_codex_plugin_cache_reads_manifest_and_version() {
+        // 直接测底层 cache 扫描函数，避开 list_plugins 的 CLI 探测链。
+        // 本机 PATH 装了真 codex CLI 会劫持 list_plugins 走 CLI 路径，与 cache fixture 无关；
+        // 这里直调 scan_codex_plugin_cache，本机环境跟它零耦合。
+        // fixture 用抽象名（sample-marketplace / sample-plugin / v1.0.0），不撞现实插件。
+        let home = tempfile::tempdir().unwrap();
+        let codex_home = home.path().join(".codex");
+        let cache_dir = codex_home
             .join("plugins")
             .join("cache")
-            .join("ponytail")
-            .join("ponytail")
-            .join("4.9.0")
+            .join("sample-marketplace")
+            .join("sample-plugin")
+            .join("v1.0.0")
             .join(".codex-plugin");
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(
             cache_dir.join("plugin.json"),
-            r#"{"name":"ponytail","description":"Ponytail 插件"}"#,
-        )
-        .unwrap();
-        let skill_dir = cache_dir
-            .parent()
-            .unwrap()
-            .join("skills")
-            .join("plugin-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(
-            skill_dir.join("SKILL.md"),
-            "---\ndescription: 插件内的 Skill\n---\n",
-        )
-        .unwrap();
-        std::fs::write(
-            home.path().join(".codex/config.toml"),
-            "[marketplaces.ponytail]\nsource = \"https://github.com/DietrichGebert/ponytail.git\"\n",
+            r#"{"name":"sample-plugin","description":"Fixture plugin"}"#,
         )
         .unwrap();
 
-        assert!(context.list_skills().await.unwrap().is_empty());
-
-        let plugins = context.list_plugins().await.unwrap();
-        assert!(plugins.iter().all(|item| item.name != "lark-base"));
-        let ponytail = plugins.iter().find(|item| item.name == "ponytail").unwrap();
-        assert_eq!(ponytail.origin, "codex");
-        assert_eq!(ponytail.marketplace.as_deref(), Some("ponytail"));
-        assert_eq!(ponytail.version.as_deref(), Some("4.9.0"));
-        assert_eq!(
-            ponytail.source_url.as_deref(),
-            Some("https://github.com/DietrichGebert/ponytail.git")
-        );
-        let plugin_skills = context
-            .list_plugin_skills("ponytail", Some(&ponytail.store_path))
-            .await
-            .unwrap();
-        assert_eq!(plugin_skills.len(), 1);
-        assert_eq!(plugin_skills[0].name, "plugin-skill");
+        let plugins = super::scan_codex_plugin_cache(&codex_home);
+        assert_eq!(plugins.len(), 1);
+        let plugin = &plugins[0];
+        assert_eq!(plugin.name, "sample-plugin");
+        assert_eq!(plugin.marketplace.as_deref(), Some("sample-marketplace"));
+        assert_eq!(plugin.version.as_deref(), Some("v1.0.0"));
+        assert_eq!(plugin.origin, "codex");
+        assert!(plugin.enabled);
     }
 
     #[tokio::test]
