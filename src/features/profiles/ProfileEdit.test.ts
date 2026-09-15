@@ -28,7 +28,7 @@ describe("ProfileEdit 用量查询", () => {
 
   it("新增态余额开关默认开启，编辑态仍由已存值覆盖", () => {
     expect(source).toContain('const isOfficial = create ? presetKind === "chatgpt" : profile?.kind === "official";');
-    expect(source).toContain("const [showBalance, setShowBalance] = useState(create);");
+    expect(source).toContain("const [showBalance, setShowBalance] = useState(create || Boolean(profile?.show_balance));");
     expect(source).toContain('setShowBalance(kind === "chatgpt" || balanceQueryProviders.has(preset.provider ?? ""));');
     expect(source).toContain("setShowBalance(loaded.show_balance);");
     expect(source).not.toContain("setShowBalance(false);");

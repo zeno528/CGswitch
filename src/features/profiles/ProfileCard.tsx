@@ -37,6 +37,7 @@ interface ProfileCardProps {
   onEdit: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
+  onOpenCodexApp?: () => void;
 }
 
 interface ProfileCardContentProps {
@@ -45,6 +46,7 @@ interface ProfileCardContentProps {
   balanceInfos: ProfileBalanceInfo[];
   balanceError: string;
   onRefreshBalance?: () => void;
+  onOpenCodexApp?: () => void;
   onOpenAdmin?: () => void;
   onRename?: () => void;
 }
@@ -55,6 +57,7 @@ export function ProfileCardContent({
   balanceInfos,
   balanceError,
   onRefreshBalance,
+  onOpenCodexApp,
   onOpenAdmin,
   onRename,
 }: ProfileCardContentProps) {
@@ -63,6 +66,7 @@ export function ProfileCardContent({
   const isSubscriptionProfile = profile.kind === "official";
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
+  const authInvalid = isSubscriptionProfile && balanceError.startsWith("[auth_invalid]");
   const authSource = profile.auth_source ?? (profile.account_id ? "oauth" : "desktop");
   const authTitle = `${authSource === "desktop" ? t("card.authDesktop") : t("card.authOAuth")}${subscriptionAuthed ? "" : t("card.authNotSignedIn")}`;
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
@@ -88,9 +92,9 @@ export function ProfileCardContent({
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>
           {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}
-          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? t("balance.queryFailedRetry") : isSubscriptionProfile ? t("balance.subscriptionTooltip") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(); }}>
+          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={authInvalid ? t("balance.authInvalidTooltip") : balanceError ? t("balance.queryFailedRetry") : isSubscriptionProfile ? t("balance.subscriptionTooltip") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} onClick={(event) => { event.stopPropagation(); if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.(); }}>
             <Gauge className={`h-3 w-3${balanceError ? " chip-danger" : ""}`} strokeWidth={2} aria-hidden="true" />
-            {balanceError ? <span>{t("balance.queryFailed")}</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>{t("balance.balancePrefix")}</span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
+            {authInvalid ? <span className="chip-danger">{t("balance.authInvalid")}</span> : balanceError ? <span>{t("balance.queryFailed")}</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>{t("balance.balancePrefix")}</span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
         </div>
       </div>
@@ -141,6 +145,7 @@ export default function ProfileCard({
   onEdit,
   onRemove,
   onDuplicate,
+  onOpenCodexApp,
 }: ProfileCardProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
@@ -249,6 +254,7 @@ export default function ProfileCard({
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         onRefreshBalance={fetchBalance}
+        onOpenCodexApp={onOpenCodexApp}
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />

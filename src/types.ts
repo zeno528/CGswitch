@@ -278,6 +278,7 @@ export interface CodexAppStatus {
 }
 
 export interface PathInfo {
+  /** i18n key（settings 命名空间 about.paths.*），展示时经 t() 翻译 */
   label: string;
   path: string;
 }

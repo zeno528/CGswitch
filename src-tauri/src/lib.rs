@@ -14,6 +14,9 @@ use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
+use tauri_plugin_log::{
+    log, FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy,
+};
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
 use crate::services::AppContext;
@@ -48,6 +51,32 @@ pub fn run() {
     )));
 
     tauri::Builder::default()
+        // 日志插件放链条首位：其 setup 最先挂全局 logger，后续插件的日志也能被捕获
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                // 磁盘封顶：最多 4 个文件 × 1MB，轮转和启动时自动删除超量旧文件
+                .rotation_strategy(RotationStrategy::KeepSome(4))
+                .max_file_size(1_000_000)
+                // 每次启动开新文件，旧会话归档，便于定位「上一次运行」的问题
+                .file_open_strategy(FileOpenStrategy::Rotate)
+                .timezone_strategy(TimezoneStrategy::UseLocal)
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
+                // updater 每次检查更新会把完整响应（含三平台签名）打成 DEBUG，
+                // 淹没真正有用的日志行，压到 Info；release 本就是 Info，此行只影响 dev
+                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::Folder {
+                        path: paths.logs.clone(),
+                        file_name: Some("cgswitch".into()),
+                    }),
+                ])
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -143,6 +172,8 @@ pub fn run() {
             commands::open_path,
         ])
         .setup(|app| {
+            log::info!("CGswitch v{} 启动", env!("CARGO_PKG_VERSION"));
+
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
             // 统一先隐藏一次；非静默启动时由前端在 settings 加载后 show()。
             if let Some(window) = app.get_webview_window("main") {
@@ -164,7 +195,7 @@ pub fn run() {
             let settings = app.state::<AppContext>().settings().unwrap_or_default();
             if settings.autostart_enabled {
                 if let Err(error) = app.autolaunch().enable() {
-                    eprintln!("同步开机自启设置失败: {error}");
+                    log::warn!("同步开机自启设置失败: {error}");
                 }
             }
 
@@ -173,7 +204,7 @@ pub fn run() {
                 loop {
                     if let Err(error) = scheduler_handle.state::<AppContext>().auto_backup_if_due()
                     {
-                        eprintln!("自动备份失败: {error}");
+                        log::warn!("自动备份失败: {error}");
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 }

@@ -135,6 +135,12 @@ export default {
     installing: "Downloading and installing...",
     upgradeTo: "Update to",
     dataAndPaths: "Data and paths",
+    paths: {
+      appData: "App data",
+      backups: "Backups",
+      logs: "Logs",
+      codexConfig: "Codex config",
+    },
     openPath: "Open {{label}}",
   },
 } as const;

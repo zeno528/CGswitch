@@ -243,21 +243,37 @@ impl CodexOAuthManager {
     /// 正常路径复用缓存客户端，不影响性能。
     async fn request_with_proxy_retry(
         &self,
+        operation: &str,
+        context: &str,
         make: impl Fn(reqwest::Client) -> reqwest::RequestBuilder,
     ) -> Result<(reqwest::StatusCode, String), CodexOAuthError> {
-        let client = self.client.lock().await.clone();
-        let response = make(client).send().await?;
-        let status = response.status();
-        let text = response.text().await.unwrap_or_default();
-        if status == reqwest::StatusCode::FORBIDDEN && text.contains(REGION_BLOCKED_MARKER) {
-            *self.client.lock().await = Self::build_client();
+        let mut retried = false;
+        loop {
+            let retry_prefix = if retried { " 代理重试" } else { " " };
             let client = self.client.lock().await.clone();
-            let response = make(client).send().await?;
+            let response = make(client).send().await.map_err(|error| {
+                tauri_plugin_log::log::warn!(
+                    "[auth] {operation}{retry_prefix}网络请求失败 [{context}]: {error}"
+                );
+                CodexOAuthError::from(error)
+            })?;
             let status = response.status();
-            let text = response.text().await.unwrap_or_default();
+            let text = response.text().await.map_err(|error| {
+                tauri_plugin_log::log::warn!(
+                    "[auth] {operation}{retry_prefix}响应读取失败 [{context}] HTTP {status}: {error}"
+                );
+                CodexOAuthError::from(error)
+            })?;
+            if !retried
+                && status == reqwest::StatusCode::FORBIDDEN
+                && text.contains(REGION_BLOCKED_MARKER)
+            {
+                *self.client.lock().await = Self::build_client();
+                retried = true;
+                continue;
+            }
             return Ok((status, text));
         }
-        Ok((status, text))
     }
 
     pub fn new(database: Arc<Database>) -> Self {
@@ -271,7 +287,7 @@ impl CodexOAuthManager {
             database,
         };
         if let Err(error) = manager.load_accounts() {
-            eprintln!("[auth] 加载认证账号失败: {error}");
+            tauri_plugin_log::log::warn!("[auth] 加载认证账号失败: {error}");
         }
         manager
     }
@@ -286,7 +302,7 @@ impl CodexOAuthManager {
     /// 启动设备码流程，返回需要展示给用户的 user_code 与验证网址
     pub async fn start_device_flow(&self) -> Result<DeviceCodeResponse, CodexOAuthError> {
         let (status, text) = self
-            .request_with_proxy_retry(|client| {
+            .request_with_proxy_retry("设备码申请", "login", |client| {
                 client
                     .post(DEVICE_AUTH_USERCODE_URL)
                     .header("Content-Type", "application/json")
@@ -294,12 +310,15 @@ impl CodexOAuthManager {
             })
             .await?;
         if !status.is_success() {
+            tauri_plugin_log::log::warn!("[auth] 设备码申请失败 [login]: HTTP {status}");
             return Err(CodexOAuthError::RequestFailed(format!(
                 "设备码请求失败: {status} - {text}"
             )));
         }
-        let device: RawDeviceCodeResponse = serde_json::from_str(&text)
-            .map_err(|error| CodexOAuthError::ParseError(error.to_string()))?;
+        let device: RawDeviceCodeResponse = serde_json::from_str(&text).map_err(|error| {
+            tauri_plugin_log::log::warn!("[auth] 设备码响应解析失败 [login]: {error}");
+            CodexOAuthError::ParseError(error.to_string())
+        })?;
 
         let interval = parse_interval(device.interval.as_ref());
         let expires_in = device.expires_in.unwrap_or(DEVICE_CODE_DEFAULT_EXPIRES_IN);
@@ -347,7 +366,7 @@ impl CodexOAuthManager {
         }
 
         let (status, text) = self
-            .request_with_proxy_retry(|client| {
+            .request_with_proxy_retry("设备码轮询", "login", |client| {
                 client
                     .post(DEVICE_AUTH_TOKEN_URL)
                     .header("Content-Type", "application/json")
@@ -359,6 +378,9 @@ impl CodexOAuthManager {
             .await?;
         if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_FOUND {
             if text.contains(REGION_BLOCKED_MARKER) {
+                tauri_plugin_log::log::warn!(
+                    "[auth] 设备码轮询被地区限制拦截 [login] HTTP {status}"
+                );
                 return Err(CodexOAuthError::RequestFailed(format!(
                     "设备码轮询失败: {status} - {text}"
                 )));
@@ -370,24 +392,28 @@ impl CodexOAuthManager {
             return Err(CodexOAuthError::ExpiredToken);
         }
         if !status.is_success() {
+            tauri_plugin_log::log::warn!("[auth] 设备码轮询失败 [login]: HTTP {status}");
             return Err(CodexOAuthError::RequestFailed(format!(
                 "设备码轮询失败: {status} - {text}"
             )));
         }
 
-        let success: RawDevicePollSuccess = serde_json::from_str(&text)
-            .map_err(|error| CodexOAuthError::ParseError(error.to_string()))?;
+        let success: RawDevicePollSuccess = serde_json::from_str(&text).map_err(|error| {
+            tauri_plugin_log::log::warn!("[auth] 设备码轮询响应解析失败 [login]: {error}");
+            CodexOAuthError::ParseError(error.to_string())
+        })?;
         let tokens = self
             .exchange_code_for_tokens(&success.authorization_code, &success.code_verifier)
             .await?;
         self.pending_device_codes.write().await.remove(device_code);
 
-        let refresh_token = tokens
-            .refresh_token
-            .clone()
-            .ok_or_else(|| CodexOAuthError::RequestFailed("响应缺少 refresh_token".to_string()))?;
+        let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
+            tauri_plugin_log::log::warn!("[auth] 设备码登录响应缺少 refresh_token [login]");
+            CodexOAuthError::RequestFailed("响应缺少 refresh_token".to_string())
+        })?;
         let (chatgpt_account_id, email) = extract_identity_from_tokens(&tokens);
         let chatgpt_account_id = chatgpt_account_id.ok_or_else(|| {
+            tauri_plugin_log::log::warn!("[auth] Token 响应缺少 ChatGPT 账号标识 [login]");
             CodexOAuthError::ParseError("无法从 token 中提取账号标识".to_string())
         })?;
 
@@ -416,7 +442,7 @@ impl CodexOAuthManager {
         code_verifier: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
         let (status, text) = self
-            .request_with_proxy_retry(|client| {
+            .request_with_proxy_retry("授权码换 Token", "login", |client| {
                 client
                     .post(OAUTH_TOKEN_URL)
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -430,19 +456,24 @@ impl CodexOAuthManager {
             })
             .await?;
         if !status.is_success() {
+            tauri_plugin_log::log::warn!("[auth] 换取 Token 失败 [login]: HTTP {status}");
             return Err(CodexOAuthError::RequestFailed(format!(
                 "换取 Token 失败: {status} - {text}"
             )));
         }
-        serde_json::from_str(&text).map_err(|error| CodexOAuthError::ParseError(error.to_string()))
+        serde_json::from_str(&text).map_err(|error| {
+            tauri_plugin_log::log::warn!("[auth] Token 响应解析失败 [login]: {error}");
+            CodexOAuthError::ParseError(error.to_string())
+        })
     }
 
     async fn refresh_with_token(
         &self,
+        account_id: &str,
         refresh_token: &str,
     ) -> Result<OAuthTokenResponse, CodexOAuthError> {
         let (status, text) = self
-            .request_with_proxy_retry(|client| {
+            .request_with_proxy_retry("Token 刷新", account_id, |client| {
                 client
                     .post(OAUTH_TOKEN_URL)
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -455,19 +486,35 @@ impl CodexOAuthManager {
             })
             .await?;
         if text.contains(REGION_BLOCKED_MARKER) {
+            tauri_plugin_log::log::warn!(
+                "[auth] Token 刷新被地区限制拦截 [{account_id}] HTTP {status}"
+            );
             return Err(CodexOAuthError::RequestFailed(format!(
                 "刷新 Token 失败: {status} - {text}"
             )));
         }
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            // 服务端吊销/拒绝（refresh_token_invalidated）：掉登录的唯一信号源，必须留痕
+            tauri_plugin_log::log::warn!(
+                "[auth] refresh_token 被服务端拒绝 [{account_id}] (HTTP {status})，该账号需要重新登录"
+            );
             return Err(CodexOAuthError::RefreshTokenInvalid);
         }
         if !status.is_success() {
+            tauri_plugin_log::log::warn!("[auth] token 刷新请求失败 [{account_id}]: HTTP {status}");
             return Err(CodexOAuthError::RequestFailed(format!(
                 "刷新 Token 失败: {status} - {text}"
             )));
         }
-        serde_json::from_str(&text).map_err(|error| CodexOAuthError::ParseError(error.to_string()))
+        let tokens = serde_json::from_str::<OAuthTokenResponse>(&text).map_err(|error| {
+            tauri_plugin_log::log::warn!("[auth] token 刷新响应解析失败 [{account_id}]: {error}");
+            CodexOAuthError::ParseError(error.to_string())
+        })?;
+        tauri_plugin_log::log::info!(
+            "[auth] token 刷新成功，新 access_token 有效期约 {} 秒",
+            tokens.expires_in.unwrap_or(0)
+        );
+        Ok(tokens)
     }
 
     // ==================== Token 获取（含自动刷新） ====================
@@ -497,9 +544,12 @@ impl CodexOAuthManager {
             accounts
                 .get(account_id)
                 .map(|account| account.refresh_token.clone())
-                .ok_or_else(|| CodexOAuthError::AccountNotFound(account_id.to_string()))?
+                .ok_or_else(|| {
+                    tauri_plugin_log::log::warn!("[auth] Token 刷新找不到托管账号 [{account_id}]");
+                    CodexOAuthError::AccountNotFound(account_id.to_string())
+                })?
         };
-        let new_tokens = self.refresh_with_token(&refresh_token).await?;
+        let new_tokens = self.refresh_with_token(account_id, &refresh_token).await?;
 
         let new_refresh = new_tokens.refresh_token.clone();
         let new_id_token = new_tokens.id_token.clone();
@@ -520,7 +570,11 @@ impl CodexOAuthManager {
                     }
                 }
                 if changed {
+                    // refresh_token 轮换落库是后续离线复用 auth.json 的依据，必须留痕
                     self.save_account(account)?;
+                    tauri_plugin_log::log::info!(
+                        "[auth] 账号 {account_id} 凭证已轮换并持久化到数据库"
+                    );
                 }
             }
         }
@@ -579,7 +633,7 @@ impl CodexOAuthManager {
                 if account.auth_json.as_deref() != Some(text.as_str()) {
                     account.auth_json = Some(text.clone());
                     if let Err(error) = self.save_account(account) {
-                        eprintln!("[auth] 缓存 auth.json 失败: {error}");
+                        tauri_plugin_log::log::warn!("[auth] 缓存 auth.json 失败: {error}");
                     }
                 }
             }
@@ -616,7 +670,18 @@ impl CodexOAuthManager {
         let Some(refresh_token) = auth.refresh_token.clone() else {
             return Ok(false);
         };
+        // 纯跟随登录（没有任何托管账号）时归属不到是常态，降为 debug 避免每次
+        // 同步都刷警告；只有「有托管账号但归属失败」才是「切完掉登录」的前兆
+        if self.accounts.read().await.is_empty() {
+            tauri_plugin_log::log::debug!("[auth] 无托管账号，跳过 live auth.json 归属同步");
+            return Ok(false);
+        }
         let Some(row_id) = self.resolve_external_auth_owner(&auth).await else {
+            // Codex 刷新了 live auth.json 但归属不到托管账号：后续切配置会写回旧
+            // refresh_token，正是「切完掉登录」的前兆，必须留痕
+            tauri_plugin_log::log::warn!(
+                "[auth] live auth.json 已被外部刷新，但未能归属任何托管账号，跳过同步"
+            );
             return Ok(false);
         };
         let refresh_lock = self.get_refresh_lock(&row_id).await;
@@ -659,7 +724,11 @@ impl CodexOAuthManager {
         // 外部 auth.json 没有可靠的 expires_in，不能把它伪装成内存有效 token；
         // 下一次生成 auth.json 时必须按数据库里的 refresh_token 重新验证。
         self.access_tokens.write().await.remove(&row_id);
-        self.save_account(&account)?;
+        self.save_account(&account).map_err(|error| {
+            tauri_plugin_log::log::warn!("[auth] 同步外部 auth.json 落库失败 [{row_id}]: {error}");
+            error
+        })?;
+        tauri_plugin_log::log::info!("[auth] 已把外部刷新的 live auth.json 同步回账号 {row_id}");
         Ok(true)
     }
 

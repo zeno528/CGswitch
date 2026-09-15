@@ -2,7 +2,7 @@
   "name": "cgswitch",
   "packageManager": "pnpm@11.9.0",
   "private": true,
-  "version": "0.16.4",
+  "version": "0.17.1",
   "type": "module",
   "scripts": {
     "sync-version": "node scripts/sync-version.mjs",
@@ -47,7 +47,7 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "2.11.0",
     "i18next": "26.4.2",
-    "lucide-react": "1.43.0",
+    "lucide-react": "1.45.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-i18next": "17.0.13",
@@ -61,7 +61,7 @@
     "@vitejs/plugin-react": "6.1.1",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
-    "vite": "8.2.2",
+    "vite": "8.3.0",
     "vitest": "4.1.11"
   }
 }

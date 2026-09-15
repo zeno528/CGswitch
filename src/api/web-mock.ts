@@ -69,10 +69,12 @@ const webProfiles: ProfileSummary[] = [
   },
 ];
 
+// label 是 i18n key，由前端 t() 翻译展示；与 Rust path_info（services/settings.rs）保持一致
 const webPaths = [
-  { label: "应用数据目录", path: "C:\\Users\\<user>\\.cgswitch" },
-  { label: "备份目录", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
-  { label: "Codex 配置", path: "C:\\Users\\<user>\\.codex\\config.toml" },
+  { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
+  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+  { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
+  { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
 ];
 
 function patchContextOverrideForWeb(text: string, enabled: boolean, compactTokenLimit: number): string {
@@ -914,14 +916,21 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const now = new Date().toISOString();
+      const base = profile.name.trim().slice(0, 45);
+      let name = `${base} copy`;
+      let counter = 2;
+      while (webProfiles.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+        name = `${base} copy ${counter}`;
+        counter += 1;
+      }
       const copy: ProfileSummary = {
         ...profile,
         id: `profile-${Date.now()}`,
-        name: `${profile.name} 副本`,
+        name,
         created_at: now,
         updated_at: now,
       };
-      webProfiles.push(copy);
+      webProfiles.splice(webProfiles.indexOf(profile) + 1, 0, copy);
       if (webDetails[profile.id]) webDetails[copy.id] = { ...webDetails[profile.id] };
       return copy as T;
     }

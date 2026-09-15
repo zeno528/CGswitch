@@ -32,6 +32,7 @@ async fn test_account_connection(
 ) -> AppResult<ProfileConnectionResult> {
     // live auth.json / 缓存快照里的 account_id 是 workspace ID，行 id 与之解耦后需先换算
     let workspace = manager.workspace_of(account_id).await;
+    let log_context = format!("account={account_id}");
     let mut tokens = Vec::with_capacity(2);
     if let Some(token) = state.external_codex_access_token_for_account(&workspace)? {
         tokens.push(token);
@@ -46,7 +47,9 @@ async fn test_account_connection(
         }
     }
     for token in tokens {
-        let result = state.test_subscription_connection(&token).await?;
+        let result = state
+            .test_subscription_connection(&token, &log_context)
+            .await?;
         if !should_try_next_account_credential(&result) {
             return Ok(result);
         }
@@ -59,7 +62,9 @@ async fn test_account_connection(
     let auth = parse_external_auth_json(&auth_json)
         .filter(|auth| auth.account_id == workspace)
         .ok_or_else(|| app_err!("刷新后账号标识不匹配"))?;
-    state.test_subscription_connection(&auth.access_token).await
+    state
+        .test_subscription_connection(&auth.access_token, &log_context)
+        .await
 }
 
 #[tauri::command]
@@ -291,7 +296,10 @@ pub async fn test_profile_connection(
                 let token = state
                     .external_codex_access_token()?
                     .ok_or_else(|| app_err!("未检测到有效的 Codex Desktop 认证"))?;
-                state.test_subscription_connection(&token).await
+                let log_context = format!("profile={id}");
+                state
+                    .test_subscription_connection(&token, &log_context)
+                    .await
             }
             None => Err(app_err!("官方配置缺少认证来源")),
         };
@@ -530,9 +538,14 @@ pub async fn apply_profile(
         .map_err(|error| error.to_string())
 }
 
+/// 重启期间后端会阻塞数秒（优雅退出等待 + 启动轮询），必须放到专用 blocking
+/// 线程：同步命令在主线程内联执行，会把窗口消息泵占死导致整窗无响应。
 #[tauri::command]
-pub fn restart_codex(state: State<'_, AppContext>) -> AppResult<()> {
-    state.restart_codex()
+pub async fn restart_codex(state: State<'_, AppContext>) -> AppResult<()> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.restart_codex())
+        .await
+        .map_err(|error| app_err!("Codex 重启任务失败: {error}"))?
 }
 
 /// MCP 服务器管理：直接读写 live ~/.codex/config.toml 的 [mcp_servers.*] 段。
@@ -758,10 +771,9 @@ pub fn open_url(url: String) -> AppResult<()> {
             return Err(app_err!("无法打开系统浏览器"));
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&url).spawn();
-        let _ = std::process::Command::new("xdg-open").arg(&url).spawn();
     }
     Ok(())
 }
@@ -784,7 +796,7 @@ pub fn take_update_marker(state: State<'_, AppContext>) -> AppResult<Option<Stri
 }
 
 #[tauri::command]
-pub fn save_settings(
+pub async fn save_settings(
     app: AppHandle,
     settings: Settings,
     state: State<'_, AppContext>,
@@ -801,7 +813,10 @@ pub fn save_settings(
     ) {
         return Err(app_err!("不支持的备份保留数量"));
     }
-    let saved = state.save_settings(&settings)?;
+    let state = state.inner().clone();
+    let saved = tauri::async_runtime::spawn_blocking(move || state.save_settings(&settings))
+        .await
+        .map_err(|error| app_err!("设置保存任务失败: {error}"))??;
     sync_autostart(&app, &saved)?;
     Ok(saved)
 }
