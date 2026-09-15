@@ -60,7 +60,7 @@
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
   --sidebar-icon-size: 1.125rem;
-  --brand-logo-size: 1.375rem;
+  --brand-logo-size: 1.5rem;
   --control-height: 2.25rem;
   /* 输入类控件（.app-input/.app-select）最小高：行高 1.6 + 上下 padding + 边框，允许换行到两行 */
   --input-min-height: calc(1.6em + 1rem + 2px);

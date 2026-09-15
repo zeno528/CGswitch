@@ -56,7 +56,7 @@ export default function McpView() {
       setMcpServersCache(next);
       return next;
     });
-    try { await api.saveMcpServer(server.name, { ...server, enabled: enabled ? null : false }); }
+    try { await api.saveMcpServer(server.name, { ...server, enabled: enabled ? null : false }); feedback.success(t("feedback.updated")); }
     catch (error) { setServers((current) => { const next = current.map((item) => item.name === server.name ? { ...item, enabled: previous } : item); setMcpServersCache(next); return next; }); feedback.error(String(error)); }
     finally { setTogglingName(""); }
   };

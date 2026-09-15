@@ -27,10 +27,10 @@ export default {
     delete: "Delete",
   },
   feedback: {
-    deleted: "MCP server deleted",
+    deleted: "MCP server deleted; restart Codex for it to take effect",
     inSync: "The MCP config in the database matches config.toml. Nothing to do.",
     importedFromLive: "Overwrote the database MCP config with config.toml. MCP servers: {{count}}",
-    restoredToLive: "Overwrote config.toml with the database MCP config. MCP servers: {{count}}",
+    restoredToLive: "Overwrote config.toml with the database MCP config. MCP servers: {{count}}; restart Codex for it to take effect",
     formatNoChange: "Already well-formed. Nothing to adjust.",
     formatted: "Fragment formatted",
     formatFailed: "Formatting failed: {{error}}",
@@ -40,7 +40,8 @@ export default {
     urlScheme: "The server URL must start with http:// or https://",
     startupTimeoutPositive: "The startup timeout must be a positive number of seconds",
     toolTimeoutPositive: "The tool call timeout must be a positive number of seconds",
-    saved: "MCP server saved",
+    saved: "MCP server saved; restart Codex for it to take effect",
+    updated: "MCP config updated; restart Codex for it to take effect",
   },
   edit: {
     back: "Back",

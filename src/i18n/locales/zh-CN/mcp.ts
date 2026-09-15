@@ -27,10 +27,10 @@ export default {
     delete: "删除",
   },
   feedback: {
-    deleted: "MCP 服务器已删除",
+    deleted: "MCP 服务器已删除，重启 Codex 后生效",
     inSync: "数据库中的 MCP 配置与 config.toml 一致，无需处理",
     importedFromLive: "已用 config.toml 覆盖数据库中的 MCP 配置，共 {{count}} 台服务器",
-    restoredToLive: "已用数据库中的 MCP 配置覆盖 config.toml，共 {{count}} 台服务器",
+    restoredToLive: "已用数据库中的 MCP 配置覆盖 config.toml，共 {{count}} 台服务器；重启 Codex 后生效",
     formatNoChange: "格式无误，无需调整",
     formatted: "片段已格式化",
     formatFailed: "格式化失败：{{error}}",
@@ -40,7 +40,8 @@ export default {
     urlScheme: "服务地址必须以 http:// 或 https:// 开头",
     startupTimeoutPositive: "启动超时必须为正数（秒）",
     toolTimeoutPositive: "工具调用超时必须为正数（秒）",
-    saved: "MCP 服务器已保存",
+    saved: "MCP 服务器已保存，重启 Codex 后生效",
+    updated: "MCP 配置已更新，重启 Codex 后生效",
   },
   edit: {
     back: "返回",
