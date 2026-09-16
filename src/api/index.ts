@@ -7,6 +7,7 @@ import type {
   DeviceCodeResponse,
   ManagedAccount,
   McpServerSpec,
+  McpProbeResult,
   McpSyncPreview,
   PluginMarketplace,
   MarketplacePlugin,
@@ -135,6 +136,8 @@ export const api = {
   reorderProfiles: (ids: string[]) => call<void>("reorder_profiles", { ids }),
   applyProfile: (id: string) => call<void>("apply_profile", { id }),
   listMcpServers: () => call<McpServerSpec[]>("list_mcp_servers"),
+  probeMcpServer: (name: string, includeTools = false) =>
+    call<McpProbeResult>("probe_mcp_server", { name, includeTools }),
   // 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live
   getMcpSectionToml: () => call<string>("get_mcp_section_toml"),
   // 显式恢复：数据库镜像写回 live config.toml，返回恢复数量

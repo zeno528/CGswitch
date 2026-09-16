@@ -137,8 +137,8 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-edit-content > .apple-group {\n  margin-top: 0;\n  border-radius: var(--radius-card);");
   });
 
-  it("将 Skill 更新徽标锚定在导入按钮左上角", () => {
-    expect(styles).toContain(".skill-update-badge {\n  position: absolute;\n  left: -0.45rem;\n  top: -0.45rem;");
+  it("将 Skill 更新徽标锚定在导入按钮右上角", () => {
+    expect(styles).toContain(".skill-update-badge {\n  position: absolute;\n  left: auto;\n  right: -0.45rem;\n  top: -0.45rem;");
   });
 
   it("让配置编辑器的横向滚动条从行号栏右侧开始", () => {

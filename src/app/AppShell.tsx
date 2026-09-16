@@ -6,7 +6,7 @@ import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
-import { loadMcpServers, loadPlugins, loadSkills } from "./managementDataCache";
+import { loadPlugins, loadSkills } from "./managementDataCache";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
@@ -86,7 +86,6 @@ export default function AppShell() {
         })
         .catch(() => undefined);
       void loadPlugins().catch(() => undefined);
-      void loadMcpServers().catch(() => undefined);
     }, 1200);
     return () => {
       cancelled = true;

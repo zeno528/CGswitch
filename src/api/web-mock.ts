@@ -2,6 +2,7 @@ import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type Bui
 import type {
   AppState,
   DatabaseBackupInfo,
+  McpProbeResult,
   McpServerSpec,
   MarketplacePlugin,
   PluginMarketplace,
@@ -1179,6 +1180,35 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return String(args?.text ?? "") as T;
     case "list_mcp_servers":
       return [...webMcpServers] as T;
+    case "probe_mcp_server": {
+      const name = String(args?.name ?? "MCP");
+      const includeTools = Boolean(args?.includeTools);
+      const result: McpProbeResult = {
+        ok: true,
+        latency_ms: 18,
+        status: name === "tavily" ? 200 : null,
+        protocol_version: "2025-03-26",
+        server_info: { name: `${name} demo`, version: "1.0.0" },
+        tools: includeTools ? [
+          {
+            name: "search",
+            title: "Search",
+            description: "Search available sources.",
+            input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+          },
+          {
+            name: "fetch",
+            title: "Fetch",
+            description: "Fetch a source by URL.",
+            input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+          },
+        ] : [],
+        tools_truncated: false,
+        error: null,
+        tools_error: null,
+      };
+      return result as T;
+    }
     case "get_mcp_section_toml": {
       // 创建表单预填用：把 mock 列表渲染成 config.toml 片段
       return webMcpServers.map(renderMcpFragmentWeb).join("\n") as T;
