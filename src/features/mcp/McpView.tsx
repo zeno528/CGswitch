@@ -46,6 +46,13 @@ function cachedToolsLoaded(servers: McpServerSpec[]) {
 }
 
 function transportOf(server: McpServerSpec): Transport { return server.url ? "http" : server.command ? "stdio" : "unknown"; }
+
+/// 列表排序：类型分组（stdio 本地 → http 远程 → unknown 兜底）优先，组内按名称。
+const transportOrder: Record<Transport, number> = { stdio: 0, http: 1, unknown: 2 };
+
+export function compareMcpServers(left: McpServerSpec, right: McpServerSpec): number {
+  return transportOrder[transportOf(left)] - transportOrder[transportOf(right)] || left.name.localeCompare(right.name);
+}
 function transportIcon(server: McpServerSpec) { const current = transportOf(server); return current === "http" ? Globe : current === "stdio" ? Terminal : CircleDashed; }
 function metaOf(server: McpServerSpec) { return server.command ? [server.command, ...server.args.slice(0, 2)].join(" ") : server.url ?? ""; }
 
@@ -310,6 +317,7 @@ export default function McpView() {
     if (syncPreview && syncPreview.entries.length === 0) { feedback.info(t("feedback.inSync")); return; }
     setSyncOpen(true);
   };
+  const orderedServers = [...servers].sort(compareMcpServers);
   const onApply = async (direction: SyncDirection) => {
     if (applying) return;
     setApplying(true);
@@ -390,7 +398,7 @@ export default function McpView() {
             </EmptyStateCard>
           ) : servers.length ? (
             <div className="space-y-2">
-              {servers.map((server) => (
+              {orderedServers.map((server) => (
                 <McpServerRow
                   key={server.name}
                   server={server}

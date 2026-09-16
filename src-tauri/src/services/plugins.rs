@@ -2012,6 +2012,15 @@ impl AppContext {
     }
 }
 
+/// Codex 桌面端自身内置的实现层插件（浏览器、计算机操作、桌面工具通道）：
+/// 桌面 UI 不计入已安装、用户不可管理，这里同样过滤以保持两侧一致。
+fn is_desktop_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        "browser" | "chrome" | "unified-computer-use" | "codex-app-tools"
+    )
+}
+
 /// list_plugins 的同步实现（跑在 blocking 线程池）。
 fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSummary>> {
     let sources = marketplace_sources(home);
@@ -2021,6 +2030,9 @@ fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSumm
     if find_codex_cli(home).is_some() {
         if let Ok(output) = run_codex_plugin(home, &["list"]) {
             for (name, marketplace, enabled, version, path) in parse_plugin_list_output(&output) {
+                if is_desktop_builtin(&name) {
+                    continue;
+                }
                 let origin = if marketplace.starts_with("openai") {
                     "official"
                 } else {
@@ -2468,6 +2480,20 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         assert!(validate_plugin_name("memory-bank").is_ok());
         assert!(validate_plugin_name("a@b").is_err());
         assert!(validate_plugin_name("../x").is_err());
+    }
+
+    #[test]
+    fn desktop_builtin_plugins_are_identified() {
+        for name in [
+            "browser",
+            "chrome",
+            "unified-computer-use",
+            "codex-app-tools",
+        ] {
+            assert!(super::is_desktop_builtin(name), "{name} 应识别为桌面内置");
+        }
+        assert!(!super::is_desktop_builtin("computer-use"));
+        assert!(!super::is_desktop_builtin("ponytail"));
     }
 
     #[test]

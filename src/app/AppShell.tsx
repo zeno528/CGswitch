@@ -6,7 +6,6 @@ import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
-import { loadPlugins, loadSkills } from "./managementDataCache";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
@@ -14,7 +13,6 @@ import SkillsView from "../features/skills/SkillsView";
 import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
 import { setupI18n } from "../i18n";
-import type { SkillSummary } from "../types";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
 // macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
@@ -25,7 +23,6 @@ export default function AppShell() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<"general" | "account">("general");
   const [profilesReset, setProfilesReset] = useState(0);
   const [mcpReset, setMcpReset] = useState(0);
-  const [skillCache, setSkillCache] = useState<SkillSummary[] | null>(null);
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
   const { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
@@ -74,24 +71,6 @@ export default function AppShell() {
       stopPolling();
     };
   }, [refresh, refreshAuthStatus, startPolling, stopPolling]);
-
-  const appReady = state !== null;
-  useEffect(() => {
-    if (!appReady) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      void loadSkills()
-        .then((items) => {
-          if (!cancelled) setSkillCache(items);
-        })
-        .catch(() => undefined);
-      void loadPlugins().catch(() => undefined);
-    }, 1200);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [appReady]);
 
   useEffect(() => {
     const onActive = () => {
@@ -239,7 +218,7 @@ export default function AppShell() {
               ) : view === "plugins" ? (
                 <PluginsView state={state} />
             ) : view === "skills" ? (
-              <SkillsView cachedSkills={skillCache} onSkillsChange={setSkillCache} activationEpoch={activationEpoch} />
+              <SkillsView activationEpoch={activationEpoch} />
               ) : (
                 <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} initialSection={settingsInitialSection} />
               )}

@@ -3,7 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { loadSkills, setSkillsCache } from "../../app/managementDataCache";
+import { getCachedSkills, loadSkills, setSkillsCache } from "../../app/managementDataCache";
 import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
@@ -16,11 +16,12 @@ export function availableSkillCount(candidates: SkillCandidate[]) {
   return candidates.length;
 }
 
-export default function SkillsView({ cachedSkills, onSkillsChange, activationEpoch }: { cachedSkills: SkillSummary[] | null; onSkillsChange: (skills: SkillSummary[] | null) => void; activationEpoch: number }) {
+export default function SkillsView({ activationEpoch }: { activationEpoch: number }) {
   const feedback = useFeedback();
   const { t } = useTranslation("skills");
-  const [skills, setSkills] = useState<SkillSummary[]>(cachedSkills ?? []);
-  const [loaded, setLoaded] = useState(cachedSkills !== null);
+  const cached = getCachedSkills();
+  const [skills, setSkills] = useState<SkillSummary[]>(cached ?? []);
+  const [loaded, setLoaded] = useState(cached !== null);
   const [importing, setImporting] = useState(false);
   const [candidates, setCandidates] = useState<SkillCandidate[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
@@ -32,7 +33,7 @@ export default function SkillsView({ cachedSkills, onSkillsChange, activationEpo
   const updateScanInFlight = useRef(false);
 
   const refresh = async (force = false) => {
-    try { const next = await loadSkills(force); onSkillsChange(next); setSkills(next); setLoadError(""); }
+    try { const next = await loadSkills(force); setSkills(next); setLoadError(""); }
     catch (error) { setLoadError(String(error)); }
     finally { setLoaded(true); }
   };
@@ -62,9 +63,9 @@ export default function SkillsView({ cachedSkills, onSkillsChange, activationEpo
     if (action === "delete" && !await feedback.confirm({ title: t("deleteDialogTitle"), description: t("deleteDialogDescription", { name }), confirmText: t("delete"), destructive: true })) return;
     setBusy(`${action}:${name}`);
     const previous = skills;
-    if (action !== "delete") setSkills((current) => { const next = current.map((skill) => skill.name === name ? { ...skill, enabled: action === "enable" } : skill); setSkillsCache(next); onSkillsChange(next); return next; });
+    if (action !== "delete") setSkills((current) => { const next = current.map((skill) => skill.name === name ? { ...skill, enabled: action === "enable" } : skill); setSkillsCache(next); return next; });
     try { if (action === "enable") await api.enableSkill(name); if (action === "disable") await api.disableSkill(name); if (action === "delete") { await api.deleteSkill(name); feedback.success(t("deletedToast")); await refresh(true); void scanForUpdates(); } }
-    catch (error) { if (action !== "delete") { setSkillsCache(previous); onSkillsChange(previous); setSkills(previous); } feedback.error(String(error)); }
+    catch (error) { if (action !== "delete") { setSkillsCache(previous); setSkills(previous); } feedback.error(String(error)); }
     finally { setBusy(null); }
   };
   const toggle = (path: string) => setSelectedPaths((current) => current.includes(path) ? current.filter((item) => item !== path) : [...current, path]);
@@ -82,7 +83,8 @@ export default function SkillsView({ cachedSkills, onSkillsChange, activationEpo
     finally { updateScanInFlight.current = false; }
   };
 
-  useEffect(() => { if (cachedSkills) { setSkills(cachedSkills); setLoaded(true); return; } void refresh(); }, []);
+  // 缓存直出（localStorage 恢复）后静默强刷；无缓存时两次调用共享同一在途请求。
+  useEffect(() => { void refresh(); void refresh(true); }, []);
   useEffect(() => { void scanForUpdates(); }, [activationEpoch]);
   useEffect(() => { const main = document.querySelector("main"); if (!main) return; main.scrollTop = savedScrollTop; return () => { savedScrollTop = main.scrollTop; }; }, []);
 

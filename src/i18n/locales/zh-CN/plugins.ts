@@ -104,12 +104,13 @@ export default {
   list: {
     loading: "正在加载插件…",
     empty: "还没有安装插件。点击右上角「插件市场」添加外部市场。",
+    searchPlaceholder: "搜索插件…",
+    noMatch: "没有匹配的插件。",
     viewDetailAria: "查看 {{name}} 详情",
     viewDetailTitle: "点击查看详情",
     uninstallAria: "卸载 {{name}}",
     sourceKept: "市场源保留",
     sourceKeptMarket: "市场源 {{marketplace}} 保留",
-    desktopBuiltIn: "桌面内置",
     removeConfirm: "确定卸载「{{name}}」吗？将通过 codex CLI 卸载（{{source}}），之后可在 Codex 或这里重新安装。",
   },
   confirm: {

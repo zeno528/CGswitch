@@ -104,12 +104,13 @@ export default {
   list: {
     loading: "Loading plugins...",
     empty: "No plugins installed yet. Click \"Marketplace\" in the top right to add an external marketplace.",
+    searchPlaceholder: "Search plugins...",
+    noMatch: "No matching plugins.",
     viewDetailAria: "View {{name}} details",
     viewDetailTitle: "Click to view details",
     uninstallAria: "Uninstall {{name}}",
     sourceKept: "the marketplace source is kept",
     sourceKeptMarket: "the marketplace source {{marketplace}} is kept",
-    desktopBuiltIn: "Desktop built-in",
     removeConfirm: "Uninstall \"{{name}}\"? This removes the plugin via the codex CLI ({{source}}); you can reinstall it from Codex or from here later.",
   },
   confirm: {

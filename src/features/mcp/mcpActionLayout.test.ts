@@ -1,6 +1,7 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { compareMcpServers } from "./McpView";
 
 const viewSource = readFileSync(new URL("./McpView.tsx", import.meta.url), "utf8");
 const editSource = readFileSync(new URL("./McpEdit.tsx", import.meta.url), "utf8");
@@ -28,5 +29,16 @@ describe("MCP 操作入口", () => {
     expect(viewSource).toContain("probeServer(server, false, false)");
     expect(viewSource).toContain("probeTools(saved, false, false)");
     expect(viewSource).toContain("api.probeMcpServer(name, true, showLoading)");
+  });
+
+  it("列表按类型分组（stdio → http → unknown）优先、组内按名称", () => {
+    expect(viewSource).toContain("orderedServers.map((server) => (");
+    const fixture = [
+      { name: "zeta", url: "https://x" },
+      { name: "alpha", command: "npx" },
+      { name: "mystery" },
+      { name: "beta", command: "uvx" },
+    ] as unknown as Parameters<typeof compareMcpServers>[0][];
+    expect([...fixture].sort(compareMcpServers).map((item) => item.name)).toEqual(["alpha", "beta", "zeta", "mystery"]);
   });
 });

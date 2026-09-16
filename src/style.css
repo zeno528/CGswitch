@@ -2056,6 +2056,14 @@ button:focus-visible {
   outline: none;
 }
 
+/* 药丸形输入变体：搜索框等筛选入口用，高度对齐标题栏按钮（--control-height）、预留左侧图标位，其余沿用 .app-input */
+.app-input--pill {
+  height: var(--control-height);
+  min-height: 0;
+  border-radius: 999px;
+  padding-left: 2rem;
+}
+
 /* 文本域沿用旧版 NInput：隐藏原生滚动条，保留滚轮滚动和右下角调整大小。 */
 textarea.app-input {
   scrollbar-width: none;
