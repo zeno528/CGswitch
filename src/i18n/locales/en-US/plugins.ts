@@ -38,7 +38,6 @@ export default {
   },
   detail: {
     disabled: "Disabled",
-    intro: "About this plugin",
     category: "Category: {{category}}",
     origin: "Source",
     marketplace: "Marketplace",
@@ -52,7 +51,7 @@ export default {
   },
   marketDetail: {
     installed: "Installed",
-    installedCount: "{{count}} installed",
+    installedCount: "Installed {{count}}",
     installedCountAria: "Installed plugins: {{count}}",
     thirdPartyNotice: "You are using a third-party model: plugin packages are kept, but plugins with App or MCP connectors may fail to load in Codex. To authorize or use connectors, switch to the official ChatGPT subscription provider.",
     browsable: "Browsable plugins",

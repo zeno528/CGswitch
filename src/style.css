@@ -1230,7 +1230,8 @@ body.drag-active * {
 
 .skill-update-badge {
   position: absolute;
-  left: -0.45rem;
+  left: auto;
+  right: -0.45rem;
   top: -0.45rem;
   display: grid;
   min-width: 1.125rem;
@@ -1260,6 +1261,21 @@ body.drag-active * {
   padding: 0.625rem 0.75rem;
   box-shadow: 0 0 0 1px var(--panel-ring);
 }
+
+/* MCP 列表卡片：apple-group 内的首行去掉独立行底色，与下方工具面板合成一张卡 */
+.apple-group > .mcp-expanded-card__header {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* 独立成卡的列表行：覆盖 .apple-list-row 的 control 圆角改用整卡圆角（插件行 / Skill 行 / MCP 差异提示行共用） */
+.plugin-list-row,
+.skill-list-row,
+.mcp-diff-card { border-radius: var(--radius-card); }
+
+/* MCP 工具面板展开时去掉 body 顶部内边距，工具 chips 紧贴卡片头 */
+.mcp-tools-disclosure.apple-disclosure--open .apple-disclosure__body { padding-top: 0; }
 
 .apple-icon-button {
   display: grid;

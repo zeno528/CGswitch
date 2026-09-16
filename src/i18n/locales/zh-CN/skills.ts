@@ -1,5 +1,6 @@
 /** Skill 页文案。 */
 export default {
+  installedCount: "已安装 {{count}}",
   enabledCount: "已启用 {{count}}",
   importSkill: "导入 Skill",
   importSkillAria: "导入 Skill（有 {{count}} 个可导入或更新的 Skill）",

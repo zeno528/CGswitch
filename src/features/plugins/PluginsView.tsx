@@ -104,7 +104,10 @@ function SourceLink({ source }: { source: string }) {
       className={isGithub ? "shrink-0 p-1 text-accent" : "apple-inline-btn shrink-0"}
       title={t("source.openTitle", { url })}
       aria-label={isGithub ? t("source.openGithub") : t("source.openSource")}
-      onClick={() => void api.openUrl(url).catch((error) => feedback.error(String(error)))}
+      onClick={(event) => {
+        event.stopPropagation();
+        void api.openUrl(url).catch((error) => feedback.error(String(error)));
+      }}
     >
       {isGithub ? <GithubMark /> : t("source.openSource")}
       {!isGithub && <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
@@ -148,44 +151,40 @@ function PluginDetailView({ plugin, onBack }: { plugin: PluginSummary; onBack: (
       </div>
       <div className="apple-edit-content">
         <div className="apple-group">
-          <div className="apple-panel-section">
+          <div className="apple-panel-section apple-panel-section--compact">
             <div className="flex flex-wrap items-center gap-2">
               <span className="title-md">{plugin.display_name ?? plugin.name}</span>
               {plugin.version ? <span className="apple-chip">v{plugin.version}</span> : null}
               {plugin.enabled ? null : <span className="apple-chip chip-warn">{t("detail.disabled")}</span>}
             </div>
-            {plugin.description ? <p className="muted mt-2 text-sm">{plugin.description}</p> : null}
-          </div>
-          <div className="apple-panel-section">
-            <div className="field-label mb-2">{t("detail.intro")}</div>
-            {plugin.description ? <p className="muted text-sm">{plugin.description}</p> : null}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            {plugin.description ? <p className="muted mt-1.5 text-sm">{plugin.description}</p> : null}
+            {plugin.category || plugin.capabilities.length ? <div className="mt-2 flex flex-wrap items-center gap-2">
               {plugin.category ? <span className="apple-chip">{t("detail.category", { category: plugin.category })}</span> : null}
               {plugin.capabilities.length ? <ContainsChips items={plugin.capabilities} /> : null}
+            </div> : null}
+          </div>
+          <div className="apple-panel-section apple-panel-section--compact">
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="field-label shrink-0">{t("detail.origin")}</span>
+                <span className="text-sm">{originLabels[plugin.origin] ? t(originLabels[plugin.origin]!) : plugin.origin}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="field-label shrink-0">{t("detail.marketplace")}</span>
+                <span className="mono text-sm">{plugin.marketplace ?? t("detail.local")}</span>
+              </div>
+            </div>
+            <div className="mt-2 flex min-w-0 items-baseline gap-2">
+              <span className="field-label shrink-0">{t("detail.installPath")}</span>
+              <span className="mono muted min-w-0 break-all text-sm">{plugin.store_path}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="field-label shrink-0">{t("detail.composition")}</span>
+              {plugin.contains.length ? <ContainsChips items={plugin.contains} /> : <span className="muted text-sm">{t("detail.compositionEmpty")}</span>}
             </div>
           </div>
           <div className="apple-panel-section">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <div className="field-label mb-1.5">{t("detail.origin")}</div>
-                <div className="text-sm">{originLabels[plugin.origin] ? t(originLabels[plugin.origin]!) : plugin.origin}</div>
-              </div>
-              <div>
-                <div className="field-label mb-1.5">{t("detail.marketplace")}</div>
-                <div className="mono text-sm">{plugin.marketplace ?? t("detail.local")}</div>
-              </div>
-              <div>
-                <div className="field-label mb-1.5">{t("detail.installPath")}</div>
-                <div className="mono muted break-all text-sm">{plugin.store_path}</div>
-              </div>
-            </div>
-          </div>
-          <div className="apple-panel-section">
-            <div className="field-label mb-2">{t("detail.composition")}</div>
-            {plugin.contains.length ? <ContainsChips items={plugin.contains} /> : <p className="muted text-sm">{t("detail.compositionEmpty")}</p>}
-          </div>
-          <div className="apple-panel-section">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <div className="field-label">Skills</div>
               {skillsLoaded ? <span className="apple-chip" aria-label={t("detail.skillCount", { count: skills.length })}>{skills.length}</span> : null}
             </div>
@@ -313,7 +312,7 @@ function MarketplaceDetailView({
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("nav.backToMarketplace")} onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
           <span className="apple-title">{marketplace.display_name ?? marketplace.name}</span>
-          {loaded ? <span className="apple-chip apple-chip--accent" aria-label={t("marketDetail.installedCountAria", { count: installedPluginCount })}>{t("marketDetail.installedCount", { count: installedPluginCount })}</span> : null}
+          {loaded ? <span className="apple-chip" aria-label={t("marketDetail.installedCountAria", { count: installedPluginCount })}>{t("marketDetail.installedCount", { count: installedPluginCount })}</span> : null}
         </button>
       </div>
       <div className="apple-edit-content">
@@ -906,7 +905,7 @@ export default function PluginsView({ state }: { state: AppState }) {
           <div className="flex items-center gap-2">
             <div className="apple-title">{t("title")}</div>
             {loaded ? (
-              <span className="apple-chip apple-chip--accent" aria-label={t("marketDetail.installedCountAria", { count: plugins.length })}>{t("marketDetail.installedCount", { count: plugins.length })}</span>
+              <span className="apple-chip" aria-label={t("marketDetail.installedCountAria", { count: plugins.length })}>{t("marketDetail.installedCount", { count: plugins.length })}</span>
             ) : <span className="text-accent" role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner size="md" /></span>}
           </div>
         </div>
@@ -929,13 +928,21 @@ export default function PluginsView({ state }: { state: AppState }) {
         ) : plugins.length ? (
           <div className="space-y-2">
             {orderedPlugins.map((plugin) => (
-              <div key={plugin.name} className="apple-list-row">
-                <button
-                  type="button"
+              <div key={plugin.name} className="apple-list-row plugin-list-row">
+                <div
                   className="group min-w-0 flex-1 cursor-pointer text-left"
+                  role="button"
+                  tabIndex={0}
                   aria-label={t("list.viewDetailAria", { name: plugin.display_name ?? plugin.name })}
                   title={t("list.viewDetailTitle")}
                   onClick={() => setSelectedPlugin(plugin)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedPlugin(plugin);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 truncate font-semibold transition-colors group-hover:text-accent">{plugin.display_name ?? plugin.name}</span>
@@ -946,16 +953,16 @@ export default function PluginsView({ state }: { state: AppState }) {
                       <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">{t(originLabels[plugin.origin]!)}</span>
                     ) : null}
                     {plugin.enabled ? null : <span className="apple-chip chip-warn shrink-0">{t("detail.disabled")}</span>}
+                    {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
                   </div>
                   <div className="muted meta-xs truncate">
                     {plugin.description ?? plugin.name}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <ContainsChips items={plugin.contains} />
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <ContainsChips items={plugin.contains} />
-                </div>
-                </button>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
                   {removableOrigins.includes(plugin.origin) ? (
                     <button
                       type="button"

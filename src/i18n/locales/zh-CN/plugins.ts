@@ -38,7 +38,6 @@ export default {
   },
   detail: {
     disabled: "已禁用",
-    intro: "插件介绍",
     category: "分类：{{category}}",
     origin: "来源",
     marketplace: "市场",
@@ -52,7 +51,7 @@ export default {
   },
   marketDetail: {
     installed: "已安装",
-    installedCount: "{{count}} 个已安装",
+    installedCount: "已安装 {{count}}",
     installedCountAria: "{{count}} 个已安装插件",
     thirdPartyNotice: "当前为第三方模型：插件包会保留；带 App 或 MCP 连接器的插件可能无法在 Codex 中加载。需要授权或使用连接器时，请切换到 ChatGPT 官方订阅配置。",
     browsable: "可浏览插件",
