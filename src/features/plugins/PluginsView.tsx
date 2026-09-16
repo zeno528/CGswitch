@@ -76,6 +76,11 @@ function findConfiguredMarketplace(
   );
 }
 
+/// 市场明细排序：已安装在前，组内按名称。
+export function compareMarketplacePlugins(left: MarketplacePlugin, right: MarketplacePlugin): number {
+  return Number(right.installed) - Number(left.installed) || left.name.localeCompare(right.name);
+}
+
 /// 插件搜索：名称、显示名与描述的忽略大小写子串匹配。
 export function matchesQuery(
   plugin: { name: string; display_name: string | null; description: string | null },
@@ -274,7 +279,7 @@ function MarketplaceDetailView({
   const [upgrading, setUpgrading] = useState("");
   const [query, setQuery] = useState("");
   const installedPluginCount = plugins.filter((plugin) => plugin.installed).length;
-  const visiblePlugins = plugins.filter((plugin) => matchesQuery(plugin, query));
+  const visiblePlugins = [...plugins].sort(compareMarketplacePlugins).filter((plugin) => matchesQuery(plugin, query));
 
   useEffect(() => {
     let cancelled = false;
@@ -848,41 +853,42 @@ function PluginMarketplaceView({
                   {marketplaces.map((marketplace) => {
                     const pluginCount = marketplacePluginCounts[marketplace.name];
                     return (
-                      <div key={marketplace.name} className="rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
-                              <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
-                              {pluginCount === undefined ? (
-                                <span role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner /></span>
-                              ) : pluginCount === null ? (
-                                <span className="apple-chip" aria-label={t("market.pluginCountUnavailable")}>—</span>
-                              ) : (
-                                <span className="apple-chip" aria-label={t("marketDetail.browsableAria", { count: pluginCount })}>
-                                  {t("market.pluginCount", { count: pluginCount })}
-                                </span>
-                              )}
-                              {marketplace.kind === "third-party" ? (
-                                <button
-                                  type="button"
-                                  className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]"
-                                  title={t("action.removeMarket")}
-                                  aria-label={t("market.removeAria", { name: marketplace.display_name ?? marketplace.name })}
-                                  disabled={Boolean(removing)}
-                                  onClick={() => void removeMarketplace(marketplace)}
-                                >
-                                  {removing === marketplace.name ? <LoadingSpinner /> : <TrashIcon />}
-                                </button>
-                              ) : null}
-                            </div>
+                      <div
+                        key={marketplace.name}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
+                            <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
+                            {pluginCount === undefined ? (
+                              <span role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner /></span>
+                            ) : pluginCount === null ? (
+                              <span className="apple-chip" aria-label={t("market.pluginCountUnavailable")}>—</span>
+                            ) : (
+                              <span className="apple-chip" aria-label={t("marketDetail.browsableAria", { count: pluginCount })}>
+                                {t("market.pluginCount", { count: pluginCount })}
+                              </span>
+                            )}
+                            {marketplace.kind === "third-party" ? (
+                              <button
+                                type="button"
+                                className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]"
+                                title={t("action.removeMarket")}
+                                aria-label={t("market.removeAria", { name: marketplace.display_name ?? marketplace.name })}
+                                disabled={Boolean(removing)}
+                                onClick={() => void removeMarketplace(marketplace)}
+                              >
+                                {removing === marketplace.name ? <LoadingSpinner /> : <TrashIcon />}
+                              </button>
+                            ) : null}
                           </div>
-                          <button type="button" className="apple-action-button shrink-0" onClick={() => openMarketplace(marketplace)}>
-                            <ChevronRight className="h-4 w-4" strokeWidth={2} />
-                            {t("action.browse")}
-                          </button>
+                          <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
                         </div>
-                        <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
+                        <button type="button" className="apple-action-button shrink-0" onClick={() => openMarketplace(marketplace)}>
+                          <ChevronRight className="h-4 w-4" strokeWidth={2} />
+                          {t("action.browse")}
+                        </button>
                       </div>
                     );
                   })}

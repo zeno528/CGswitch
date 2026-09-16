@@ -1,7 +1,7 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { comparePlugins, matchesQuery } from "./PluginsView";
+import { compareMarketplacePlugins, comparePlugins, matchesQuery } from "./PluginsView";
 
 const source = readFileSync(new URL("./PluginsView.tsx", import.meta.url), "utf8");
 
@@ -53,5 +53,19 @@ describe("插件列表排序", () => {
       plugin("gmail", "official", "openai-curated-remote"),
     ].sort(comparePlugins);
     expect(ordered.map((item) => item.name)).toEqual(["ponytail", "browser", "documents", "app-69ea", "gmail"]);
+  });
+});
+
+describe("市场明细排序", () => {
+  it("已安装在前，组内按名称", () => {
+    const plugin = (name: string, installed: boolean) =>
+      ({ name, installed }) as Parameters<typeof compareMarketplacePlugins>[0];
+    const ordered = [
+      plugin("zeta", false),
+      plugin("canva", true),
+      plugin("beta", false),
+      plugin("app-69ea", true),
+    ].sort(compareMarketplacePlugins);
+    expect(ordered.map((item) => item.name)).toEqual(["app-69ea", "canva", "beta", "zeta"]);
   });
 });

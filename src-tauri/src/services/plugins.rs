@@ -420,7 +420,25 @@ fn wait_child_with_timeout(
 
 /// 跑 `codex plugin <args>`，返回 stdout；失败时把 CLI 的报错带出来，
 /// 网络类失败追加代理提示；整体限时，防止 git 卡死拖住 UI。
+/// 所有调用共用一个咽喉：成败各记一行留痕（Warn/Debug），排障不再靠猜。
 fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> {
+    let start = std::time::Instant::now();
+    let result = run_codex_plugin_inner(home, args);
+    let command = format!("plugin {}", args.join(" "));
+    match &result {
+        Ok(_) => tauri_plugin_log::log::debug!(
+            "[plugin] CLI 完成 [{command}]（{}ms）",
+            start.elapsed().as_millis()
+        ),
+        Err(error) => tauri_plugin_log::log::warn!(
+            "[plugin] CLI 失败 [{command}]: {error}（{}ms）",
+            start.elapsed().as_millis()
+        ),
+    }
+    result
+}
+
+fn run_codex_plugin_inner(home: &Path, args: &[&str]) -> AppResult<String> {
     let cli = find_codex_cli(home).ok_or_else(|| {
         app_err!(
             "未找到 codex CLI（已尝试 ~/.codex/bin、PATH 与桌面版 appserver 目录），无法管理插件"
@@ -779,6 +797,22 @@ fn parse_marketplace_plugins_output(
             })
         })
         .collect())
+}
+
+/// 别名市场纠正：条目在本市场标记未安装、但同名插件已在任一市场安装时视为已装。
+/// 返回被纠正的插件名，供静默刷新报数。
+fn apply_alias_installed(
+    entries: &mut [MarketplacePlugin],
+    installed_names: &[String],
+) -> Vec<String> {
+    let mut corrected = Vec::new();
+    for item in entries {
+        if !item.installed && installed_names.iter().any(|name| name == &item.name) {
+            item.installed = true;
+            corrected.push(item.name.clone());
+        }
+    }
+    corrected
 }
 
 fn find_plugin_updates(
@@ -1617,7 +1651,28 @@ impl AppContext {
                     "--json",
                 ],
             )?;
-            parse_marketplace_plugins_output(&output, &marketplace, root.as_deref())
+            let mut items =
+                parse_marketplace_plugins_output(&output, &marketplace, root.as_deref())?;
+            // Codex 会给同一插件目录挂两个市场身份（本地镜像 openai-curated / 远程
+            // openai-curated-remote），安装记录只落在其中一个别名下；条目标记未安装时
+            // 按插件名对照全量安装注册表纠正。卸载按插件名解析实际安装，不受别名影响。
+            let installed_names = run_codex_plugin(&home, &["list"])
+                .ok()
+                .map(|text| {
+                    parse_plugin_list_output(&text)
+                        .into_iter()
+                        .map(|(plugin, ..)| plugin)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let corrected = apply_alias_installed(&mut items, &installed_names);
+            if !corrected.is_empty() {
+                tauri_plugin_log::log::debug!(
+                    "[plugin] 别名安装纠正 [{marketplace}]: {}",
+                    corrected.join(", ")
+                );
+            }
+            Ok(items)
         })
         .await
         .map_err(|error| app_err!("插件市场目录任务失败: {error}"))?
@@ -2352,6 +2407,44 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
             Some("https://github.com/YouMind-OpenLab/plugin-marketplace.git")
         );
         assert!(!sources.contains_key("local"));
+    }
+
+    #[test]
+    fn alias_marketplace_entries_inherit_install_state_by_name() {
+        let mut items = vec![
+            MarketplacePlugin {
+                plugin_id: "canva@openai-curated".into(),
+                name: "canva".into(),
+                version: Some("15.0.0".into()),
+                installed: false,
+                auth_policy: String::new(),
+                source: None,
+                display_name: None,
+                description: None,
+                category: None,
+                capabilities: Vec::new(),
+                contains: Vec::new(),
+            },
+            MarketplacePlugin {
+                plugin_id: "grill@openai-curated".into(),
+                name: "grill".into(),
+                version: Some("1.0.0".into()),
+                installed: false,
+                auth_policy: String::new(),
+                source: None,
+                display_name: None,
+                description: None,
+                category: None,
+                capabilities: Vec::new(),
+                contains: Vec::new(),
+            },
+        ];
+        // canva 实际安装在别名 openai-curated-remote 名下（注册表按插件名去重后传入）；grill 真未安装。
+        let installed_names = vec!["canva".to_string()];
+        let corrected = apply_alias_installed(&mut items, &installed_names);
+        assert_eq!(corrected, vec!["canva".to_string()]);
+        assert!(items[0].installed);
+        assert!(!items[1].installed);
     }
 
     #[test]
