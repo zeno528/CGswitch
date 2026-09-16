@@ -109,6 +109,7 @@ export default {
     uninstallAria: "卸载 {{name}}",
     sourceKept: "市场源保留",
     sourceKeptMarket: "市场源 {{marketplace}} 保留",
+    desktopBuiltIn: "桌面内置",
     removeConfirm: "确定卸载「{{name}}」吗？将通过 codex CLI 卸载（{{source}}），之后可在 Codex 或这里重新安装。",
   },
   confirm: {

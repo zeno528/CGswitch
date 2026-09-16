@@ -109,6 +109,7 @@ export default {
     uninstallAria: "Uninstall {{name}}",
     sourceKept: "the marketplace source is kept",
     sourceKeptMarket: "the marketplace source {{marketplace}} is kept",
+    desktopBuiltIn: "Desktop built-in",
     removeConfirm: "Uninstall \"{{name}}\"? This removes the plugin via the codex CLI ({{source}}); you can reinstall it from Codex or from here later.",
   },
   confirm: {

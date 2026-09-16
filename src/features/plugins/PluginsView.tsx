@@ -33,6 +33,12 @@ const originLabels: Partial<Record<PluginSummary["origin"], "origin.official" | 
 /** 可卸载的来源（官方市场与 Skill 注册表除外） */
 const removableOrigins: readonly PluginSummary["origin"][] = ["codex"];
 
+/**
+ * Codex 桌面端视为自身内置能力、不在桌面插件列表里计数的实现层插件
+ * （桌面端"Computer Use"一行即 computer-use 与这几个变体的合并门面）。
+ */
+const desktopBuiltinPlugins = new Set(["browser", "chrome", "unified-computer-use", "codex-app-tools"]);
+
 const marketplaceKindLabels: Record<PluginMarketplace["kind"], "origin.official" | "origin.thirdParty"> = {
   official: "origin.official",
   "third-party": "origin.thirdParty",
@@ -951,6 +957,9 @@ export default function PluginsView({ state }: { state: AppState }) {
                     ) : null}
                     {originLabels[plugin.origin] ? (
                       <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">{t(originLabels[plugin.origin]!)}</span>
+                    ) : null}
+                    {plugin.origin === "official" && desktopBuiltinPlugins.has(plugin.name) ? (
+                      <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">{t("list.desktopBuiltIn")}</span>
                     ) : null}
                     {plugin.enabled ? null : <span className="apple-chip chip-warn shrink-0">{t("detail.disabled")}</span>}
                     {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
