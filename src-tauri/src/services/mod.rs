@@ -21,6 +21,7 @@ mod accounts;
 mod apply;
 mod connections;
 mod mcp;
+mod mcp_probe;
 mod model_fetch;
 mod plugin_net;
 mod plugins;
@@ -32,18 +33,18 @@ mod storage;
 pub use connections::{test_provider_connection, ProfileBalance, ProfileConnectionResult};
 pub use model_fetch::fetch_models;
 pub use plugins::{
-    MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill,
-    PluginSummary, PluginUpdate, SkillCandidate, SkillSummary,
+    detect_system_proxy, MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview,
+    PluginSkill, PluginSummary, PluginUpdate, SkillCandidate, SkillSummary,
 };
 pub use storage::DatabaseBackupInfo;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct AppContext {
     database: Arc<Database>,
     paths: AppPaths,
-    operation: Mutex<()>,
+    operation: Arc<Mutex<()>>,
     /// 认证激活需要等待 OAuth 刷新，必须从开始到 live auth 写入保持顺序。
-    activation: AsyncMutex<()>,
+    activation: Arc<AsyncMutex<()>>,
 }
 
 impl AppContext {
@@ -56,8 +57,8 @@ impl AppContext {
         Self {
             database,
             paths,
-            operation: Mutex::new(()),
-            activation: AsyncMutex::new(()),
+            operation: Arc::new(Mutex::new(())),
+            activation: Arc::new(AsyncMutex::new(())),
         }
     }
 }

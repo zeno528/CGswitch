@@ -2,6 +2,7 @@ import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type Bui
 import type {
   AppState,
   DatabaseBackupInfo,
+  McpProbeResult,
   McpServerSpec,
   MarketplacePlugin,
   PluginMarketplace,
@@ -69,10 +70,12 @@ const webProfiles: ProfileSummary[] = [
   },
 ];
 
+// label 是 i18n key，由前端 t() 翻译展示；与 Rust path_info（services/settings.rs）保持一致
 const webPaths = [
-  { label: "应用数据目录", path: "C:\\Users\\<user>\\.cgswitch" },
-  { label: "备份目录", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
-  { label: "Codex 配置", path: "C:\\Users\\<user>\\.codex\\config.toml" },
+  { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
+  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+  { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
+  { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
 ];
 
 function patchContextOverrideForWeb(text: string, enabled: boolean, compactTokenLimit: number): string {
@@ -610,6 +613,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webUpdateMarker = (args?.version as string) ?? null;
       return null as T;
     case "take_update_marker": {
+      // args?.rollback 仅后端日志分级用，mock 无日志，无需区分
       const marker = webUpdateMarker;
       webUpdateMarker = null;
       return marker as T;
@@ -914,14 +918,21 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const now = new Date().toISOString();
+      const base = profile.name.trim().slice(0, 45);
+      let name = `${base} copy`;
+      let counter = 2;
+      while (webProfiles.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+        name = `${base} copy ${counter}`;
+        counter += 1;
+      }
       const copy: ProfileSummary = {
         ...profile,
         id: `profile-${Date.now()}`,
-        name: `${profile.name} 副本`,
+        name,
         created_at: now,
         updated_at: now,
       };
-      webProfiles.push(copy);
+      webProfiles.splice(webProfiles.indexOf(profile) + 1, 0, copy);
       if (webDetails[profile.id]) webDetails[copy.id] = { ...webDetails[profile.id] };
       return copy as T;
     }
@@ -1170,6 +1181,36 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return String(args?.text ?? "") as T;
     case "list_mcp_servers":
       return [...webMcpServers] as T;
+    case "probe_mcp_server": {
+      const name = String(args?.name ?? "MCP");
+      const includeTools = Boolean(args?.includeTools);
+      // args?.manual 仅后端日志分级用，mock 恒为成功，无需区分
+      const result: McpProbeResult = {
+        ok: true,
+        latency_ms: 18,
+        status: name === "tavily" ? 200 : null,
+        protocol_version: "2025-03-26",
+        server_info: { name: `${name} demo`, version: "1.0.0" },
+        tools: includeTools ? [
+          {
+            name: "search",
+            title: "Search",
+            description: "Search available sources.",
+            input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+          },
+          {
+            name: "fetch",
+            title: "Fetch",
+            description: "Fetch a source by URL.",
+            input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+          },
+        ] : [],
+        tools_truncated: false,
+        error: null,
+        tools_error: null,
+      };
+      return result as T;
+    }
     case "get_mcp_section_toml": {
       // 创建表单预填用：把 mock 列表渲染成 config.toml 片段
       return webMcpServers.map(renderMcpFragmentWeb).join("\n") as T;

@@ -100,6 +100,14 @@ impl AppContext {
         }
 
         self.export_database_unlocked()?;
+        // 自动备份是静默发生的（无 UI 反馈），文件日志留一行便于事后确认它真的跑过
+        if let Some(latest) = self.list_database_backups()?.first() {
+            tauri_plugin_log::log::debug!(
+                "[backup] 自动备份完成 {}（{:.1} MB）",
+                latest.name,
+                latest.size_bytes as f64 / 1_048_576.0
+            );
+        }
         Ok(true)
     }
 

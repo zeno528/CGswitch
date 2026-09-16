@@ -74,6 +74,30 @@ export interface McpServerSpec {
   env_http_headers: Record<string, string>;
 }
 
+export interface McpServerInfo {
+  name: string | null;
+  version: string | null;
+}
+
+export interface McpTool {
+  name: string;
+  title: string | null;
+  description: string | null;
+  input_schema: Record<string, unknown>;
+}
+
+export interface McpProbeResult {
+  ok: boolean;
+  latency_ms: number | null;
+  status: number | null;
+  protocol_version: string | null;
+  server_info: McpServerInfo | null;
+  tools: McpTool[];
+  tools_truncated: boolean;
+  error: string | null;
+  tools_error: string | null;
+}
+
 /** MCP 同步预览的一条差异（live = config.toml，db = 数据库镜像）。 */
 export type McpSyncEntryKind = "live_only" | "db_only" | "changed";
 
@@ -278,6 +302,7 @@ export interface CodexAppStatus {
 }
 
 export interface PathInfo {
+  /** i18n key（settings 命名空间 about.paths.*），展示时经 t() 翻译 */
   label: string;
   path: string;
 }

@@ -278,7 +278,8 @@ fn plugin_timeout_message(args: &[&str], timeout: Duration) -> String {
 /// 探测当前可用的代理地址：显式环境变量优先，其次读系统代理。
 /// GUI 进程拿不到用户 shell 里的 export，git 也不读 macOS/Windows 系统代理——
 /// 这里把两层都查一遍，调用方以环境变量注入 codex CLI 子进程，git 随之继承。
-fn detect_system_proxy() -> Option<String> {
+/// 经 services 模块重导出供启动日志使用；所在模块私有，实际可见范围仍是 crate 内。
+pub fn detect_system_proxy() -> Option<String> {
     for key in ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
         if let Ok(value) = std::env::var(key) {
             if !value.trim().is_empty() {
@@ -419,7 +420,25 @@ fn wait_child_with_timeout(
 
 /// 跑 `codex plugin <args>`，返回 stdout；失败时把 CLI 的报错带出来，
 /// 网络类失败追加代理提示；整体限时，防止 git 卡死拖住 UI。
+/// 所有调用共用一个咽喉：成败各记一行留痕（Warn/Debug），排障不再靠猜。
 fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> {
+    let start = std::time::Instant::now();
+    let result = run_codex_plugin_inner(home, args);
+    let command = format!("plugin {}", args.join(" "));
+    match &result {
+        Ok(_) => tauri_plugin_log::log::debug!(
+            "[plugin] CLI 完成 [{command}]（{}ms）",
+            start.elapsed().as_millis()
+        ),
+        Err(error) => tauri_plugin_log::log::warn!(
+            "[plugin] CLI 失败 [{command}]: {error}（{}ms）",
+            start.elapsed().as_millis()
+        ),
+    }
+    result
+}
+
+fn run_codex_plugin_inner(home: &Path, args: &[&str]) -> AppResult<String> {
     let cli = find_codex_cli(home).ok_or_else(|| {
         app_err!(
             "未找到 codex CLI（已尝试 ~/.codex/bin、PATH 与桌面版 appserver 目录），无法管理插件"
@@ -778,6 +797,28 @@ fn parse_marketplace_plugins_output(
             })
         })
         .collect())
+}
+
+/// 解析 `codex plugin list` 输出的市场身份集合（"Marketplace `X`" 头部行）。
+fn parse_marketplace_identities(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| line.trim().strip_prefix("Marketplace `"))
+        .filter_map(|rest| {
+            rest.strip_suffix('`')
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// 安装目标市场：镜像存在 `-remote` 原体时优先远程身份（桌面端注册表口径），否则原样。
+fn resolve_install_marketplace(marketplace: &str, identities: &[String]) -> String {
+    let remote = format!("{marketplace}-remote");
+    if identities.contains(&remote) {
+        remote
+    } else {
+        marketplace.to_string()
+    }
 }
 
 fn find_plugin_updates(
@@ -1616,6 +1657,8 @@ impl AppContext {
                     "--json",
                 ],
             )?;
+            // 别名身份（openai-curated ↔ openai-curated-remote）导致的 installed 标记
+            // 偏差由前端对照已安装名单纠正（数据现成，避免此处每次多跑一轮 CLI）。
             parse_marketplace_plugins_output(&output, &marketplace, root.as_deref())
         })
         .await
@@ -1639,7 +1682,30 @@ impl AppContext {
             let home = home.clone();
             let marketplace = marketplace.clone();
             let name = name.clone();
-            move || run_codex_plugin(&home, &["add", &name, "--marketplace", &marketplace])
+            move || {
+                // Codex 给官方 curated 目录挂镜像/远程双身份（openai-curated ↔
+                // openai-curated-remote）：桌面端安装注册表只落在远程身份下，
+                // 镜像名安装对桌面端不可见。目标市场存在 `-remote` 原体时重定向，
+                // 其余市场不受影响。
+                let mut target = marketplace.clone();
+                if let Ok(listing) = run_codex_plugin(&home, &["list"]) {
+                    target = resolve_install_marketplace(
+                        &marketplace,
+                        &parse_marketplace_identities(&listing),
+                    );
+                }
+                if target != marketplace {
+                    tauri_plugin_log::log::debug!(
+                        "[plugin] 安装市场解析 [{marketplace} → {target}]"
+                    );
+                }
+                let output = run_codex_plugin(&home, &["add", &name, "--marketplace", &target]);
+                // 用户触发的里程碑动作，Info 级在 release 也留痕（失败已由 CLI 咽喉 Warn）
+                if output.is_ok() {
+                    tauri_plugin_log::log::info!("[plugin] 插件安装成功 [{name}@{target}]");
+                }
+                output
+            }
         })
         .await
         .map_err(|error| app_err!("安装插件任务失败: {error}"))??;
@@ -1993,7 +2059,14 @@ impl AppContext {
             tauri::async_runtime::spawn_blocking({
                 let home = home.clone();
                 let selector = selector.clone();
-                move || run_codex_plugin(&home, &["remove", &selector])
+                move || {
+                    let output = run_codex_plugin(&home, &["remove", &selector]);
+                    // 与安装同口径：用户触发的里程碑动作，Info 级 release 也留痕
+                    if output.is_ok() {
+                        tauri_plugin_log::log::info!("[plugin] 插件卸载成功 [{selector}]");
+                    }
+                    output
+                }
             })
             .await
             .map_err(|error| app_err!("卸载任务失败: {error}"))??;
@@ -2011,6 +2084,15 @@ impl AppContext {
     }
 }
 
+/// Codex 桌面端自身内置的实现层插件（浏览器、计算机操作、桌面工具通道）：
+/// 桌面 UI 不计入已安装、用户不可管理，这里同样过滤以保持两侧一致。
+fn is_desktop_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        "browser" | "chrome" | "unified-computer-use" | "codex-app-tools"
+    )
+}
+
 /// list_plugins 的同步实现（跑在 blocking 线程池）。
 fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSummary>> {
     let sources = marketplace_sources(home);
@@ -2020,6 +2102,9 @@ fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec<PluginSumm
     if find_codex_cli(home).is_some() {
         if let Ok(output) = run_codex_plugin(home, &["list"]) {
             for (name, marketplace, enabled, version, path) in parse_plugin_list_output(&output) {
+                if is_desktop_builtin(&name) {
+                    continue;
+                }
                 let origin = if marketplace.starts_with("openai") {
                     "official"
                 } else {
@@ -2342,6 +2427,29 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
     }
 
     #[test]
+    fn install_marketplace_redirects_to_remote_identity() {
+        let identities = vec![
+            "openai-primary-runtime".to_string(),
+            "openai-bundled".to_string(),
+            "ponytail".to_string(),
+            "openai-curated-remote".to_string(),
+        ];
+        // 镜像名 → 远程原体（桌面端注册表口径）
+        assert_eq!(
+            resolve_install_marketplace("openai-curated", &identities),
+            "openai-curated-remote"
+        );
+        // 无 -remote 原体的市场保持原样
+        assert_eq!(
+            resolve_install_marketplace("ponytail", &identities),
+            "ponytail"
+        );
+        // 解析器只认 "Marketplace `X`" 头部行
+        let listing = "Marketplace `a`\n\nPLUGIN  STATUS\nx@a  installed, enabled  1.0  C:\\x\nMarketplace `b`\n";
+        assert_eq!(parse_marketplace_identities(listing), vec!["a", "b"]);
+    }
+
+    #[test]
     fn marketplace_plugin_json_keeps_installed_and_available_entries() {
         let output = r#"{
           "installed": [{
@@ -2467,6 +2575,20 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
         assert!(validate_plugin_name("memory-bank").is_ok());
         assert!(validate_plugin_name("a@b").is_err());
         assert!(validate_plugin_name("../x").is_err());
+    }
+
+    #[test]
+    fn desktop_builtin_plugins_are_identified() {
+        for name in [
+            "browser",
+            "chrome",
+            "unified-computer-use",
+            "codex-app-tools",
+        ] {
+            assert!(super::is_desktop_builtin(name), "{name} 应识别为桌面内置");
+        }
+        assert!(!super::is_desktop_builtin("computer-use"));
+        assert!(!super::is_desktop_builtin("ponytail"));
     }
 
     #[test]
@@ -2615,71 +2737,35 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
     }
 
     #[tokio::test]
-    async fn list_plugins_reads_skill_lock_and_cache_fallback() {
-        let (home, context) = context();
-        // 无 codex CLI 的环境（CI）：走缓存回退
-        let skill_dir = home.path().join(".agents/skills/lark-base");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(
-            skill_dir.join("SKILL.md"),
-            "---\ndescription: 飞书多维表格操作\n---\n",
-        )
-        .unwrap();
-        std::fs::write(
-            home.path().join(".agents/.skill-lock.json"),
-            r#"{"version":3,"skills":{"lark-base":{"source":"larksuite/cli","sourceType":"github","sourceUrl":"https://github.com/larksuite/cli.git","skillPath":"skills/lark-base/SKILL.md","skillFolderHash":"abc","installedAt":"2026-05-09T10:06:04.288Z"}}}"#,
-        )
-        .unwrap();
-        let cache_dir = home
-            .path()
-            .join(".codex")
+    async fn scan_codex_plugin_cache_reads_manifest_and_version() {
+        // 直接测底层 cache 扫描函数，避开 list_plugins 的 CLI 探测链。
+        // 本机 PATH 装了真 codex CLI 会劫持 list_plugins 走 CLI 路径，与 cache fixture 无关；
+        // 这里直调 scan_codex_plugin_cache，本机环境跟它零耦合。
+        // fixture 用抽象名（sample-marketplace / sample-plugin / v1.0.0），不撞现实插件。
+        let home = tempfile::tempdir().unwrap();
+        let codex_home = home.path().join(".codex");
+        let cache_dir = codex_home
             .join("plugins")
             .join("cache")
-            .join("ponytail")
-            .join("ponytail")
-            .join("4.9.0")
+            .join("sample-marketplace")
+            .join("sample-plugin")
+            .join("v1.0.0")
             .join(".codex-plugin");
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(
             cache_dir.join("plugin.json"),
-            r#"{"name":"ponytail","description":"Ponytail 插件"}"#,
-        )
-        .unwrap();
-        let skill_dir = cache_dir
-            .parent()
-            .unwrap()
-            .join("skills")
-            .join("plugin-skill");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(
-            skill_dir.join("SKILL.md"),
-            "---\ndescription: 插件内的 Skill\n---\n",
-        )
-        .unwrap();
-        std::fs::write(
-            home.path().join(".codex/config.toml"),
-            "[marketplaces.ponytail]\nsource = \"https://github.com/DietrichGebert/ponytail.git\"\n",
+            r#"{"name":"sample-plugin","description":"Fixture plugin"}"#,
         )
         .unwrap();
 
-        assert!(context.list_skills().await.unwrap().is_empty());
-
-        let plugins = context.list_plugins().await.unwrap();
-        assert!(plugins.iter().all(|item| item.name != "lark-base"));
-        let ponytail = plugins.iter().find(|item| item.name == "ponytail").unwrap();
-        assert_eq!(ponytail.origin, "codex");
-        assert_eq!(ponytail.marketplace.as_deref(), Some("ponytail"));
-        assert_eq!(ponytail.version.as_deref(), Some("4.9.0"));
-        assert_eq!(
-            ponytail.source_url.as_deref(),
-            Some("https://github.com/DietrichGebert/ponytail.git")
-        );
-        let plugin_skills = context
-            .list_plugin_skills("ponytail", Some(&ponytail.store_path))
-            .await
-            .unwrap();
-        assert_eq!(plugin_skills.len(), 1);
-        assert_eq!(plugin_skills[0].name, "plugin-skill");
+        let plugins = super::scan_codex_plugin_cache(&codex_home);
+        assert_eq!(plugins.len(), 1);
+        let plugin = &plugins[0];
+        assert_eq!(plugin.name, "sample-plugin");
+        assert_eq!(plugin.marketplace.as_deref(), Some("sample-marketplace"));
+        assert_eq!(plugin.version.as_deref(), Some("v1.0.0"));
+        assert_eq!(plugin.origin, "codex");
+        assert!(plugin.enabled);
     }
 
     #[tokio::test]

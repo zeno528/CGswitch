@@ -38,7 +38,6 @@ export default {
   },
   detail: {
     disabled: "Disabled",
-    intro: "About this plugin",
     category: "Category: {{category}}",
     origin: "Source",
     marketplace: "Marketplace",
@@ -52,7 +51,7 @@ export default {
   },
   marketDetail: {
     installed: "Installed",
-    installedCount: "{{count}} installed",
+    installedCount: "Installed {{count}}",
     installedCountAria: "Installed plugins: {{count}}",
     thirdPartyNotice: "You are using a third-party model: plugin packages are kept, but plugins with App or MCP connectors may fail to load in Codex. To authorize or use connectors, switch to the official ChatGPT subscription provider.",
     browsable: "Browsable plugins",
@@ -105,6 +104,8 @@ export default {
   list: {
     loading: "Loading plugins...",
     empty: "No plugins installed yet. Click \"Marketplace\" in the top right to add an external marketplace.",
+    searchPlaceholder: "Search plugins...",
+    noMatch: "No matching plugins.",
     viewDetailAria: "View {{name}} details",
     viewDetailTitle: "Click to view details",
     uninstallAria: "Uninstall {{name}}",
@@ -118,6 +119,7 @@ export default {
   },
   toast: {
     installed: "Installed \"{{name}}\". Restart Codex to take effect.",
+    installedNeedsAuth: "\"{{name}}\" installed. Please complete authorization in the Codex desktop app.",
     uninstalled: "Uninstalled \"{{name}}\"",
     upgraded: "Upgraded \"{{name}}\"",
   },

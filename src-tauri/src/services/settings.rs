@@ -7,6 +7,16 @@ use super::{
 fn open_in_file_explorer(path: &Path) -> AppResult<()> {
     #[cfg(windows)]
     {
+        // 目录直接打开自身；SHOpenFolderAndSelectItems 的语义是「打开父目录并
+        // 选中目标」，只适合文件，目录走它会落在上一层还得再点一次进去
+        if path.is_dir() {
+            return std::process::Command::new("explorer")
+                .arg(path)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| app_err!("无法打开资源管理器：{error}"));
+        }
+
         use windows::{
             core::HSTRING,
             Win32::{
@@ -16,11 +26,8 @@ fn open_in_file_explorer(path: &Path) -> AppResult<()> {
         };
 
         let _ = unsafe { CoInitialize(None) };
-        let folder = if path.is_file() {
-            path.parent().unwrap_or(path)
-        } else {
-            path
-        };
+        // 走到这里必然是文件：打开其父目录并选中该文件
+        let folder = path.parent().unwrap_or(path);
         let folder_text = HSTRING::from(folder);
         let folder_id = unsafe { ILCreateFromPathW(&folder_text) };
         if folder_id.is_null() {
@@ -49,7 +56,7 @@ fn open_in_file_explorer(path: &Path) -> AppResult<()> {
         result.map_err(|error| app_err!("无法打开资源管理器：{error}"))
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg(path)
@@ -67,11 +74,14 @@ impl AppContext {
             .map_err(|_| app_err!("操作锁已损坏"))?;
         self.sync_active_profile_from_live_locked()?;
         let process_ids = codex_process::find_process_ids(None);
+        let running_app_path = codex_process::running_app_path(&process_ids)
+            .map(|path| path.to_string_lossy().into_owned());
+        let mut force_killed = false;
         if !process_ids.is_empty() {
-            codex_process::terminate_process_ids(&process_ids);
-            // 固定等待 5 秒（可配置的“重启等待超时”已移除）
-            let exited = codex_process::wait_for_exit(&process_ids, 5_000, 100);
-            if !exited {
+            // 先礼后兵：优雅退出请求（WM_CLOSE / AppleEvent quit）→ 超时强杀兜底；
+            // Codex 未运行时本段整体跳过，直接走下方启动流程
+            let outcome = codex_process::shutdown_process_ids(&process_ids);
+            if outcome == codex_process::ShutdownOutcome::Timeout {
                 let message = "Codex 未在超时时间内退出，已取消重新启动";
                 self.database.record_event(
                     None,
@@ -82,9 +92,11 @@ impl AppContext {
                 )?;
                 return Err(app_err!("{message}"));
             }
+            // 优雅路径静默失效（权限被拒/托盘拦截/headless）时唯一可观测的痕迹
+            force_killed = outcome == codex_process::ShutdownOutcome::Forced;
         }
         let result = (|| {
-            codex_process::launch_codex(None)?;
+            codex_process::launch_codex(running_app_path.as_deref())?;
             if codex_process::wait_for_running(10_000, 100) {
                 Ok(())
             } else {
@@ -92,7 +104,11 @@ impl AppContext {
             }
         })();
         let status = if result.is_ok() { "success" } else { "failed" };
-        let message = result.as_ref().err().map(|error| error.0.clone());
+        let message = result
+            .as_ref()
+            .err()
+            .map(|error| error.0.clone())
+            .or_else(|| force_killed.then(|| "codex exited via force kill".to_string()));
         self.database.record_event(
             None,
             "restart",
@@ -151,15 +167,25 @@ impl AppContext {
     }
 
     pub fn set_update_marker(&self, version: &str) -> AppResult<()> {
-        atomic_write(&self.paths.update_marker, version.as_bytes())
+        atomic_write(&self.paths.update_marker, version.as_bytes())?;
+        // 安装器启动（Windows 下随即杀进程）前最后一条日志，升级排障以此为界
+        tauri_plugin_log::log::info!("[update] v{version} 下载完成，写入升级标记，启动安装器");
+        Ok(())
     }
 
     /// 读取并清除「已更新到 vX」标记（一次性消费）；无标记返回 None。
-    pub fn take_update_marker(&self) -> AppResult<Option<String>> {
+    /// rollback=true 表示安装失败后的取回：同样是有标记，语义从「升级成功」变「回滚」，日志分级不同。
+    pub fn take_update_marker(&self, rollback: bool) -> AppResult<Option<String>> {
         match std::fs::read_to_string(&self.paths.update_marker) {
             Ok(text) => {
                 let _ = std::fs::remove_file(&self.paths.update_marker);
-                Ok(Some(text.trim().to_string()))
+                let version = text.trim().to_string();
+                if rollback {
+                    tauri_plugin_log::log::warn!("[update] 安装失败，回滚升级标记 v{version}");
+                } else {
+                    tauri_plugin_log::log::info!("[update] 升级成功落地 v{version}");
+                }
+                Ok(Some(version))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(app_err!("无法读取更新标记: {error}")),
@@ -174,18 +200,23 @@ impl AppContext {
     }
 
     pub(super) fn path_info(&self) -> Vec<PathInfo> {
+        // label 是 i18n key，由前端翻译展示；对应 src/i18n/locales/*/settings.ts 的 about.paths.*
         vec![
             PathInfo {
-                label: "应用数据目录".into(),
+                label: "about.paths.codexConfig".into(),
+                path: self.paths.codex_config().display().to_string(),
+            },
+            PathInfo {
+                label: "about.paths.appData".into(),
                 path: self.paths.root.display().to_string(),
             },
             PathInfo {
-                label: "备份目录".into(),
+                label: "about.paths.backups".into(),
                 path: self.paths.root.join("backups").display().to_string(),
             },
             PathInfo {
-                label: "Codex 配置".into(),
-                path: self.paths.codex_config().display().to_string(),
+                label: "about.paths.logs".into(),
+                path: self.paths.logs.display().to_string(),
             },
         ]
     }

@@ -24,7 +24,7 @@ Step 2–4（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
 - **确认必须弹窗（硬约束）**：所有需要用户拍板的选择（Step 0 的版本号与 CHANGELOG、Step 4 发布确认），AI 在消息里展示完整详情后，必须用 **AskUserQuestion 弹窗**列出可选项让用户**点选**，禁止只发文本等自由回复。推荐选项放首位并标注（Recommended）；完整详情（状态框、草稿全文、资产清单）仍先在弹窗前的消息里展示，弹窗选项的 description 放关键取舍信息。
 - **发版 commit 只许发版文件（硬约束）**：见 Step 1 第 4 步——只 add 6 个发版文件，工作区其他改动一律不进本 commit。
 - **递增必须跑脚本命令，禁手写**：`bump-version.mjs` 内已串联 `sync-version.mjs` 同步全部元数据文件，手写会漏。
-- **版本号基线以 git 三态为准**：最新 tag + HEAD VERSION（`git show HEAD:VERSION`）+ working tree VERSION（读 `VERSION`），取三者中**最大值**作为 bump 基线——用户在测试场景可能预先 bump，working tree 会领先 index / HEAD。
+- **版本号与日志基线 = GitHub 最新已发布 release（非 Draft）**：用 `gh release list --exclude-drafts --limit 1` 取其 tagName 作为唯一基线。分支测试构建的 Draft release 与带后缀的 tag（如 `v0.17.5-codex-3-plugin-optimize.7`）**不算发行**，不作为基线；该基线之后的全部用户可见变更都计入本次日志（即使部分内容曾在分支草稿构建中出现过）。版本号三态（基线 tag 解析出的版本号 + HEAD VERSION（`git show HEAD:VERSION`）+ working tree VERSION（读 `VERSION`））取**最大值**作为 bump 基线——用户在测试场景可能预先 bump，working tree 会领先 index / HEAD。
 - **CHANGELOG 只认代码 diff，不认 commit 信息（硬约束）**：commit 标题/信息可能挂错（历史案例：标题写「优化发版流程描述」的提交实际改了 16 个代码文件）。起草草稿与进/不进清单必须以实际代码改动为唯一依据——先 `git diff <上一tag>..HEAD --stat` 总览，再逐个**代码文件**读完整 diff；commit 列表仅用于确定范围与计数，禁止作为内容依据。
 
 本 skill 不限定分支：在任何分支触发都只执行本地流程（bump + CHANGELOG + commit）。分支切换、push、工作流触发、盯构建、发布由用户自行决定，AI 不主动执行也不主动询问。
@@ -33,14 +33,14 @@ Step 2–4（push / 盯构建 / 发布）属于扩展流程，**必须用户明�
 
 ### Step 0: 收集信息 + 单次合并确认（**等弹窗点选**，不修改任何文件）
 
-1. 取最新 tag：`git tag -l 'v*' | sort -V | tail -1`
+1. 取基线 tag = GitHub 最新已发布 release（非 Draft）：`gh release list --exclude-drafts --limit 1` 读其 tagName。分支测试草稿与带后缀的 tag 不算发行，不作基线（见上方硬约束）。
 2. **git 三态确认基线**（取 max）：
    - HEAD VERSION：`git show HEAD:VERSION`
    - working tree VERSION：读 `VERSION`
    - 最新 tag 解析出的版本号
    - 三者取 max 作为 bump 基线
 3. 拉自上一 tag 起的 commit 列表：`git log <上一tag>..HEAD --oneline --no-merges`（首个版本用全部历史）——仅用于确定范围与计数。**CHANGELOG 内容禁止依据 commit 标题/信息**：必须逐文件阅读 `git diff <上一tag>..HEAD` 的实际代码改动（先 `--stat` 总览，再逐个代码文件读完整 diff，见上方硬约束）。
-4. 拉 `CHANGELOG.md` 最近 5–8 段已发布段落作为"项目自有的 minor / patch / major 量级参照"，并检查顶部是否已有带内容的 `## [Unreleased]` 段落；若三态基线领先最新 tag（疑似上次准备好未发行的残留），用 `gh release view v<基线版本>` 核实是否已发行，据此在展示里说明归档方案（归档为版本标题，或从未发行则并入新段）。
+4. 拉 `CHANGELOG.md` 最近 5–8 段已发布段落作为"项目自有的 minor / patch / major 量级参照"，并检查顶部是否已有带内容的 `## [Unreleased]` 段落；若基线 tag 之后已有部分变更被写入过旧 Unreleased 或分支草稿，核实 `gh release view v<基线版本>` 是否已发行，据此在展示里说明归档方案（归档为版本标题，或从未发行则并入新段）。
 5. **单次展示**（一条消息里同时给出）：
 
    ┌──────────────────────────────────────────────────────────────┐

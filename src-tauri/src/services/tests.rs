@@ -8,13 +8,13 @@ fn update_marker_writes_once_and_consumes_once() {
     let context = AppContext::new(paths).unwrap();
 
     // 无标记 → None；写入 → 读取即消费；再读 → None（一次性）
-    assert_eq!(context.take_update_marker().unwrap(), None);
+    assert_eq!(context.take_update_marker(false).unwrap(), None);
     context.set_update_marker("0.13.4").unwrap();
     assert_eq!(
-        context.take_update_marker().unwrap(),
+        context.take_update_marker(false).unwrap(),
         Some("0.13.4".to_string())
     );
-    assert_eq!(context.take_update_marker().unwrap(), None);
+    assert_eq!(context.take_update_marker(false).unwrap(), None);
 }
 
 fn chatgpt_test_context() -> (tempfile::TempDir, AppContext) {
@@ -912,7 +912,7 @@ fn only_exposed_paths_can_be_opened() {
     let home = tempfile::tempdir().unwrap();
     let context = AppContext::new(crate::paths::from_home(home.path()).unwrap()).unwrap();
 
-    // 设置页只暴露三处：应用数据目录 / Codex 配置 / 备份目录（见 path_info）
+    // 设置页只暴露四处：应用数据目录 / 备份目录 / 日志目录 / Codex 配置（见 path_info）
     assert!(context.is_managed_path(&context.paths.root.display().to_string()));
     assert!(context.is_managed_path(&context.paths.codex_config().display().to_string()));
     assert!(context.is_managed_path(&context.paths.root.join("backups").display().to_string()));
@@ -2790,7 +2790,7 @@ fn update_profile_saves_and_clears_admin_url() {
 }
 
 #[test]
-fn duplicate_profile_copies_payload_with_suffix() {
+fn duplicate_profile_copies_payload_with_copy_suffix_and_inserts_after_source() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();
     paths.ensure().unwrap();
@@ -2809,7 +2809,12 @@ base_url = "https://api.example"
     )
     .unwrap();
     let context = AppContext::new(paths).unwrap();
+    let before = context.capture_profile("Before").unwrap();
     let profile = context.capture_profile("GLM").unwrap();
+    let after = context.capture_profile("After").unwrap();
+    context
+        .reorder_profiles(&[before.id.clone(), profile.id.clone(), after.id.clone()])
+        .unwrap();
     context
         .update_profile(
             &profile.id,
@@ -2824,7 +2829,15 @@ base_url = "https://api.example"
         .unwrap();
 
     let dup = context.duplicate_profile(&profile.id).unwrap();
-    assert_eq!(dup.name, "GLM 副本");
+    assert_eq!(dup.name, "GLM copy");
+    let ordered_names: Vec<String> = context
+        .database
+        .profiles()
+        .unwrap()
+        .into_iter()
+        .map(|item| item.name)
+        .collect();
+    assert_eq!(ordered_names, ["Before", "GLM", "GLM copy", "After"]);
     assert_eq!(
         dup.admin_url.as_deref(),
         Some("https://console.example.com")
@@ -2836,7 +2849,7 @@ base_url = "https://api.example"
 
     std::thread::sleep(std::time::Duration::from_millis(2));
     let dup2 = context.duplicate_profile(&profile.id).unwrap();
-    assert_eq!(dup2.name, "GLM 副本 2");
+    assert_eq!(dup2.name, "GLM copy 2");
 }
 
 #[test]
@@ -2912,4 +2925,22 @@ base_url = "https://api.example"
             .as_deref(),
         Some("acc-1")
     );
+}
+
+#[test]
+fn path_info_includes_log_dir_and_open_path_allows_it() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    assert!(paths.logs.exists());
+    let context = AppContext::new(paths).unwrap();
+
+    let info = context.path_info();
+    let logs = info
+        .iter()
+        .find(|item| item.label == "about.paths.logs")
+        .expect("path_info 应包含日志目录条目");
+    assert!(logs.path.ends_with("logs"));
+    // 白名单由 path_info 驱动：日志目录出现即可被 open_path 打开
+    assert!(context.is_managed_path(&logs.path));
 }

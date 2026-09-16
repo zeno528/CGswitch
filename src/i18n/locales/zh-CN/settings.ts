@@ -135,6 +135,12 @@ export default {
     installing: "正在下载安装…",
     upgradeTo: "升级至",
     dataAndPaths: "数据与路径",
+    paths: {
+      appData: "应用数据目录",
+      backups: "备份目录",
+      logs: "日志目录",
+      codexConfig: "Codex 配置",
+    },
     openPath: "打开{{label}}",
   },
 } as const;

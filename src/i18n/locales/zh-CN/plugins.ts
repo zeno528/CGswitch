@@ -38,7 +38,6 @@ export default {
   },
   detail: {
     disabled: "已禁用",
-    intro: "插件介绍",
     category: "分类：{{category}}",
     origin: "来源",
     marketplace: "市场",
@@ -52,7 +51,7 @@ export default {
   },
   marketDetail: {
     installed: "已安装",
-    installedCount: "{{count}} 个已安装",
+    installedCount: "已安装 {{count}}",
     installedCountAria: "{{count}} 个已安装插件",
     thirdPartyNotice: "当前为第三方模型：插件包会保留；带 App 或 MCP 连接器的插件可能无法在 Codex 中加载。需要授权或使用连接器时，请切换到 ChatGPT 官方订阅配置。",
     browsable: "可浏览插件",
@@ -105,6 +104,8 @@ export default {
   list: {
     loading: "正在加载插件…",
     empty: "还没有安装插件。点击右上角「插件市场」添加外部市场。",
+    searchPlaceholder: "搜索插件…",
+    noMatch: "没有匹配的插件。",
     viewDetailAria: "查看 {{name}} 详情",
     viewDetailTitle: "点击查看详情",
     uninstallAria: "卸载 {{name}}",
@@ -118,6 +119,7 @@ export default {
   },
   toast: {
     installed: "已安装插件「{{name}}」，重启 Codex 后生效",
+    installedNeedsAuth: "「{{name}}」安装成功，请在 Codex 桌面端完成授权",
     uninstalled: "已卸载插件「{{name}}」",
     upgraded: "已升级插件「{{name}}」",
   },

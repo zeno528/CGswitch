@@ -123,6 +123,33 @@ pub struct McpServerSpec {
     pub env_http_headers: BTreeMap<String, String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct McpServerInfo {
+    pub name: Option<String>,
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct McpTool {
+    pub name: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub input_schema: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct McpProbeResult {
+    pub ok: bool,
+    pub latency_ms: Option<u128>,
+    pub status: Option<u16>,
+    pub protocol_version: Option<String>,
+    pub server_info: Option<McpServerInfo>,
+    pub tools: Vec<McpTool>,
+    pub tools_truncated: bool,
+    pub error: Option<String>,
+    pub tools_error: Option<String>,
+}
+
 /// MCP 同步预览的一条差异（live = ~/.codex/config.toml，db = 数据库镜像）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

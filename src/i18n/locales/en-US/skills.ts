@@ -1,5 +1,6 @@
 /** Skills page strings. */
 export default {
+  installedCount: "Installed {{count}}",
   enabledCount: "{{count}} enabled",
   importSkill: "Import Skill",
   importSkillAria: "Import Skill ({{count}} available to import or update)",

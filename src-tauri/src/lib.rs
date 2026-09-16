@@ -14,6 +14,9 @@ use std::sync::Arc;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
+use tauri_plugin_log::{
+    log, FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy,
+};
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
 use crate::services::AppContext;
@@ -40,6 +43,26 @@ fn tray_labels(language: &str) -> (&'static str, &'static str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // panic 钩子最先装：崩溃写一条进文件日志再交还默认处理器，闪退才可追溯；
+    // 这是全项目唯一的 error! 调用（日志规约：error 留给崩溃）
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let message = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|message| message.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "非字符串 panic".to_string());
+        let location = info
+            .location()
+            .map(|location| location.to_string())
+            .unwrap_or_else(|| "未知位置".to_string());
+        let thread = std::thread::current();
+        let thread = thread.name().unwrap_or("<unnamed>").to_string();
+        log::error!("[panic] 崩溃 [{thread}]: {message} @{location}");
+        default_hook(info);
+    }));
+
     let paths = paths::app_paths().expect("无法定位用户数据目录");
     let database = Arc::new(database::Database::open(&paths).expect("无法初始化 CGswitch 数据库"));
     let context = AppContext::new_with_database(paths.clone(), database.clone());
@@ -48,6 +71,39 @@ pub fn run() {
     )));
 
     tauri::Builder::default()
+        // 日志插件放链条首位：其 setup 最先挂全局 logger，后续插件的日志也能被捕获
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                // 磁盘封顶：单文件攒到 1MB 才轮转出备份，最多留 10 个旧文件。
+                // 实测单会话日志仅几 KB~几十 KB，平时只会看到一个 cgswitch.log，
+                // 会话边界靠每次启动的「CGswitch v 启动」横幅行分隔
+                .rotation_strategy(RotationStrategy::KeepSome(10))
+                .max_file_size(1_000_000)
+                // 单文件追加（插件默认行为）：不做按启动分文件，避免日志目录文件堆积
+                .file_open_strategy(FileOpenStrategy::Append)
+                .timezone_strategy(TimezoneStrategy::UseLocal)
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
+                // updater 每次检查更新会把完整响应（含三平台签名）打成 DEBUG，
+                // 淹没真正有用的日志行，压到 Info；release 本就是 Info，此行只影响 dev
+                .level_for("tauri_plugin_updater", log::LevelFilter::Info)
+                // reqwest 每次建连都记一行 DEBUG（一场会话数百条），压到 Info 留出
+                // 自有 debug 日志的可读性；连接失败仍会以 WARN 冒出，不受影响
+                .level_for("reqwest", log::LevelFilter::Info)
+                // tao（窗口库）在 Windows 上偶发成对 event_loop DEBUG，与业务无关
+                .level_for("tao", log::LevelFilter::Info)
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::Folder {
+                        path: paths.logs.clone(),
+                        file_name: Some("cgswitch".into()),
+                    }),
+                ])
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -97,6 +153,7 @@ pub fn run() {
             commands::delete_profile,
             commands::apply_profile,
             commands::list_mcp_servers,
+            commands::probe_mcp_server,
             commands::save_mcp_server,
             commands::delete_mcp_server,
             commands::get_mcp_section_toml,
@@ -143,6 +200,14 @@ pub fn run() {
             commands::open_path,
         ])
         .setup(|app| {
+            log::info!("CGswitch v{} 启动", env!("CARGO_PKG_VERSION"));
+            // reqwest 的「proxy(...) intercepts」建连日志已随 DEBUG 噪音压掉，
+            // 代理走向改由自己记：一场一行，排障时对照请求是否走代理
+            match services::detect_system_proxy() {
+                Some(proxy) => log::info!("[net] 检测到系统代理 {proxy}"),
+                None => log::debug!("[net] 未检测到系统代理"),
+            }
+
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
             // 统一先隐藏一次；非静默启动时由前端在 settings 加载后 show()。
             if let Some(window) = app.get_webview_window("main") {
@@ -161,10 +226,18 @@ pub fn run() {
                     }
                 }))?;
 
-            let settings = app.state::<AppContext>().settings().unwrap_or_default();
+            // 设置加载失败若静默回退默认值，用户配置「消失」且无迹可寻，必须留痕
+            let settings = match app.state::<AppContext>().settings() {
+                Ok(settings) => settings,
+                Err(error) => {
+                    log::warn!("[settings] 加载设置失败，本次启动使用默认值: {error}");
+                    Default::default()
+                }
+            };
             if settings.autostart_enabled {
-                if let Err(error) = app.autolaunch().enable() {
-                    eprintln!("同步开机自启设置失败: {error}");
+                match app.autolaunch().enable() {
+                    Ok(()) => log::debug!("[autostart] 开机自启已启用"),
+                    Err(error) => log::warn!("[autostart] 同步开机自启设置失败: {error}"),
                 }
             }
 
@@ -173,7 +246,7 @@ pub fn run() {
                 loop {
                     if let Err(error) = scheduler_handle.state::<AppContext>().auto_backup_if_due()
                     {
-                        eprintln!("自动备份失败: {error}");
+                        log::warn!("[backup] 自动备份失败: {error}");
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 }

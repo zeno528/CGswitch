@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { loadPlugins } from "../../app/managementDataCache";
+import { getCachedMarketplacePlugins, getCachedPluginMarketplaces, loadPlugins, loadPluginMarketplaces, refreshMarketplacePlugins, setCachedMarketplacePlugins } from "../../app/managementDataCache";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
 import { AppSelect } from "../../components/AppSelect";
@@ -29,6 +29,16 @@ const originLabels: Partial<Record<PluginSummary["origin"], "origin.official" | 
   official: "origin.official",
   codex: "origin.thirdParty",
 };
+
+/// 插件排序分层：外部市场（用户添加）→ 内置 runtime 市场 → 官方 curated 市场。组内按名称。
+function pluginTier(plugin: PluginSummary): number {
+  if (plugin.origin !== "official") return 0;
+  return plugin.marketplace?.includes("curated") ? 2 : 1;
+}
+
+export function comparePlugins(left: PluginSummary, right: PluginSummary): number {
+  return pluginTier(left) - pluginTier(right) || left.name.localeCompare(right.name);
+}
 
 /** 可卸载的来源（官方市场与 Skill 注册表除外） */
 const removableOrigins: readonly PluginSummary["origin"][] = ["codex"];
@@ -63,6 +73,58 @@ function findConfiguredMarketplace(
 ): PluginMarketplace | undefined {
   return marketplaces.find(
     (marketplace) => marketplace.name === recommended.name || recommended.aliases.includes(marketplace.name),
+  );
+}
+
+/// 别名市场纠正：Codex 给同一目录挂镜像/远程双身份，安装记录只落在其中一个；
+/// 条目标记未安装但同名插件已在任意市场安装时视为已装（名单来自已安装列表，无需额外 CLI 查询）。
+export function resolveAliasInstalled(
+  plugins: MarketplacePlugin[],
+  installedNames: ReadonlySet<string>,
+): MarketplacePlugin[] {
+  return plugins.map((plugin) =>
+    !plugin.installed && installedNames.has(plugin.name) ? { ...plugin, installed: true } : plugin,
+  );
+}
+
+/// 市场明细排序：已安装在前，组内按名称。
+export function compareMarketplacePlugins(left: MarketplacePlugin, right: MarketplacePlugin): number {
+  return Number(right.installed) - Number(left.installed) || left.name.localeCompare(right.name);
+}
+
+/// 插件搜索：仅匹配插件名（忽略大小写子串），不搜显示名与描述。
+export function matchesQuery(plugin: { name: string }, query: string): boolean {
+  return plugin.name.toLowerCase().includes(query.trim().toLowerCase());
+}
+
+function PluginSearchInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const { t } = useTranslation("plugins");
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Ctrl/Cmd+K 聚焦搜索框：window 级监听保证焦点在别处也生效，抢在浏览器站点搜索前 preventDefault
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+  return (
+    <div className="relative w-44 shrink-0">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-secondary)" strokeWidth={2} />
+      <input
+        ref={inputRef}
+        type="search"
+        className="app-input app-input--pill"
+        placeholder={t("list.searchPlaceholder")}
+        aria-label={t("list.searchPlaceholder")}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
   );
 }
 
@@ -104,7 +166,10 @@ function SourceLink({ source }: { source: string }) {
       className={isGithub ? "shrink-0 p-1 text-accent" : "apple-inline-btn shrink-0"}
       title={t("source.openTitle", { url })}
       aria-label={isGithub ? t("source.openGithub") : t("source.openSource")}
-      onClick={() => void api.openUrl(url).catch((error) => feedback.error(String(error)))}
+      onClick={(event) => {
+        event.stopPropagation();
+        void api.openUrl(url).catch((error) => feedback.error(String(error)));
+      }}
     >
       {isGithub ? <GithubMark /> : t("source.openSource")}
       {!isGithub && <ExternalLink className="h-3.5 w-3.5" strokeWidth={2} />}
@@ -148,44 +213,40 @@ function PluginDetailView({ plugin, onBack }: { plugin: PluginSummary; onBack: (
       </div>
       <div className="apple-edit-content">
         <div className="apple-group">
-          <div className="apple-panel-section">
+          <div className="apple-panel-section apple-panel-section--compact">
             <div className="flex flex-wrap items-center gap-2">
               <span className="title-md">{plugin.display_name ?? plugin.name}</span>
               {plugin.version ? <span className="apple-chip">v{plugin.version}</span> : null}
               {plugin.enabled ? null : <span className="apple-chip chip-warn">{t("detail.disabled")}</span>}
             </div>
-            {plugin.description ? <p className="muted mt-2 text-sm">{plugin.description}</p> : null}
-          </div>
-          <div className="apple-panel-section">
-            <div className="field-label mb-2">{t("detail.intro")}</div>
-            {plugin.description ? <p className="muted text-sm">{plugin.description}</p> : null}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            {plugin.description ? <p className="muted mt-1.5 text-sm">{plugin.description}</p> : null}
+            {plugin.category || plugin.capabilities.length ? <div className="mt-2 flex flex-wrap items-center gap-2">
               {plugin.category ? <span className="apple-chip">{t("detail.category", { category: plugin.category })}</span> : null}
               {plugin.capabilities.length ? <ContainsChips items={plugin.capabilities} /> : null}
+            </div> : null}
+          </div>
+          <div className="apple-panel-section apple-panel-section--compact">
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="field-label shrink-0">{t("detail.origin")}</span>
+                <span className="text-sm">{originLabels[plugin.origin] ? t(originLabels[plugin.origin]!) : plugin.origin}</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="field-label shrink-0">{t("detail.marketplace")}</span>
+                <span className="mono text-sm">{plugin.marketplace ?? t("detail.local")}</span>
+              </div>
+            </div>
+            <div className="mt-2 flex min-w-0 items-baseline gap-2">
+              <span className="field-label shrink-0">{t("detail.installPath")}</span>
+              <span className="mono muted min-w-0 break-all text-sm">{plugin.store_path}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="field-label shrink-0">{t("detail.composition")}</span>
+              {plugin.contains.length ? <ContainsChips items={plugin.contains} /> : <span className="muted text-sm">{t("detail.compositionEmpty")}</span>}
             </div>
           </div>
           <div className="apple-panel-section">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <div className="field-label mb-1.5">{t("detail.origin")}</div>
-                <div className="text-sm">{originLabels[plugin.origin] ? t(originLabels[plugin.origin]!) : plugin.origin}</div>
-              </div>
-              <div>
-                <div className="field-label mb-1.5">{t("detail.marketplace")}</div>
-                <div className="mono text-sm">{plugin.marketplace ?? t("detail.local")}</div>
-              </div>
-              <div>
-                <div className="field-label mb-1.5">{t("detail.installPath")}</div>
-                <div className="mono muted break-all text-sm">{plugin.store_path}</div>
-              </div>
-            </div>
-          </div>
-          <div className="apple-panel-section">
-            <div className="field-label mb-2">{t("detail.composition")}</div>
-            {plugin.contains.length ? <ContainsChips items={plugin.contains} /> : <p className="muted text-sm">{t("detail.compositionEmpty")}</p>}
-          </div>
-          <div className="apple-panel-section">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
               <div className="field-label">Skills</div>
               {skillsLoaded ? <span className="apple-chip" aria-label={t("detail.skillCount", { count: skills.length })}>{skills.length}</span> : null}
             </div>
@@ -215,6 +276,7 @@ function MarketplaceDetailView({
   marketplace,
   onBack,
   onInstalled,
+  installedNames,
   updates,
   onUpgrade,
   thirdPartyProfile,
@@ -222,6 +284,7 @@ function MarketplaceDetailView({
   marketplace: PluginMarketplace;
   onBack: () => void;
   onInstalled: () => Promise<void>;
+  installedNames: ReadonlySet<string>;
   updates: PluginUpdate[];
   onUpgrade: (update: PluginUpdate) => Promise<void>;
   thirdPartyProfile: boolean;
@@ -234,34 +297,56 @@ function MarketplaceDetailView({
   const [installing, setInstalling] = useState("");
   const [uninstalling, setUninstalling] = useState("");
   const [upgrading, setUpgrading] = useState("");
-  const installedPluginCount = plugins.filter((plugin) => plugin.installed).length;
+  const [query, setQuery] = useState("");
+  const resolvedPlugins = resolveAliasInstalled(plugins, installedNames);
+  const installedPluginCount = resolvedPlugins.filter((plugin) => plugin.installed).length;
+  const visiblePlugins = [...resolvedPlugins].sort(compareMarketplacePlugins).filter((plugin) => matchesQuery(plugin, query));
 
   useEffect(() => {
     let cancelled = false;
-    setLoaded(false);
     setError("");
-    void api.listMarketplacePlugins(marketplace.name, marketplace.root)
+    // 缓存直出旧目录，静默刷新后整体替换；刷新失败且有缓存时保留旧数据、不报错。
+    const cached = getCachedMarketplacePlugins(marketplace.name);
+    setPlugins(cached ?? []);
+    setLoaded(cached !== null);
+    void refreshMarketplacePlugins(marketplace.name, marketplace.root)
       .then((items) => {
-        if (!cancelled) setPlugins(items);
+        if (!cancelled) {
+          setPlugins(items);
+          setLoaded(true);
+        }
       })
       .catch((reason) => {
-        if (!cancelled) setError(String(reason));
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled) {
+          if (cached === null) setError(String(reason));
+          setLoaded(true);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [marketplace.name]);
 
+  /// 本地与全局缓存同步打补丁，避免下次进入时缓存先闪回旧状态。
+  const applyPluginPatch = (pluginId: string, patch: Partial<MarketplacePlugin>) => {
+    const next = plugins.map((item) => item.plugin_id === pluginId ? { ...item, ...patch } : item);
+    setPlugins(next);
+    setCachedMarketplacePlugins(marketplace.name, next);
+  };
+
   const install = async (plugin: MarketplacePlugin) => {
     if (installing || uninstalling) return;
     setInstalling(plugin.name);
     try {
       await api.installMarketplacePlugin(marketplace.name, plugin.name);
-      setPlugins((items) => items.map((item) => item.plugin_id === plugin.plugin_id ? { ...item, installed: true, enabled: true } : item));
-      feedback.success(t("toast.installed", { name: plugin.name }));
+      applyPluginPatch(plugin.plugin_id, { installed: true });
+      // ON_INSTALL 插件的 OAuth 弹窗是桌面端 app-server 私有能力，CLI 无法触发；
+      // 安装成功后明确引导用户去桌面端完成授权，避免「装了但不可用」的静默缺失。
+      if (plugin.auth_policy === "ON_INSTALL") {
+        feedback.warning(t("toast.installedNeedsAuth", { name: plugin.name }));
+      } else {
+        feedback.success(t("toast.installed", { name: plugin.name }));
+      }
       await onInstalled();
     } catch (reason) {
       feedback.error(String(reason));
@@ -282,7 +367,7 @@ function MarketplaceDetailView({
     setUninstalling(plugin.name);
     try {
       await api.uninstallPlugin(plugin.name);
-      setPlugins((items) => items.map((item) => item.plugin_id === plugin.plugin_id ? { ...item, installed: false, enabled: false } : item));
+      applyPluginPatch(plugin.plugin_id, { installed: false });
       feedback.success(t("toast.uninstalled", { name: plugin.name }));
       await onInstalled();
     } catch (reason) {
@@ -297,7 +382,7 @@ function MarketplaceDetailView({
     setUpgrading(update.name);
     try {
       await onUpgrade(update);
-      setPlugins((items) => items.map((item) => item.plugin_id === `${update.name}@${update.marketplace}` ? { ...item, version: update.version } : item));
+      applyPluginPatch(`${update.name}@${update.marketplace}`, { version: update.version });
       feedback.success(t("toast.upgraded", { name: update.name }));
       await onInstalled();
     } catch (reason) {
@@ -313,8 +398,11 @@ function MarketplaceDetailView({
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("nav.backToMarketplace")} onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
           <span className="apple-title">{marketplace.display_name ?? marketplace.name}</span>
-          {loaded ? <span className="apple-chip apple-chip--accent" aria-label={t("marketDetail.installedCountAria", { count: installedPluginCount })}>{t("marketDetail.installedCount", { count: installedPluginCount })}</span> : null}
+          {loaded ? <span className="apple-chip" aria-label={t("marketDetail.installedCountAria", { count: installedPluginCount })}>{t("marketDetail.installedCount", { count: installedPluginCount })}</span> : null}
         </button>
+        <div className="ml-auto flex items-center gap-2">
+          <PluginSearchInput value={query} onChange={setQuery} />
+        </div>
       </div>
       <div className="apple-edit-content">
         <div className="space-y-4">
@@ -333,15 +421,12 @@ function MarketplaceDetailView({
                 <div className="field-label">{t("marketDetail.browsable")}</div>
                 <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
                 {loaded ? <span className="apple-chip" aria-label={t("marketDetail.browsableAria", { count: plugins.length })}>{plugins.length}</span> : <LoadingSpinner />}
+                {marketplace.source_url ? <SourceLink source={marketplace.source_url} /> : null}
               </div>
               {marketplace.description ? <p className="muted mt-2 text-sm">{marketplace.description}</p> : null}
-              {marketplace.source_url ? (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <SourceLink source={marketplace.source_url} />
-                </div>
-              ) : null}
               {error ? <p className="muted mt-2 text-sm">{error}</p> : null}
               {loaded && !plugins.length && !error ? <p className="muted mt-2 text-sm">{t("marketDetail.empty")}</p> : null}
+              {loaded && !error && plugins.length > 0 && !visiblePlugins.length ? <p className="muted mt-2 text-sm">{t("list.noMatch")}</p> : null}
             </div>
             {!loaded ? [0, 1, 2].map((index) => (
               <div key={index} className="apple-panel-section apple-panel-section--compact" aria-busy="true" aria-label={t("marketDetail.loadingAria")}>
@@ -350,7 +435,7 @@ function MarketplaceDetailView({
                   <div className="h-3 w-2/3 rounded bg-black/5 dark:bg-white/10" />
                 </div>
               </div>
-            )) : plugins.map((plugin) => (
+            )) : visiblePlugins.map((plugin) => (
               <div key={plugin.plugin_id} className="apple-panel-section apple-panel-section--compact">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -553,10 +638,12 @@ function AddPluginView({
 function PluginMarketplaceView({
   onBack,
   onInstalled,
+  installedNames,
   thirdPartyProfile,
 }: {
   onBack: () => void;
   onInstalled: () => Promise<void>;
+  installedNames: ReadonlySet<string>;
   thirdPartyProfile: boolean;
 }) {
   const feedback = useFeedback();
@@ -576,9 +663,9 @@ function PluginMarketplaceView({
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollTop = useRef(0);
 
-  const refreshMarketplaces = async () => {
+  const refreshMarketplaces = async (force = false) => {
     try {
-      setMarketplaces(await api.listPluginMarketplaces());
+      setMarketplaces(await loadPluginMarketplaces(force));
       setMarketplacesError("");
     } catch (error) {
       setMarketplacesError(String(error));
@@ -587,20 +674,38 @@ function PluginMarketplaceView({
     }
   };
 
-  useEffect(() => { void refreshMarketplaces(); }, []);
+  useEffect(() => {
+    // 缓存直出市场列表，再静默刷新；无缓存时走正常加载。
+    const cached = getCachedPluginMarketplaces();
+    if (cached) setMarketplaces(cached);
+    void refreshMarketplaces(Boolean(cached));
+  }, []);
 
   useEffect(() => {
+    // 缓存直出数量，随后静默刷新回填；刷新失败时保留缓存值，不再整组重置转圈。
+    setMarketplacePluginCounts(Object.fromEntries(
+      marketplaces.map((marketplace) => {
+        const cached = getCachedMarketplacePlugins(marketplace.name);
+        return [marketplace.name, cached ? cached.length : null] as const;
+      }),
+    ));
     let cancelled = false;
-    setMarketplacePluginCounts({});
     void Promise.all(marketplaces.map(async (marketplace) => {
       try {
-        const plugins = await api.listMarketplacePlugins(marketplace.name, marketplace.root);
+        const plugins = await refreshMarketplacePlugins(marketplace.name, marketplace.root);
         return [marketplace.name, plugins.length] as const;
       } catch {
-        return [marketplace.name, null] as const;
+        return null;
       }
     })).then((entries) => {
-      if (!cancelled) setMarketplacePluginCounts(Object.fromEntries(entries));
+      if (cancelled) return;
+      setMarketplacePluginCounts((prev) => {
+        const next = { ...prev };
+        for (const entry of entries) {
+          if (entry) next[entry[0]] = entry[1];
+        }
+        return next;
+      });
     });
     return () => { cancelled = true; };
   }, [marketplaces]);
@@ -625,7 +730,7 @@ function PluginMarketplaceView({
     try {
       const marketplace = await api.addPluginMarketplace(recommended.source);
       feedback.success(t("market.entered", { name: marketplace.name }));
-      await refreshMarketplaces();
+      await refreshMarketplaces(true);
       openMarketplace(marketplace);
     } catch (error) {
       feedback.error(String(error));
@@ -647,7 +752,7 @@ function PluginMarketplaceView({
     try {
       await api.removePluginMarketplace(marketplace.name);
       feedback.success(t("market.removedToast", { name: marketplace.name }));
-      await refreshMarketplaces();
+      await refreshMarketplaces(true);
     } catch (error) {
       feedback.error(String(error));
     } finally {
@@ -694,6 +799,7 @@ function PluginMarketplaceView({
         marketplace={selectedMarketplace}
         onBack={() => setSelectedMarketplace(null)}
         onInstalled={onInstalled}
+        installedNames={installedNames}
         updates={updates}
         onUpgrade={upgrade}
         thirdPartyProfile={thirdPartyProfile}
@@ -777,48 +883,42 @@ function PluginMarketplaceView({
                   {marketplaces.map((marketplace) => {
                     const pluginCount = marketplacePluginCounts[marketplace.name];
                     return (
-                      <div key={marketplace.name} className="rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
-                              <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
-                              {pluginCount === undefined ? (
-                                <span role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner /></span>
-                              ) : pluginCount === null ? (
-                                <span className="apple-chip" aria-label={t("market.pluginCountUnavailable")}>—</span>
-                              ) : (
-                                <span className="apple-chip" aria-label={t("marketDetail.browsableAria", { count: pluginCount })}>
-                                  {t("market.pluginCount", { count: pluginCount })}
-                                </span>
-                              )}
-                              {marketplace.kind === "third-party" ? (
-                                <button
-                                  type="button"
-                                  className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]"
-                                  title={t("action.removeMarket")}
-                                  aria-label={t("market.removeAria", { name: marketplace.display_name ?? marketplace.name })}
-                                  disabled={Boolean(removing)}
-                                  onClick={() => void removeMarketplace(marketplace)}
-                                >
-                                  {removing === marketplace.name ? <LoadingSpinner /> : <TrashIcon />}
-                                </button>
-                              ) : null}
-                            </div>
-                            {marketplace.description ? <div className="muted mt-1 break-words text-sm">{marketplace.description}</div> : null}
+                      <div
+                        key={marketplace.name}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
+                            <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>
+                            {pluginCount === undefined ? (
+                              <span role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner /></span>
+                            ) : pluginCount === null ? (
+                              <span className="apple-chip" aria-label={t("market.pluginCountUnavailable")}>—</span>
+                            ) : (
+                              <span className="apple-chip" aria-label={t("marketDetail.browsableAria", { count: pluginCount })}>
+                                {t("market.pluginCount", { count: pluginCount })}
+                              </span>
+                            )}
+                            {marketplace.kind === "third-party" ? (
+                              <button
+                                type="button"
+                                className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]"
+                                title={t("action.removeMarket")}
+                                aria-label={t("market.removeAria", { name: marketplace.display_name ?? marketplace.name })}
+                                disabled={Boolean(removing)}
+                                onClick={() => void removeMarketplace(marketplace)}
+                              >
+                                {removing === marketplace.name ? <LoadingSpinner /> : <TrashIcon />}
+                              </button>
+                            ) : null}
                           </div>
-                          <button type="button" className="apple-action-button shrink-0" onClick={() => openMarketplace(marketplace)}>
-                            <ChevronRight className="h-4 w-4" strokeWidth={2} />
-                            {t("action.browse")}
-                          </button>
+                          <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
                         </div>
-                        {marketplace.source_url ? (
-                          <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <span className="mono muted meta-xs break-all">{marketplace.source_url}</span>
-                            <SourceLink source={marketplace.source_url} />
-                          </div>
-                        ) : null}
-                        <div className="mono muted meta-xs mt-1 break-all">{marketplace.root}</div>
+                        <button type="button" className="apple-action-button shrink-0" onClick={() => openMarketplace(marketplace)}>
+                          <ChevronRight className="h-4 w-4" strokeWidth={2} />
+                          {t("action.browse")}
+                        </button>
                       </div>
                     );
                   })}
@@ -840,6 +940,7 @@ export default function PluginsView({ state }: { state: AppState }) {
   const [loadError, setLoadError] = useState("");
   const [selectedPlugin, setSelectedPlugin] = useState<PluginSummary | null>(null);
   const [addingMarketplace, setAddingMarketplace] = useState(false);
+  const [query, setQuery] = useState("");
   const thirdPartyProfile =
     state.profiles.find((profile) => profile.id === state.active_profile_id)?.kind === "third_party";
 
@@ -855,7 +956,10 @@ export default function PluginsView({ state }: { state: AppState }) {
     }
   };
   useEffect(() => {
+    // 先显缓存（命中即回），后台再强制取一次最新，保证外部变更能浮上来；
+    // 无缓存时第二次调用与第一次共享同一个在途请求，不会重复加载。
     void refresh();
+    void refresh(true);
   }, []);
 
   const remove = async (plugin: PluginSummary) => {
@@ -878,10 +982,8 @@ export default function PluginsView({ state }: { state: AppState }) {
     }
   };
 
-  const orderedPlugins = [...plugins].sort((left, right) => {
-    const originOrder = Number(left.origin !== "codex") - Number(right.origin !== "codex");
-    return originOrder || left.name.localeCompare(right.name);
-  });
+  const orderedPlugins = [...plugins].sort(comparePlugins);
+  const visiblePlugins = orderedPlugins.filter((plugin) => matchesQuery(plugin, query));
 
   if (selectedPlugin) {
     return <PluginDetailView plugin={selectedPlugin} onBack={() => setSelectedPlugin(null)} />;
@@ -891,6 +993,7 @@ export default function PluginsView({ state }: { state: AppState }) {
       <PluginMarketplaceView
         onBack={() => setAddingMarketplace(false)}
         onInstalled={() => refresh(true)}
+        installedNames={new Set(plugins.map((plugin) => plugin.name))}
         thirdPartyProfile={thirdPartyProfile}
       />
     );
@@ -906,15 +1009,18 @@ export default function PluginsView({ state }: { state: AppState }) {
           <div className="flex items-center gap-2">
             <div className="apple-title">{t("title")}</div>
             {loaded ? (
-              <span className="apple-chip apple-chip--accent" aria-label={t("marketDetail.installedCountAria", { count: plugins.length })}>{t("marketDetail.installedCount", { count: plugins.length })}</span>
+              <span className="apple-chip" aria-label={t("marketDetail.installedCountAria", { count: visiblePlugins.length })}>{t("marketDetail.installedCount", { count: visiblePlugins.length })}</span>
             ) : <span className="text-accent" role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner size="md" /></span>}
           </div>
         </div>
-        <button type="button" className="apple-action-button app-button--primary" onClick={() => setAddingMarketplace(true)}>
-          <Store className="h-4 w-4" strokeWidth={2} />
-          {t("marketplace")}
-          <span className="rounded-full bg-white/95 px-1.5 py-px font-bold tracking-wide text-accent meta-xs">Beta</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <PluginSearchInput value={query} onChange={setQuery} />
+          <button type="button" className="apple-action-button app-button--primary" onClick={() => setAddingMarketplace(true)}>
+            <Store className="h-4 w-4" strokeWidth={2} />
+            {t("marketplace")}
+            <span className="rounded-full bg-white/95 px-1.5 py-px font-bold tracking-wide text-accent meta-xs">Beta</span>
+          </button>
+        </div>
       </header>
       <div className="apple-edit-content">
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
@@ -928,14 +1034,22 @@ export default function PluginsView({ state }: { state: AppState }) {
           </EmptyStateCard>
         ) : plugins.length ? (
           <div className="space-y-2">
-            {orderedPlugins.map((plugin) => (
-              <div key={plugin.name} className="apple-list-row">
-                <button
-                  type="button"
+            {visiblePlugins.map((plugin) => (
+              <div key={plugin.name} className="apple-list-row plugin-list-row">
+                <div
                   className="group min-w-0 flex-1 cursor-pointer text-left"
+                  role="button"
+                  tabIndex={0}
                   aria-label={t("list.viewDetailAria", { name: plugin.display_name ?? plugin.name })}
                   title={t("list.viewDetailTitle")}
                   onClick={() => setSelectedPlugin(plugin)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedPlugin(plugin);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 truncate font-semibold transition-colors group-hover:text-accent">{plugin.display_name ?? plugin.name}</span>
@@ -946,16 +1060,16 @@ export default function PluginsView({ state }: { state: AppState }) {
                       <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">{t(originLabels[plugin.origin]!)}</span>
                     ) : null}
                     {plugin.enabled ? null : <span className="apple-chip chip-warn shrink-0">{t("detail.disabled")}</span>}
+                    {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
                   </div>
                   <div className="muted meta-xs truncate">
                     {plugin.description ?? plugin.name}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2">
+                    <ContainsChips items={plugin.contains} />
+                  </div>
                 </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <ContainsChips items={plugin.contains} />
-                </div>
-                </button>
                 <div className="flex shrink-0 items-center gap-1.5">
-                  {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
                   {removableOrigins.includes(plugin.origin) ? (
                     <button
                       type="button"
@@ -970,6 +1084,7 @@ export default function PluginsView({ state }: { state: AppState }) {
                 </div>
               </div>
             ))}
+            {visiblePlugins.length ? null : <p className="muted mt-4 text-sm">{t("list.noMatch")}</p>}
           </div>
         ) : null}
       </div>

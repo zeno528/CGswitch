@@ -24,7 +24,7 @@ export function toAppUpdate(update: Pick<Update, "version" | "body" | "download"
       try {
         await update.install();
       } catch (error) {
-        await api.takeUpdateMarker().catch(() => undefined);
+        await api.takeUpdateMarker(true).catch(() => undefined);
         throw error;
       }
       // macOS / Linux 安装后不会自动重启，手动 relaunch；Windows 不会走到这里。

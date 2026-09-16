@@ -12,39 +12,232 @@ pub const WINDOWS_CODEX_AUMIDS: &[&str] = &[
     "OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!App",
 ];
 
-pub fn find_process_ids(manual_path: Option<&str>) -> Vec<u32> {
-    let system = process_system();
-    system
+fn collect_process_ids(filter: impl Fn(&sysinfo::Process) -> bool) -> Vec<u32> {
+    process_system()
         .processes()
         .iter()
-        .filter(|(_, process)| is_codex_desktop_process(process, manual_path))
+        .filter(|(_, process)| filter(process))
         .map(|(pid, _)| pid.as_u32())
         .collect()
 }
 
+pub fn find_process_ids(manual_path: Option<&str>) -> Vec<u32> {
+    collect_process_ids(|process| is_codex_desktop_process(process, manual_path))
+}
+
+#[cfg(windows)]
+fn find_main_process_ids(manual_path: Option<&str>) -> Vec<u32> {
+    collect_process_ids(|process| is_windows_main_process(process, manual_path))
+}
+
+/// PID 复用防御：优雅等待窗口内 PID 可能被系统复用，击杀前必须复核进程
+/// 仍是 Codex，避免误杀无辜进程。
 pub fn terminate_process_ids(ids: &[u32]) {
     let system = process_system();
     for id in ids {
         if let Some(process) = system.process(Pid::from_u32(*id)) {
-            let _ = process.kill();
+            if is_codex_desktop_process(process, None) {
+                let _ = process.kill();
+            }
         }
     }
 }
 
+/// 同样的身份复核用于退出判定：PID 被复用成非 Codex 进程时按“已退出”处理，
+/// 重启流程可以继续，而不是等到超时后报错。
 pub fn running_process_ids(ids: &[u32]) -> Vec<u32> {
     let system = process_system();
     ids.iter()
         .copied()
-        .filter(|id| system.process(Pid::from_u32(*id)).is_some())
+        .filter(|id| {
+            system
+                .process(Pid::from_u32(*id))
+                .is_some_and(|process| is_codex_desktop_process(process, None))
+        })
         .collect()
+}
+
+/// 优雅退出的等待上限：超过则强杀兜底（弹退出确认框、托盘拦截、headless bug 等
+/// 场景下优雅请求会失效，强杀兜底保证重启必然成功）。
+/// - Windows：实测（2026-09-13）Codex 是托盘驻留应用，WM_CLOSE 只会关窗到托盘、
+///   进程永不退出（OpenAI 未提供退出协议，openai/codex#3860、桌面端 #39527 均 open），
+///   等待只是低成本保险，1s 足够；保留 WM_CLOSE 请求本身，让 Electron 走一次干净
+///   的关窗落盘，未来支持 WM_CLOSE 退出时自动升级为真优雅。
+/// - macOS：AppleEvent quit 是真优雅退出，保留 4s 给完整退出流程。
+#[cfg(windows)]
+const GRACEFUL_EXIT_TIMEOUT_MS: u64 = 1_000;
+#[cfg(not(windows))]
+const GRACEFUL_EXIT_TIMEOUT_MS: u64 = 4_000;
+
+/// 强杀后的退出等待上限。SIGKILL/Terminate 几乎即时，5 秒只是防御性上限。
+const FORCE_EXIT_TIMEOUT_MS: u64 = 5_000;
+
+/// 结束 Codex 进程的结果。`Forced` 是优雅路径静默失效（退出确认框、托盘拦截、
+/// headless、macOS 自动化权限被拒）时唯一可观测的痕迹，调用方记入事件日志。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShutdownOutcome {
+    /// 优雅退出请求在超时内完成（含无进程可结束）。
+    Graceful,
+    /// 优雅退出超时或无法发出请求，强杀兜底后全部退出。
+    Forced,
+    /// 强杀后仍未全部退出。
+    Timeout,
+}
+
+/// 结束 Codex 进程的先礼后兵阶梯：请求优雅退出 → 等待 → 超时强杀兜底。
+pub fn shutdown_process_ids(ids: &[u32]) -> ShutdownOutcome {
+    shutdown_process_ids_with(
+        ids,
+        GRACEFUL_EXIT_TIMEOUT_MS,
+        FORCE_EXIT_TIMEOUT_MS,
+        request_graceful_quit,
+        terminate_process_ids,
+        running_process_ids,
+        std::thread::sleep,
+    )
+}
+
+/// 请求 Codex 优雅退出，返回是否成功发出请求（能否真正退出由调用方轮询判定）。
+/// - Windows：向 Codex 进程的可见顶层窗口投 WM_CLOSE，Electron 主进程收到后走
+///   window-all-closed → app.quit() 完整退出流程；helper 进程（gpu/network 等）
+///   没有顶层窗口，天然只会命中主进程。
+/// - macOS：osascript 发 AppleEvent quit（等同 Cmd+Q），对 Electron 的 Codex.app
+///   与原生的 ChatGPT.app 通吃；AppleScript `with timeout` 自我限定 3 秒，
+///   应用弹退出确认框时 osascript 自行超时退出，不会挂住。
+pub fn request_graceful_quit(ids: &[u32]) -> bool {
+    #[cfg(windows)]
+    {
+        post_close_messages(ids)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos_request_quit(ids)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = ids;
+        false
+    }
+}
+
+#[cfg(windows)]
+fn post_close_messages(ids: &[u32]) -> bool {
+    use std::collections::HashSet;
+
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible, PostMessageW, WM_CLOSE,
+    };
+
+    struct CloseTargets {
+        pids: HashSet<u32>,
+        posted: bool,
+    }
+    // EnumWindows 同步回调：在返回前于同一线程依次执行，通过 LPARAM 传上下文。
+    unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        // SAFETY: lparam 指向本线程栈上的 CloseTargets，EnumWindows 返回前不会再被使用
+        let targets = unsafe { &mut *(lparam.0 as *mut CloseTargets) };
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        if pid != 0 && targets.pids.contains(&pid) && unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            // 只有投递成功才计入：提权/完整性不匹配的目标 PostMessageW 会静默失败，
+            // 误报 posted=true 会让上层白等满优雅超时。
+            if unsafe { PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0)) }.is_ok() {
+                targets.posted = true;
+            }
+        }
+        true.into()
+    }
+
+    let mut targets = CloseTargets {
+        pids: ids.iter().copied().collect(),
+        posted: false,
+    };
+    let enumerated = unsafe {
+        EnumWindows(
+            Some(enum_proc),
+            LPARAM(&mut targets as *mut CloseTargets as isize),
+        )
+    };
+    if enumerated.is_err() {
+        return false;
+    }
+    targets.posted
+}
+
+#[cfg(target_os = "macos")]
+fn macos_request_quit(ids: &[u32]) -> bool {
+    use std::collections::BTreeSet;
+
+    let system = process_system();
+    let app_names = ids
+        .iter()
+        .filter_map(|id| system.process(Pid::from_u32(*id)))
+        .filter_map(|process| process.exe())
+        .filter_map(macos_app_name_for_executable)
+        .collect::<BTreeSet<_>>();
+
+    app_names.into_iter().fold(false, |sent, name| {
+        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        // output() 等待并回收 osascript；退出确认框或自动化权限失败会返回错误，
+        // 上层随后走强杀兜底。
+        let requested = Command::new("osascript")
+            .args([
+                "-e",
+                "with timeout of 3 seconds",
+                "-e",
+                &format!("tell application \"{escaped}\" to quit"),
+                "-e",
+                "end timeout",
+            ])
+            .stdin(Stdio::null())
+            .output()
+            .is_ok_and(|output| output.status.success());
+        sent || requested
+    })
+}
+
+pub fn shutdown_process_ids_with<F, G, W, S>(
+    ids: &[u32],
+    graceful_timeout_ms: u64,
+    force_timeout_ms: u64,
+    request_quit: F,
+    terminate: G,
+    mut running: W,
+    mut sleep: S,
+) -> ShutdownOutcome
+where
+    F: Fn(&[u32]) -> bool,
+    G: Fn(&[u32]),
+    W: FnMut(&[u32]) -> Vec<u32>,
+    S: FnMut(Duration),
+{
+    if ids.is_empty() {
+        return ShutdownOutcome::Graceful;
+    }
+    if request_quit(ids)
+        && wait_for_exit_with(ids, graceful_timeout_ms, 100, &mut running, &mut sleep)
+    {
+        return ShutdownOutcome::Graceful;
+    }
+    terminate(ids);
+    if wait_for_exit_with(ids, force_timeout_ms, 100, &mut running, &mut sleep) {
+        ShutdownOutcome::Forced
+    } else {
+        ShutdownOutcome::Timeout
+    }
 }
 
 fn process_system() -> System {
     System::new_with_specifics(
         // 只需要进程可执行文件路径判断 Codex 桌面进程；不刷新 CPU/内存/磁盘等无关数据，
         // 避免每 3 秒轮询和每次 get_state 全量扫描系统进程产生无谓开销
-        RefreshKind::nothing()
-            .with_processes(ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet)),
+        RefreshKind::nothing().with_processes(
+            ProcessRefreshKind::nothing()
+                .with_cmd(UpdateKind::OnlyIfNotSet)
+                .with_exe(UpdateKind::OnlyIfNotSet),
+        ),
     )
 }
 
@@ -74,16 +267,6 @@ where
     }
 }
 
-pub fn wait_for_exit(ids: &[u32], timeout_ms: u64, interval_ms: u64) -> bool {
-    wait_for_exit_with(
-        ids,
-        timeout_ms,
-        interval_ms,
-        running_process_ids,
-        std::thread::sleep,
-    )
-}
-
 pub fn wait_for_running_with<F, S>(
     timeout_ms: u64,
     interval_ms: u64,
@@ -106,11 +289,23 @@ where
     }
 }
 
+/// 重启后的「已拉起」判据：Windows 只认主进程，helper 不能作为启动依据；
+/// macOS 的 find_process_ids 本就只命中主可执行文件。
+#[cfg(windows)]
+fn find_running_ids() -> Vec<u32> {
+    find_main_process_ids(None)
+}
+
+#[cfg(not(windows))]
+fn find_running_ids() -> Vec<u32> {
+    find_process_ids(None)
+}
+
 pub fn wait_for_running(timeout_ms: u64, interval_ms: u64) -> bool {
     wait_for_running_with(
         timeout_ms,
         interval_ms,
-        || !find_process_ids(None).is_empty(),
+        || !find_running_ids().is_empty(),
         std::thread::sleep,
     )
 }
@@ -142,7 +337,7 @@ pub fn launch_codex(manual_path: Option<&str>) -> AppResult<()> {
         Err(app_err!("未找到可启动的 Codex/ChatGPT 桌面应用"))
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         let app = manual_path
             .map(PathBuf::from)
@@ -160,11 +355,17 @@ pub fn launch_codex(manual_path: Option<&str>) -> AppResult<()> {
         }
         macos_open_app(&app, true)
     }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = manual_path;
+        Err(app_err!("当前系统暂不支持启动 Codex 桌面应用"))
+    }
 }
 
 /// 用 LaunchServices 打开 macOS 应用，返回 `open` 的真实执行结果（旧实现
 /// 只 spawn 不查退出码，-600 等失败会被静默吞掉，只能靠上层轮询超时暴露）。
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn macos_open_app(app: &Path, force_new_instance: bool) -> AppResult<()> {
     let output = Command::new("open")
         .args(macos_open_args(app, force_new_instance))
@@ -183,7 +384,7 @@ fn macos_open_app(app: &Path, force_new_instance: bool) -> AppResult<()> {
     Err(app_err!("无法启动 Codex: {detail}"))
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn macos_open_args(app: &Path, force_new_instance: bool) -> Vec<String> {
     let mut args = Vec::new();
     if force_new_instance {
@@ -269,7 +470,7 @@ fn windows_standalone_executable(manual_path: Option<&str>) -> Option<PathBuf> {
     None
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn macos_app_candidate() -> Option<PathBuf> {
     let home = crate::paths::home_dir();
     let names = [
@@ -285,6 +486,39 @@ fn macos_app_candidate() -> Option<PathBuf> {
         .find(|path| path.is_dir())
 }
 
+#[cfg(target_os = "macos")]
+fn macos_app_bundle_path(executable: &Path) -> Option<PathBuf> {
+    let text = executable.to_string_lossy();
+    let marker = ".app/contents/macos/";
+    let end = text.to_ascii_lowercase().find(marker)? + ".app".len();
+    Some(PathBuf::from(&text[..end]))
+}
+
+#[cfg(target_os = "macos")]
+fn macos_app_name_for_executable(executable: &Path) -> Option<String> {
+    macos_app_bundle_path(executable)?
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .map(str::to_string)
+}
+
+/// 返回当前正在运行的 macOS 应用包，用于重启同一份安装，而不是按固定候选顺序
+/// 换成另一份 Codex/ChatGPT。
+#[cfg(target_os = "macos")]
+pub fn running_app_path(ids: &[u32]) -> Option<PathBuf> {
+    let system = process_system();
+    ids.iter()
+        .filter_map(|id| system.process(Pid::from_u32(*id)))
+        .filter_map(|process| process.exe())
+        .find_map(macos_app_bundle_path)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn running_app_path(ids: &[u32]) -> Option<PathBuf> {
+    let _ = ids;
+    None
+}
+
 pub fn codex_display_path(manual_path: Option<&str>) -> (String, String) {
     if let Some(manual) = manual_path.filter(|value| !value.trim().is_empty()) {
         return (manual.to_string(), "manual".into());
@@ -295,12 +529,17 @@ pub fn codex_display_path(manual_path: Option<&str>) -> (String, String) {
         (WINDOWS_CODEX_AUMIDS[0].to_string(), "packaged-app".into())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         let path = macos_app_candidate()
             .map(|value| value.display().to_string())
             .unwrap_or_else(|| "未识别".into());
         (path, "auto".into())
+    }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        ("未识别".into(), "unsupported".into())
     }
 }
 
@@ -310,18 +549,49 @@ fn is_codex_desktop_process(process: &sysinfo::Process, manual_path: Option<&str
         let Some(exe) = process.exe() else {
             return false;
         };
-        is_windows_codex_process(exe, manual_path)
+        is_windows_codex_process_with_cmd(exe, process.cmd(), manual_path)
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     {
         let _ = manual_path;
         process.exe().is_some_and(is_macos_codex_executable)
     }
+
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let _ = (process, manual_path);
+        false
+    }
 }
 
 #[cfg(windows)]
-pub fn is_windows_codex_process(exe: &Path, manual_path: Option<&str>) -> bool {
+fn is_windows_main_process(process: &sysinfo::Process, manual_path: Option<&str>) -> bool {
+    let Some(exe) = process.exe() else {
+        return false;
+    };
+    is_windows_main_process_with_cmd(exe, process.cmd(), manual_path)
+}
+
+#[cfg(windows)]
+fn is_windows_main_process_with_cmd(
+    exe: &Path,
+    cmd: &[std::ffi::OsString],
+    manual_path: Option<&str>,
+) -> bool {
+    is_windows_codex_process_with_cmd(exe, cmd, manual_path)
+        && !cmd
+            .iter()
+            .skip(1)
+            .any(|argument| argument.to_string_lossy().starts_with("--type="))
+}
+
+#[cfg(windows)]
+fn is_windows_codex_process_with_cmd(
+    exe: &Path,
+    cmd: &[std::ffi::OsString],
+    manual_path: Option<&str>,
+) -> bool {
     let exe_text = exe
         .to_string_lossy()
         .replace('/', "\\")
@@ -333,6 +603,16 @@ pub fn is_windows_codex_process(exe: &Path, manual_path: Option<&str>) -> bool {
     let is_codex_name = file_name.eq_ignore_ascii_case("Codex.exe")
         || file_name.eq_ignore_ascii_case("ChatGPT.exe");
     if !is_codex_name {
+        return false;
+    }
+
+    // The bundled app-server shares the desktop executable name. Its command line is the
+    // reliable discriminator when sysinfo can read it; Electron renderer/helper processes
+    // remain in the shutdown set so a forced restart can clean them up too.
+    if cmd.iter().skip(1).any(|argument| {
+        let argument = argument.to_string_lossy();
+        argument == "app-server"
+    }) {
         return false;
     }
 
@@ -357,10 +637,16 @@ pub fn is_windows_codex_process(exe: &Path, manual_path: Option<&str>) -> bool {
         return !root_text.is_empty() && exe_text.starts_with(&root_text);
     }
 
+    if exe_text.contains("\\openai\\codex\\bin\\")
+        || exe_text.contains("\\openai\\codex\\runtimes\\")
+    {
+        return false;
+    }
+
     exe_text.contains("\\openai\\codex\\") || exe_text.contains("\\programs\\openai\\")
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 pub fn is_macos_codex_executable(executable: &Path) -> bool {
     let is_main_executable = matches!(
         executable.file_name().and_then(|name| name.to_str()),
@@ -369,7 +655,8 @@ pub fn is_macos_codex_executable(executable: &Path) -> bool {
     is_main_executable
         && executable
             .to_string_lossy()
-            .contains(".app/Contents/MacOS/")
+            .to_ascii_lowercase()
+            .contains(".app/contents/macos/")
 }
 
 #[cfg(test)]
@@ -386,12 +673,35 @@ mod tests {
             r"C:\Program Files\WindowsApps\OpenAI.Codex_1.0_x64__2p2nqsd0c76g0\App\resources\ChatGPT.exe",
         );
         let cli = Path::new(r"C:\Users\me\.codex\bin\codex.exe");
-        assert!(is_windows_codex_process(package, None));
-        assert!(!is_windows_codex_process(helper, None));
-        assert!(!is_windows_codex_process(cli, None));
+        assert!(is_windows_codex_process_with_cmd(package, &[], None));
+        assert!(!is_windows_codex_process_with_cmd(helper, &[], None));
+        assert!(!is_windows_codex_process_with_cmd(cli, &[], None));
     }
 
-    #[cfg(not(windows))]
+    #[cfg(windows)]
+    #[test]
+    fn windows_process_filter_excludes_bundled_app_server_and_electron_helpers() {
+        let app_server = Path::new(r"C:\Users\me\AppData\Local\OpenAI\Codex\bin\build\codex.exe");
+        let package = Path::new(
+            r"C:\Program Files\WindowsApps\OpenAI.Codex_1.0_x64__2p2nqsd0c76g0\App\ChatGPT.exe",
+        );
+        let renderer = vec![
+            std::ffi::OsString::from(package),
+            std::ffi::OsString::from("--type=renderer"),
+        ];
+        let server = vec![
+            std::ffi::OsString::from(app_server),
+            std::ffi::OsString::from("app-server"),
+        ];
+        assert!(!is_windows_codex_process_with_cmd(
+            app_server, &server, None
+        ));
+        assert!(is_windows_codex_process_with_cmd(package, &renderer, None));
+        assert!(is_windows_codex_process_with_cmd(package, &[], None));
+        assert!(!is_windows_main_process_with_cmd(package, &renderer, None));
+    }
+
+    #[cfg(target_os = "macos")]
     #[test]
     fn macos_process_filter_recognizes_main_app_executables_only() {
         assert!(is_macos_codex_executable(std::path::Path::new(
@@ -408,7 +718,7 @@ mod tests {
         )));
     }
 
-    #[cfg(not(windows))]
+    #[cfg(target_os = "macos")]
     #[test]
     fn macos_open_args_order_matches_open_cli() {
         assert_eq!(
@@ -418,6 +728,20 @@ mod tests {
         assert_eq!(
             macos_open_args(Path::new("/Applications/ChatGPT.app"), true),
             ["-n", "-a", "/Applications/ChatGPT.app"]
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_process_path_resolves_the_running_app_bundle() {
+        let executable = Path::new("/Applications/OpenAI Codex.app/Contents/MacOS/Codex");
+        assert_eq!(
+            macos_app_bundle_path(executable),
+            Some(PathBuf::from("/Applications/OpenAI Codex.app"))
+        );
+        assert_eq!(
+            macos_app_name_for_executable(executable).as_deref(),
+            Some("OpenAI Codex")
         );
     }
 
@@ -456,5 +780,117 @@ mod tests {
     #[test]
     fn wait_for_running_times_out_when_launch_does_not_create_a_process() {
         assert!(!wait_for_running_with(0, 0, || false, |_| {}));
+    }
+
+    #[test]
+    fn shutdown_ladder_reports_graceful_without_processes() {
+        let quit = std::cell::Cell::new(0);
+        let kill = std::cell::Cell::new(0);
+        assert_eq!(
+            shutdown_process_ids_with(
+                &[],
+                1_000,
+                1_000,
+                |_| {
+                    quit.set(quit.get() + 1);
+                    true
+                },
+                |_| kill.set(kill.get() + 1),
+                |_| Vec::new(),
+                |_| {},
+            ),
+            ShutdownOutcome::Graceful
+        );
+        assert_eq!(quit.get(), 0);
+        assert_eq!(kill.get(), 0);
+    }
+
+    #[test]
+    fn shutdown_ladder_exits_gracefully_without_force_kill() {
+        let quit = std::cell::Cell::new(0);
+        let kill = std::cell::Cell::new(0);
+        let mut checks = 0u32;
+        assert_eq!(
+            shutdown_process_ids_with(
+                &[7],
+                1_000,
+                1_000,
+                |_| {
+                    quit.set(quit.get() + 1);
+                    true
+                },
+                |_| kill.set(kill.get() + 1),
+                |_| {
+                    checks += 1;
+                    if checks >= 2 {
+                        Vec::new()
+                    } else {
+                        vec![7]
+                    }
+                },
+                |_| {},
+            ),
+            ShutdownOutcome::Graceful
+        );
+        assert_eq!(quit.get(), 1);
+        assert_eq!(kill.get(), 0);
+    }
+
+    #[test]
+    fn shutdown_ladder_escalates_to_force_kill_on_graceful_timeout() {
+        let kill = std::cell::Cell::new(0);
+        assert_eq!(
+            shutdown_process_ids_with(
+                &[7],
+                0,
+                1_000,
+                |_| true,
+                |_| kill.set(kill.get() + 1),
+                |ids| if kill.get() == 0 {
+                    ids.to_vec()
+                } else {
+                    Vec::new()
+                },
+                |_| {},
+            ),
+            ShutdownOutcome::Forced
+        );
+        assert_eq!(kill.get(), 1);
+    }
+
+    #[test]
+    fn shutdown_ladder_reports_timeout_when_force_kill_also_times_out() {
+        assert_eq!(
+            shutdown_process_ids_with(&[7], 0, 0, |_| true, |_| {}, |ids| ids.to_vec(), |_| {},),
+            ShutdownOutcome::Timeout
+        );
+    }
+
+    #[test]
+    fn shutdown_ladder_skips_graceful_wait_when_request_unavailable() {
+        // Windows headless（MainWindowHandle=0）等场景：无窗口可投递，直接强杀兜底
+        let quit = std::cell::Cell::new(0);
+        let kill = std::cell::Cell::new(0);
+        assert_eq!(
+            shutdown_process_ids_with(
+                &[7],
+                1_000,
+                1_000,
+                |_| {
+                    quit.set(quit.get() + 1);
+                    false
+                },
+                |_| kill.set(kill.get() + 1),
+                |ids| if kill.get() == 0 {
+                    ids.to_vec()
+                } else {
+                    Vec::new()
+                },
+                |_| {},
+            ),
+            ShutdownOutcome::Forced
+        );
+        assert_eq!(quit.get(), 1);
+        assert_eq!(kill.get(), 1);
     }
 }

@@ -53,14 +53,16 @@ describe("SettingsSections", () => {
   });
 
   it("does not show the backup directory in the about paths", () => {
+    setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider>
         <AppUpdateProvider enabled={false}>
           <SettingsAbout
             paths={[
-              { label: "应用数据目录", path: "C:\\Users\\<user>\\.cgswitch" },
-              { label: "备份目录", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
-              { label: "Codex 配置", path: "C:\\Users\\<user>\\.codex\\config.toml" },
+              { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
+              { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+              { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
+              { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
             ]}
             onOpenPath={() => undefined}
             openingPath={null}
@@ -69,6 +71,7 @@ describe("SettingsSections", () => {
       </FeedbackProvider>,
     );
     expect(html).toContain("应用数据目录");
+    expect(html).toContain("日志目录");
     expect(html).not.toContain("备份目录");
   });
 
