@@ -5,7 +5,8 @@
 <h1 align="center">CGswitch</h1>
 
 <p align="center">
-  面向 Codex 供应商、账号、MCP 服务器、插件和 Skill 的本地优先桌面管理工具。
+  为 OpenAI Codex 打造的一站式开源桌面管理器。<br />
+  一键切换供应商配置，管理 ChatGPT 账号，统一管理 MCP 服务器、插件与 Skills。
 </p>
 
 <p align="center">
@@ -22,11 +23,11 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555?style=flat-square" alt="Windows 和 macOS" />
 </p>
 
-CGswitch 是一个 Tauri 桌面应用，用于管理 Codex 生态中的配置。它把供应商配置、ChatGPT 订阅账号、MCP 服务器、Codex 插件和 Skill 变成可管理的本地资源，减少反复手动修改 `~/.codex` 下多个文件的需要。
+CGswitch 面向使用 OpenAI Codex 的开发者，围绕电脑上的 Codex 本地环境工作。它将供应商配置、ChatGPT OAuth 账号、MCP 服务器、插件和 Skills 的管理放进一个桌面应用，减少在多个配置文件和工具之间来回操作。
 
-## 为什么需要 CGswitch？
+## CGswitch 如何融入 Codex 工作流
 
-Codex 的配置通常分布在多个文件中，而且供应商配置与 MCP、插件、Skill 属于不同类型的资源。CGswitch 将每套供应商配置保存为可命名、可切换的配置，支持编辑、测试，并在写入前创建备份后应用。
+Codex 的供应商设置、ChatGPT 账号认证和工具扩展共同构成日常工作环境，却分布在不同的本地配置和资源目录中。CGswitch 把它们放到同一个管理界面：供应商设置保存为可命名、可切换的档案，MCP、Plugins 和 Skills 作为全局 Codex 资源独立管理。
 
 ```text
 供应商模板或现有 Codex 配置
@@ -36,7 +37,7 @@ Codex 的配置通常分布在多个文件中，而且供应商配置与 MCP、�
        编辑 · 测试 · 应用 · 恢复
 ```
 
-供应商配置与全局 MCP、Plugins、Skills 管理区域相互独立。切换模型供应商时，不需要重新配置其他 Codex 资源。
+应用供应商档案前，CGswitch 会备份相关 Codex 文件。切换模型供应商时，MCP、Plugins 和 Skills 等全局资源仍保持独立，不必重新配置。
 
 ## 功能
 
@@ -68,6 +69,7 @@ Codex 的配置通常分布在多个文件中，而且供应商配置与 MCP、�
 - 管理 `~/.codex/config.toml` 中全局的 `[mcp_servers.*]` 配置。
 - 配置本地 `STDIO` 服务器和远程 `HTTP` / Streamable HTTP 服务器。
 - 编辑命令、参数、URL、Bearer Token 环境变量、请求头、环境变量和超时。
+- 测试服务器连通性并查看其提供的工具，探测经系统代理进行。
 - 在结构化表单与 TOML 源码之间切换，并提供校验和格式化。
 - 在同步前比较 Codex 实际配置与 CGswitch 数据库镜像，明确选择同步方向。
 
@@ -75,6 +77,9 @@ Codex 的配置通常分布在多个文件中，而且供应商配置与 MCP、�
 
 - 列出已安装的 Codex 插件，查看版本、能力、内容、来源和安装路径。
 - 浏览内置及外部插件 Marketplace。
+- 市场目录的安装状态与 Codex 桌面端保持一致，通过应用安装的插件桌面端可直接识别。
+- 已安装插件排在市场列表前方；支持仅按插件名搜索，快捷键 Ctrl/Cmd+K。
+- 安装需要登录授权的插件时，会提示前往 Codex 桌面端完成认证。
 - 从 GitHub 简写、Git、SSH 或本地 Marketplace 目录添加市场源。
 - 预览并从 GitHub 仓库安装插件，可选指定分支或子目录。
 - 检查并升级第三方 Marketplace 插件，也可以通过 Codex CLI 卸载插件。

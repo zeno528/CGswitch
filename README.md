@@ -5,7 +5,8 @@
 <h1 align="center">CGswitch</h1>
 
 <p align="center">
-  A local-first desktop manager for Codex providers, accounts, MCP servers, plugins, and Skills.
+  An open-source all-in-one desktop manager for OpenAI Codex.<br />
+  Switch provider profiles in one click, manage your ChatGPT accounts, and centrally manage MCP servers, plugins, and Skills.
 </p>
 
 <p align="center">
@@ -22,11 +23,11 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555?style=flat-square" alt="Windows and macOS" />
 </p>
 
-CGswitch is a Tauri desktop application for managing the configuration around the Codex ecosystem. It turns provider settings, ChatGPT subscription accounts, MCP servers, Codex plugins, and Skills into manageable local resources instead of requiring repeated manual edits under `~/.codex`.
+CGswitch is built for developers who use OpenAI Codex and works with the local Codex environment on their computer. It brings provider profiles, ChatGPT OAuth accounts, MCP servers, plugins, and Skills into one desktop app, reducing the need to move between configuration files and separate tools.
 
-## Why CGswitch?
+## How CGswitch fits into your Codex workflow
 
-Codex configuration often spans several files and different kinds of resources. CGswitch gives each provider configuration a named profile, lets you test or edit it, and applies the selected profile with a backup before writing.
+Codex provider settings, ChatGPT account authentication, and tool extensions all shape the same workspace, but live in different local files and resource directories. CGswitch brings them into one management interface: save provider settings as named profiles, manage ChatGPT accounts, and maintain MCP servers, plugins, and Skills alongside them.
 
 ```text
 Provider preset or existing Codex configuration
@@ -36,7 +37,7 @@ Provider preset or existing Codex configuration
             Edit · test · apply · restore
 ```
 
-The provider profile flow is separate from the global MCP, Plugins, and Skills management areas, so switching a model provider does not require rebuilding the rest of your Codex setup.
+CGswitch backs up relevant Codex files before applying a provider profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
 
 ## Features
 
@@ -68,6 +69,7 @@ Custom providers can use the Responses API-compatible configuration supported by
 - Manage the global `[mcp_servers.*]` configuration in `~/.codex/config.toml`.
 - Configure local `STDIO` servers and remote `HTTP` / Streamable HTTP servers.
 - Edit commands, arguments, URLs, bearer-token environment variables, headers, environment variables, and timeouts.
+- Test server connectivity and inspect the tools a server provides; probes go through the system proxy.
 - Switch between a structured form and TOML source editing with validation and formatting.
 - Compare the live Codex configuration with CGswitch's database mirror before syncing either direction.
 
@@ -75,6 +77,9 @@ Custom providers can use the Responses API-compatible configuration supported by
 
 - List installed Codex plugins and inspect their versions, capabilities, contents, source, and install path.
 - Browse bundled and external plugin marketplaces.
+- Install states in marketplace catalogs stay consistent with the Codex desktop app — plugins installed here are recognized there directly.
+- Installed plugins are listed first in marketplace catalogs; search matches plugin names only via Ctrl/Cmd+K.
+- Installing a plugin that requires sign-in prompts you to authorize it in the Codex desktop app.
 - Add marketplaces from GitHub shorthand, Git, SSH, or a local marketplace directory.
 - Preview and install a plugin from a GitHub repository, optionally using a branch or subdirectory.
 - Check and upgrade third-party marketplace plugins, or uninstall plugins through the Codex CLI.
