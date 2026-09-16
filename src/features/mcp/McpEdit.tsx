@@ -6,6 +6,7 @@ import { useFeedback } from "../../app/Feedback";
 import { AppSelect } from "../../components/AppSelect";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
+import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 
 type Transport = "stdio" | "http";
@@ -32,10 +33,11 @@ function TimeoutInput({ value, onChange, placeholder }: { value: number | null; 
 interface McpEditProps {
   server: McpServerSpec | null;
   create?: boolean;
-  onBack: () => void;
+  onBack: (savedServer?: McpServerSpec) => void;
+  onDelete?: () => Promise<void>;
 }
 
-export default function McpEdit({ server, create = false, onBack }: McpEditProps) {
+export default function McpEdit({ server, create = false, onBack, onDelete }: McpEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const [name, setName] = useState(server?.name ?? "");
@@ -138,18 +140,19 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
     if (startupTimeout !== null && startupTimeout <= 0) { feedback.error(t("feedback.startupTimeoutPositive")); return; }
     if (toolTimeout !== null && toolTimeout <= 0) { feedback.error(t("feedback.toolTimeoutPositive")); return; }
     setSaving(true);
-    try { await api.saveMcpServer(server?.name ?? null, formSpec(), tomlText); feedback.success(t("feedback.saved")); onBack(); }
+    try { const savedServer = formSpec(); await api.saveMcpServer(server?.name ?? null, savedServer, tomlText); feedback.success(t("feedback.saved")); onBack(savedServer); }
     catch (error) { feedback.error(String(error)); }
     finally { setSaving(false); }
   };
 
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col" onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") void save(); }}>
-      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
-        <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={onBack}>
+      <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header justify-between">
+        <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={() => onBack()}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
           <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
         </button>
+        {!create && onDelete ? <button type="button" className="apple-action-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("edit.uninstall")}</button> : null}
       </div>
 
       <div className="apple-edit-content">
@@ -167,7 +170,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
             </div>
           </div>
 
-          <div className="apple-panel-section">
+          <div className="apple-panel-section apple-panel-section--compact">
             {transport === "stdio" ? <>
               <div>
                 <div className="field-label mb-1.5">{t("edit.command")}</div>
@@ -187,10 +190,8 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
                 <input className="app-input mono" placeholder={t("edit.bearerPlaceholder")} value={bearer} onChange={(event) => setBearer(event.target.value)} />
               </div>
             </>}
-          </div>
-
-          <div className="apple-panel-section">
             <AppDisclosure
+              className="mt-3"
               open={advancedOpen}
               onOpenChange={setAdvancedOpen}
               summary={(
@@ -236,7 +237,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
       <div className="apple-edit-toolbar apple-edit-toolbar--footer">
         {diagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" title={t("edit.jumpToError")} aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--danger)" aria-hidden="true" /><span className="truncate">{t("edit.errorCount", { count: diagnostics.count })}{diagnostics.firstLine !== null ? t("edit.errorLine", { line: diagnostics.firstLine }) : ""}</span></button> : null}
         <button type="button" className="apple-action-button" disabled={formatting || saving} onClick={() => void formatToml()}>{t("edit.format")}</button>
-        <button type="button" className="apple-action-button" onClick={onBack}>{t("edit.cancel")}</button>
+        <button type="button" className="apple-action-button" onClick={() => onBack()}>{t("edit.cancel")}</button>
         <button type="button" className="apple-action-button app-button--primary" disabled={saving} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("edit.save")}</button>
       </div>
     </section>
