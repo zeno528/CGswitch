@@ -21,6 +21,7 @@ mod accounts;
 mod apply;
 mod connections;
 mod mcp;
+mod mcp_probe;
 mod model_fetch;
 mod plugin_net;
 mod plugins;

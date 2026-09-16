@@ -126,6 +126,7 @@ pub fn run() {
             commands::delete_profile,
             commands::apply_profile,
             commands::list_mcp_servers,
+            commands::probe_mcp_server,
             commands::save_mcp_server,
             commands::delete_mcp_server,
             commands::get_mcp_section_toml,

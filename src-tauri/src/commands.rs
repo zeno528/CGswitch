@@ -554,6 +554,16 @@ pub fn list_mcp_servers(state: State<'_, AppContext>) -> AppResult<Vec<McpServer
     state.list_mcp_servers()
 }
 
+/// 测试 MCP 最小 initialize 握手；include_tools 为 true 时才额外读取 tools/list。
+#[tauri::command]
+pub async fn probe_mcp_server(
+    name: String,
+    include_tools: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<crate::models::McpProbeResult> {
+    state.probe_mcp_server(&name, include_tools).await
+}
+
 #[tauri::command]
 pub fn save_mcp_server(
     original_name: Option<String>,
