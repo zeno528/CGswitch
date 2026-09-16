@@ -3,7 +3,6 @@ import type { MarketplacePlugin, McpProbeResult, McpServerSpec, PluginMarketplac
 
 export type McpProbeCacheEntry = {
   fingerprint: string;
-  checkedAt: number;
   result: McpProbeResult;
   toolsLoaded: boolean;
 };
@@ -21,6 +20,25 @@ function restoreNamedList<T extends { name: string }>(raw: unknown): T[] | null 
   return raw as T[];
 }
 
+/// localStorage JSON 读写统一管道：SSR/隐私模式降级为空，损坏缓存视为不存在。
+function readJson(key: string): unknown {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    return JSON.parse(localStorage.getItem(key) ?? "null");
+  } catch {
+    return null; // 损坏或旧版本缓存只影响首开直出，进页静默刷新会纠正。
+  }
+}
+
+function writeJson(key: string, value: unknown): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // 本地存储不可用时保留内存缓存，当前操作仍可继续。
+  }
+}
+
 function createManagementCache<T>(loader: () => Promise<T>, persist?: { key: string; restore: (raw: unknown) => T | null }) {
   let cache: T | null = null;
   let request: Promise<T> | null = null;
@@ -29,23 +47,13 @@ function createManagementCache<T>(loader: () => Promise<T>, persist?: { key: str
   const restoreFromStorage = () => {
     if (restored || !persist) return;
     restored = true;
-    if (typeof localStorage === "undefined") return;
-    try {
-      const raw = localStorage.getItem(persist.key);
-      if (raw === null) return;
-      cache = persist.restore(JSON.parse(raw));
-    } catch {
-      // 损坏或旧版本缓存只影响首开直出，进页静默刷新会纠正。
-    }
+    const raw = readJson(persist.key);
+    if (raw !== null) cache = persist.restore(raw);
   };
 
   const saveToStorage = (items: T) => {
-    if (!persist || typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(persist.key, JSON.stringify(items));
-    } catch {
-      // 本地存储不可用时保留内存缓存，当前操作仍可继续。
-    }
+    if (!persist) return;
+    writeJson(persist.key, items);
   };
 
   return {
@@ -111,28 +119,19 @@ function restoreMcpProbeResult(result: PersistedMcpProbeCacheEntry["result"]): M
 function loadMcpProbeStorage(): void {
   if (mcpProbeStorageLoaded) return;
   mcpProbeStorageLoaded = true;
-  if (typeof localStorage === "undefined") return;
-  try {
-    const stored = JSON.parse(localStorage.getItem(MCP_PROBE_CACHE_STORAGE_KEY) ?? "{}") as Record<string, PersistedMcpProbeCacheEntry>;
-    for (const [name, entry] of Object.entries(stored)) {
-      if (!entry || typeof entry.fingerprint !== "string" || !Array.isArray(entry.result?.tools)) continue;
-      mcpProbes.set(name, { ...entry, result: restoreMcpProbeResult(entry.result) });
-    }
-  } catch {
-    // 损坏或旧版本缓存只影响展示，不阻断 MCP 管理页。
+  const stored = readJson(MCP_PROBE_CACHE_STORAGE_KEY);
+  if (stored === null || typeof stored !== "object") return;
+  for (const [name, entry] of Object.entries(stored as Record<string, PersistedMcpProbeCacheEntry>)) {
+    if (!entry || typeof entry.fingerprint !== "string" || !Array.isArray(entry.result?.tools)) continue;
+    mcpProbes.set(name, { ...entry, result: restoreMcpProbeResult(entry.result) });
   }
 }
 
 function persistMcpProbeStorage(): void {
-  if (typeof localStorage === "undefined") return;
-  try {
-    const stored = Object.fromEntries(
-      [...mcpProbes].map(([name, entry]) => [name, { ...entry, result: compactMcpProbeResult(entry.result) }]),
-    );
-    localStorage.setItem(MCP_PROBE_CACHE_STORAGE_KEY, JSON.stringify(stored));
-  } catch {
-    // 本地存储不可用时保留内存缓存，当前操作仍可继续。
-  }
+  const stored = Object.fromEntries(
+    [...mcpProbes].map(([name, entry]) => [name, { ...entry, result: compactMcpProbeResult(entry.result) }]),
+  );
+  writeJson(MCP_PROBE_CACHE_STORAGE_KEY, stored);
 }
 
 export function loadPlugins(force = false): Promise<PluginSummary[]> {

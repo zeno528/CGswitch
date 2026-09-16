@@ -50,7 +50,7 @@ describe("managementDataCache", () => {
       tools_error: null,
     };
 
-    cache.setCachedMcpProbe("github", { fingerprint: "v1", checkedAt: 1, result, toolsLoaded: true });
+    cache.setCachedMcpProbe("github", { fingerprint: "v1", result, toolsLoaded: true });
 
     expect(cache.getCachedMcpProbe("github", "v1")?.toolsLoaded).toBe(true);
     expect(cache.getCachedMcpProbe("github", "v2")).toBeNull();
@@ -70,7 +70,7 @@ describe("managementDataCache", () => {
       tools_error: null,
     };
 
-    cache.setCachedMcpProbe("github", { fingerprint: "v1", checkedAt: 1, result, toolsLoaded: true });
+    cache.setCachedMcpProbe("github", { fingerprint: "v1", result, toolsLoaded: true });
     expect(JSON.parse(persistedStorage.get("cgswitch.mcp-probe-cache") ?? "{}").github.result.tools).toEqual(["search"]);
 
     vi.resetModules();

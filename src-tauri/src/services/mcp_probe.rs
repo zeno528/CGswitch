@@ -128,13 +128,15 @@ fn parse_server_info(result: &Value) -> Option<McpServerInfo> {
     Some(McpServerInfo { name, version })
 }
 
-fn parse_tools_page(result: Value) -> Result<(Vec<McpTool>, Option<String>), String> {
-    let tools = result
-        .get("tools")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "tools/list 响应缺少 tools".to_string())?;
-    let raw_tools = serde_json::from_value::<Vec<RawTool>>(Value::Array(tools.clone()))
-        .map_err(|error| format!("工具列表格式无效: {error}"))?;
+fn parse_tools_page(mut result: Value) -> Result<(Vec<McpTool>, Option<String>), String> {
+    // take() 拿走 tools 数组所有权，免去为反序列化克隆整个数组
+    let raw_tools: Vec<RawTool> = serde_json::from_value(
+        result
+            .get_mut("tools")
+            .ok_or_else(|| "tools/list 响应缺少 tools".to_string())?
+            .take(),
+    )
+    .map_err(|error| format!("工具列表格式无效: {error}"))?;
     let tools = raw_tools
         .into_iter()
         .map(|tool| McpTool {
@@ -265,6 +267,21 @@ struct HttpSession {
 }
 
 impl HttpSession {
+    /// 拼 POST 请求样板：自定义 headers + JSON/Accept + 会话 ID；发送与错误映射由调用方决定。
+    fn post_builder(&self, body: &Value) -> reqwest::RequestBuilder {
+        let mut request = self.client.post(&self.url);
+        for (name, value) in &self.headers {
+            request = request.header(name, value);
+        }
+        request = request
+            .header(CONTENT_TYPE, "application/json")
+            .header(ACCEPT, "application/json, text/event-stream");
+        if let Some(session_id) = &self.session_id {
+            request = request.header("Mcp-Session-Id", session_id);
+        }
+        request.json(body)
+    }
+
     async fn request(
         &mut self,
         method: &str,
@@ -279,18 +296,8 @@ impl HttpSession {
             "method": method,
             "params": params,
         });
-        let mut request = self.client.post(&self.url);
-        for (name, value) in &self.headers {
-            request = request.header(name, value);
-        }
-        request = request
-            .header(CONTENT_TYPE, "application/json")
-            .header(ACCEPT, "application/json, text/event-stream");
-        if let Some(session_id) = &self.session_id {
-            request = request.header("Mcp-Session-Id", session_id);
-        }
-        let response = request
-            .json(&body)
+        let response = self
+            .post_builder(&body)
             .send()
             .await
             .map_err(|error| ProbeFailure {
@@ -327,20 +334,14 @@ impl HttpSession {
 
     async fn notify(&mut self, method: &str) -> Result<(), ProbeFailure> {
         let body = json!({ "jsonrpc": "2.0", "method": method, "params": {} });
-        let mut request = self.client.post(&self.url);
-        for (name, value) in &self.headers {
-            request = request.header(name, value);
-        }
-        request = request
-            .header(CONTENT_TYPE, "application/json")
-            .header(ACCEPT, "application/json, text/event-stream");
-        if let Some(session_id) = &self.session_id {
-            request = request.header("Mcp-Session-Id", session_id);
-        }
-        let response = request.json(&body).send().await.map_err(|_| ProbeFailure {
-            status: None,
-            message: "发送 MCP 初始化通知失败".to_string(),
-        })?;
+        let response = self
+            .post_builder(&body)
+            .send()
+            .await
+            .map_err(|_| ProbeFailure {
+                status: None,
+                message: "发送 MCP 初始化通知失败".to_string(),
+            })?;
         if response.status().is_success() {
             Ok(())
         } else {

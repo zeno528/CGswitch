@@ -27,22 +27,16 @@ function mcpServerFingerprint(server: McpServerSpec) {
   return (hash >>> 0).toString(36);
 }
 
-function cachedProbeResults(servers: McpServerSpec[]) {
-  return Object.fromEntries(
-    servers.flatMap((server) => {
-      const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server));
-      return entry ? [[server.name, entry.result]] : [];
-    }),
-  );
-}
-
-function cachedToolsLoaded(servers: McpServerSpec[]) {
-  return Object.fromEntries(
-    servers.flatMap((server) => {
-      const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server));
-      return entry?.toolsLoaded ? [[server.name, true]] : [];
-    }),
-  );
+function cachedProbeState(servers: McpServerSpec[]) {
+  const results: Record<string, McpProbeResult> = {};
+  const toolsLoaded: Record<string, boolean> = {};
+  for (const server of servers) {
+    const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server));
+    if (!entry) continue;
+    results[server.name] = entry.result;
+    if (entry.toolsLoaded) toolsLoaded[server.name] = true;
+  }
+  return { results, toolsLoaded };
 }
 
 function transportOf(server: McpServerSpec): Transport { return server.url ? "http" : server.command ? "stdio" : "unknown"; }
@@ -172,10 +166,10 @@ export default function McpView() {
   const [creatingServer, setCreatingServer] = useState(false);
   const [togglingName, setTogglingName] = useState("");
   const [probingNames, setProbingNames] = useState<Record<string, boolean>>({});
-  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>(() => cachedProbeResults(cachedServers ?? []));
+  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>(() => cachedProbeState(cachedServers ?? []).results);
   const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
   const [toolsLoading, setToolsLoading] = useState<Record<string, boolean>>({});
-  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedToolsLoaded(cachedServers ?? []));
+  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(cachedServers ?? []).toolsLoaded);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [syncOpen, setSyncOpen] = useState(false);
@@ -190,10 +184,11 @@ export default function McpView() {
     try {
       next = await loadMcpServers(force);
       setServers(next);
-      setProbeResults(cachedProbeResults(next));
+      const cached = cachedProbeState(next);
+      setProbeResults(cached.results);
       setToolsOpen({});
       setToolsLoading({});
-      setToolsLoaded(cachedToolsLoaded(next));
+      setToolsLoaded(cached.toolsLoaded);
       setLoadError("");
     } catch (error) { setLoadError(String(error)); }
     finally { setLoaded(true); }
@@ -241,7 +236,7 @@ export default function McpView() {
     try {
       const result = keepTools(await api.probeMcpServer(server.name, false, notify));
       setProbeResults((current) => ({ ...current, [server.name]: result }));
-      setCachedMcpProbe(server.name, { fingerprint, checkedAt: Date.now(), result, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
+      setCachedMcpProbe(server.name, { fingerprint, result, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
       if (notify) {
         if (result.ok) {
           feedback.success(t("list.connectionSuccess", { name: server.name, ms: result.latency_ms ?? "-" }));
@@ -261,7 +256,7 @@ export default function McpView() {
       };
       const nextResult = keepTools(result);
       setProbeResults((current) => ({ ...current, [server.name]: nextResult }));
-      setCachedMcpProbe(server.name, { fingerprint, checkedAt: Date.now(), result: nextResult, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
+      setCachedMcpProbe(server.name, { fingerprint, result: nextResult, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
       if (notify) notifyProbeFailure(server.name, String(error));
     } finally {
       if (showLoading) setProbingNames((current) => {
@@ -281,7 +276,7 @@ export default function McpView() {
       if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name }));
       if (result.tools_error) throw new Error(result.tools_error);
       setProbeResults((current) => ({ ...current, [name]: result }));
-      setCachedMcpProbe(name, { fingerprint: mcpServerFingerprint(server), checkedAt: Date.now(), result, toolsLoaded: true });
+      setCachedMcpProbe(name, { fingerprint: mcpServerFingerprint(server), result, toolsLoaded: true });
       setToolsLoaded((current) => ({ ...current, [name]: true }));
       if (open) setToolsOpen((current) => ({ ...current, [name]: true }));
     } catch (error) {
