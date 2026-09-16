@@ -119,6 +119,7 @@ export default {
   },
   toast: {
     installed: "已安装插件「{{name}}」，重启 Codex 后生效",
+    installedNeedsAuth: "「{{name}}」安装成功，请在 Codex 桌面端完成授权",
     uninstalled: "已卸载插件「{{name}}」",
     upgraded: "已升级插件「{{name}}」",
   },

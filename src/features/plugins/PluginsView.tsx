@@ -76,29 +76,47 @@ function findConfiguredMarketplace(
   );
 }
 
+/// 别名市场纠正：Codex 给同一目录挂镜像/远程双身份，安装记录只落在其中一个；
+/// 条目标记未安装但同名插件已在任意市场安装时视为已装（名单来自已安装列表，无需额外 CLI 查询）。
+export function resolveAliasInstalled(
+  plugins: MarketplacePlugin[],
+  installedNames: ReadonlySet<string>,
+): MarketplacePlugin[] {
+  return plugins.map((plugin) =>
+    !plugin.installed && installedNames.has(plugin.name) ? { ...plugin, installed: true } : plugin,
+  );
+}
+
 /// 市场明细排序：已安装在前，组内按名称。
 export function compareMarketplacePlugins(left: MarketplacePlugin, right: MarketplacePlugin): number {
   return Number(right.installed) - Number(left.installed) || left.name.localeCompare(right.name);
 }
 
-/// 插件搜索：名称、显示名与描述的忽略大小写子串匹配。
-export function matchesQuery(
-  plugin: { name: string; display_name: string | null; description: string | null },
-  query: string,
-): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return [plugin.display_name ?? "", plugin.name, plugin.description ?? ""].some((text) =>
-    text.toLowerCase().includes(needle),
-  );
+/// 插件搜索：仅匹配插件名（忽略大小写子串），不搜显示名与描述。
+export function matchesQuery(plugin: { name: string }, query: string): boolean {
+  return plugin.name.toLowerCase().includes(query.trim().toLowerCase());
 }
 
 function PluginSearchInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const { t } = useTranslation("plugins");
+  const inputRef = useRef<HTMLInputElement>(null);
+  // Ctrl/Cmd+K 聚焦搜索框：window 级监听保证焦点在别处也生效，抢在浏览器站点搜索前 preventDefault
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   return (
     <div className="relative w-44 shrink-0">
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-secondary)" strokeWidth={2} />
       <input
+        ref={inputRef}
         type="search"
         className="app-input app-input--pill"
         placeholder={t("list.searchPlaceholder")}
@@ -258,6 +276,7 @@ function MarketplaceDetailView({
   marketplace,
   onBack,
   onInstalled,
+  installedNames,
   updates,
   onUpgrade,
   thirdPartyProfile,
@@ -265,6 +284,7 @@ function MarketplaceDetailView({
   marketplace: PluginMarketplace;
   onBack: () => void;
   onInstalled: () => Promise<void>;
+  installedNames: ReadonlySet<string>;
   updates: PluginUpdate[];
   onUpgrade: (update: PluginUpdate) => Promise<void>;
   thirdPartyProfile: boolean;
@@ -278,8 +298,9 @@ function MarketplaceDetailView({
   const [uninstalling, setUninstalling] = useState("");
   const [upgrading, setUpgrading] = useState("");
   const [query, setQuery] = useState("");
-  const installedPluginCount = plugins.filter((plugin) => plugin.installed).length;
-  const visiblePlugins = [...plugins].sort(compareMarketplacePlugins).filter((plugin) => matchesQuery(plugin, query));
+  const resolvedPlugins = resolveAliasInstalled(plugins, installedNames);
+  const installedPluginCount = resolvedPlugins.filter((plugin) => plugin.installed).length;
+  const visiblePlugins = [...resolvedPlugins].sort(compareMarketplacePlugins).filter((plugin) => matchesQuery(plugin, query));
 
   useEffect(() => {
     let cancelled = false;
@@ -319,7 +340,13 @@ function MarketplaceDetailView({
     try {
       await api.installMarketplacePlugin(marketplace.name, plugin.name);
       applyPluginPatch(plugin.plugin_id, { installed: true });
-      feedback.success(t("toast.installed", { name: plugin.name }));
+      // ON_INSTALL 插件的 OAuth 弹窗是桌面端 app-server 私有能力，CLI 无法触发；
+      // 安装成功后明确引导用户去桌面端完成授权，避免「装了但不可用」的静默缺失。
+      if (plugin.auth_policy === "ON_INSTALL") {
+        feedback.warning(t("toast.installedNeedsAuth", { name: plugin.name }));
+      } else {
+        feedback.success(t("toast.installed", { name: plugin.name }));
+      }
       await onInstalled();
     } catch (reason) {
       feedback.error(String(reason));
@@ -611,10 +638,12 @@ function AddPluginView({
 function PluginMarketplaceView({
   onBack,
   onInstalled,
+  installedNames,
   thirdPartyProfile,
 }: {
   onBack: () => void;
   onInstalled: () => Promise<void>;
+  installedNames: ReadonlySet<string>;
   thirdPartyProfile: boolean;
 }) {
   const feedback = useFeedback();
@@ -770,6 +799,7 @@ function PluginMarketplaceView({
         marketplace={selectedMarketplace}
         onBack={() => setSelectedMarketplace(null)}
         onInstalled={onInstalled}
+        installedNames={installedNames}
         updates={updates}
         onUpgrade={upgrade}
         thirdPartyProfile={thirdPartyProfile}
@@ -963,6 +993,7 @@ export default function PluginsView({ state }: { state: AppState }) {
       <PluginMarketplaceView
         onBack={() => setAddingMarketplace(false)}
         onInstalled={() => refresh(true)}
+        installedNames={new Set(plugins.map((plugin) => plugin.name))}
         thirdPartyProfile={thirdPartyProfile}
       />
     );

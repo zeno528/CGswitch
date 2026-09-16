@@ -1,7 +1,7 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { compareMarketplacePlugins, comparePlugins, matchesQuery } from "./PluginsView";
+import { compareMarketplacePlugins, comparePlugins, matchesQuery, resolveAliasInstalled } from "./PluginsView";
 
 const source = readFileSync(new URL("./PluginsView.tsx", import.meta.url), "utf8");
 
@@ -21,14 +21,23 @@ describe("插件搜索", () => {
     expect(source.split("<PluginSearchInput").length - 1).toBe(2); // 两处使用（定义为 function 声明）
   });
 
-  it("按名称、显示名、描述忽略大小写匹配", () => {
+  it("仅按插件名忽略大小写匹配，不搜显示名与描述", () => {
     const plugin = { name: "app-69ea", display_name: "Exa", description: "Web search for AI" };
     expect(matchesQuery(plugin, "")).toBe(true);
-    expect(matchesQuery(plugin, "exa")).toBe(true);
-    expect(matchesQuery(plugin, "  EXA ")).toBe(true);
-    expect(matchesQuery(plugin, "app-69")).toBe(true);
-    expect(matchesQuery(plugin, "search for ai")).toBe(true);
+    expect(matchesQuery(plugin, "app")).toBe(true);
+    expect(matchesQuery(plugin, "  APP-69 ")).toBe(true);
+    expect(matchesQuery(plugin, "exa")).toBe(false); // 显示名不参与
+    expect(matchesQuery(plugin, "search for ai")).toBe(false); // 描述不参与
     expect(matchesQuery(plugin, "figma")).toBe(false);
+  });
+});
+
+describe("搜索快捷键", () => {
+  it("搜索框支持 Ctrl/Cmd+K 聚焦并全选", () => {
+    expect(source).toContain("(event.ctrlKey || event.metaKey)");
+    expect(source).toContain('event.key.toLowerCase() === "k"');
+    expect(source).toContain("inputRef.current?.focus()");
+    expect(source).toContain("inputRef.current?.select()");
   });
 });
 
@@ -53,6 +62,17 @@ describe("插件列表排序", () => {
       plugin("gmail", "official", "openai-curated-remote"),
     ].sort(comparePlugins);
     expect(ordered.map((item) => item.name)).toEqual(["ponytail", "browser", "documents", "app-69ea", "gmail"]);
+  });
+});
+
+describe("别名安装纠正", () => {
+  it("未安装条目命中已安装名单时翻转为已安装，其余保持原状", () => {
+    const plugin = (name: string, installed: boolean) =>
+      ({ plugin_id: `${name}@m`, name, installed }) as Parameters<typeof resolveAliasInstalled>[0][number];
+    const input = [plugin("canva", false), plugin("grill", false), plugin("github", true)];
+    const resolved = resolveAliasInstalled(input, new Set(["canva", "notion"]));
+    expect(resolved.map((item) => item.installed)).toEqual([true, false, true]);
+    expect(input.map((item) => item.installed)).toEqual([false, false, true]); // 原数组不被就地修改
   });
 });
 

@@ -799,20 +799,26 @@ fn parse_marketplace_plugins_output(
         .collect())
 }
 
-/// 别名市场纠正：条目在本市场标记未安装、但同名插件已在任一市场安装时视为已装。
-/// 返回被纠正的插件名，供静默刷新报数。
-fn apply_alias_installed(
-    entries: &mut [MarketplacePlugin],
-    installed_names: &[String],
-) -> Vec<String> {
-    let mut corrected = Vec::new();
-    for item in entries {
-        if !item.installed && installed_names.iter().any(|name| name == &item.name) {
-            item.installed = true;
-            corrected.push(item.name.clone());
-        }
+/// 解析 `codex plugin list` 输出的市场身份集合（"Marketplace `X`" 头部行）。
+fn parse_marketplace_identities(text: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|line| line.trim().strip_prefix("Marketplace `"))
+        .filter_map(|rest| {
+            rest.strip_suffix('`')
+                .filter(|name| !name.is_empty())
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// 安装目标市场：镜像存在 `-remote` 原体时优先远程身份（桌面端注册表口径），否则原样。
+fn resolve_install_marketplace(marketplace: &str, identities: &[String]) -> String {
+    let remote = format!("{marketplace}-remote");
+    if identities.contains(&remote) {
+        remote
+    } else {
+        marketplace.to_string()
     }
-    corrected
 }
 
 fn find_plugin_updates(
@@ -1651,28 +1657,9 @@ impl AppContext {
                     "--json",
                 ],
             )?;
-            let mut items =
-                parse_marketplace_plugins_output(&output, &marketplace, root.as_deref())?;
-            // Codex 会给同一插件目录挂两个市场身份（本地镜像 openai-curated / 远程
-            // openai-curated-remote），安装记录只落在其中一个别名下；条目标记未安装时
-            // 按插件名对照全量安装注册表纠正。卸载按插件名解析实际安装，不受别名影响。
-            let installed_names = run_codex_plugin(&home, &["list"])
-                .ok()
-                .map(|text| {
-                    parse_plugin_list_output(&text)
-                        .into_iter()
-                        .map(|(plugin, ..)| plugin)
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let corrected = apply_alias_installed(&mut items, &installed_names);
-            if !corrected.is_empty() {
-                tauri_plugin_log::log::debug!(
-                    "[plugin] 别名安装纠正 [{marketplace}]: {}",
-                    corrected.join(", ")
-                );
-            }
-            Ok(items)
+            // 别名身份（openai-curated ↔ openai-curated-remote）导致的 installed 标记
+            // 偏差由前端对照已安装名单纠正（数据现成，避免此处每次多跑一轮 CLI）。
+            parse_marketplace_plugins_output(&output, &marketplace, root.as_deref())
         })
         .await
         .map_err(|error| app_err!("插件市场目录任务失败: {error}"))?
@@ -1695,7 +1682,30 @@ impl AppContext {
             let home = home.clone();
             let marketplace = marketplace.clone();
             let name = name.clone();
-            move || run_codex_plugin(&home, &["add", &name, "--marketplace", &marketplace])
+            move || {
+                // Codex 给官方 curated 目录挂镜像/远程双身份（openai-curated ↔
+                // openai-curated-remote）：桌面端安装注册表只落在远程身份下，
+                // 镜像名安装对桌面端不可见。目标市场存在 `-remote` 原体时重定向，
+                // 其余市场不受影响。
+                let mut target = marketplace.clone();
+                if let Ok(listing) = run_codex_plugin(&home, &["list"]) {
+                    target = resolve_install_marketplace(
+                        &marketplace,
+                        &parse_marketplace_identities(&listing),
+                    );
+                }
+                if target != marketplace {
+                    tauri_plugin_log::log::debug!(
+                        "[plugin] 安装市场解析 [{marketplace} → {target}]"
+                    );
+                }
+                let output = run_codex_plugin(&home, &["add", &name, "--marketplace", &target]);
+                // 用户触发的里程碑动作，Info 级在 release 也留痕（失败已由 CLI 咽喉 Warn）
+                if output.is_ok() {
+                    tauri_plugin_log::log::info!("[plugin] 插件安装成功 [{name}@{target}]");
+                }
+                output
+            }
         })
         .await
         .map_err(|error| app_err!("安装插件任务失败: {error}"))??;
@@ -2049,7 +2059,14 @@ impl AppContext {
             tauri::async_runtime::spawn_blocking({
                 let home = home.clone();
                 let selector = selector.clone();
-                move || run_codex_plugin(&home, &["remove", &selector])
+                move || {
+                    let output = run_codex_plugin(&home, &["remove", &selector]);
+                    // 与安装同口径：用户触发的里程碑动作，Info 级 release 也留痕
+                    if output.is_ok() {
+                        tauri_plugin_log::log::info!("[plugin] 插件卸载成功 [{selector}]");
+                    }
+                    output
+                }
             })
             .await
             .map_err(|error| app_err!("卸载任务失败: {error}"))??;
@@ -2410,41 +2427,26 @@ ponytail@ponytail               installed, disabled 4.9.0         C:\\cache\\pon
     }
 
     #[test]
-    fn alias_marketplace_entries_inherit_install_state_by_name() {
-        let mut items = vec![
-            MarketplacePlugin {
-                plugin_id: "canva@openai-curated".into(),
-                name: "canva".into(),
-                version: Some("15.0.0".into()),
-                installed: false,
-                auth_policy: String::new(),
-                source: None,
-                display_name: None,
-                description: None,
-                category: None,
-                capabilities: Vec::new(),
-                contains: Vec::new(),
-            },
-            MarketplacePlugin {
-                plugin_id: "grill@openai-curated".into(),
-                name: "grill".into(),
-                version: Some("1.0.0".into()),
-                installed: false,
-                auth_policy: String::new(),
-                source: None,
-                display_name: None,
-                description: None,
-                category: None,
-                capabilities: Vec::new(),
-                contains: Vec::new(),
-            },
+    fn install_marketplace_redirects_to_remote_identity() {
+        let identities = vec![
+            "openai-primary-runtime".to_string(),
+            "openai-bundled".to_string(),
+            "ponytail".to_string(),
+            "openai-curated-remote".to_string(),
         ];
-        // canva 实际安装在别名 openai-curated-remote 名下（注册表按插件名去重后传入）；grill 真未安装。
-        let installed_names = vec!["canva".to_string()];
-        let corrected = apply_alias_installed(&mut items, &installed_names);
-        assert_eq!(corrected, vec!["canva".to_string()]);
-        assert!(items[0].installed);
-        assert!(!items[1].installed);
+        // 镜像名 → 远程原体（桌面端注册表口径）
+        assert_eq!(
+            resolve_install_marketplace("openai-curated", &identities),
+            "openai-curated-remote"
+        );
+        // 无 -remote 原体的市场保持原样
+        assert_eq!(
+            resolve_install_marketplace("ponytail", &identities),
+            "ponytail"
+        );
+        // 解析器只认 "Marketplace `X`" 头部行
+        let listing = "Marketplace `a`\n\nPLUGIN  STATUS\nx@a  installed, enabled  1.0  C:\\x\nMarketplace `b`\n";
+        assert_eq!(parse_marketplace_identities(listing), vec!["a", "b"]);
     }
 
     #[test]

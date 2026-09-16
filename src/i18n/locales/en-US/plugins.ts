@@ -119,6 +119,7 @@ export default {
   },
   toast: {
     installed: "Installed \"{{name}}\". Restart Codex to take effect.",
+    installedNeedsAuth: "\"{{name}}\" installed. Please complete authorization in the Codex desktop app.",
     uninstalled: "Uninstalled \"{{name}}\"",
     upgraded: "Upgraded \"{{name}}\"",
   },
