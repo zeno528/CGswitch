@@ -278,7 +278,8 @@ fn plugin_timeout_message(args: &[&str], timeout: Duration) -> String {
 /// 探测当前可用的代理地址：显式环境变量优先，其次读系统代理。
 /// GUI 进程拿不到用户 shell 里的 export，git 也不读 macOS/Windows 系统代理——
 /// 这里把两层都查一遍，调用方以环境变量注入 codex CLI 子进程，git 随之继承。
-fn detect_system_proxy() -> Option<String> {
+/// 经 services 模块重导出供启动日志使用；所在模块私有，实际可见范围仍是 crate 内。
+pub fn detect_system_proxy() -> Option<String> {
     for key in ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"] {
         if let Ok(value) = std::env::var(key) {
             if !value.trim().is_empty() {

@@ -136,8 +136,9 @@ export const api = {
   reorderProfiles: (ids: string[]) => call<void>("reorder_profiles", { ids }),
   applyProfile: (id: string) => call<void>("apply_profile", { id }),
   listMcpServers: () => call<McpServerSpec[]>("list_mcp_servers"),
-  probeMcpServer: (name: string, includeTools = false) =>
-    call<McpProbeResult>("probe_mcp_server", { name, includeTools }),
+  // manual 用于后端日志分级：手动测试记 Info，进页静默探测只记 Debug
+  probeMcpServer: (name: string, includeTools = false, manual = true) =>
+    call<McpProbeResult>("probe_mcp_server", { name, includeTools, manual }),
   // 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live
   getMcpSectionToml: () => call<string>("get_mcp_section_toml"),
   // 显式恢复：数据库镜像写回 live config.toml，返回恢复数量
@@ -172,6 +173,7 @@ export const api = {
   getSettings: () => call<Settings>("get_settings"),
   saveSettings: (settings: Settings) => call<Settings>("save_settings", { settings }),
   setUpdateMarker: (version: string) => call<void>("set_update_marker", { version }),
-  takeUpdateMarker: () => call<string | null>("take_update_marker"),
+  takeUpdateMarker: (rollback = false) =>
+    call<string | null>("take_update_marker", { rollback }),
   openPath: (path: string) => call<void>("open_path", { path }),
 };

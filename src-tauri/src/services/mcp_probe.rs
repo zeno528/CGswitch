@@ -366,13 +366,21 @@ impl ToolsFetch for HttpSession {
     }
 }
 
-async fn probe_http(spec: &McpServerSpec, include_tools: bool) -> AppResult<McpProbeResult> {
+/// 探测函数不返回 Err：失败编码在 result.ok/error 字段里，签名直接返回结果本体。
+async fn probe_http(
+    spec: &McpServerSpec,
+    include_tools: bool,
+    proxy: Option<&str>,
+) -> McpProbeResult {
     let start = Instant::now();
-    let result =
-        tokio::time::timeout(PROBE_TIMEOUT, probe_http_inner(spec, start, include_tools)).await;
+    let result = tokio::time::timeout(
+        PROBE_TIMEOUT,
+        probe_http_inner(spec, start, include_tools, proxy),
+    )
+    .await;
     match result {
-        Ok(result) => Ok(result),
-        Err(_) => Ok(failed_result(start, None, "MCP 服务请求超时")),
+        Ok(result) => result,
+        Err(_) => failed_result(start, None, "MCP 服务请求超时"),
     }
 }
 
@@ -380,6 +388,7 @@ async fn probe_http_inner(
     spec: &McpServerSpec,
     start: Instant,
     include_tools: bool,
+    proxy: Option<&str>,
 ) -> McpProbeResult {
     let Some(url) = spec.url.as_deref() else {
         return failed_result(start, None, "MCP 服务地址为空");
@@ -388,11 +397,17 @@ async fn probe_http_inner(
         Ok(value) => value,
         Err(error) => return failed_result(start, None, error),
     };
-    let client = match reqwest::Client::builder()
+    // 与 connections::http_client 同理：显式配置检测到的系统代理，
+    // 探测请求走哪个代理由应用自己掌握（走向在探测结果行里一并输出）
+    let mut client_builder = reqwest::Client::builder()
         .user_agent(format!("CGswitch/{}", env!("CARGO_PKG_VERSION")))
-        .timeout(PROBE_TIMEOUT)
-        .build()
-    {
+        .timeout(PROBE_TIMEOUT);
+    if let Some(url) = proxy {
+        if let Ok(parsed) = reqwest::Proxy::all(url) {
+            client_builder = client_builder.proxy(parsed);
+        }
+    }
+    let client = match client_builder.build() {
         Ok(client) => client,
         Err(error) => {
             return failed_result(start, None, format!("创建 MCP HTTP 客户端失败: {error}"));
@@ -666,12 +681,12 @@ impl ToolsFetch for StdioSession {
     }
 }
 
-fn probe_stdio(spec: &McpServerSpec, include_tools: bool) -> AppResult<McpProbeResult> {
+fn probe_stdio(spec: &McpServerSpec, include_tools: bool) -> McpProbeResult {
     let start = Instant::now();
     let deadline = start + PROBE_TIMEOUT;
     let mut session = match spawn_stdio(spec, deadline) {
         Ok(session) => session,
-        Err(error) => return Ok(failed_result(start, None, error)),
+        Err(error) => return failed_result(start, None, error),
     };
     let handshake_start = Instant::now();
     let mut result = match session.request(
@@ -722,7 +737,7 @@ fn probe_stdio(spec: &McpServerSpec, include_tools: bool) -> AppResult<McpProbeR
             format!("{detail}：{stderr}")
         });
     }
-    Ok(result)
+    result
 }
 
 impl AppContext {
@@ -730,23 +745,77 @@ impl AppContext {
         &self,
         name: &str,
         include_tools: bool,
+        manual: bool,
     ) -> AppResult<McpProbeResult> {
         let server = self
             .list_mcp_servers()?
             .into_iter()
             .find(|server| server.name == name)
             .ok_or_else(|| app_err!("找不到 MCP 服务器: {name}"))?;
-        if server.command.is_some() && server.url.is_none() {
-            let result =
-                tauri::async_runtime::spawn_blocking(move || probe_stdio(&server, include_tools))
-                    .await
-                    .map_err(|error| app_err!("MCP 测试任务失败: {error}"))?;
-            return result;
-        }
-        if server.url.is_some() && server.command.is_none() {
-            return probe_http(&server, include_tools).await;
-        }
-        Err(app_err!("MCP 服务器必须配置启动命令或服务地址其中之一"))
+        let is_http = server.url.is_some() && server.command.is_none();
+        // HTTP 探测需要代理归因；stdio 子进程的网络不受应用控制，日志不标注走向
+        let proxy = if is_http {
+            super::detect_system_proxy()
+        } else {
+            None
+        };
+        let route = if is_http {
+            super::connections::proxy_note(&proxy)
+        } else {
+            String::new()
+        };
+        let result = if server.command.is_some() && server.url.is_none() {
+            // spawn_blocking 要求 'static，克隆 spec 进闭包，server 留作日志取名字
+            let spec = server.clone();
+            tauri::async_runtime::spawn_blocking(move || probe_stdio(&spec, include_tools))
+                .await
+                .map_err(|error| app_err!("MCP 测试任务失败: {error}"))?
+        } else if is_http {
+            probe_http(&server, include_tools, proxy.as_deref()).await
+        } else {
+            return Err(app_err!("MCP 服务器必须配置启动命令或服务地址其中之一"));
+        };
+        log_probe_outcome(&server.name, include_tools, manual, &result, &route);
+        Ok(result)
+    }
+}
+
+/// 探测结果留痕：手动测试记 Info（含延迟，事后可追溯）；进页静默探测成功只记
+/// Debug（全量并行一场十来条，会刷屏）；任何失败记 Warn——状态点错过仍可在日志溯源。
+fn log_probe_outcome(
+    name: &str,
+    include_tools: bool,
+    manual: bool,
+    result: &McpProbeResult,
+    route: &str,
+) {
+    let latency = result
+        .latency_ms
+        .map(|ms| ms.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    if !result.ok {
+        // 静默探测失败也记：状态点错过仍可在日志溯源
+        let error = result.error.as_deref().unwrap_or("未知错误");
+        tauri_plugin_log::log::warn!("[mcp] {name} 连通失败: {error}{route}");
+        return;
+    }
+    if let Some(error) = &result.tools_error {
+        tauri_plugin_log::log::warn!("[mcp] {name} 工具失败: {error}{route}");
+        return;
+    }
+    // 静默探测成功记 Debug：开发时可见，release（Info 阈值）自动消失不吵用户
+    let line = if include_tools {
+        format!(
+            "[mcp] {name} 工具 {} 个 {latency}ms{route}",
+            result.tools.len()
+        )
+    } else {
+        format!("[mcp] {name} 连通 {latency}ms{route}")
+    };
+    if manual {
+        tauri_plugin_log::log::info!("{line}");
+    } else {
+        tauri_plugin_log::log::debug!("{line}");
     }
 }
 

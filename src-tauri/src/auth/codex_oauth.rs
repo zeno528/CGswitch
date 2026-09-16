@@ -670,10 +670,10 @@ impl CodexOAuthManager {
         let Some(refresh_token) = auth.refresh_token.clone() else {
             return Ok(false);
         };
-        // 纯跟随登录（没有任何托管账号）时归属不到是常态，降为 debug 避免每次
-        // 同步都刷警告；只有「有托管账号但归属失败」才是「切完掉登录」的前兆
+        // 纯跟随登录（没有任何托管账号）时归属不到是常态，降到 trace 避免每次
+        // 焦点刷新都刷一行；只有「有托管账号但归属失败」才是「切完掉登录」的前兆
         if self.accounts.read().await.is_empty() {
-            tauri_plugin_log::log::debug!("[auth] 无托管账号，跳过 live auth.json 归属同步");
+            tauri_plugin_log::log::trace!("[auth] 无托管账号，跳过 live auth.json 归属同步");
             return Ok(false);
         }
         let Some(row_id) = self.resolve_external_auth_owner(&auth).await else {

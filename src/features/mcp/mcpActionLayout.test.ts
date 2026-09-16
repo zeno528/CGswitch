@@ -27,6 +27,6 @@ describe("MCP 操作入口", () => {
     expect(viewSource).not.toContain("MCP_STATUS_REFRESH_MS");
     expect(viewSource).toContain("probeServer(server, false, false)");
     expect(viewSource).toContain("probeTools(saved, false, false)");
-    expect(viewSource).toContain("api.probeMcpServer(name, true)");
+    expect(viewSource).toContain("api.probeMcpServer(name, true, showLoading)");
   });
 });

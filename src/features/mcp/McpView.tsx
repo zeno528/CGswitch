@@ -1,5 +1,5 @@
 import { ArrowDownUp, CircleDashed, Globe, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
@@ -194,7 +194,14 @@ export default function McpView() {
     await loadPreview();
     return next;
   };
-  useEffect(() => { void refresh(); }, []);
+  const probedOnceRef = useRef(false);
+  useEffect(() => {
+    // StrictMode 下 effect 双跑共用同一实例，必须用 ref 防重入，
+    // 否则每次进页全量探测两遍（stdio 服务器会被拉起两次）
+    if (probedOnceRef.current) return;
+    probedOnceRef.current = true;
+    void refresh();
+  }, []);
 
   const notifyProbeFailure = (name: string, message: string) => {
     if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
@@ -225,7 +232,7 @@ export default function McpView() {
     };
     if (showLoading) setProbingNames((current) => ({ ...current, [server.name]: true }));
     try {
-      const result = keepTools(await api.probeMcpServer(server.name));
+      const result = keepTools(await api.probeMcpServer(server.name, false, notify));
       setProbeResults((current) => ({ ...current, [server.name]: result }));
       setCachedMcpProbe(server.name, { fingerprint, checkedAt: Date.now(), result, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
       if (notify) {
@@ -263,7 +270,7 @@ export default function McpView() {
     if (open && toolsLoaded[name]) setToolsOpen((current) => ({ ...current, [name]: true }));
     if (showLoading) setToolsLoading((current) => ({ ...current, [name]: true }));
     try {
-      const result = await api.probeMcpServer(name, true);
+      const result = await api.probeMcpServer(name, true, showLoading);
       if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name }));
       if (result.tools_error) throw new Error(result.tools_error);
       setProbeResults((current) => ({ ...current, [name]: result }));

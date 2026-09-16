@@ -555,13 +555,17 @@ pub fn list_mcp_servers(state: State<'_, AppContext>) -> AppResult<Vec<McpServer
 }
 
 /// 测试 MCP 最小 initialize 握手；include_tools 为 true 时才额外读取 tools/list。
+/// manual=true（手动点击）时成功记 Info 日志，进页静默探测只记 Debug。
 #[tauri::command]
 pub async fn probe_mcp_server(
     name: String,
     include_tools: bool,
+    manual: Option<bool>,
     state: State<'_, AppContext>,
 ) -> AppResult<crate::models::McpProbeResult> {
-    state.probe_mcp_server(&name, include_tools).await
+    state
+        .probe_mcp_server(&name, include_tools, manual.unwrap_or(false))
+        .await
 }
 
 #[tauri::command]
@@ -800,9 +804,13 @@ pub fn set_update_marker(version: String, state: State<'_, AppContext>) -> AppRe
 }
 
 /// 新版本启动时消费标记：返回版本号并清除文件，无标记返回 null。
+/// rollback=true（安装失败取回）时日志记 Warn 回滚，正常启动消费记 Info 落地。
 #[tauri::command]
-pub fn take_update_marker(state: State<'_, AppContext>) -> AppResult<Option<String>> {
-    state.take_update_marker()
+pub fn take_update_marker(
+    rollback: Option<bool>,
+    state: State<'_, AppContext>,
+) -> AppResult<Option<String>> {
+    state.take_update_marker(rollback.unwrap_or(false))
 }
 
 #[tauri::command]

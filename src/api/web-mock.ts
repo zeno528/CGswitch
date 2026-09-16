@@ -613,6 +613,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webUpdateMarker = (args?.version as string) ?? null;
       return null as T;
     case "take_update_marker": {
+      // args?.rollback 仅后端日志分级用，mock 无日志，无需区分
       const marker = webUpdateMarker;
       webUpdateMarker = null;
       return marker as T;
@@ -1183,6 +1184,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "probe_mcp_server": {
       const name = String(args?.name ?? "MCP");
       const includeTools = Boolean(args?.includeTools);
+      // args?.manual 仅后端日志分级用，mock 恒为成功，无需区分
       const result: McpProbeResult = {
         ok: true,
         latency_ms: 18,

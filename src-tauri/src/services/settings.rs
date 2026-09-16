@@ -167,15 +167,25 @@ impl AppContext {
     }
 
     pub fn set_update_marker(&self, version: &str) -> AppResult<()> {
-        atomic_write(&self.paths.update_marker, version.as_bytes())
+        atomic_write(&self.paths.update_marker, version.as_bytes())?;
+        // 安装器启动（Windows 下随即杀进程）前最后一条日志，升级排障以此为界
+        tauri_plugin_log::log::info!("[update] v{version} 下载完成，写入升级标记，启动安装器");
+        Ok(())
     }
 
     /// 读取并清除「已更新到 vX」标记（一次性消费）；无标记返回 None。
-    pub fn take_update_marker(&self) -> AppResult<Option<String>> {
+    /// rollback=true 表示安装失败后的取回：同样是有标记，语义从「升级成功」变「回滚」，日志分级不同。
+    pub fn take_update_marker(&self, rollback: bool) -> AppResult<Option<String>> {
         match std::fs::read_to_string(&self.paths.update_marker) {
             Ok(text) => {
                 let _ = std::fs::remove_file(&self.paths.update_marker);
-                Ok(Some(text.trim().to_string()))
+                let version = text.trim().to_string();
+                if rollback {
+                    tauri_plugin_log::log::warn!("[update] 安装失败，回滚升级标记 v{version}");
+                } else {
+                    tauri_plugin_log::log::info!("[update] 升级成功落地 v{version}");
+                }
+                Ok(Some(version))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(error) => Err(app_err!("无法读取更新标记: {error}")),
