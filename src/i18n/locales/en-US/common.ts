@@ -6,6 +6,7 @@ export default {
     mcp: "MCP",
     plugins: "Plugins",
     skills: "Skill",
+    accounts: "Accounts",
     settings: "Settings",
   },
   sidebar: {

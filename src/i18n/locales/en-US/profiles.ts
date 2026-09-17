@@ -56,7 +56,6 @@ export default {
     window30d: "Monthly",
     period: "Period",
     queryFailedRetry: "Query failed (click to retry)",
-    subscriptionTooltip: "Percentage = remaining quota; time is the reset countdown. Click to refresh.",
     clickToRefresh: "Click to refresh",
     chatgptQuota: "ChatGPT quota",
     queryFailed: "Query failed",

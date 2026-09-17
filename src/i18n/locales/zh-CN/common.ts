@@ -5,6 +5,7 @@ export default {
     mcp: "MCP 管理",
     plugins: "插件",
     skills: "Skill",
+    accounts: "账号",
     settings: "设置",
   },
   sidebar: {

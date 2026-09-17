@@ -56,7 +56,6 @@ export default {
     window30d: "30天",
     period: "周期",
     queryFailedRetry: "查询失败（点击重试）",
-    subscriptionTooltip: "百分比=剩余额度，时间为重置倒计时；点击刷新",
     clickToRefresh: "点击刷新",
     chatgptQuota: "ChatGPT额度",
     queryFailed: "查询失败",
