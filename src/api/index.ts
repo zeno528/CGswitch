@@ -26,12 +26,13 @@ import type {
   Settings,
   TomlDiagnostic,
 } from "../types";
-import { webInvoke } from "./web-mock";
-
 export const isTauri = typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
 
-function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  return isTauri ? invoke<T>(command, args) : webInvoke<T>(command, args);
+// web-mock 动态加载：生产 Tauri 永远不会拉取这个 chunk，浏览器 dev 首次调用时才加载
+async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (isTauri) return invoke<T>(command, args);
+  const { webInvoke } = await import("./web-mock");
+  return webInvoke<T>(command, args);
 }
 
 export const api = {

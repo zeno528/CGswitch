@@ -562,6 +562,26 @@ const webChatgptQuota: ProfileBalanceInfo = {
     { id: "reset-credit-2", reset_type: "full", expires_at: Date.now() + 17 * 86_400_000 },
   ],
 };
+const webAuthStatus = {
+  authenticated: true,
+  default_account_id: null,
+  external: {
+    id: "web-codex-account",
+    login: "codex@example.com",
+    authenticated_at: 0,
+    is_default: false,
+    plan_type: "plus",
+    subscription_active_until: Date.now() + 14 * 86_400_000,
+  },
+  accounts: ["alpha", "beta", "gamma", "delta", "epsilon"].map((name, index) => ({
+    id: "web-" + name,
+    login: name + "@example.com",
+    authenticated_at: 0,
+    is_default: false,
+    plan_type: index % 2 ? "free" : "plus",
+    subscription_active_until: index % 2 ? null : Date.now() + (index + 3) * 86_400_000,
+  })),
+};
 
 function databaseBackupName(date = new Date()): string {
   const pad = (value: number, length = 2) => String(value).padStart(length, "0");
@@ -579,7 +599,7 @@ function webState(): AppState {
     },
     settings: { ...webSettings },
     paths: webPaths,
-    auth_status: { authenticated: false, default_account_id: null, accounts: [], external: null },
+    auth_status: webAuthStatus,
     balance_cache: { ...webBalanceCache },
   };
 }
@@ -1155,7 +1175,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "set_app_language":
       return undefined as T;
     case "auth_get_status":
-      return { authenticated: false, default_account_id: null, accounts: [], external: null } as T;
+      return webAuthStatus as T;
     case "auth_preview": {
       if (typeof args?.accountId !== "string" || !args.accountId) {
         throw new Error("OAuth 账号不能为空");
