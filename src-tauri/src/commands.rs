@@ -1,8 +1,8 @@
 use tauri::{AppHandle, State};
 
 use crate::auth::codex_oauth::{
-    parse_external_auth_json, AuthStatus, CodexOAuthError, CodexOAuthManager, CodexOAuthState,
-    DeviceCodeResponse, ManagedAccount,
+    parse_external_auth_json, AuthStatus, BrowserLoginStart, CodexOAuthError, CodexOAuthManager,
+    CodexOAuthState, DeviceCodeResponse, ManagedAccount,
 };
 use crate::builtin;
 use crate::codex::config as codex_config;
@@ -703,6 +703,34 @@ pub async fn auth_poll_for_account(
         Err(CodexOAuthError::AuthorizationPending) => Ok(None),
         Err(error) => Err(error.to_string()),
     }
+}
+
+#[tauri::command]
+pub async fn auth_start_browser_login(
+    state: State<'_, CodexOAuthState>,
+) -> Result<BrowserLoginStart, String> {
+    state
+        .0
+        .start_browser_login()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn auth_poll_browser_login(
+    state: State<'_, CodexOAuthState>,
+) -> Result<Option<ManagedAccount>, String> {
+    state
+        .0
+        .poll_browser_login()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn auth_cancel_browser_login(state: State<'_, CodexOAuthState>) -> Result<(), String> {
+    state.0.cancel_browser_login();
+    Ok(())
 }
 
 #[tauri::command]

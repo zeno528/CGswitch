@@ -21,11 +21,15 @@ impl AppContext {
     pub(super) fn write_auth_json(&self, content: &str) -> AppResult<()> {
         let destination = self.paths.codex_home.join("auth.json");
         backup_file(&destination, &self.paths.codex_files_backup, "auth")?;
-        atomic_write(&destination, content.as_bytes())?;
+        atomic_write(&destination, content.as_bytes()).map_err(|error| {
+            tauri_plugin_log::log::warn!("[auth] live auth.json 写入失败: {error}");
+            error
+        })?;
+        tauri_plugin_log::log::info!("[auth] 已写入 live auth.json（旧文件已备份）");
         Ok(())
     }
 
-    fn read_external_codex_auth(&self) -> Option<ExternalCodexAuth> {
+    pub(super) fn read_external_codex_auth(&self) -> Option<ExternalCodexAuth> {
         read_optional_text(&self.paths.codex_home.join("auth.json"))
             .as_deref()
             .and_then(parse_external_auth_json)
@@ -44,6 +48,7 @@ impl AppContext {
                 .unwrap_or_else(|| "ChatGPT（Codex 官方认证）".to_string()),
             authenticated_at: 0,
             is_default: false,
+            plan_type: auth.plan_type,
         }))
     }
 

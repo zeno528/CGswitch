@@ -84,7 +84,40 @@ fn migrations() -> Migrations<'static> {
              ON accounts(chatgpt_account_id, user_identity)
              WHERE user_identity IS NOT NULL",
         ),
+        // 订阅套餐徽标：从持久化的 id_token 现场回填存量行
+        M::up_with_hook("ALTER TABLE accounts ADD COLUMN plan_type TEXT", |tx| {
+            backfill_account_plan_type(tx)?;
+            Ok(())
+        }),
     ])
+}
+
+/// 回填账号订阅套餐：从持久化的 id_token 解析 chatgpt_plan_type。
+/// 迁移 hook 与旧 schema 备份恢复共用；只补空值，幂等。
+pub(super) fn backfill_account_plan_type(tx: &Transaction) -> rusqlite::Result<()> {
+    let mut statement = tx.prepare(
+        "SELECT id, id_token FROM accounts
+         WHERE plan_type IS NULL AND id_token IS NOT NULL",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let updates: Vec<(String, Option<String>)> = rows
+        .map(|row| {
+            let (id, id_token) = row?;
+            Ok((id, crate::auth::codex_oauth::extract_plan_type(&id_token)))
+        })
+        .collect::<rusqlite::Result<_>>()?;
+    drop(statement);
+    for (id, plan_type) in updates {
+        if let Some(plan_type) = plan_type {
+            tx.execute(
+                "UPDATE accounts SET plan_type = ?2 WHERE id = ?1",
+                params![id, plan_type],
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// 回填账号身份两列：workspace 取存量行 id，用户 sub 从持久化的 id_token 现场重算。
@@ -316,7 +349,7 @@ impl Database {
         let mut statement = connection
             .prepare(
                 "SELECT id, email, id_token, refresh_token, auth_json, authenticated_at,
-                        chatgpt_account_id, user_identity
+                        chatgpt_account_id, user_identity, plan_type
                  FROM accounts ORDER BY authenticated_at DESC, id ASC",
             )
             .map_err(|error| app_err!("无法读取订阅账号: {error}"))?;
@@ -336,8 +369,8 @@ impl Database {
         connection
             .execute(
                 "INSERT INTO accounts(id, email, id_token, refresh_token, auth_json, authenticated_at,
-                                      chatgpt_account_id, user_identity)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                                      chatgpt_account_id, user_identity, plan_type)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
                  ON CONFLICT(id) DO UPDATE SET
                    email=excluded.email,
                    id_token=excluded.id_token,
@@ -345,7 +378,8 @@ impl Database {
                    auth_json=excluded.auth_json,
                    authenticated_at=excluded.authenticated_at,
                    chatgpt_account_id=excluded.chatgpt_account_id,
-                   user_identity=excluded.user_identity",
+                   user_identity=excluded.user_identity,
+                   plan_type=COALESCE(excluded.plan_type, accounts.plan_type)",
                 params![
                     account.id,
                     account.email,
@@ -355,6 +389,7 @@ impl Database {
                     account.authenticated_at,
                     account.chatgpt_account_id,
                     account.user_identity,
+                    account.plan_type,
                 ],
             )
             .map_err(|error| app_err!("无法保存订阅账号: {error}"))?;
@@ -368,8 +403,8 @@ impl Database {
         connection
             .execute(
                 "INSERT INTO accounts(id, email, id_token, refresh_token, auth_json, authenticated_at,
-                                      chatgpt_account_id, user_identity)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                                      chatgpt_account_id, user_identity, plan_type)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     account.id,
                     account.email,
@@ -379,6 +414,7 @@ impl Database {
                     account.authenticated_at,
                     account.chatgpt_account_id,
                     account.user_identity,
+                    account.plan_type,
                 ],
             )
             .map(|changed| changed == 1)
@@ -559,16 +595,30 @@ impl Database {
             .and_then(|_| transaction.execute("DELETE FROM mcp_servers", []))
             .map_err(|error| app_err!("恢复前清理数据失败: {error}"))?;
 
-        // 旧 schema 备份没有身份两列：按旧列复制后回填；新备份带列复制
-        let source_has_identity_columns: i64 = source
-            .query_row(
-                "SELECT COUNT(*) FROM pragma_table_info('accounts')
-                 WHERE name = 'chatgpt_account_id'",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
-        if source_has_identity_columns > 0 {
+        // 旧 schema 备份没有身份两列/套餐列：按旧列复制后回填；新备份带列复制
+        let source_column = |name: &str| -> AppResult<i64> {
+            source
+                .query_row(
+                    "SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = ?1",
+                    params![name],
+                    |row| row.get(0),
+                )
+                .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))
+        };
+        let source_has_identity_columns = source_column("chatgpt_account_id")?;
+        let source_has_plan_type = source_column("plan_type")?;
+        if source_has_plan_type > 0 {
+            copy_table(
+                &source,
+                &transaction,
+                "accounts",
+                "SELECT id, email, id_token, refresh_token, auth_json, authenticated_at,
+                        chatgpt_account_id, user_identity, plan_type FROM accounts",
+                "INSERT INTO accounts(id, email, id_token, refresh_token, auth_json, authenticated_at,
+                                      chatgpt_account_id, user_identity, plan_type)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            )?;
+        } else if source_has_identity_columns > 0 {
             copy_table(
                 &source,
                 &transaction,
@@ -579,6 +629,8 @@ impl Database {
                                       chatgpt_account_id, user_identity)
                  VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
+            backfill_account_plan_type(&transaction)
+                .map_err(|error| app_err!("回填账号套餐失败: {error}"))?;
         } else {
             copy_table(
                 &source,
@@ -590,6 +642,8 @@ impl Database {
             )?;
             backfill_account_identity(&transaction)
                 .map_err(|error| app_err!("回填账号身份失败: {error}"))?;
+            backfill_account_plan_type(&transaction)
+                .map_err(|error| app_err!("回填账号套餐失败: {error}"))?;
         }
         copy_table(
             &source,
@@ -725,6 +779,8 @@ pub struct StoredAccount {
     pub chatgpt_account_id: Option<String>,
     /// id_token 的 sub：跨刷新稳定的用户身份，判重与 live auth.json 所有权校验用。
     pub user_identity: Option<String>,
+    /// 订阅套餐（free/plus/pro/team…），随 id_token 刷新而更新
+    pub plan_type: Option<String>,
 }
 
 fn profile_from_row(row: &Row<'_>) -> rusqlite::Result<StoredProfile> {
@@ -756,6 +812,7 @@ fn account_from_row(row: &Row<'_>) -> rusqlite::Result<StoredAccount> {
         authenticated_at: row.get(5)?,
         chatgpt_account_id: row.get(6)?,
         user_identity: row.get(7)?,
+        plan_type: row.get(8)?,
     })
 }
 
@@ -785,6 +842,8 @@ fn summary(
             },
             account_id,
         ),
+        // 套餐由 get_state 聚合时按绑定账号/live 认证填充，Database 层不知道
+        plan_type: None,
         model: display_text(payload.model_values.get("model")),
         provider: payload.provider_id.clone(),
         reasoning_effort: display_text(payload.model_values.get("model_reasoning_effort")),
@@ -968,6 +1027,7 @@ mod tests {
             authenticated_at: 100,
             chatgpt_account_id: Some("acc-1".into()),
             user_identity: None,
+            plan_type: None,
         };
         db.upsert_account(&account).unwrap();
         assert_eq!(db.accounts().unwrap()[0].refresh_token, "rt-1");
@@ -1011,7 +1071,13 @@ mod tests {
     fn legacy_id_token(sub: &str) -> String {
         use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
-        let payload = URL_SAFE_NO_PAD.encode(serde_json::json!({ "sub": sub }).to_string());
+        let payload = URL_SAFE_NO_PAD.encode(
+            serde_json::json!({
+                "sub": sub,
+                "https://api.openai.com/auth": { "chatgpt_plan_type": "plus" }
+            })
+            .to_string(),
+        );
         format!("{header}.{payload}.")
     }
 
@@ -1059,9 +1125,11 @@ mod tests {
         let row_b = accounts.iter().find(|a| a.id == "ws-2").unwrap();
         assert_eq!(row_a.chatgpt_account_id.as_deref(), Some("ws-1"));
         assert_eq!(row_a.user_identity.as_deref(), Some("user-a"));
+        assert_eq!(row_a.plan_type.as_deref(), Some("plus"));
         // 无 id_token 的行回填 workspace、身份留空（后续登录按 email 认领）
         assert_eq!(row_b.chatgpt_account_id.as_deref(), Some("ws-2"));
         assert_eq!(row_b.user_identity, None);
+        assert_eq!(row_b.plan_type, None);
     }
 
     /// 旧版本导出的备份（accounts 无身份两列）恢复后应回填并保留引用
@@ -1121,6 +1189,7 @@ mod tests {
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].chatgpt_account_id.as_deref(), Some("ws-1"));
         assert_eq!(accounts[0].user_identity.as_deref(), Some("user-a"));
+        assert_eq!(accounts[0].plan_type.as_deref(), Some("plus"));
         // 恢复未重映射 id：供应商绑定原样有效
         assert_eq!(
             db.profiles().unwrap()[0].account_id.as_deref(),

@@ -54,6 +54,20 @@ impl AppContext {
         let live_payload = live
             .as_ref()
             .and_then(|document| codex_config::capture_from_document(document).ok());
+        // 配置卡片套餐标识：OAuth 绑定账号取库内套餐，Desktop 取 live auth.json 的套餐；
+        // 账号列表一次查齐避免逐卡片查询
+        let account_plans: std::collections::HashMap<String, String> = self
+            .database
+            .accounts()?
+            .into_iter()
+            .filter_map(|account| {
+                let id = account.id;
+                account.plan_type.map(|plan| (id, plan))
+            })
+            .collect();
+        let external_plan = self
+            .read_external_codex_auth()
+            .and_then(|auth| auth.plan_type);
         // 应用安装路径固定 + 自动识别，不支持手动覆盖
         let process_ids = codex_process::find_process_ids(None);
         let (display_path, source) = codex_process::codex_display_path(None);
@@ -74,7 +88,16 @@ impl AppContext {
                             stored.payload = live;
                         }
                     }
-                    profile_summary(&stored)
+                    let mut summary = profile_summary(&stored);
+                    summary.plan_type = match summary.auth_source {
+                        Some(AuthSource::Oauth) => summary
+                            .account_id
+                            .as_deref()
+                            .and_then(|id| account_plans.get(id).cloned()),
+                        Some(AuthSource::Desktop) => external_plan.clone(),
+                        None => None,
+                    };
+                    summary
                 })
                 .collect::<Vec<ProfileSummary>>(),
             active_profile_id,

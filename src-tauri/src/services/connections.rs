@@ -1138,15 +1138,15 @@ impl AppContext {
         account_id: Option<&str>,
         oauth: &CodexOAuthManager,
     ) -> AppResult<ProfileBalance> {
-        let (access_token, account_id) = match source {
+        let (access_token, account_id, email) = match source {
             AuthSource::Desktop => {
                 let account = self
-                    .external_codex_auth()?
+                    .read_external_codex_auth()
                     .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
                 let token = self
-                    .external_codex_access_token_for_account(&account.id)?
+                    .external_codex_access_token_for_account(&account.account_id)?
                     .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
-                (token, Some(account.id))
+                (token, Some(account.account_id), account.email)
             }
             AuthSource::Oauth => {
                 let account_id = account_id.ok_or_else(|| app_err!("OAuth 账号不存在"))?;
@@ -1155,13 +1155,16 @@ impl AppContext {
                     .await
                     .map_err(|error| app_err!("{error}"))?;
                 // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
-                (token, Some(oauth.workspace_of(account_id).await))
+                let email = oauth.account_email(account_id).await;
+                (token, Some(oauth.workspace_of(account_id).await), email)
             }
         };
-        let context = account_id
-            .as_deref()
-            .map(|id| format!("account={id}"))
-            .unwrap_or_else(|| "source=desktop".to_string());
+        // 日志主体带邮箱：id 无法对人区分账号
+        let context = match (account_id.as_deref(), email.as_deref()) {
+            (Some(id), Some(mail)) => format!("account={id} email={mail}"),
+            (Some(id), None) => format!("account={id}"),
+            (None, _) => "source=desktop".to_string(),
+        };
         query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await
     }
 
@@ -1174,7 +1177,8 @@ impl AppContext {
         let stored = self.database.profile(id)?;
         let payload = &stored.payload;
         if stored.kind == ProfileKind::Official {
-            let context = format!("profile={id}");
+            // 日志主体带配置名：id 无法对人区分配置
+            let context = format!("profile={id} name={}", stored.name);
             let (access_token, account_id) =
                 match payload.effective_auth_source(stored.kind, stored.account_id.as_deref()) {
                     Some(AuthSource::Desktop) => payload

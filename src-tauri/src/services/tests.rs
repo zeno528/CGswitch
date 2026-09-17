@@ -340,6 +340,7 @@ fn apply_bound_oauth_profile_leaves_auth_for_oauth_writer() {
             auth_json: None,
             chatgpt_account_id: Some("oauth-account".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 1,
         })
         .unwrap();
@@ -388,6 +389,7 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
                 authenticated_at: 1,
                 chatgpt_account_id: Some(id.to_string()),
                 user_identity: None,
+                plan_type: None,
             })
             .unwrap();
     }
@@ -489,6 +491,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
             auth_json: Some(initial_oauth_auth.clone()),
             chatgpt_account_id: Some("oauth-account".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 1,
         })
         .unwrap();
@@ -502,6 +505,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
             auth_json: Some(initial_second_oauth_auth.clone()),
             chatgpt_account_id: Some("oauth-second".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 2,
         })
         .unwrap();
@@ -592,6 +596,7 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
             auth_json: None,
             chatgpt_account_id: Some("account-1".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 0,
         })
         .unwrap();
@@ -2931,6 +2936,7 @@ base_url = "https://api.example"
             auth_json: None,
             chatgpt_account_id: Some("acc-1".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 1,
         })
         .unwrap();
