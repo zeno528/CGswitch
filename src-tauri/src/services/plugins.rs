@@ -1060,27 +1060,59 @@ fn store_skills(plugin_dir: &Path) -> Vec<PluginSkill> {
 }
 
 // ponytail: 只读 SKILL.md frontmatter 的单行 description；多行 YAML 描述暂不展开。
+/// 从 SKILL.md frontmatter 提取 description：支持单行值与 YAML 块标量（`|`/`>`，
+/// 含 `|-`、`>+` 等 chomping 变体）。折叠按 YAML 语义简化：相邻行并作空格、
+/// 空行保留为换行；`|` 字面量逐行保留换行。
 fn read_skill_description(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
+    let lines: Vec<&str> = text.lines().take(40).collect();
     let mut frontmatter = false;
-    for (index, line) in text.lines().enumerate().take(40) {
-        let trimmed = line.trim();
-        if index == 0 && trimmed == "---" {
+    let mut index = 0;
+    while index < lines.len() {
+        let trimmed = lines[index].trim();
+        index += 1;
+        if index == 1 && trimmed == "---" {
             frontmatter = true;
             continue;
         }
         if frontmatter && trimmed == "---" {
             break;
         }
-        if frontmatter {
-            let Some(value) = trimmed.strip_prefix("description:") else {
-                continue;
-            };
-            let value = value.trim().trim_matches(['"', '\'']);
-            if !value.is_empty() && value != "|" && value != ">" {
-                return Some(value.to_string());
+        if !frontmatter {
+            continue;
+        }
+        let Some(value) = trimmed.strip_prefix("description:") else {
+            continue;
+        };
+        let value = value.trim().trim_matches(['"', '\'']);
+        if value.is_empty() {
+            continue;
+        }
+        if !value.starts_with(['|', '>']) {
+            return Some(value.to_string());
+        }
+        let literal = value.starts_with('|');
+        let mut folded = String::new();
+        let mut pending_break = false;
+        while index < lines.len() {
+            let line = lines[index];
+            let trimmed_line = line.trim();
+            // 块标量终止：遇到顶格非空行（下一个键或 frontmatter 结束）
+            if !trimmed_line.is_empty() && !line.starts_with([' ', '\t']) {
+                break;
+            }
+            index += 1;
+            if trimmed_line.is_empty() {
+                pending_break = !folded.is_empty();
+            } else {
+                if !folded.is_empty() {
+                    folded.push_str(if literal || pending_break { "\n" } else { " " });
+                }
+                folded.push_str(trimmed_line);
+                pending_break = false;
             }
         }
+        return (!folded.is_empty()).then_some(folded);
     }
     None
 }
@@ -2215,6 +2247,39 @@ mod tests {
         assert_eq!(skills[0].name, "session-summary");
         assert_eq!(skills[0].path, "skills/session-summary/SKILL.md");
         assert_eq!(skills[0].description.as_deref(), Some("Summarize sessions"));
+    }
+
+    #[test]
+    fn read_skill_description_folds_block_scalar() {
+        // 实测样本（nezha-manager 等）：`>` 折叠块曾整段被跳过导致卡片无描述
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("SKILL.md");
+        std::fs::write(
+            &path,
+            "---\nname: demo\ndescription: >\n  First folded line\n  continues here.\n\n  Second paragraph.\nlicense: MIT\n---\n# body\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_skill_description(&path).as_deref(),
+            Some("First folded line continues here.\nSecond paragraph.")
+        );
+    }
+
+    #[test]
+    fn read_skill_description_keeps_literal_block_lines() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("SKILL.md");
+        std::fs::write(
+            &path,
+            "---\ndescription: |-\n  Step one\n  Step two\n---\n# body\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_skill_description(&path).as_deref(),
+            Some("Step one\nStep two")
+        );
     }
 
     #[test]
