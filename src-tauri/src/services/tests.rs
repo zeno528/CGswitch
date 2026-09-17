@@ -1140,6 +1140,28 @@ fn minimax_remains_converts_remaining_to_used_percent() {
 }
 
 #[test]
+fn format_reset_rounds_up_so_unused_windows_show_full_window() {
+    // 未使用的 ChatGPT 5h 窗口重置点会随查询滑动（窗口未开始），
+    // 截断会把“剩 4h59m59s”显示成 4h59m，看起来像窗口已走掉 1 分钟
+    assert_eq!(
+        connections::format_reset(17_999_000, false),
+        Some("5h".into())
+    );
+    // 恰好整分钟不进位
+    assert_eq!(
+        connections::format_reset(8_580_000, false),
+        Some("2h23m".into())
+    );
+    // 周窗口同理：5d20h59m59s 向上进到 5d21h
+    assert_eq!(
+        connections::format_reset(507_540_001, true),
+        Some("5d21h".into())
+    );
+    // 不足 1 分钟不显示（既有契约）
+    assert_eq!(connections::format_reset(60_000, false), None);
+}
+
+#[test]
 fn zhipu_quota_maps_rolling_windows_to_usage() {
     let now_ms = 1_800_000_000_000_i64;
     let value = serde_json::json!({

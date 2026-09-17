@@ -804,10 +804,14 @@ pub(crate) fn used_percent(remaining: Option<f64>) -> Option<u32> {
 }
 
 /// 重置倒计时格式：按窗口长度决定是否显示天数；不足 1 分钟不显示。
+/// 分钟向上取整：ChatGPT 未使用窗口的重置点会随查询滑动（窗口尚未开始），
+/// 截断会把“剩 4h59m50s”显示成 4h59m，看起来像窗口已走掉 1 分钟；
+/// 官方 Plan limits 页同样向上取整（显示 5h 0m）。
 pub(crate) fn format_reset(ms: i64, with_days: bool) -> Option<String> {
     if ms <= 60_000 {
         return None;
     }
+    let ms = (ms + 59_999) / 60_000 * 60_000;
     let days = if with_days { ms / 86_400_000 } else { 0 };
     let hours = (ms % 86_400_000) / 3_600_000;
     let minutes = (ms % 3_600_000) / 60_000;
