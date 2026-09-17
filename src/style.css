@@ -444,7 +444,8 @@ body {
   border: 1px solid var(--panel-border);
 }
 
-.settings-page .settings-icon-tile {
+.settings-page .settings-icon-tile,
+.accounts-page .settings-icon-tile {
   background: var(--primary-button-bg);
   color: var(--primary-button-text);
 }

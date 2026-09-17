@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Layers2, Minus, Blocks, Puzzle, Settings as SettingsIcon, Square, X } from "lucide-react";
+import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
@@ -10,6 +10,7 @@ import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
+import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
 import { setupI18n } from "../i18n";
@@ -20,7 +21,6 @@ const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
-  const [settingsInitialSection, setSettingsInitialSection] = useState<"general" | "account">("general");
   const [profilesReset, setProfilesReset] = useState(0);
   const [mcpReset, setMcpReset] = useState(0);
   const [startupReady, setStartupReady] = useState(false);
@@ -33,7 +33,7 @@ export default function AppShell() {
     if (isTauri) void api.setAppLanguage(language).catch(() => undefined);
   }, [state?.settings.language]);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
-  const { activationEpoch, activate } = useActivationRefresh();
+  const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
 
   useEffect(() => {
@@ -73,18 +73,44 @@ export default function AppShell() {
   }, [refresh, refreshAuthStatus, startPolling, stopPolling]);
 
   useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
     const onActive = () => {
-      activate();
+      if (!activate()) return;
       void refresh();
       void refreshAuthStatus();
       startPolling();
     };
-    const onInactive = () => stopPolling();
+    const onInactive = () => {
+      if (!deactivate()) return;
+      stopPolling();
+    };
+    if (isTauri && appWindow) {
+      void appWindow.onFocusChanged(({ payload: focused }) => {
+        if (focused) {
+          onActive();
+          return;
+        }
+        // Windows 单 WebView 会把拖拽标题栏导致的 WebView 失焦合成为窗口失焦；
+        // 仅当原生窗口也失焦时才停止轮询并允许下一次激活刷新。
+        void appWindow.isFocused().then((windowFocused) => {
+          if (!windowFocused) onInactive();
+        });
+      }).then((dispose) => {
+        if (cancelled) dispose();
+        else unlisten = dispose;
+      });
+      return () => {
+        cancelled = true;
+        unlisten?.();
+      };
+    }
     const onVisibility = () => (document.hidden ? onInactive() : onActive());
     window.addEventListener("focus", onActive);
     window.addEventListener("blur", onInactive);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      cancelled = true;
       window.removeEventListener("focus", onActive);
       window.removeEventListener("blur", onInactive);
       document.removeEventListener("visibilitychange", onVisibility);
@@ -122,10 +148,14 @@ export default function AppShell() {
     setView("skills");
   };
 
-  const goSettings = (section: "general" | "account" = "general") => {
+  const goSettings = () => {
     if (view === "settings") return;
-    setSettingsInitialSection(section);
     setView("settings");
+  };
+
+  const goAccounts = () => {
+    if (view === "accounts") return;
+    setView("accounts");
   };
 
   const navClass = "apple-sidebar-nav-button app-selection-state";
@@ -192,6 +222,11 @@ export default function AppShell() {
               </button>
             </nav>
             <div className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5">
+              <button type="button" className={navClass} data-active={view === "accounts" ? "true" : undefined} aria-label={t("nav.accounts")} onClick={goAccounts} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+                <CircleUserRound strokeWidth={2} aria-hidden="true" />
+                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.accounts")}</span>
+                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.accounts")}</span> : null}
+              </button>
               <button type="button" className={navClass} data-active={view === "settings" ? "true" : undefined} aria-label={t("nav.settings")} onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 <SettingsIcon strokeWidth={2} aria-hidden="true" />
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.settings")}</span>
@@ -212,15 +247,17 @@ export default function AppShell() {
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
               ) : view === "profiles" ? (
-                <ProfilesView key={profilesReset} state={state} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={() => goSettings("account")} />
+                <ProfilesView key={profilesReset} state={state} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
               ) : view === "mcp" ? (
                 <McpView key={mcpReset} />
               ) : view === "plugins" ? (
                 <PluginsView state={state} />
             ) : view === "skills" ? (
               <SkillsView activationEpoch={activationEpoch} />
+              ) : view === "accounts" ? (
+                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} />
               ) : (
-                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} initialSection={settingsInitialSection} />
+                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
               )}
             </div>
           </main>

@@ -3,7 +3,7 @@ import type { MutableRefObject } from "react";
 import { api, isTauri } from "../api";
 import type { AppState, CodexAppStatus, Settings } from "../types";
 
-export type AppView = "profiles" | "mcp" | "plugins" | "skills" | "settings";
+export type AppView = "profiles" | "mcp" | "plugins" | "skills" | "accounts" | "settings";
 
 export function useAppState() {
   const [state, setState] = useState<AppState | null>(null);
@@ -132,8 +132,19 @@ export function useCodexPolling(
 
 export function useActivationRefresh() {
   const [activationEpoch, setActivationEpoch] = useState(0);
-  const activate = useCallback(() => setActivationEpoch((value) => value + 1), []);
-  return { activationEpoch, activate };
+  const activeRef = useRef(!document.hidden);
+  const activate = useCallback(() => {
+    if (activeRef.current) return false;
+    activeRef.current = true;
+    setActivationEpoch((value) => value + 1);
+    return true;
+  }, []);
+  const deactivate = useCallback(() => {
+    if (!activeRef.current) return false;
+    activeRef.current = false;
+    return true;
+  }, []);
+  return { activationEpoch, activate, deactivate };
 }
 
 export function useSidebar() {

@@ -3,20 +3,38 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
+const hooksSource = readFileSync(new URL("./appShellHooks.ts", import.meta.url), "utf8");
 const profileEditSource = readFileSync(new URL("../features/profiles/ProfileEdit.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 
 describe("AppShell 布局", () => {
-  it("保持侧栏导航紧贴品牌区，并让设置按钮锚定底部", () => {
+  it("保持侧栏导航紧贴品牌区，并让账号和设置按钮锚定底部", () => {
     expect(source).toContain("apple-sidebar relative h-full shrink-0");
     expect(source).toContain('className="mx-1.5 mt-3 space-y-1"');
     expect(source).toContain('className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5"');
   });
 
   it("重复点击当前侧栏页面时不重置页面", () => {
-    for (const view of ["profiles", "mcp", "plugins", "skills", "settings"]) {
+    for (const view of ["profiles", "mcp", "plugins", "skills", "accounts", "settings"]) {
       expect(source).toContain(`if (view === "${view}") return;`);
     }
+  });
+
+  it("只在窗口从非激活状态恢复时刷新", () => {
+    expect(hooksSource).toContain("const activeRef = useRef(!document.hidden);");
+    expect(hooksSource).toContain("if (activeRef.current) return false;");
+    expect(hooksSource).toContain("if (!activeRef.current) return false;");
+    expect(source).toContain("if (!activate()) return;");
+    expect(source).toContain("if (!deactivate()) return;");
+    expect(source).toContain("if (isTauri && appWindow) {");
+    expect(source).toContain("appWindow.onFocusChanged");
+    expect(source).toContain("appWindow.isFocused()");
+  });
+
+  it("账号入口固定在设置入口上方，并通过全局视图打开", () => {
+    expect(source).toContain('data-active={view === "accounts" ? "true" : undefined}');
+    expect(source.indexOf('data-active={view === "accounts" ? "true" : undefined}')).toBeLessThan(source.indexOf('data-active={view === "settings" ? "true" : undefined}'));
+    expect(source).toContain('onManageChatgptAccounts={goAccounts}');
   });
 
   it("首屏完成后才启动自动更新检查", () => {
