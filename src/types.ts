@@ -157,6 +157,16 @@ export interface ProfileBalanceInfo {
   weekly_reset_at?: number | null;
   /** 次用量窗口名称；免费方案可为 30 天。 */
   weekly_label?: string | null;
+  /** Codex 主动重置卡可用次数；仅 ChatGPT 订阅账号返回。 */
+  reset_credits_available?: number | null;
+  /** 可用主动重置卡的到期时间。 */
+  reset_credits?: ChatgptResetCredit[] | null;
+}
+
+export interface ChatgptResetCredit {
+  id: string;
+  reset_type?: string | null;
+  expires_at?: number | null;
 }
 
 export interface ProfileBalance {
@@ -191,6 +201,8 @@ export interface ManagedAccount {
   is_default: boolean;
   /** 订阅套餐（free/plus/pro/team…官方原词），未知为 null */
   plan_type: string | null;
+  /** ChatGPT 订阅到期时间（Unix 毫秒），未知时省略。 */
+  subscription_active_until?: number | null;
 }
 
 export interface AuthStatus {

@@ -556,6 +556,11 @@ const webChatgptQuota: ProfileBalanceInfo = {
   weekly_reset: "4d8h",
   weekly_reset_at: Date.now() + 4 * 86_400_000 + 8 * 3_600_000,
   weekly_label: "7天",
+  reset_credits_available: 2,
+  reset_credits: [
+    { id: "reset-credit-1", reset_type: "full", expires_at: Date.now() + 16 * 86_400_000 },
+    { id: "reset-credit-2", reset_type: "full", expires_at: Date.now() + 17 * 86_400_000 },
+  ],
 };
 
 function databaseBackupName(date = new Date()): string {
