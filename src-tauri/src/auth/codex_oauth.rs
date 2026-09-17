@@ -116,6 +116,9 @@ pub struct ManagedAccount {
     pub is_default: bool,
     /// 订阅套餐（free/plus/pro/team…），未知为 null
     pub plan_type: Option<String>,
+    /// ChatGPT 订阅到期时间（Unix 毫秒）；来自官方 id_token，未知为 null。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscription_active_until: Option<i64>,
 }
 
 /// 一次登录得到的凭证与身份：`complete_login` 从 token 响应提取，
@@ -193,6 +196,9 @@ struct OpenAiAuthClaim {
     /// 订阅套餐（free/plus/pro/team/business/go/k12…），官方原词
     #[serde(default)]
     chatgpt_plan_type: Option<String>,
+    /// CLIProxyAPI 同名 JWT claim；官方返回可能是 Unix 时间戳或 RFC 3339 文本。
+    #[serde(default)]
+    chatgpt_subscription_active_until: Option<serde_json::Value>,
 }
 
 /// 内存缓存的 access_token
@@ -1265,6 +1271,10 @@ impl CodexOAuthManager {
             authenticated_at: data.authenticated_at,
             is_default,
             plan_type: data.plan_type,
+            subscription_active_until: data
+                .id_token
+                .as_deref()
+                .and_then(extract_subscription_active_until),
         })
     }
 
@@ -1341,6 +1351,10 @@ fn sorted_accounts(
             authenticated_at: data.authenticated_at,
             is_default: default_account_id == Some(id.as_str()),
             plan_type: data.plan_type.clone(),
+            subscription_active_until: data
+                .id_token
+                .as_deref()
+                .and_then(extract_subscription_active_until),
         })
         .collect();
     list.sort_by(|a, b| {
@@ -1405,6 +1419,31 @@ pub(crate) fn extract_plan_type(token: &str) -> Option<String> {
         .filter(|plan| !plan.is_empty())
 }
 
+/// 从同一份官方 id_token 取套餐到期时间，兼容 CLIProxyAPI 已保留的数字与 RFC 3339 两种形态。
+pub(crate) fn extract_subscription_active_until(token: &str) -> Option<i64> {
+    let value = parse_jwt_claims(token)?
+        .openai_auth?
+        .chatgpt_subscription_active_until?;
+    subscription_timestamp_ms(&value)
+}
+
+fn subscription_timestamp_ms(value: &serde_json::Value) -> Option<i64> {
+    let timestamp = match value {
+        serde_json::Value::Number(number) => number.as_i64()?,
+        serde_json::Value::String(text) => text.parse::<i64>().ok().or_else(|| {
+            chrono::DateTime::parse_from_rfc3339(text)
+                .ok()
+                .map(|time| time.timestamp_millis())
+        })?,
+        _ => return None,
+    };
+    (timestamp > 0).then_some(if timestamp > 1_000_000_000_000 {
+        timestamp
+    } else {
+        timestamp.saturating_mul(1_000)
+    })
+}
+
 fn extract_identity_from_tokens(tokens: &OAuthTokenResponse) -> (Option<String>, Option<String>) {
     let mut account_id: Option<String> = None;
     let mut email: Option<String> = None;
@@ -1456,6 +1495,8 @@ pub struct ExternalCodexAuth {
     pub user_identity: Option<String>,
     /// 订阅套餐（free/plus/pro/team…），UI 徽标展示用
     pub plan_type: Option<String>,
+    /// ChatGPT 订阅到期时间（Unix 毫秒）。
+    pub subscription_active_until: Option<i64>,
 }
 
 /// 解析 Codex CLI 官方生成的 auth.json。
@@ -1487,6 +1528,9 @@ pub fn parse_external_auth_json(text: &str) -> Option<ExternalCodexAuth> {
     };
     let user_identity = id_token.as_deref().and_then(extract_user_identity);
     let plan_type = id_token.as_deref().and_then(extract_plan_type);
+    let subscription_active_until = id_token
+        .as_deref()
+        .and_then(extract_subscription_active_until);
     let account_id = jwt_account_id.or_else(|| {
         tokens
             .get("account_id")
@@ -1502,6 +1546,7 @@ pub fn parse_external_auth_json(text: &str) -> Option<ExternalCodexAuth> {
         refresh_token,
         user_identity,
         plan_type,
+        subscription_active_until,
     })
 }
 
@@ -1742,6 +1787,31 @@ mod tests {
         // 空串/缺 claim：视为未知套餐
         assert_eq!(extract_plan_type(&plan_token("  ")), None);
         assert_eq!(extract_plan_type("not-a-jwt"), None);
+    }
+
+    #[test]
+    fn extract_subscription_active_until_normalizes_timestamp_and_rfc3339() {
+        let token = |value: serde_json::Value| {
+            let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+            let payload = URL_SAFE_NO_PAD.encode(
+                serde_json::json!({
+                    "https://api.openai.com/auth": {
+                        "chatgpt_subscription_active_until": value,
+                    }
+                })
+                .to_string(),
+            );
+            format!("{header}.{payload}.")
+        };
+        assert_eq!(
+            extract_subscription_active_until(&token(serde_json::json!(1_789_000_000))),
+            Some(1_789_000_000_000)
+        );
+        assert_eq!(
+            extract_subscription_active_until(&token(serde_json::json!("2026-09-18T01:29:00Z"))),
+            Some(1_789_694_940_000)
+        );
+        assert_eq!(extract_subscription_active_until("not-a-jwt"), None);
     }
 
     #[test]

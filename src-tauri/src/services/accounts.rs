@@ -49,6 +49,7 @@ impl AppContext {
             authenticated_at: 0,
             is_default: false,
             plan_type: auth.plan_type,
+            subscription_active_until: auth.subscription_active_until,
         }))
     }
 
