@@ -60,7 +60,7 @@
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
   --sidebar-icon-size: 1.125rem;
-  --brand-logo-size: 1.5rem;
+  --brand-logo-size: 1.75rem;
   --control-height: 2.25rem;
   /* 输入类控件（.app-input/.app-select）最小高：行高 1.6 + 上下 padding + 边框，允许换行到两行 */
   --input-min-height: calc(1.6em + 1rem + 2px);
@@ -812,12 +812,17 @@ body.drag-active * {
 
 /* 品牌按钮（logo+名字）：复用导航按钮的固定图标锚点，收缩时只保留 Logo */
 .apple-sidebar-brand {
-  gap: 0.5rem;
+  gap: 0.1875rem;
   height: 2.25rem;
+  transform: translateY(-0.375rem);
   /* logo 放大后按尺寸差减半，保持中心与导航按钮图标共线 */
   padding-left: calc(0.375rem + var(--sidebar-nav-padding) - (var(--brand-logo-size) - var(--sidebar-icon-size)) / 2);
   transition:
     gap var(--motion-sidebar) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.apple-sidebar-brand .apple-wordmark {
+  font-size: 1.125rem;
 }
 
 .apple-sidebar-brand > img {
