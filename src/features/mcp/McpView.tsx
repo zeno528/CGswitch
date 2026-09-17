@@ -1,4 +1,4 @@
-import { ArrowDownUp, CircleDashed, Globe, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
+import { CircleDashed, GitCompare, Globe, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -359,7 +359,7 @@ export default function McpView() {
         </div>
         <div className="flex w-full max-w-md items-center justify-end gap-2">
           <button type="button" className="apple-action-button" disabled={applying} onClick={openSyncDialog}>
-            <ArrowDownUp className="h-4 w-4" strokeWidth={2} />
+            <GitCompare className="h-4 w-4" strokeWidth={2} />
             {t("list.resolveDiff")}
           </button>
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>

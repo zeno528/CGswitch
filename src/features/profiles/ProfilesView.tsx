@@ -242,14 +242,12 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
           <UpdateNotice />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="apple-toolbar-group">
-            <button type="button" className="apple-action-button apple-action-button--quaternary"
-              disabled={busy}
-              title={t("toolbar.restart")} onClick={() => void restart(false)}>
-              {restarting ? <LoadingSpinner size="md" /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
-              {restarting ? t("toolbar.restarting") : t("toolbar.restart")}
-            </button>
-          </div>
+          <button type="button" className="apple-action-button apple-action-button--quaternary"
+            disabled={busy}
+            title={t("toolbar.restart")} onClick={() => void restart(false)}>
+            {restarting ? <LoadingSpinner size="md" /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
+            {restarting ? t("toolbar.restarting") : t("toolbar.restart")}
+          </button>
           <button type="button" className="apple-action-button app-button--primary" disabled={busy}
             onClick={() => setCreatingProfile(true)}>
             <Plus className="h-4 w-4" strokeWidth={2} />{t("toolbar.addProvider")}

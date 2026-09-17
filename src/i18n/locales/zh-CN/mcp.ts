@@ -3,9 +3,9 @@ export default {
   list: {
     title: "MCP 服务器管理",
     serverCount: "已安装 {{count}}",
-    resolveDiff: "处理配置差异",
+    resolveDiff: "处理差异",
     addServer: "添加服务器",
-    loadErrorHint: "config.toml 无法解析时，可点「处理配置差异」用数据库中的 MCP 配置恢复。",
+    loadErrorHint: "config.toml 无法解析时，可点「处理差异」用数据库中的 MCP 配置恢复。",
     diffChip: "MCP 差异",
     diffSummary: "数据库与 config.toml 有 {{count}} 项 MCP 配置不同",
     reviewDiff: "查看并处理",
