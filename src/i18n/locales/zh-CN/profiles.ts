@@ -7,11 +7,11 @@ export default {
   toolbar: {
     restart: "重启Codex APP",
     restarting: "重启中…",
-    capture: "捕获当前配置",
+    capture: "从当前配置新建",
     addProvider: "添加供应商",
   },
   empty: {
-    description: "还没有供应商配置。可以添加内置官方供应商，或先把 ~/.codex/config.toml 调整到目标状态，再点击“捕获当前配置”。",
+    description: "还没有供应商配置。可添加内置供应商，或从当前配置新建。",
   },
   dialog: {
     captureTitle: "保存当前配置快照",

@@ -7,11 +7,11 @@ export default {
   toolbar: {
     restart: "Restart Codex app",
     restarting: "Restarting...",
-    capture: "Capture current config",
+    capture: "Create from current config",
     addProvider: "Add provider",
   },
   empty: {
-    description: "No providers yet. Add a built-in official provider, or set ~/.codex/config.toml to the target state first, then click \"Capture current config\".",
+    description: "No provider configs yet. Add a built-in provider or create one from the current config.",
   },
   dialog: {
     captureTitle: "Save current config snapshot",
