@@ -1,8 +1,9 @@
-import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, FileBraces, Info, KeyRound, Monitor, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
+import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, FileBraces, Info, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
@@ -168,8 +169,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
       return <span className="font-medium text-accent">{option.label}</span>;
     }
     const desktop = option.value === "";
-    const Icon = desktop ? Monitor : KeyRound;
-    return <span className="inline-flex min-w-0 items-center gap-2"><Icon className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{desktop ? t("card.authDesktop") : t("card.authOAuth")}</span>{desktop ? null : <><span className="text-[var(--text-secondary)]">·</span><span className="truncate">{option.label}</span></>}</span>;
+    return <span className="inline-flex min-w-0 items-center gap-2"><AuthSourceIcon source={desktop ? "desktop" : "oauth"} className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{desktop ? t("card.authDesktop") : t("card.authOAuth")}</span>{desktop ? null : <><span className="text-[var(--text-secondary)]">·</span><span className="truncate">{option.label}</span></>}</span>;
   };
   const refreshAuthPreview = async (accountId: string) => {
     const requestId = ++authPreviewRequest.current;
@@ -627,7 +627,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
                 {isOpenCode && create ? <p className="muted mt-2 flex items-start gap-1.5 text-xs"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />{t("edit.opencodePromo")}</p> : null}
               </>
             ) : null}
-            {isOfficial ? <div className="mt-4"><div className="field-label mb-1.5">{t("edit.authMethodLabel")}</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder={t("card.authDesktop")} renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder={t("edit.selectOauthAccount")} renderLabel={renderAccountLabel} /> : <div className="app-input flex min-w-0 items-center gap-2"><Monitor className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{t("card.authDesktop")}</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
+            {isOfficial ? <div className="mt-4"><div className="field-label mb-1.5">{t("edit.authMethodLabel")}</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder={t("card.authDesktop")} renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder={t("edit.selectOauthAccount")} renderLabel={renderAccountLabel} /> : <div className="app-input flex min-w-0 items-center gap-2"><AuthSourceIcon source="desktop" className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{t("card.authDesktop")}</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
             {(!create || Boolean(selectedPreset?.admin_url)) ? <div className="mt-4"><div className="mb-1.5 flex items-center gap-2"><span className="field-label">{t("edit.adminUrlLabel")}</span><button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5 shrink-0" disabled={!adminUrl.trim()} aria-label={t("card.openWebsite")} onClick={() => void api.openUrl(adminUrl.trim()).catch((error) => feedback.error(String(error)))}><ExternalLink className="h-3 w-3" strokeWidth={2} aria-hidden="true" />{t("card.openWebsite")}</button></div><input className="app-input" placeholder={t("edit.adminUrlPlaceholder")} value={adminUrl} onChange={(event) => setAdminUrl(event.target.value)} /></div> : null}
               {supportsBalance ? <div className="mt-4 flex min-h-[var(--input-min-height)] items-center justify-between gap-4"><div className="min-w-0"><div className="setting-title">{t("edit.balanceUsage")}</div><div className="setting-description mt-0.5">{t("edit.balanceAutoRefresh")}</div></div><AppSwitch checked={showBalance} disabled={saving || savingBalance} label={t("edit.balanceUsage")} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>

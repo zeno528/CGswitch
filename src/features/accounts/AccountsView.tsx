@@ -1,10 +1,12 @@
-import { Check, Copy, CreditCard, ExternalLink, KeyRound, Monitor, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { Check, Copy, CreditCard, ExternalLink, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { PlanBadge } from "../../components/PlanBadge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { TrashIcon } from "../../components/TrashIcon";
 import { providerIconUrl } from "../../icons";
 import { balanceChipClass } from "../../presets";
 import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
@@ -330,8 +332,8 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
 
   if (status.authenticated) return page(
     <div className="grid grid-cols-1 gap-[var(--gap-card)] md:grid-cols-2">
-      {status.external ? <div className="apple-group p-3"><div className="flex min-w-0 flex-nowrap items-center gap-3"><Monitor className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{status.external.login}</span><span className="apple-chip muted shrink-0">{t("account.followCodex")}</span></div></div><SubscriptionExpiry plan={status.external.plan_type} expiresAt={status.external.subscription_active_until} /><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
-      {status.accounts.map((account) => <div key={account.id} className="apple-group p-3"><div className="flex min-w-0 flex-nowrap items-center gap-3"><KeyRound className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{account.login}</span><span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span></div><button type="button" className="apple-action-button apple-action-button--compact shrink-0 whitespace-nowrap text-[var(--danger)]" onClick={() => void removeAccount(account.id)}>{t("account.remove")}</button></div><SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} /><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}
+      {status.external ? <div className="apple-group p-3"><div className="flex min-w-0 flex-nowrap items-center gap-3"><AuthSourceIcon source="desktop" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{status.external.login}</span><span className="apple-chip muted shrink-0">{t("account.followCodex")}</span></div></div><SubscriptionExpiry plan={status.external.plan_type} expiresAt={status.external.subscription_active_until} /><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
+      {status.accounts.map((account) => <div key={account.id} className="apple-group p-3"><div className="flex min-w-0 flex-nowrap items-center gap-3"><AuthSourceIcon source="oauth" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{account.login}</span><span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span></div><button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id)}><TrashIcon /></button></div><SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} /><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}
     </div>
   );
 
