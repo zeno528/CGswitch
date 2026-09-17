@@ -1,7 +1,7 @@
 use super::profile_config::{parse_provider_detail, stored_provider_api_key};
 use super::{
     app_err, atomic_write, detect_system_proxy, AppContext, AppResult, AuthSource, BTreeMap,
-    PathBuf, ProfileBalanceInfo, ProfileKind,
+    ChatgptResetCredit, PathBuf, ProfileBalanceInfo, ProfileKind,
 };
 use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
 
@@ -76,6 +76,8 @@ mod tests {
             weekly_reset: None,
             weekly_reset_at: None,
             weekly_label: None,
+            reset_credits_available: None,
+            reset_credits: None,
         }
     }
 
@@ -212,6 +214,28 @@ struct ZhipuQuotaWindow {
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ChatgptUsageResponse {
     pub(crate) rate_limit: Option<ChatgptRateLimit>,
+    pub(crate) rate_limit_reset_credits: Option<ChatgptResetCreditsSummary>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct ChatgptResetCreditsSummary {
+    pub(crate) available_count: Option<i64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ChatgptResetCreditsResponse {
+    #[serde(default)]
+    available_count: Option<i64>,
+    #[serde(default)]
+    credits: Vec<ChatgptResetCreditResponse>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ChatgptResetCreditResponse {
+    id: String,
+    status: Option<String>,
+    reset_type: Option<String>,
+    expires_at: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -672,6 +696,8 @@ async fn query_minimax_balance(
                         .and_then(|ms| format_reset(ms, true)),
                     weekly_reset_at: None,
                     weekly_label: None,
+                    reset_credits_available: None,
+                    reset_credits: None,
                 }],
                 latency_ms,
             })
@@ -742,6 +768,8 @@ pub(crate) fn zhipu_quota_info(
         weekly_reset: weekly.and_then(|window| window.reset.clone()),
         weekly_reset_at: weekly.and_then(|window| window.reset_at),
         weekly_label: weekly.map(|_| "7天".to_string()),
+        reset_credits_available: None,
+        reset_credits: None,
     })
 }
 
@@ -865,6 +893,9 @@ fn chatgpt_reset_timestamp(reset_at: Option<i64>) -> Option<i64> {
 }
 
 pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<ProfileBalanceInfo> {
+    let reset_credits_available = response
+        .rate_limit_reset_credits
+        .and_then(|credits| credits.available_count);
     let rate_limit = response.rate_limit?;
     let windows = [rate_limit.primary_window, rate_limit.secondary_window];
     let mut usable_windows = windows
@@ -900,16 +931,19 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
                 .limit_window_seconds
                 .map(|seconds| chatgpt_window_label(Some(seconds), "周期"))
         }),
+        reset_credits_available,
+        reset_credits: None,
     })
 }
 
-fn chatgpt_usage_request(
+fn chatgpt_request(
     client: &reqwest::Client,
+    url: &str,
     access_token: &str,
     account_id: Option<&str>,
 ) -> reqwest::RequestBuilder {
     let mut request = client
-        .get("https://chatgpt.com/backend-api/wham/usage")
+        .get(url)
         .bearer_auth(access_token)
         .header("User-Agent", "codex-cli")
         .header("Accept", "application/json");
@@ -917,6 +951,43 @@ fn chatgpt_usage_request(
         request = request.header("chatgpt-account-id", account_id);
     }
     request
+}
+
+pub(crate) fn chatgpt_reset_credit_expiry(value: Option<&str>) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value?)
+        .ok()
+        .map(|time| time.timestamp_millis())
+}
+
+async fn query_chatgpt_reset_credits(
+    client: &reqwest::Client,
+    access_token: &str,
+    account_id: Option<&str>,
+) -> Option<(Option<i64>, Vec<ChatgptResetCredit>)> {
+    let response = chatgpt_request(
+        client,
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+        access_token,
+        account_id,
+    )
+    .send()
+    .await
+    .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let details = response.json::<ChatgptResetCreditsResponse>().await.ok()?;
+    let credits = details
+        .credits
+        .into_iter()
+        .filter(|credit| credit.status.as_deref() == Some("available"))
+        .map(|credit| ChatgptResetCredit {
+            id: credit.id,
+            reset_type: credit.reset_type,
+            expires_at: chatgpt_reset_credit_expiry(credit.expires_at.as_deref()),
+        })
+        .collect();
+    Some((details.available_count, credits))
 }
 
 /// 前后端契约：带此前缀的余额错误表示「登录已失效」，前端把余额卡片切换成
@@ -956,18 +1027,23 @@ async fn query_chatgpt_quota(
         error
     })?;
     let start = std::time::Instant::now();
-    let response = chatgpt_usage_request(&client, access_token, account_id)
-        .send()
-        .await
-        .map_err(|error| {
-            // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕
-            tauri_plugin_log::log::warn!(
-                "[chatgpt] 额度查询网络错误 [{context}]: {}{}",
-                reqwest_error_message(&error),
-                proxy_note(&proxy)
-            );
-            app_err!("额度查询失败：{}", reqwest_error_message(&error))
-        })?;
+    let response = chatgpt_request(
+        &client,
+        "https://chatgpt.com/backend-api/wham/usage",
+        access_token,
+        account_id,
+    )
+    .send()
+    .await
+    .map_err(|error| {
+        // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕
+        tauri_plugin_log::log::warn!(
+            "[chatgpt] 额度查询网络错误 [{context}]: {}{}",
+            reqwest_error_message(&error),
+            proxy_note(&proxy)
+        );
+        app_err!("额度查询失败：{}", reqwest_error_message(&error))
+    })?;
     let latency = start.elapsed().as_millis();
     let latency_ms = Some(latency);
     let status = response.status();
@@ -982,10 +1058,16 @@ async fn query_chatgpt_quota(
         tauri_plugin_log::log::warn!("[chatgpt] 额度接口响应解析失败 [{context}]: {error}");
         app_err!("额度接口响应解析失败: {error}")
     })?;
-    let info = chatgpt_quota_info(response).ok_or_else(|| {
+    let mut info = chatgpt_quota_info(response).ok_or_else(|| {
         tauri_plugin_log::log::warn!("[chatgpt] 额度查询响应缺少可用的限额窗口 [{context}]");
         app_err!("额度接口未返回可用的限额窗口")
     })?;
+    if let Some((available_count, credits)) =
+        query_chatgpt_reset_credits(&client, access_token, account_id).await
+    {
+        info.reset_credits_available = available_count.or(info.reset_credits_available);
+        info.reset_credits = Some(credits);
+    }
     // 成功也留痕：额度数字不对/没刷新时，靠这行确认最后一次成功查询的时间
     tauri_plugin_log::log::info!(
         "[chatgpt] 额度查询成功 [{context}]: HTTP {} - {latency}ms{}",
@@ -1061,9 +1143,14 @@ impl AppContext {
             error
         })?;
         let start = std::time::Instant::now();
-        match chatgpt_usage_request(&client, access_token, None)
-            .send()
-            .await
+        match chatgpt_request(
+            &client,
+            "https://chatgpt.com/backend-api/wham/usage",
+            access_token,
+            None,
+        )
+        .send()
+        .await
         {
             Ok(response) => {
                 let status = response.status();

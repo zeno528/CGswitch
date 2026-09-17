@@ -1205,6 +1205,9 @@ fn chatgpt_quota_maps_windows_to_remaining_display_data() {
         .as_secs() as i64
         + 3_600;
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        rate_limit_reset_credits: Some(connections::ChatgptResetCreditsSummary {
+            available_count: Some(2),
+        }),
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
                 used_percent: Some(18.0),
@@ -1228,6 +1231,16 @@ fn chatgpt_quota_maps_windows_to_remaining_display_data() {
     assert_eq!(info.weekly_label.as_deref(), Some("30天"));
     assert!(info.weekly_reset.is_some());
     assert_eq!(info.weekly_reset_at, Some((reset_at + 86_400) * 1_000));
+    assert_eq!(info.reset_credits_available, Some(2));
+}
+
+#[test]
+fn chatgpt_reset_credit_expiry_parses_official_rfc3339_timestamp() {
+    assert_eq!(
+        connections::chatgpt_reset_credit_expiry(Some("2026-10-04T05:12:00Z")),
+        Some(1_791_090_720_000)
+    );
+    assert_eq!(connections::chatgpt_reset_credit_expiry(None), None);
 }
 
 #[test]
@@ -1238,6 +1251,7 @@ fn chatgpt_quota_uses_a_seven_day_primary_window_without_faking_five_hours() {
         .as_secs() as i64
         + 86_400;
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        rate_limit_reset_credits: None,
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
                 used_percent: Some(62.0),
@@ -1260,6 +1274,7 @@ fn chatgpt_quota_uses_a_seven_day_primary_window_without_faking_five_hours() {
 #[test]
 fn chatgpt_quota_skips_empty_primary_window() {
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        rate_limit_reset_credits: None,
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
                 used_percent: None,

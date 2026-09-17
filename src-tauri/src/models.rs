@@ -214,6 +214,17 @@ pub struct ProfileSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatgptResetCredit {
+    pub id: String,
+    /// 官方返回的重置范围（如 full）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_type: Option<String>,
+    /// 主动重置卡的到期时间（Unix 毫秒）；无到期时间时为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileBalanceInfo {
     pub currency: String,
     pub total_balance: String,
@@ -243,6 +254,12 @@ pub struct ProfileBalanceInfo {
     /// 次用量窗口名称；免费方案可为“30天”。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weekly_label: Option<String>,
+    /// Codex 主动重置卡可用次数；仅 ChatGPT 订阅账号返回。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_credits_available: Option<i64>,
+    /// 可用主动重置卡的到期时间；详情接口不可用时为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_credits: Option<Vec<ChatgptResetCredit>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
