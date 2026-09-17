@@ -1,7 +1,7 @@
 use super::storage::{backup_keep_count, DATABASE_BACKUP_PREFIX};
 use super::{
-    app_err, atomic_write, codex_process, now_ms, prune_backups, AppContext, AppResult, Path,
-    PathInfo, Settings,
+    app_err, atomic_write, codex_process, codex_window_state, now_ms, prune_backups, AppContext,
+    AppResult, Path, PathInfo, Settings,
 };
 
 fn open_in_file_explorer(path: &Path) -> AppResult<()> {
@@ -74,6 +74,9 @@ impl AppContext {
             .map_err(|_| app_err!("操作锁已损坏"))?;
         self.sync_active_profile_from_live_locked()?;
         let process_ids = codex_process::find_process_ids(None);
+        // 强杀会绕过 Electron 的优雅退出落盘，先抓下实时窗口矩形，强杀后写回状态
+        // 文件（Windows）；Codex 未运行时无窗口可抓，返回 None，回写自然跳过
+        let window_bounds = codex_window_state::capture_main_window_bounds(&process_ids);
         let running_app_path = codex_process::running_app_path(&process_ids)
             .map(|path| path.to_string_lossy().into_owned());
         let mut force_killed = false;
@@ -96,6 +99,22 @@ impl AppContext {
             force_killed = outcome == codex_process::ShutdownOutcome::Forced;
         }
         let result = (|| {
+            // 强杀完成后、新实例拉起前回写：Codex 进程已退出，无并发写者，
+            // 新实例按回写尺寸建窗。失败只留日志，不影响重启主流程。
+            if let Some(bounds) = &window_bounds {
+                if codex_window_state::persist_window_bounds(&self.paths.codex_home, bounds) {
+                    tauri_plugin_log::log::debug!(
+                        "[settings] restart 回写窗口尺寸 [codex-global-state]: ok {}x{}（max={}）",
+                        bounds.width,
+                        bounds.height,
+                        bounds.is_maximized
+                    );
+                } else {
+                    tauri_plugin_log::log::warn!(
+                        "[settings] restart 回写窗口尺寸 [codex-global-state]: 失败，跳过还原"
+                    );
+                }
+            }
             codex_process::launch_codex(running_app_path.as_deref())?;
             if codex_process::wait_for_running(10_000, 100) {
                 Ok(())

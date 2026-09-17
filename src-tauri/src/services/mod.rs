@@ -6,7 +6,9 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::auth::codex_oauth::{parse_external_auth_json, ManagedAccount};
 use crate::builtin;
-use crate::codex::{config as codex_config, process as codex_process};
+use crate::codex::{
+    config as codex_config, process as codex_process, window_state as codex_window_state,
+};
 use crate::database::{profile_summary, Database};
 use crate::error::{app_err, AppResult};
 use crate::fsutil::{atomic_write, backup_file, prune_backups};
