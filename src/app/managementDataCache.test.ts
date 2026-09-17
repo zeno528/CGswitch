@@ -83,7 +83,11 @@ describe("marketplace plugin catalog cache", () => {
   beforeEach(() => {
     vi.resetModules();
     listMarketplacePlugins.mockReset();
+    persistedStorage.clear();
+    vi.stubGlobal("localStorage", localStorageMock);
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   const plugin = (name: string) => ({
     plugin_id: `${name}@fixture`,
@@ -108,6 +112,18 @@ describe("marketplace plugin catalog cache", () => {
     const items = await cache.refreshMarketplacePlugins("market-a");
     expect(cache.getCachedMarketplacePlugins("market-a")).toBe(items);
     expect(listMarketplacePlugins).toHaveBeenCalledWith("market-a", undefined);
+  });
+
+  it("persists marketplace catalogs and restores them after a reload", async () => {
+    listMarketplacePlugins.mockResolvedValue([plugin("a")]);
+    const cache = await import("./managementDataCache");
+    await cache.refreshMarketplacePlugins("market-persist");
+    expect(persistedStorage.get("cgswitch.marketplace-plugins-cache-v1")).toContain("market-persist");
+
+    vi.resetModules();
+    const reloaded = await import("./managementDataCache");
+    expect(reloaded.getCachedMarketplacePlugins("market-persist")).toEqual([plugin("a")]);
+    expect(listMarketplacePlugins).toHaveBeenCalledTimes(1); // 重载后命中持久化缓存，不再发请求
   });
 
   it("deduplicates concurrent refreshes for the same marketplace", async () => {

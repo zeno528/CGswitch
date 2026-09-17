@@ -196,24 +196,48 @@ export function deleteCachedMcpProbe(name: string): void {
 // ==================== 市场插件目录缓存 ====================
 
 /// 按市场名缓存目录快照：进入页面先显缓存，再静默刷新回填；请求按市场名去重。
+/// 快照持久化到 localStorage（模式同 MCP 探测缓存：会话加载一次、写入即落盘），
+/// 重启后首次进入市场页/目录详情才能直出，不用每个市场重新转圈；超配额时
+/// writeJson 静默降级为纯内存缓存。
+const MARKETPLACE_PLUGINS_STORAGE_KEY = "cgswitch.marketplace-plugins-cache-v1";
 const marketplacePlugins = new Map<string, MarketplacePlugin[]>();
 const marketplaceRequests = new Map<string, Promise<MarketplacePlugin[]>>();
+let marketplacePluginsStorageLoaded = false;
+
+function loadMarketplacePluginsStorage(): void {
+  if (marketplacePluginsStorageLoaded) return;
+  marketplacePluginsStorageLoaded = true;
+  const stored = readJson(MARKETPLACE_PLUGINS_STORAGE_KEY);
+  if (stored === null || typeof stored !== "object") return;
+  for (const [name, items] of Object.entries(stored as Record<string, unknown>)) {
+    const restored = restoreNamedList<MarketplacePlugin>(items);
+    if (restored) marketplacePlugins.set(name, restored);
+  }
+}
+
+function persistMarketplacePluginsStorage(): void {
+  writeJson(MARKETPLACE_PLUGINS_STORAGE_KEY, Object.fromEntries(marketplacePlugins));
+}
 
 export function getCachedMarketplacePlugins(name: string): MarketplacePlugin[] | null {
+  loadMarketplacePluginsStorage();
   return marketplacePlugins.get(name) ?? null;
 }
 
 export function setCachedMarketplacePlugins(name: string, items: MarketplacePlugin[]): void {
+  loadMarketplacePluginsStorage();
   marketplacePlugins.set(name, items);
+  persistMarketplacePluginsStorage();
 }
 
 export function refreshMarketplacePlugins(name: string, root?: string): Promise<MarketplacePlugin[]> {
+  loadMarketplacePluginsStorage();
   const pending = marketplaceRequests.get(name);
   if (pending) return pending;
   const request = api
     .listMarketplacePlugins(name, root)
     .then((items) => {
-      marketplacePlugins.set(name, items);
+      setCachedMarketplacePlugins(name, items);
       return items;
     })
     .finally(() => {
