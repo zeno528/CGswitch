@@ -155,7 +155,7 @@ export default function ProfileCard({
   const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>([]);
   const [balanceError, setBalanceError] = useState("");
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
-  const balanceFetchingRef = useRef(false);
+  const balanceInFlightRef = useRef<Promise<void> | null>(null);
   const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
   const sortable = useSortable({ id: profile.id });
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
@@ -167,27 +167,33 @@ export default function ProfileCard({
     balanceErrorCache.set(profile.id, message);
   };
 
-  const fetchBalance = async () => {
-    if (!supportsBalance || !profile.show_balance || balanceFetchingRef.current) return;
+  const fetchBalance = async (): Promise<void> => {
+    // 单飞去重：在途时把同一次请求的 promise 交回给调用方，点击重试的指示器
+    // 才能跟随真正落地的那次查询，而不是早退熄灯留下结果未知的真空期
+    if (balanceInFlightRef.current) return balanceInFlightRef.current;
+    if (!supportsBalance || !profile.show_balance) return;
     if (profile.kind !== "official" && !profile.has_key) {
       invalidateBalance(t("balance.missingApiKey"));
       return;
     }
-    balanceFetchingRef.current = true;
-    try {
-      const result = await api.getProfileBalance(profile.id);
-      const infos = result.balance_infos;
-      if (!infos[0]) throw new Error("查询未返回余额/用量数据"); // i18n-exempt: 该消息只被当布尔用，界面渲染的是固定文案 balance.queryFailed
-      setBalanceError("");
-      balanceErrorCache.delete(profile.id);
-      setBalanceInfos(infos);
-      balanceInfoCache.set(profile.id, infos[0]);
-      void api.setProfileBalance(profile.id, infos[0]);
-    } catch (error) {
-      invalidateBalance(String(error));
-    } finally {
-      balanceFetchingRef.current = false;
-    }
+    const request = (async () => {
+      try {
+        const result = await api.getProfileBalance(profile.id);
+        const infos = result.balance_infos;
+        if (!infos[0]) throw new Error("查询未返回余额/用量数据"); // i18n-exempt: 该消息只被当布尔用，界面渲染的是固定文案 balance.queryFailed
+        setBalanceError("");
+        balanceErrorCache.delete(profile.id);
+        setBalanceInfos(infos);
+        balanceInfoCache.set(profile.id, infos[0]);
+        void api.setProfileBalance(profile.id, infos[0]);
+      } catch (error) {
+        invalidateBalance(String(error));
+      } finally {
+        balanceInFlightRef.current = null;
+      }
+    })();
+    balanceInFlightRef.current = request;
+    return request;
   };
 
   useEffect(() => {

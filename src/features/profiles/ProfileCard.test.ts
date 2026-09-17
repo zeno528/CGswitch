@@ -91,11 +91,13 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {
-    // fetchBalance 签名与内部逻辑不动，动效是点击回调的纯 UI 包装
+    // 动效只由点击回调开关，静默路径（挂载/聚焦/轮询）不触发
     expect(source).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
     expect(source).toContain("{balanceRefreshing ? <LoadingSpinner size=\"sm\" /> : <Gauge");
     expect(source).toContain("aria-busy={balanceRefreshing}");
     expect(source).toContain("setBalanceRefreshing(true);");
     expect(source).toContain("void fetchBalance().finally(() => setBalanceRefreshing(false));");
+    // 单飞去重把在途 promise 交回调用方：指示器跟随真正落地的查询，不留真空期
+    expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });
 });
