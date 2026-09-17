@@ -45,6 +45,7 @@ interface ProfileCardContentProps {
   subscriptionAuthed: boolean;
   balanceInfos: ProfileBalanceInfo[];
   balanceError: string;
+  balanceRefreshing: boolean;
   onRefreshBalance?: () => void;
   onOpenCodexApp?: () => void;
   onOpenAdmin?: () => void;
@@ -56,6 +57,7 @@ export function ProfileCardContent({
   subscriptionAuthed,
   balanceInfos,
   balanceError,
+  balanceRefreshing,
   onRefreshBalance,
   onOpenCodexApp,
   onOpenAdmin,
@@ -92,8 +94,8 @@ export function ProfileCardContent({
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>
           {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}
-          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={authInvalid ? t("balance.authInvalidTooltip") : balanceError ? t("balance.queryFailedRetry") : isSubscriptionProfile ? t("balance.subscriptionTooltip") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} onClick={(event) => { event.stopPropagation(); if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.(); }}>
-            <Gauge className={`h-3 w-3${balanceError ? " chip-danger" : ""}`} strokeWidth={2} aria-hidden="true" />
+          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={authInvalid ? t("balance.authInvalidTooltip") : balanceError ? t("balance.queryFailedRetry") : isSubscriptionProfile ? t("balance.subscriptionTooltip") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} aria-busy={balanceRefreshing} onClick={(event) => { event.stopPropagation(); if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.(); }}>
+            {balanceRefreshing ? <LoadingSpinner size="sm" /> : <Gauge className={`h-3 w-3${balanceError ? " chip-danger" : ""}`} strokeWidth={2} aria-hidden="true" />}
             {authInvalid ? <span className="chip-danger">{t("balance.authInvalid")}</span> : balanceError ? <span>{t("balance.queryFailed")}</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>{t("balance.balancePrefix")}</span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
         </div>
@@ -152,6 +154,7 @@ export default function ProfileCard({
   const [testing, setTesting] = useState(false);
   const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>([]);
   const [balanceError, setBalanceError] = useState("");
+  const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const balanceFetchingRef = useRef(false);
   const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
   const sortable = useSortable({ id: profile.id });
@@ -253,7 +256,11 @@ export default function ProfileCard({
         subscriptionAuthed={subscriptionAuthed}
         balanceInfos={balanceInfos}
         balanceError={balanceError}
-        onRefreshBalance={fetchBalance}
+        balanceRefreshing={balanceRefreshing}
+        onRefreshBalance={() => {
+          setBalanceRefreshing(true);
+          void fetchBalance().finally(() => setBalanceRefreshing(false));
+        }}
         onOpenCodexApp={onOpenCodexApp}
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}

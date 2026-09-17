@@ -33,6 +33,7 @@ function ProfileDragPreview({ profile, width, height, active, busy, subscription
         subscriptionAuthed={subscriptionAuthed}
         balanceInfos={balanceInfos}
         balanceError={balanceError}
+        balanceRefreshing={false}
         onOpenAdmin={onOpenAdmin}
       />
       <ProfileCardActions active={active} busy={busy} profile={profile} subscriptionAuthed={subscriptionAuthed} testing={false} dragging />

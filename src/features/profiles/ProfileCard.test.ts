@@ -89,4 +89,13 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain('title={authInvalid ? t("balance.authInvalidTooltip")');
     expect(source).toContain("if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.();");
   });
+
+  it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {
+    // fetchBalance 签名与内部逻辑不动，动效是点击回调的纯 UI 包装
+    expect(source).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
+    expect(source).toContain("{balanceRefreshing ? <LoadingSpinner size=\"sm\" /> : <Gauge");
+    expect(source).toContain("aria-busy={balanceRefreshing}");
+    expect(source).toContain("setBalanceRefreshing(true);");
+    expect(source).toContain("void fetchBalance().finally(() => setBalanceRefreshing(false));");
+  });
 });
