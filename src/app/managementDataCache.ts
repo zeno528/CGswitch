@@ -59,8 +59,10 @@ function createManagementCache<T>(loader: () => Promise<T>, persist?: { key: str
   return {
     load(force = false): Promise<T> {
       restoreFromStorage();
-      if (force) cache = null;
-      if (cache !== null) return Promise.resolve(cache);
+      // force 不抹缓存：绕过快路径、后台去重取新，取回前旧值照常直出。抹缓存会
+      // 制造「强刷在途 + 内存为空」窗口，而 restored 一次性标记挡住 localStorage，
+      // 窗口期内切页再回来只能对着在途请求转圈。
+      if (cache !== null && !force) return Promise.resolve(cache);
       if (!request) {
         request = loader()
           .then((items) => {
@@ -136,6 +138,10 @@ function persistMcpProbeStorage(): void {
 
 export function loadPlugins(force = false): Promise<PluginSummary[]> {
   return plugins.load(force);
+}
+
+export function getCachedPlugins(): PluginSummary[] | null {
+  return plugins.get();
 }
 
 export function getCachedPluginMarketplaces(): PluginMarketplace[] | null {

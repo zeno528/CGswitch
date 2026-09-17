@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { getCachedMarketplacePlugins, getCachedPluginMarketplaces, loadPlugins, loadPluginMarketplaces, refreshMarketplacePlugins, setCachedMarketplacePlugins } from "../../app/managementDataCache";
+import { getCachedMarketplacePlugins, getCachedPluginMarketplaces, getCachedPlugins, loadPlugins, loadPluginMarketplaces, refreshMarketplacePlugins, setCachedMarketplacePlugins } from "../../app/managementDataCache";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
 import { AppSelect } from "../../components/AppSelect";
@@ -935,8 +935,9 @@ function PluginMarketplaceView({
 export default function PluginsView({ state }: { state: AppState }) {
   const feedback = useFeedback();
   const { t } = useTranslation("plugins");
-  const [plugins, setPlugins] = useState<PluginSummary[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // 缓存命中即首帧直出，不等微任务回填；未命中时保持加载态走正常请求
+  const [plugins, setPlugins] = useState<PluginSummary[]>(() => getCachedPlugins() ?? []);
+  const [loaded, setLoaded] = useState(() => getCachedPlugins() !== null);
   const [loadError, setLoadError] = useState("");
   const [selectedPlugin, setSelectedPlugin] = useState<PluginSummary | null>(null);
   const [addingMarketplace, setAddingMarketplace] = useState(false);

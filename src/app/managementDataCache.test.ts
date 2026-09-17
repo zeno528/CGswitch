@@ -173,4 +173,25 @@ describe("list cache persistence", () => {
     await expect(cache.loadPlugins()).resolves.toEqual([plugin]);
     expect(listPlugins).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps stale cache readable while a forced refresh is in flight", async () => {
+    listPlugins.mockResolvedValueOnce([plugin]);
+    const cache = await import("./managementDataCache");
+    await cache.loadPlugins();
+
+    // 强刷挂起（模拟慢扫盘）：期间普通读取必须直出旧缓存，不能转圈等请求
+    listPlugins.mockReturnValueOnce(new Promise(() => {}));
+    void cache.loadPlugins(true);
+    await expect(cache.loadPlugins()).resolves.toEqual([plugin]);
+    expect(cache.getCachedPlugins()).toEqual([plugin]);
+  });
+
+  it("shares the in-flight request between a cold load and a forced refresh", async () => {
+    listPlugins.mockReturnValueOnce(new Promise(() => {}));
+    const cache = await import("./managementDataCache");
+
+    const cold = cache.loadPlugins();
+    expect(cache.loadPlugins(true)).toBe(cold);
+    expect(listPlugins).toHaveBeenCalledTimes(1);
+  });
 });
