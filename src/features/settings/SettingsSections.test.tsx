@@ -231,13 +231,16 @@ describe("SettingsSections", () => {
     const status: AuthStatus = {
       authenticated: true,
       default_account_id: "desktop",
-      external: { id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true },
-      accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false }],
+      external: { id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true, plan_type: "plus" },
+      accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false, plan_type: "pro" }],
     };
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(<FeedbackProvider><ChatGPTAccount initialStatus={status} /></FeedbackProvider>);
     expect(html.indexOf("desktop@example.com")).toBeLessThan(html.indexOf("跟随 Codex登录"));
     expect(html.indexOf("oauth@example.com")).toBeLessThan(html.indexOf("OAuth 设备码登录"));
+    // 套餐徽标：官方原词首字母大写，pro 走强调色 chip
+    expect(html).toContain(">Plus</span>");
+    expect(html).toContain(">Pro</span>");
   });
 
   it("移除按钮跟随账号行高度", () => {

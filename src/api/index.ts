@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppState,
   AuthStatus,
+  BrowserLoginStart,
   CodexAppStatus,
   DatabaseBackupInfo,
   DeviceCodeResponse,
@@ -163,6 +164,9 @@ export const api = {
   authStartLogin: () => call<DeviceCodeResponse>("auth_start_login"),
   authPollForAccount: (deviceCode: string) =>
     call<ManagedAccount | null>("auth_poll_for_account", { deviceCode }),
+  authStartBrowserLogin: () => call<BrowserLoginStart>("auth_start_browser_login"),
+  authPollBrowserLogin: () => call<ManagedAccount | null>("auth_poll_browser_login"),
+  authCancelBrowserLogin: () => call<void>("auth_cancel_browser_login"),
   authGetStatus: () => call<AuthStatus>("auth_get_status"),
   authGetQuota: (source: "desktop" | "oauth", accountId?: string) =>
     call<ProfileBalance>("auth_get_quota", { source, accountId }),

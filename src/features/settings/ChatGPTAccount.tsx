@@ -3,10 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { PlanBadge } from "../../components/PlanBadge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { balanceChipClass } from "../../presets";
 import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
-import type { AuthStatus, DeviceCodeResponse, ProfileBalanceInfo } from "../../types";
+import type { AuthStatus, BrowserLoginStart, DeviceCodeResponse, ProfileBalanceInfo } from "../../types";
 
 const authQuotaCache = new Map<string, ProfileBalanceInfo>();
 
@@ -146,6 +147,7 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [login, setLogin] = useState<DeviceCodeResponse | null>(null);
+  const [browserLogin, setBrowserLogin] = useState<BrowserLoginStart | null>(null);
   const [copied, setCopied] = useState(false);
   const disposed = useRef(false);
   const pollCancelled = useRef(false);
@@ -170,11 +172,40 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
     finally { if (!disposed.current) setBusy(false); }
   };
 
+  const pollBrowser = async (current: BrowserLoginStart) => {
+    try {
+      const deadline = Date.now() + current.expires_in * 1000;
+      while (!disposed.current && !pollCancelled.current && Date.now() < deadline) {
+        const account = await api.authPollBrowserLogin();
+        if (account) { setBrowserLogin(null); await refreshStatus(); feedback.success(t("account.addedToast")); return; }
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      if (!disposed.current && !pollCancelled.current) { setBrowserLogin(null); feedback.error(t("account.loginTimeout")); }
+    } catch (error) { if (!disposed.current) { feedback.error(String(error)); setBrowserLogin(null); } }
+    finally { if (!disposed.current) setBusy(false); }
+  };
+
+  // 主路径：浏览器授权码登录（PKCE 回环回调），无需手动输入设备码
   const startLogin = async () => {
     if (busy) return;
-    setBusy(true); setLogin(null); setCopied(false); pollCancelled.current = false;
+    setBusy(true); setLogin(null); setBrowserLogin(null); pollCancelled.current = false;
+    try { const next = await api.authStartBrowserLogin(); setBrowserLogin(next); await api.openUrl(next.authorize_url); void pollBrowser(next); }
+    catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? t("account.regionBlocked") : text); setBusy(false); }
+  };
+
+  // 后备路径：设备码登录（本地回调端口不可用等场景）
+  const startDeviceLogin = async () => {
+    if (busy) return;
+    setBusy(true); setBrowserLogin(null); setLogin(null); setCopied(false); pollCancelled.current = false;
     try { const next = await api.authStartLogin(); setLogin(next); await api.openUrl(next.verification_uri); void poll(next); }
     catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? t("account.regionBlocked") : text); setBusy(false); }
+  };
+
+  const cancelBrowserLogin = () => {
+    pollCancelled.current = true;
+    void api.authCancelBrowserLogin().catch(() => {});
+    setBrowserLogin(null);
+    setBusy(false);
   };
 
   const copyUserCode = async () => {
@@ -192,6 +223,25 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
     try { await api.authRemoveAccount(accountId); feedback.success(t("account.removedToast")); await refreshStatus(); }
     catch (error) { feedback.error(String(error)); }
   };
+
+  if (browserLogin) return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span>
+          <div><div className="setting-title">{t("account.browserLoginTitle")}</div><p className="setting-description mt-0.5">{t("account.browserLoginDescription")}</p></div>
+        </div>
+        <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
+      </div>
+      <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]">
+        <button type="button" className="apple-action-button w-full" onClick={() => void api.openUrl(browserLogin.authorize_url)}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.reopenBrowser")}</button>
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <button type="button" className="apple-action-button" onClick={cancelBrowserLogin}>{t("account.cancelLogin")}</button>
+          <button type="button" className="text-xs text-(--text-secondary) hover:text-accent hover:underline" onClick={() => void startDeviceLogin()}>{t("account.deviceFallback")}</button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (login) return (
     <div className="space-y-4">
@@ -218,8 +268,8 @@ export default function ChatGPTAccount({ initialStatus, balanceCache }: { initia
 
   if (status.authenticated) return (
     <div className="space-y-4">
-      {status.external ? <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex min-w-0 flex-nowrap items-center gap-3"><Monitor className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{status.external.login}</span><span className="apple-chip muted shrink-0">{t("account.followCodex")}</span></div></div><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
-      {status.accounts.length ? <div className="space-y-2">{status.accounts.map((account) => <div key={account.id} className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex min-w-0 flex-nowrap items-center gap-3"><KeyRound className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{account.login}</span><span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span></div><button type="button" className="apple-action-button apple-action-button--compact shrink-0 whitespace-nowrap text-[var(--danger)]" onClick={() => void removeAccount(account.id)}>{t("account.remove")}</button></div><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}</div> : null}
+      {status.external ? <div className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex min-w-0 flex-nowrap items-center gap-3"><Monitor className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{status.external.login}</span><PlanBadge plan={status.external.plan_type} /><span className="apple-chip muted shrink-0">{t("account.followCodex")}</span></div></div><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
+      {status.accounts.length ? <div className="space-y-2">{status.accounts.map((account) => <div key={account.id} className="rounded-[var(--radius-card)] bg-(--input-bg) p-3 shadow-[0_0_0_1px_var(--panel-ring)]"><div className="flex min-w-0 flex-nowrap items-center gap-3"><KeyRound className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{account.login}</span><PlanBadge plan={account.plan_type} /><span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span></div><button type="button" className="apple-action-button apple-action-button--compact shrink-0 whitespace-nowrap text-[var(--danger)]" onClick={() => void removeAccount(account.id)}>{t("account.remove")}</button></div><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}</div> : null}
       <button type="button" className="apple-action-button" disabled={busy} onClick={() => void startLogin()}><Plus className="h-4 w-4" strokeWidth={2} />{t("account.addAnother")}</button>
     </div>
   );

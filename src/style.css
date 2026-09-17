@@ -237,6 +237,31 @@ body {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* 订阅套餐徽标（配置卡片/账号列表）：统一的灰面胶囊（OpenAI hairline + near-black），
+   档位只靠图标区分（Plus 星 / Pro 皇冠 / Team 群组，Free 无图标）。 */
+.plan-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  border-radius: 9999px;
+  padding: 2.5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  /* 底色与所在卡片面拉开一档：浅色比白卡深、深色比 #292b30 卡浅 */
+  background: var(--chip-bg);
+  border: 1px solid #d9d9d6;
+  color: #0d0d0d;
+}
+
+:root.dark .plan-badge {
+  background: #3d3f45;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #ececec;
+}
+
 /* 供应商卡片余额/用量药丸：浅色主题下用页面底色(即 #f7f7f9)让它比普通胶囊更轻、融入卡片；
    深色主题不在此覆盖，由 :root.dark .apple-chip 的 --chip-bg(#1e1e1e) 兜底。 */
 .profile-card-meta .apple-chip {
@@ -1166,13 +1191,6 @@ body.drag-active * {
 .profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
 .profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
-  color: var(--active-card-text-primary);
-}
-
-.profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,
-.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {
-  border-color: color-mix(in srgb, var(--active-card-text-primary) 22%, transparent);
-  background: color-mix(in srgb, var(--active-card-text-primary) 12%, transparent);
   color: var(--active-card-text-primary);
 }
 

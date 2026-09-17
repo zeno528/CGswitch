@@ -1,4 +1,4 @@
-import { Check, Copy, Gauge, Globe, GripVertical, KeyRound, Monitor, Wifi } from "lucide-react";
+import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSortable } from "@dnd-kit/sortable";
@@ -7,6 +7,7 @@ import { api } from "../../api";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
 import type { ProfileBalanceInfo, ProfileSummary } from "../../types";
 import { useFeedback } from "../../app/Feedback";
+import { PlanBadge } from "../../components/PlanBadge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
 import { TrashIcon } from "../../components/TrashIcon";
@@ -30,7 +31,6 @@ interface ProfileCardProps {
   dragHover?: boolean;
   busy: boolean;
   activationEpoch: number;
-  subscriptionAuthed: boolean;
   balanceCache?: Record<string, ProfileBalanceInfo>;
   onApply: () => void;
   onRename: () => void;
@@ -42,7 +42,6 @@ interface ProfileCardProps {
 
 interface ProfileCardContentProps {
   profile: ProfileSummary;
-  subscriptionAuthed: boolean;
   balanceInfos: ProfileBalanceInfo[];
   balanceError: string;
   balanceRefreshing: boolean;
@@ -54,7 +53,6 @@ interface ProfileCardContentProps {
 
 export function ProfileCardContent({
   profile,
-  subscriptionAuthed,
   balanceInfos,
   balanceError,
   balanceRefreshing,
@@ -69,8 +67,6 @@ export function ProfileCardContent({
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
   const authInvalid = isSubscriptionProfile && balanceError.startsWith("[auth_invalid]");
-  const authSource = profile.auth_source ?? (profile.account_id ? "oauth" : "desktop");
-  const authTitle = `${authSource === "desktop" ? t("card.authDesktop") : t("card.authOAuth")}${subscriptionAuthed ? "" : t("card.authNotSignedIn")}`;
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
   const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.quota"));
   const weeklyLabel = localizeBalanceLabel(balanceInfo?.weekly_label, t) ?? (isUsageProvider ? t("balance.window7d") : t("balance.period"));
@@ -87,9 +83,7 @@ export function ProfileCardContent({
         <div className="flex min-h-7 items-center gap-2">
           <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title={t("card.clickToRename")} onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
           {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
-          {!profile.provider ? <span className={`profile-card-auth-badge inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${subscriptionAuthed ? "bg-accent/10 text-accent" : "bg-black/5 muted dark:bg-white/6"}`} title={authTitle} aria-label={authTitle}>
-            {authSource === "desktop" ? <Monitor className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" /> : <KeyRound className="h-3.5 w-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />}
-          </span> : null}
+          {isSubscriptionProfile ? <PlanBadge plan={profile.plan_type} /> : null}
         </div>
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>
@@ -108,7 +102,6 @@ interface ProfileCardActionsProps {
   active: boolean;
   busy: boolean;
   profile: ProfileSummary;
-  subscriptionAuthed: boolean;
   testing: boolean;
   dragging?: boolean;
   onApply?: () => void;
@@ -117,11 +110,11 @@ interface ProfileCardActionsProps {
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, profile, subscriptionAuthed, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, profile, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
-  const connectionDisabled = !profile.provider ? !subscriptionAuthed : !profile.has_base_url || !profile.has_key;
+  const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;
   const connectionTitle = !profile.provider
-    ? subscriptionAuthed ? t("connection.testSubscription") : t("connection.subscriptionUnverified")
+    ? t("connection.testSubscription")
     : !profile.has_base_url ? t("connection.missingApiEndpointWarning")
       : !profile.has_key ? t("connection.missingApiKeyWarning") : t("connection.test");
   return (
@@ -140,7 +133,6 @@ export default function ProfileCard({
   dragHover = false,
   busy,
   activationEpoch,
-  subscriptionAuthed,
   balanceCache,
   onApply,
   onRename,
@@ -217,10 +209,6 @@ export default function ProfileCard({
 
   const testConnection = async () => {
     if (testing) return;
-    if (!profile.provider && !subscriptionAuthed) {
-      feedback.warning(t("connection.subscriptionWarning"));
-      return;
-    }
     if (profile.provider && !profile.has_base_url) {
       feedback.warning(t("edit.baseUrlRequired"));
       return;
@@ -259,7 +247,6 @@ export default function ProfileCard({
       </span>
       <ProfileCardContent
         profile={profile}
-        subscriptionAuthed={subscriptionAuthed}
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         balanceRefreshing={balanceRefreshing}
@@ -271,7 +258,7 @@ export default function ProfileCard({
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />
-      <ProfileCardActions active={active} busy={busy} profile={profile} subscriptionAuthed={subscriptionAuthed} testing={testing} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
+      <ProfileCardActions active={active} busy={busy} profile={profile} testing={testing} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
     </article>
   );
 }

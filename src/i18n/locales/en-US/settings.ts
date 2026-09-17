@@ -47,6 +47,11 @@ export default {
   },
   account: {
     sectionTitle: "ChatGPT account management",
+    browserLoginTitle: "Browser sign-in",
+    browserLoginDescription: "The ChatGPT authorization page opened in your browser. It returns automatically once you sign in — no device code needed.",
+    reopenBrowser: "Reopen authorization page",
+    deviceFallback: "Browser sign-in not working? Use a device code instead",
+    loginTimeout: "Sign-in timed out. Please try again.",
     deviceLoginTitle: "ChatGPT device code sign-in",
     deviceLoginDescription: "Complete the ChatGPT sign-in in your browser. The app will continue automatically.",
     waitingAuth: "Waiting for authorization...",

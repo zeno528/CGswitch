@@ -47,6 +47,11 @@ export default {
   },
   account: {
     sectionTitle: "ChatGPT 账号管理",
+    browserLoginTitle: "浏览器登录",
+    browserLoginDescription: "已在系统浏览器打开 ChatGPT 授权页面，登录完成后会自动返回，无需输入设备码。",
+    reopenBrowser: "重新打开授权页面",
+    deviceFallback: "浏览器无法完成授权？改用设备码登录",
+    loginTimeout: "登录等待超时，请重试",
     deviceLoginTitle: "ChatGPT 设备码登录",
     deviceLoginDescription: "请在浏览器完成 ChatGPT 登录，应用会自动继续。",
     waitingAuth: "等待授权中...",

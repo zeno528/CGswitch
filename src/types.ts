@@ -6,6 +6,8 @@ export interface ProfileSummary {
   account_id: string | null;
   /** 官方配置创建时固定的认证来源；旧数据缺失时由 account_id 推断。 */
   auth_source?: "desktop" | "oauth" | null;
+  /** 绑定账号的订阅套餐（free/plus/pro/team…官方原词）；第三方或未知为 null。 */
+  plan_type: string | null;
   model: string | null;
   provider: string | null;
   reasoning_effort: string | null;
@@ -177,11 +179,18 @@ export interface DeviceCodeResponse {
   interval: number;
 }
 
+export interface BrowserLoginStart {
+  authorize_url: string;
+  expires_in: number;
+}
+
 export interface ManagedAccount {
   id: string;
   login: string;
   authenticated_at: number;
   is_default: boolean;
+  /** 订阅套餐（free/plus/pro/team…官方原词），未知为 null */
+  plan_type: string | null;
 }
 
 export interface AuthStatus {

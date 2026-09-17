@@ -39,7 +39,6 @@ export default {
   card: {
     authDesktop: "Sign in with Codex",
     authOAuth: "OAuth sign-in",
-    authNotSignedIn: " (Not signed in)",
     usageRemaining: "{{label}} remaining: ",
     notSet: "Not set",
     clickToRename: "Click to rename",
@@ -69,9 +68,7 @@ export default {
   },
   connection: {
     testSubscription: "Test subscription authentication connectivity",
-    subscriptionUnverified: "ChatGPT subscription not verified",
     test: "Test connectivity",
-    subscriptionWarning: "ChatGPT subscription authentication is incomplete. Sign in from Settings first.",
     missingApiEndpointWarning: "Enter the API endpoint before testing.",
     missingApiKeyWarning: "Enter the API Key before testing.",
     ok: "Connection OK{{latency}}",

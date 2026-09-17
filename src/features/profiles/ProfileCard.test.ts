@@ -49,7 +49,6 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--active-card-text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,\n.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {");
   });
 
   it("胶囊底色统一定义在 --chip-bg，激活卡使用浅色药丸文字", () => {
@@ -75,7 +74,7 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("仅在端点或 API Key 缺失时禁用连通测试", () => {
-    expect(source).toContain("const connectionDisabled = !profile.provider ? !subscriptionAuthed : !profile.has_base_url || !profile.has_key;");
+    expect(source).toContain("const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;");
     expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
     expect(source).not.toContain("missingApiCredentialsWarning");
   });

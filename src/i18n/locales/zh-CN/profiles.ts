@@ -39,7 +39,6 @@ export default {
   card: {
     authDesktop: "跟随 Codex登录",
     authOAuth: "OAuth登录",
-    authNotSignedIn: "（未登录）",
     usageRemaining: "{{label}}: 剩",
     notSet: "未设置",
     clickToRename: "点击重命名",
@@ -69,9 +68,7 @@ export default {
   },
   connection: {
     testSubscription: "测试订阅认证连通性",
-    subscriptionUnverified: "尚未认证 ChatGPT 订阅",
     test: "测试连通性",
-    subscriptionWarning: "尚未完成 ChatGPT 订阅认证，请先到设置页登录",
     missingApiEndpointWarning: "请先填写 API 端点后再测试",
     missingApiKeyWarning: "请先填写 API Key 后再测试",
     ok: "连接正常{{latency}}",
