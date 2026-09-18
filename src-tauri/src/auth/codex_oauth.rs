@@ -135,6 +135,9 @@ struct IdTokenClaims {
     /// 跨刷新稳定的用户身份：同一 workspace 的不同用户 sub 不同
     #[serde(default)]
     sub: Option<String>,
+    /// JWT 签发时间（NumericDate，秒）
+    #[serde(default)]
+    iat: Option<i64>,
     /// JWT access token 的过期时间（NumericDate，秒）。
     #[serde(default)]
     exp: Option<i64>,
@@ -245,6 +248,16 @@ fn should_log_unmanaged_live_sync(last_workspace: &mut Option<String>, workspace
     last_workspace.replace(workspace.to_string()).as_deref() != Some(workspace)
 }
 
+/// 账号日志定位字段：account_id 恒输出；email 仅 debug 构建附加（release 绝不出现）
+fn account_subject(account_id: &str, email: Option<&str>) -> String {
+    match email {
+        Some(email) if cfg!(debug_assertions) => {
+            format!("account_id={account_id} email={email:?}")
+        }
+        _ => format!("account_id={account_id}"),
+    }
+}
+
 /// 多账号认证管理器
 pub struct CodexOAuthManager {
     client: Mutex<reqwest::Client>,
@@ -252,6 +265,8 @@ pub struct CodexOAuthManager {
     default_account_id: Arc<RwLock<Option<String>>>,
     access_tokens: Arc<RwLock<HashMap<String, CachedAccessToken>>>,
     refresh_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
+    /// live auth.json 因「不比账号新」被拒时记一次 workspace，避免轮询周期反复刷同一条 Debug
+    last_stale_live_sync_workspace: std::sync::Mutex<Option<String>>,
     /// 浏览器登录同一时刻只有一个；无跨 await 持锁，用同步锁避免 Send 问题
     pending_browser: std::sync::Mutex<Option<PendingBrowserLogin>>,
     /// 非托管 live auth.json 是常态；同一 workspace 每个进程只记一次诊断行。
@@ -314,6 +329,7 @@ impl CodexOAuthManager {
             default_account_id: Arc::new(RwLock::new(None)),
             access_tokens: Arc::new(RwLock::new(HashMap::new())),
             refresh_locks: Arc::new(RwLock::new(HashMap::new())),
+            last_stale_live_sync_workspace: std::sync::Mutex::new(None),
             pending_browser: std::sync::Mutex::new(None),
             last_unmanaged_live_sync_workspace: std::sync::Mutex::new(None),
             database,
@@ -551,9 +567,15 @@ impl CodexOAuthManager {
             .exchange_code_for_tokens(&code, &code_verifier, BROWSER_REDIRECT_URI)
             .await?;
         let account = self.complete_login(tokens).await?;
+        let email = self
+            .accounts
+            .read()
+            .await
+            .get(&account.id)
+            .and_then(|data| data.email.clone());
         tauri_plugin_log::log::info!(
-            "[auth.login.browser.success] account_id={} source=oauth outcome=success msg=\"浏览器授权完成\"",
-            account.id
+            "[auth.login.browser.success] {} source=oauth outcome=success msg=\"浏览器授权完成\"",
+            account_subject(&account.id, email.as_deref())
         );
         Ok(Some(account))
     }
@@ -600,13 +622,10 @@ impl CodexOAuthManager {
                 .await
                 .get(account_id)
                 .and_then(|account| account.email.clone());
-            match email {
-                Some(email) => format!("account_id={account_id} email={email:?}"),
-                None => format!("account_id={account_id}"),
-            }
+            account_subject(account_id, email.as_deref())
         };
         #[cfg(not(debug_assertions))]
-        let subject = format!("account_id={account_id}");
+        let subject = account_subject(account_id, None);
         if text.contains(REGION_BLOCKED_MARKER) {
             tauri_plugin_log::log::warn!(
                 "[auth.token.refresh] {subject} outcome=failure failure_kind=region_blocked status_code={} msg=\"Token 刷新被地区限制拦截\"",
@@ -724,7 +743,7 @@ impl CodexOAuthManager {
                 }
                 if changed {
                     // refresh_token 轮换落库是后续离线复用 auth.json 的依据，必须留痕
-                    let subject = format!("account_id={account_id}");
+                    let subject = account_subject(account_id, account.email.as_deref());
                     self.save_account(account)?;
                     tauri_plugin_log::log::info!(
                         "[auth.token.rotate] {subject} outcome=success msg=\"凭证已轮换并持久化到数据库\""
@@ -819,6 +838,9 @@ impl CodexOAuthManager {
     /// 把 Codex 运行中刷新过的同账号 auth.json 同步回 OAuth 账号。
     /// 只接受已在 CGswitch 管理中的账号，避免把桌面登录误导入为新账号。
     /// 归属判定用 (workspace, 用户 sub) 双匹配：同 workspace 多账号时绝不串号。
+    /// 新旧判定：live access_token 的 JWT iat 必须比账号的 authenticated_at
+    /// （最后一次登录/凭证落库时刻）更新才回写——否则给激活中的账号重新授权时，
+    /// workspace 归属相同的旧 live 残留会把刚登录的新凭证整个覆盖回去。
     pub async fn sync_external_auth_json(&self, text: &str) -> Result<bool, CodexOAuthError> {
         let Some(auth) = parse_external_auth_json(text) else {
             return Ok(false);
@@ -860,11 +882,31 @@ impl CodexOAuthManager {
         };
         let refresh_lock = self.get_refresh_lock(&row_id).await;
         let _guard = refresh_lock.lock().await;
+        let live_issued_at = parse_jwt_claims(&auth.access_token).and_then(|claims| claims.iat);
         let updated = {
             let mut accounts = self.accounts.write().await;
             let Some(account) = accounts.get_mut(&row_id) else {
                 return Ok(false);
             };
+            // 新旧闸门：live 不比账号凭证新（含 access_token 不可解析的异常文件）一律拒绝回写
+            let is_newer =
+                matches!(live_issued_at, Some(live_iat) if live_iat > account.authenticated_at);
+            if !is_newer {
+                let should_log = self
+                    .last_stale_live_sync_workspace
+                    .lock()
+                    .map(|mut last| {
+                        should_log_unmanaged_live_sync(&mut last, auth.account_id.as_str())
+                    })
+                    .unwrap_or(false);
+                if should_log {
+                    tauri_plugin_log::log::debug!(
+                        "[auth.live_sync.skip] {} source=live_auth_json outcome=success msg=\"live auth.json 不比账号凭证新，跳过回写\"",
+                        account_subject(&row_id, account.email.as_deref())
+                    );
+                }
+                return Ok(false);
+            }
             let mut changed = false;
             if account.refresh_token != refresh_token {
                 account.refresh_token = refresh_token;
@@ -905,14 +947,15 @@ impl CodexOAuthManager {
         // 外部 auth.json 没有可靠的 expires_in，不能把它伪装成内存有效 token；
         // 下一次生成 auth.json 时必须按数据库里的 refresh_token 重新验证。
         self.access_tokens.write().await.remove(&row_id);
+        let subject = account_subject(&row_id, account.email.as_deref());
         self.save_account(&account).map_err(|error| {
             tauri_plugin_log::log::warn!(
-                "[auth.live_sync] account_id={row_id} outcome=failure failure_kind=io_error error={error:?} msg=\"同步外部 auth.json 落库失败\""
+                "[auth.live_sync] {subject} outcome=failure failure_kind=io_error error={error:?} msg=\"同步外部 auth.json 落库失败\""
             );
             error
         })?;
         tauri_plugin_log::log::info!(
-            "[auth.live_sync] account_id={row_id} outcome=success msg=\"已把外部刷新的 live auth.json 同步回账号\""
+            "[auth.live_sync] {subject} outcome=success msg=\"已把外部刷新的 live auth.json 同步回账号\""
         );
         Ok(true)
     }
@@ -1009,6 +1052,17 @@ impl CodexOAuthManager {
 
     pub async fn is_authenticated(&self) -> bool {
         !self.accounts.read().await.is_empty()
+    }
+
+    /// 日志定位字段：account_id 恒输出，email 仅 debug 构建附加（供连接层标注 OAuth 账号行为）。
+    pub async fn account_subject_for(&self, row_id: &str) -> String {
+        let email = self
+            .accounts
+            .read()
+            .await
+            .get(row_id)
+            .and_then(|account| account.email.clone());
+        account_subject(row_id, email.as_deref())
     }
 
     /// 行 id 对应的 ChatGPT workspace ID（出站请求头用）。
@@ -1480,11 +1534,20 @@ pub fn parse_external_auth_json(text: &str) -> Option<ExternalCodexAuth> {
     })
 }
 
-/// 浏览器授权完成后的本地成功页（双语，避免后端感知界面语言）
-const BROWSER_SUCCESS_HTML: &str = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>CGswitch</title>\
-<style>body{font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f5f5f4;color:#292524}\
-main{text-align:center;padding:2rem}mark{display:inline-grid;place-items:center;width:56px;height:56px;border-radius:50%;background:#16a34a;color:#fff;font-size:28px}</style>\
-</head><body><main><mark>&#10003;</mark><h1>登录成功</h1><p>Signed in. You can close this page and return to CGswitch.</p></main></body></html>";
+/// 浏览器授权完成后的本地成功页（双语，避免后端感知界面语言）。
+/// 标签页由系统 shell 拉起、无脚本 opener，window.close 必被拦截，故只做静态提示、不做关闭逻辑。
+const BROWSER_SUCCESS_HTML: &str = r#"<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>CGswitch</title>
+<style>
+body{font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;background:#f5f5f4;color:#292524}
+main{text-align:center;padding:2rem}
+.success-icon{display:grid;place-items:center;width:56px;height:56px;margin:0 auto;border-radius:50%;background:#16a34a;color:#fff}
+.success-icon svg{width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+</style></head><body><main>
+<div class="success-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></svg></div>
+<h1>登录成功</h1>
+<p>登录已完成，此标签页可以关闭了。 / Signed in. You can close this tab now.</p>
+</main></body></html>"#;
 
 /// 授权被取消/拒绝后的本地失败页
 const BROWSER_DENIED_HTML: &str = "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><title>CGswitch</title>\
@@ -1981,7 +2044,11 @@ mod tests {
             ))
             .await
             .unwrap();
-        let auth = r#"{"auth_mode":"chatgpt","tokens":{"id_token":"new-id","access_token":"new-access","refresh_token":"new-refresh","account_id":"acc-1"}}"#;
+        let auth = format!(
+            r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"new-id","access_token":"{}","refresh_token":"new-refresh","account_id":"acc-1"}}}}"#,
+            test_access_token_with_iat(now_secs() + 60)
+        );
+        let auth = auth.as_str();
 
         assert!(manager.sync_external_auth_json(auth).await.unwrap());
         assert!(!manager.sync_external_auth_json(auth).await.unwrap());
@@ -1993,6 +2060,50 @@ mod tests {
         let unknown = auth.replace("acc-1", "unknown");
         assert!(!manager.sync_external_auth_json(&unknown).await.unwrap());
         assert_eq!(manager.list_accounts().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn sync_external_auth_rejects_live_older_than_relogin() {
+        // 给激活中的账号重新授权后，live auth.json 还是上一会话的旧残留：
+        // workspace 归属匹配也必须拒绝回写，否则旧凭证会覆盖刚登录的新凭证
+        let dir = tempfile::tempdir().unwrap();
+        let database = setup(dir.path());
+        let manager = CodexOAuthManager::new(database.clone());
+        manager
+            .add_account_internal(test_credentials(
+                "acc-1",
+                "fresh-refresh",
+                Some("a@example.com"),
+                Some(test_id_token("user-a", "acc-1")),
+            ))
+            .await
+            .unwrap();
+
+        // access_token 不可解析（损坏/异常文件）：无法证明比账号新，拒绝
+        let garbage = r#"{"auth_mode":"chatgpt","tokens":{"id_token":"x","access_token":"corrupted-access","refresh_token":"corrupted-refresh","account_id":"acc-1"}}"#;
+        assert!(!manager.sync_external_auth_json(garbage).await.unwrap());
+
+        // iat 早于重新登录时刻的旧会话文件：拒绝
+        let older = format!(
+            r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"{}","access_token":"{}","refresh_token":"old-session-refresh","account_id":"acc-1"}}}}"#,
+            test_id_token("user-a", "acc-1"),
+            test_access_token_with_iat(now_secs() - 3_600)
+        );
+        assert!(!manager.sync_external_auth_json(&older).await.unwrap());
+
+        let stored = database.accounts().unwrap().pop().unwrap();
+        assert_eq!(stored.refresh_token, "fresh-refresh");
+        assert_eq!(stored.auth_json, None);
+
+        // iat 更新的外部刷新仍然被吸收（保护既有能力）
+        let newer = format!(
+            r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"{}","access_token":"{}","refresh_token":"newer-refresh","account_id":"acc-1"}}}}"#,
+            test_id_token("user-a", "acc-1"),
+            test_access_token_with_iat(now_secs() + 60)
+        );
+        assert!(manager.sync_external_auth_json(&newer).await.unwrap());
+        let stored = database.accounts().unwrap().pop().unwrap();
+        assert_eq!(stored.refresh_token, "newer-refresh");
     }
 
     #[tokio::test]
@@ -2034,6 +2145,13 @@ mod tests {
         let payload = URL_SAFE_NO_PAD.encode(
             serde_json::json!({ "sub": sub, "chatgpt_account_id": chatgpt_account_id }).to_string(),
         );
+        format!("{header}.{payload}.")
+    }
+
+    /// 构造带 iat 的 access_token JWT（验证 live 同步的新旧闸门）
+    fn test_access_token_with_iat(iat: i64) -> String {
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::json!({ "iat": iat }).to_string());
         format!("{header}.{payload}.")
     }
 
@@ -2160,8 +2278,9 @@ mod tests {
 
         // Codex CLI 用 user-b 的凭证刷新了 live auth.json：只允许落进 user-b 的行
         let live = format!(
-            r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"{}","access_token":"at-b2","refresh_token":"rt-b2","account_id":"ws-shared"}}}}"#,
-            test_id_token("user-b", "ws-shared")
+            r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"{}","access_token":"{}","refresh_token":"rt-b2","account_id":"ws-shared"}}}}"#,
+            test_id_token("user-b", "ws-shared"),
+            test_access_token_with_iat(now_secs() + 60)
         );
         assert!(manager.sync_external_auth_json(&live).await.unwrap());
 
@@ -2253,6 +2372,16 @@ mod tests {
         assert!(url.contains("code_challenge_method=S256"));
         assert!(url.contains("prompt=login"));
         assert!(url.contains("codex_cli_simplified_flow=true"));
+    }
+
+    #[test]
+    fn browser_success_page_is_static_without_close_logic() {
+        // 标签页无脚本 opener，window.close 必被拦截：成功页只做静态提示
+        assert!(BROWSER_SUCCESS_HTML.contains("M5 12l4 4L19 6"));
+        assert!(BROWSER_SUCCESS_HTML.contains("此标签页可以关闭了"));
+        assert!(!BROWSER_SUCCESS_HTML.contains("window.close"));
+        assert!(!BROWSER_SUCCESS_HTML.contains("<button"));
+        assert!(!BROWSER_SUCCESS_HTML.contains("<script"));
     }
 
     #[test]

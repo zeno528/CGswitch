@@ -2,6 +2,7 @@ import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, FileBraces, Info, Penci
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { authQuotaErrorKind } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { AppSelect } from "../../components/AppSelect";
@@ -458,6 +459,12 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     finally { setFormatting(false); }
   };
 
+  // 测连通失败文案：凭证失效的结局走本地化可行动文案，其余保留后端原文
+  const connectionFailureToast = (error: string) =>
+    authQuotaErrorKind(error) === "auth_expired"
+      ? t("connection.testFailed", { error: t("balance.authInvalidToast") })
+      : t("connection.failed", { error });
+
   const testConnection = async () => {
     if (testing) return;
     if (!baseUrl.trim()) { feedback.warning(t("edit.baseUrlRequired")); return; }
@@ -466,8 +473,8 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     try {
       const result = create ? await api.testProviderConnection(baseUrl.trim(), apiKey.trim()) : await api.testProfileConnection(profile!.id, baseUrl.trim(), apiKey.trim());
       if (result.ok) feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
-      else feedback.error(t("connection.failed", { error: result.error ?? t("connection.unknownError") }));
-    } catch (error) { feedback.error(t("connection.testFailed", { error: String(error) })); }
+      else feedback.error(connectionFailureToast(result.error ?? t("connection.unknownError")));
+    } catch (error) { feedback.error(connectionFailureToast(String(error))); }
     finally { setTesting(false); }
   };
 

@@ -33,7 +33,10 @@ async fn test_account_connection(
     // live 凭证只作为同步输入；验证统一使用托管账号记录中的有效 access_token。
     state.sync_live_oauth_auth(manager).await?;
     let workspace = manager.workspace_of(account_id).await;
-    let log_context = format!("account_id={account_id} source=oauth");
+    let log_context = format!(
+        "{} source=oauth",
+        manager.account_subject_for(account_id).await
+    );
     let token = manager
         .get_valid_token_for_account(account_id)
         .await

@@ -2,7 +2,7 @@ import { CircleAlert, CreditCard, ExternalLink, LogIn, Plus, RefreshCw, ShieldCh
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { authQuotaCacheKey, authQuotaErrorKind, getAuthQuotaBalance, getAuthQuotaError, getVisibleAuthQuota, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
+import { authQuotaCacheKey, authQuotaErrorKind, clearAuthQuotaError, getAuthQuotaBalance, getAuthQuotaError, getVisibleAuthQuota, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { PlanBadge } from "../../components/PlanBadge";
@@ -268,7 +268,14 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
       const deadline = Date.now() + current.expires_in * 1000;
       while (!disposed.current && !pollCancelled.current && Date.now() < deadline) {
         const account = await api.authPollBrowserLogin();
-        if (account) { setBrowserLogin(null); await refreshStatus(); feedback.success(t("account.addedToast")); return; }
+        if (account) {
+          setBrowserLogin(null);
+          // 重新授权成功：旧失败态缓存即刻作废，卡片重挂载后按无错误路径自动刷新出成功态
+          clearAuthQuotaError(authQuotaCacheKey("oauth", account.id));
+          await refreshStatus();
+          feedback.success(t("account.addedToast"));
+          return;
+        }
         await new Promise((resolve) => window.setTimeout(resolve, 1000));
       }
       if (!disposed.current && !pollCancelled.current) { setBrowserLogin(null); feedback.error(t("account.loginTimeout")); }

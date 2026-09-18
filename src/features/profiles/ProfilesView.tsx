@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
+import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
@@ -183,7 +183,11 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
       } else {
         feedback.success(t("feedback.switchSuccess"));
       }
-    } catch (error) { feedback.error(String(error)); }
+    } catch (error) {
+      const message = String(error);
+      // 凭证失效类错误出本地化的可行动文案，其余保持后端原文
+      feedback.error(authQuotaErrorKind(message) === "auth_expired" ? t("balance.authInvalidToast") : message);
+    }
     finally { setBusy(false); }
   };
 

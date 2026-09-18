@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   authQuotaCacheKey,
+  clearAuthQuotaError,
   getAuthQuotaBalance,
   getAuthQuotaError,
   getVisibleAuthQuota,
@@ -45,6 +46,23 @@ describe("shared auth quota state", () => {
 
     expect(getAuthQuotaError(key)).toBe("");
     expect(getVisibleAuthQuota(key, null)).toEqual(next);
+    expect(getAuthQuotaError(otherKey)).toBe("query_failed");
+  });
+
+  it("drops a stale failure on relogin so the next mount retries, keeping balance and other accounts", () => {
+    const id = `test-${crypto.randomUUID()}`;
+    const key = authQuotaCacheKey("oauth", id);
+    const otherKey = authQuotaCacheKey("oauth", `${id}-other`);
+    const previous = quota(25);
+    setAuthQuotaSuccess(key, previous);
+    setAuthQuotaFailure(key, "ChatGPT 登录已失效，请重新登录"); // i18n-exempt: Backend error fixture.
+    setAuthQuotaFailure(otherKey, "query_failed");
+
+    clearAuthQuotaError(key);
+
+    expect(getAuthQuotaError(key)).toBe("");
+    expect(getVisibleAuthQuota(key, null)).toEqual(previous); // 旧余额立即可见，刷新在后台跟上
+    expect(getAuthQuotaBalance(key)).toEqual(previous);
     expect(getAuthQuotaError(otherKey)).toBe("query_failed");
   });
 });

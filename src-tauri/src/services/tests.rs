@@ -645,9 +645,16 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
         None
     );
 
+    // 外部刷新的 live access_token 需为带 iat 的 JWT 且新于 authenticated_at(1)，同步才吸收
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    let refreshed_access = {
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"iat":100}"#);
+        format!("{header}.{payload}.sig")
+    };
     let externally_refreshed = oauth_auth(
         "oauth-account",
-        "codex-refreshed-access",
+        &refreshed_access,
         "rotated-refresh-token",
         "rotated-id-token",
     );

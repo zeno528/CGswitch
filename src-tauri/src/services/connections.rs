@@ -1282,6 +1282,7 @@ impl AppContext {
             AuthSource::Desktop => "desktop",
             AuthSource::Oauth => "oauth",
         };
+        let mut oauth_subject = None;
         let (access_token, account_id) = match source {
             AuthSource::Desktop => {
                 // Desktop 额度优先按请求身份取数据库认证快照（与账号页同源，
@@ -1305,18 +1306,23 @@ impl AppContext {
                 }
             }
             AuthSource::Oauth => {
-                let account_id = account_id.ok_or_else(|| app_err!("OAuth 账号不存在"))?;
+                let row_id = account_id.ok_or_else(|| app_err!("OAuth 账号不存在"))?;
                 let token = oauth
-                    .get_valid_token_for_account(account_id)
+                    .get_valid_token_for_account(row_id)
                     .await
                     .map_err(|error| app_err!("{error}"))?;
                 // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
-                (token, Some(oauth.workspace_of(account_id).await))
+                oauth_subject = Some(oauth.account_subject_for(row_id).await);
+                (token, Some(oauth.workspace_of(row_id).await))
             }
         };
-        let context = match account_id.as_deref() {
-            Some(id) => format!("account_id={id} source={source_label}"),
-            None => format!("source={source_label}"),
+        // OAuth 行为标注到具体账号（行 id + debug 门控 email）；desktop 沿用原字段
+        let context = match &oauth_subject {
+            Some(subject) => format!("{subject} source={source_label}"),
+            None => match account_id.as_deref() {
+                Some(id) => format!("account_id={id} source={source_label}"),
+                None => format!("source={source_label}"),
+            },
         };
         query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await
     }
@@ -1337,7 +1343,7 @@ impl AppContext {
                 Some(AuthSource::Oauth) => "oauth",
                 _ => "desktop",
             };
-            let context = format!("profile_id={id} source={source_label}");
+            let mut context = format!("profile_id={id} source={source_label}");
             let (access_token, account_id) =
                 match payload.effective_auth_source(stored.kind, stored.account_id.as_deref()) {
                     Some(AuthSource::Desktop) => payload
@@ -1356,6 +1362,10 @@ impl AppContext {
                             .await
                             .map_err(|error| app_err!("{error}"))?;
                         // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
+                        context = format!(
+                            "profile_id={id} {} source={source_label}",
+                            oauth.account_subject_for(account_id).await
+                        );
                         (token, Some(oauth.workspace_of(account_id).await))
                     }
                     None => return Err(app_err!("官方配置缺少登录方式")),

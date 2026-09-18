@@ -33,6 +33,11 @@ export function setAuthQuotaFailure(cacheKey: string, message: string) {
   errorCache.set(cacheKey, message);
 }
 
+/** 重新授权成功后调用：该账号的旧失败态即刻作废，下次挂载按无错误路径自动刷新 */
+export function clearAuthQuotaError(cacheKey: string) {
+  errorCache.delete(cacheKey);
+}
+
 export function setAuthQuotaSuccess(cacheKey: string, balance: ProfileBalanceInfo) {
   quotaCache.set(cacheKey, balance);
   errorCache.delete(cacheKey);

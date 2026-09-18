@@ -227,6 +227,12 @@ export default function ProfileCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, profile.id, profile.show_balance, supportsBalance]);
 
+  // 测连通失败文案：凭证失效的结局走本地化可行动文案，其余保留后端原文
+  const connectionFailureToast = (error: string) =>
+    authQuotaErrorKind(error) === "auth_expired"
+      ? t("connection.testFailed", { error: t("balance.authInvalidToast") })
+      : t("connection.failed", { error });
+
   const testConnection = async () => {
     if (testing) return;
     if (profile.provider && !profile.has_base_url) {
@@ -243,10 +249,10 @@ export default function ProfileCard({
       if (result.ok) {
         feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
       } else {
-        feedback.error(t("connection.failed", { error: result.error ?? t("connection.unknownError") }));
+        feedback.error(connectionFailureToast(result.error ?? t("connection.unknownError")));
       }
     } catch (error) {
-      feedback.error(t("connection.testFailed", { error: String(error) }));
+      feedback.error(connectionFailureToast(String(error)));
     } finally {
       setTesting(false);
     }
