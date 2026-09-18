@@ -1241,7 +1241,7 @@ body.drag-active * {
   background: var(--secondary-button-bg);
   display: inline-flex;
   gap: 0.5rem;
-  height: var(--control-height);
+  height: calc(var(--control-height) + 6px);
   justify-content: center;
   padding-inline: 16px;
   font-size: var(--font-size-base);

@@ -2,6 +2,7 @@
 export default {
   installedCount: "Installed {{count}}",
   enabledCount: "{{count}} enabled",
+  searchPlaceholder: "Search Skills...",
   importSkill: "Import Skill",
   importSkillAria: "Import Skill ({{count}} available to import or update)",
   importSkillTitle: "{{count}} Skills available to import or update",
