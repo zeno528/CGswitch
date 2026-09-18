@@ -24,32 +24,17 @@ const webProfiles: ProfileSummary[] = [
     name: "ZAI GLM 高推理",
     kind: "third_party",
     account_id: null,
+    plan_type: null,
     model: "glm-5.3",
     provider: "ZAI",
     reasoning_effort: "high",
     has_base_url: true,
     has_key: true,
     admin_url: "https://open.bigmodel.cn/console",
-    show_balance: false,
+    show_balance: true,
     icon: "zhipu",
     created_at: "2026-08-15 10:00:00",
     updated_at: "2026-08-15 10:00:00",
-  },
-  {
-    id: "profile-zai-glm-fast",
-    name: "ZAI GLM 快速",
-    kind: "third_party",
-    account_id: null,
-    model: "glm-5-turbo",
-    provider: "ZAI",
-    reasoning_effort: "low",
-    has_base_url: true,
-    has_key: false,
-    admin_url: null,
-    show_balance: false,
-    icon: null,
-    created_at: "2026-08-15 10:01:00",
-    updated_at: "2026-08-15 10:01:00",
   },
   {
     id: "profile-official",
@@ -57,13 +42,15 @@ const webProfiles: ProfileSummary[] = [
     kind: "official",
     account_id: null,
     auth_source: "desktop",
+    auth_account_id: "web-codex-account",
+    plan_type: "plus",
     model: "gpt-5.6",
     provider: null,
     reasoning_effort: "medium",
     has_base_url: false,
     has_key: false,
-    admin_url: null,
-    show_balance: false,
+    admin_url: "https://chatgpt.com",
+    show_balance: true,
     icon: "openai-chatgpt",
     created_at: "2026-08-15 10:02:00",
     updated_at: "2026-08-15 10:02:00",
@@ -441,17 +428,6 @@ const webDetails: Record<string, WebDetail> = {
       'model = "glm-5.3"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = "zai.json"\n\n[model_providers.ZAI]\nname = "ZAI"\nbase_url = "https://open.bigmodel.cn/api/v1"\nwire_api = "responses"\nexperimental_bearer_token = "••••••••"',
     fetched_models: ["glm-5.3", "glm-5.2", "glm-4.7"],
   },
-  "profile-zai-glm-fast": {
-    base_url: "https://open.bigmodel.cn/api/v1",
-    api_key: null,
-    model_values: {
-      model: '"glm-5-turbo"',
-      model_reasoning_effort: '"low"',
-      model_catalog_json: '"zai.json"',
-    },
-    config_fragment:
-      'model = "glm-5-turbo"\nmodel_reasoning_effort = "low"\nmodel_catalog_json = "zai.json"\n\n[model_providers.ZAI]\nname = "ZAI"\nbase_url = "https://open.bigmodel.cn/api/v1"\nwire_api = "responses"',
-  },
   "profile-official": {
     base_url: null,
     api_key: null,
@@ -553,6 +529,33 @@ const webChatgptQuota: ProfileBalanceInfo = {
   weekly_reset: "4d8h",
   weekly_reset_at: Date.now() + 4 * 86_400_000 + 8 * 3_600_000,
   weekly_label: "7天",
+  reset_credits_available: 2,
+  reset_credits: [
+    { id: "reset-credit-1", reset_type: "full", expires_at: Date.now() + 16 * 86_400_000 },
+    { id: "reset-credit-2", reset_type: "full", expires_at: Date.now() + 17 * 86_400_000 },
+  ],
+};
+const webAuthStatus = {
+  authenticated: true,
+  default_account_id: null,
+  external: [
+    {
+      id: "web-codex-account",
+      login: "codex@example.com",
+      authenticated_at: 0,
+      is_default: false,
+      plan_type: "plus",
+      subscription_active_until: Date.now() + 14 * 86_400_000,
+    },
+  ],
+  accounts: ["alpha", "beta", "gamma", "delta", "epsilon"].map((name, index) => ({
+    id: "web-" + name,
+    login: name + "@example.com",
+    authenticated_at: 0,
+    is_default: false,
+    plan_type: index % 2 ? "free" : "plus",
+    subscription_active_until: index % 2 ? null : Date.now() + (index + 3) * 86_400_000,
+  })),
 };
 
 function databaseBackupName(date = new Date()): string {
@@ -571,7 +574,7 @@ function webState(): AppState {
     },
     settings: { ...webSettings },
     paths: webPaths,
-    auth_status: { authenticated: false, default_account_id: null, accounts: [], external: null },
+    auth_status: webAuthStatus,
     balance_cache: { ...webBalanceCache },
   };
 }
@@ -627,6 +630,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         name: String(args?.name ?? "新供应商"),
         kind: "third_party",
         account_id: null,
+    plan_type: null,
         model: "glm-5.3",
         provider: "ZAI",
         reasoning_effort: "high",
@@ -658,6 +662,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         name: preset.name,
         kind: preset.provider ? "third_party" : "official",
         account_id: preset.provider ? null : (typeof args?.accountId === "string" ? args.accountId : null),
+        plan_type: preset.provider ? null : (typeof args?.accountId === "string" && args.accountId ? "plus" : "free"),
         auth_source: preset.provider ? null : (typeof args?.accountId === "string" && args.accountId ? "oauth" : "desktop"),
         model: preset.model,
         provider: preset.provider,
@@ -690,6 +695,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         name: String(args?.name ?? "自定义供应商"),
         kind: "third_party",
         account_id: null,
+    plan_type: null,
         model: null,
         provider,
         reasoning_effort: null,
@@ -1144,7 +1150,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "set_app_language":
       return undefined as T;
     case "auth_get_status":
-      return { authenticated: false, default_account_id: null, accounts: [], external: null } as T;
+      return webAuthStatus as T;
     case "auth_preview": {
       if (typeof args?.accountId !== "string" || !args.accountId) {
         throw new Error("OAuth 账号不能为空");
@@ -1339,7 +1345,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
-    // 认证设备码流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
+    // 认证登录流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
     default:
       throw new Error(`Web 调试模式不支持命令：${command}`);
   }

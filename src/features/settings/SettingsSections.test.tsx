@@ -5,13 +5,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { FeedbackProvider } from "../../app/Feedback";
 import { AppUpdateProvider } from "../updates/AppUpdateProvider";
 import { SettingsAbout, SettingsGeneral, backupTitle, formatSize, formatTimestamp } from "./SettingsSections";
-import ChatGPTAccount from "./ChatGPTAccount";
+import AccountsView from "../accounts/AccountsView";
 import { setupI18n } from "../../i18n";
 import { webInvoke } from "../../api/web-mock";
-import type { AuthStatus, Settings } from "../../types";
+import type { AuthStatus, ProfileBalanceInfo, Settings } from "../../types";
 
 const settingsSectionsSource = readFileSync(new URL("./SettingsSections.tsx", import.meta.url), "utf8");
 const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.meta.url), "utf8");
+const accountsViewSource = readFileSync(new URL("../accounts/AccountsView.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("SettingsSections", () => {
@@ -88,12 +89,6 @@ describe("SettingsSections", () => {
     // 不再沿用旧逻辑：检查到新版立即自动下载安装
     expect(settingsSectionsSource).not.toContain("正在下载并安装");
     expect(settingsSectionsSource).not.toContain("await update.install()");
-  });
-
-  it("更新弹窗 logo 不跟随全局主题反色", () => {
-    const heroLogo = styles.slice(styles.indexOf(".app-dialog-hero .app-logo {"), styles.indexOf(".app-version"));
-    expect(heroLogo).not.toContain("invert");
-    expect(heroLogo).toContain("drop-shadow");
   });
 
   it("关于页 logo 高度与品牌信息块对齐", () => {
@@ -216,28 +211,59 @@ describe("SettingsSections", () => {
     expect(html).toContain("启动行为");
   });
 
-  it("其他设置分区使用内容语义作为左上角分组标题", () => {
-    expect(settingsViewSource).toContain('label={t("account.sectionTitle")}');
+  it("账号管理已从设置分区移出", () => {
+    expect(settingsViewSource).not.toContain('tab("account"');
+    expect(settingsViewSource).not.toContain('account.sectionTitle');
     expect(settingsViewSource).toContain('label={t("codex.sectionTitle")}');
     expect(settingsViewSource).toContain('label={t("backup.sectionTitle")}');
     expect(settingsViewSource).toContain('label={t("about.sectionTitle")}');
   });
 
   it("设置项图标统一复用深浅主题的主按钮颜色", () => {
-    expect(styles).toContain(".settings-page .settings-icon-tile {\n  background: var(--primary-button-bg);\n  color: var(--primary-button-text);\n}");
+    expect(styles).toContain(".settings-page .settings-icon-tile,\n.accounts-page .settings-icon-tile {\n  background: var(--primary-button-bg);\n  color: var(--primary-button-text);\n}");
   });
 
-  it("账号行先显示账号，再以次要层级显示登录方式", () => {
+  it("账号页以两列卡片展示账号行", () => {
     const status: AuthStatus = {
       authenticated: true,
       default_account_id: "desktop",
-      external: { id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true },
-      accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false }],
+      external: [{ id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true, plan_type: "plus", subscription_active_until: 1_789_694_940_000 }],
+      accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false, plan_type: "pro", subscription_active_until: 1_789_694_940_000 }],
+    };
+    const balance: ProfileBalanceInfo = {
+      currency: "", total_balance: "", granted_balance: "", topped_up_balance: "",
+      usage_percent: 18, usage_reset: "3h12m", usage_reset_at: Date.now() + 3 * 3_600_000, weekly_usage_percent: null, weekly_reset: null,
+      reset_credits_available: 2,
+      reset_credits: [
+        { id: "credit-1", reset_type: "codex_rate_limits", expires_at: Date.now() + 16 * 86_400_000 },
+        { id: "credit-2", expires_at: Date.now() + 17 * 86_400_000 },
+      ],
     };
     setupI18n("zh-CN");
-    const html = renderToStaticMarkup(<FeedbackProvider><ChatGPTAccount initialStatus={status} /></FeedbackProvider>);
+    const html = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={status} balanceCache={{ "auth:desktop:desktop": balance }} /></FeedbackProvider>);
     expect(html.indexOf("desktop@example.com")).toBeLessThan(html.indexOf("跟随 Codex登录"));
-    expect(html.indexOf("oauth@example.com")).toBeLessThan(html.indexOf("OAuth 设备码登录"));
+    expect(html.indexOf("oauth@example.com")).toBeLessThan(html.indexOf("OAuth 登录"));
+    // 套餐徽标：官方原词首字母大写，pro 走强调色 chip
+    expect(html).toContain(">Plus</span>");
+    expect(html).toContain(">Pro</span>");
+    expect(html.match(/套餐续期日（[^）]+）：/g)).toHaveLength(2);
+    expect(html).toContain("天后");
+    expect(accountsViewSource).toContain('timeZoneName: "short"');
+    expect(html.indexOf("跟随 Codex登录")).toBeLessThan(html.indexOf(">Plus</span>"));
+    expect(html).toContain("2 次");
+    expect(html).toContain("完全重置（每周 + 5 小时）");
+    expect(html).toContain("到期：");
+    expect(html).toContain("3h12m 后");
+    expect(accountsViewSource).toContain('month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"');
+    expect(html).not.toContain("恢复 5 小时和每周使用限额");
+    const zeroCreditHtml = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={status} balanceCache={{ "auth:desktop:desktop": { ...balance, reset_credits_available: 0, reset_credits: [] } }} /></FeedbackProvider>);
+    expect(zeroCreditHtml).not.toContain("可用 0 张重置卡");
+    const freeHtml = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={{ ...status, external: [{ ...status.external[0]!, plan_type: "free" }], accounts: [] }} /></FeedbackProvider>);
+    expect(freeHtml).toContain(">Free</span>");
+    expect(freeHtml).not.toContain("套餐续期日：");
+    expect(accountsViewSource).toContain('grid grid-cols-1 gap-[var(--gap-card)] md:grid-cols-2');
+    expect(accountsViewSource).toContain('source="desktop"');
+    expect(accountsViewSource).toContain('source="oauth"');
   });
 
   it("移除按钮跟随账号行高度", () => {

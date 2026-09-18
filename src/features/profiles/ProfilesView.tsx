@@ -1,15 +1,16 @@
-import { Camera, GripVertical, Plus, RefreshCw, Server } from "lucide-react";
+import { Camera, GripVertical, Layers2, Play, Plus, RefreshCw } from "lucide-react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
-import type { AppState, AuthStatus, ProfileBalanceInfo, ProfileSummary } from "../../types";
+import type { AppState, ProfileBalanceInfo, ProfileSummary } from "../../types";
 import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent } from "./ProfileCard";
 import ProfileEdit from "./ProfileEdit";
 import { UpdateNotice } from "../updates/AppUpdateProvider";
@@ -21,7 +22,11 @@ interface ProfilesViewProps {
   onManageChatgptAccounts: () => void;
 }
 
-function ProfileDragPreview({ profile, width, height, active, busy, subscriptionAuthed, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; subscriptionAuthed: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
+export function codexActionFor(running: boolean) {
+  return running ? "restart" : "start";
+}
+
+function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
   const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
   return (
     <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
@@ -30,13 +35,12 @@ function ProfileDragPreview({ profile, width, height, active, busy, subscription
       </span>
       <ProfileCardContent
         profile={profile}
-        subscriptionAuthed={subscriptionAuthed}
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         balanceRefreshing={false}
         onOpenAdmin={onOpenAdmin}
       />
-      <ProfileCardActions active={active} busy={busy} profile={profile} subscriptionAuthed={subscriptionAuthed} testing={false} dragging />
+      <ProfileCardActions active={active} busy={busy} profile={profile} testing={false} dragging />
     </div>
   );
 }
@@ -46,7 +50,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const { t } = useTranslation("profiles");
   const [items, setItems] = useState(state.profiles);
   const [busy, setBusy] = useState(false);
-  const [restarting, setRestarting] = useState(false);
+  const [codexAction, setCodexAction] = useState<"restart" | "start" | null>(null);
   const [editingProfile, setEditingProfile] = useState<ProfileSummary | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [modal, setModal] = useState<"capture" | "rename" | null>(null);
@@ -56,22 +60,16 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const [dragHoverProfileId, setDragHoverProfileId] = useState<string | null>(null);
   const [draggedProfileWidth, setDraggedProfileWidth] = useState<number | null>(null);
   const [draggedProfileHeight, setDraggedProfileHeight] = useState<number | null>(null);
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(state.auth_status);
   const nameInput = useRef<HTMLInputElement>(null);
   const dragHoverReleaseRef = useRef<(() => void) | null>(null);
   const duplicatingProfileRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor));
 
   useEffect(() => setItems(state.profiles), [state.profiles]);
-  useEffect(() => setAuthStatus(state.auth_status), [state.auth_status]);
 
   useEffect(() => () => {
     document.body.classList.remove("drag-active");
     dragHoverReleaseRef.current?.();
-  }, []);
-
-  useEffect(() => {
-    void api.authGetStatus().then(setAuthStatus).catch(() => undefined);
   }, []);
 
   const releaseCardHoverSuppression = () => {
@@ -163,7 +161,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const restart = async (force = false, notifySuccess = true) => {
     if (busy && !force) return false;
     setBusy(true);
-    setRestarting(true);
+    setCodexAction(codexActionFor(state.codex.running));
     try {
       await api.restartCodex();
       if (notifySuccess) feedback.success(t("feedback.codexRestarted"));
@@ -173,13 +171,9 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
       feedback.error(String(error));
       return false;
     } finally {
-      setRestarting(false);
+      setCodexAction(null);
       setBusy(false);
     }
-  };
-
-  const openCodexForRelogin = async () => {
-    if (await restart(true, false)) feedback.success(t("balance.openCodexRelogin"));
   };
 
   const applyProfile = async (profile: ProfileSummary) => {
@@ -193,7 +187,11 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
       } else {
         feedback.success(t("feedback.switchSuccess"));
       }
-    } catch (error) { feedback.error(String(error)); }
+    } catch (error) {
+      const message = String(error);
+      // 凭证失效类错误出本地化的可行动文案，其余保持后端原文
+      feedback.error(authQuotaErrorKind(message) === "auth_expired" ? t("balance.authInvalidToast") : message);
+    }
     finally { setBusy(false); }
   };
 
@@ -225,47 +223,28 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   };
 
   const closeEdit = async () => { setEditingProfile(null); setCreatingProfile(false); await onRefresh(); };
-  const profileAuthAvailable = (profile: ProfileSummary) => profile.auth_source === "oauth"
-    ? Boolean(profile.account_id && authStatus.accounts.some((account) => account.id === profile.account_id))
-    : profile.auth_source === "desktop"
-      ? Boolean(authStatus.external)
-      : profile.account_id
-        ? authStatus.accounts.some((account) => account.id === profile.account_id)
-        : Boolean(authStatus.external);
   const draggedProfile = draggedProfileId ? items.find((profile) => profile.id === draggedProfileId) ?? null : null;
+  const draggedQuotaKey = draggedProfile ? profileAuthQuotaCacheKey(draggedProfile) : null;
 
   if (editingProfile || creatingProfile) {
     return <ProfileEdit profile={editingProfile} create={creatingProfile} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
   }
 
+  const nextCodexAction = codexActionFor(state.codex.running);
+
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
+        <div className="min-w-0"><UpdateNotice /></div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
-          <span
-            className={`codex-status codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span className="codex-status__signal" aria-hidden="true"><span className="codex-status__signal-dot" /></span>
-            <span className="codex-status__name">Codex</span>
-            <span className="codex-status__divider" aria-hidden="true" />
-            <span className="codex-status__label">{state.codex.running ? t("status.running") : t("status.stopped")}</span>
-          </span>
-          <UpdateNotice />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="apple-toolbar-group">
-            <button type="button" className="apple-action-button apple-action-button--quaternary"
-              disabled={busy}
-              title={t("toolbar.restart")} onClick={() => void restart(false)}>
-              {restarting ? <LoadingSpinner size="md" /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
-              {restarting ? t("toolbar.restarting") : t("toolbar.restart")}
-            </button>
-            <button type="button" className="apple-icon-button text-accent" disabled={busy}
-              title={t("toolbar.capture")} aria-label={t("toolbar.capture")} onClick={openCapture}>
-              <Camera className="h-4 w-4" strokeWidth={2} />
+          <div className={`codex-status-control codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}>
+            <span className="codex-status" role="status" aria-live="polite" aria-atomic="true">
+              <span className="codex-status__signal" aria-hidden="true"><span className="codex-status__signal-dot" /></span>
+              <span className="codex-status__name">Codex</span>
+              <span className="codex-status__label">{state.codex.running ? t("status.running") : t("status.stopped")}</span>
+            </span>
+            <button type="button" className="codex-status__action" disabled={busy} title={t(`toolbar.${nextCodexAction}`)} aria-label={codexAction ? t(`toolbar.${codexAction}ing`) : t(`toolbar.${nextCodexAction}`)} onClick={() => void restart(false)}>
+              {codexAction ? <LoadingSpinner size="md" /> : nextCodexAction === "restart" ? <RefreshCw className="h-4 w-4" strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}
             </button>
           </div>
           <button type="button" className="apple-action-button app-button--primary" disabled={busy}
@@ -275,7 +254,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
         </div>
       </header>
       <div className="apple-edit-content">
-        <div>{items.length === 0 ? <EmptyStateCard icon={<Server className="h-5 w-5" strokeWidth={1.8} />}><p className="muted">{t("empty.description")}</p></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)] will-change-transform">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} subscriptionAuthed={profileAuthAvailable(profile)} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => setEditingProfile(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} onOpenCodexApp={() => void openCodexForRelogin()} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} subscriptionAuthed={profileAuthAvailable(draggedProfile)} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
+            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)] will-change-transform">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => setEditingProfile(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
       </div>
       <AppDialog open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }} title={modal === "capture" ? t("dialog.captureTitle") : t("dialog.renameTitle")} initialFocusRef={nameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setModal(null)}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !profileName.trim()} onClick={() => void submitModal()}>{t("dialog.save")}</button></>}>
         <div className="space-y-4"><p className="muted text-sm">{modal === "capture" ? t("dialog.captureDescription") : t("dialog.renameDescription")}</p><input ref={nameInput} className="app-input" maxLength={50} placeholder={t("dialog.namePlaceholder")} value={profileName} onChange={(event) => setProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submitModal(); }} /></div>

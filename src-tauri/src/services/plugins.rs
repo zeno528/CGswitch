@@ -427,11 +427,11 @@ fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> {
     let command = format!("plugin {}", args.join(" "));
     match &result {
         Ok(_) => tauri_plugin_log::log::debug!(
-            "[plugin] CLI 完成 [{command}]（{}ms）",
+            "[plugin.cli.run] command={command:?} outcome=success duration_ms={} msg=\"CLI 完成\"",
             start.elapsed().as_millis()
         ),
         Err(error) => tauri_plugin_log::log::warn!(
-            "[plugin] CLI 失败 [{command}]: {error}（{}ms）",
+            "[plugin.cli.run] command={command:?} outcome=failure failure_kind=internal duration_ms={} error={error:?} msg=\"CLI 失败\"",
             start.elapsed().as_millis()
         ),
     }
@@ -1728,13 +1728,15 @@ impl AppContext {
                 }
                 if target != marketplace {
                     tauri_plugin_log::log::debug!(
-                        "[plugin] 安装市场解析 [{marketplace} → {target}]"
+                        "[plugin.market.resolve] plugin={marketplace:?} target={target:?} outcome=success msg=\"安装市场解析\""
                     );
                 }
                 let output = run_codex_plugin(&home, &["add", &name, "--marketplace", &target]);
                 // 用户触发的里程碑动作，Info 级在 release 也留痕（失败已由 CLI 咽喉 Warn）
                 if output.is_ok() {
-                    tauri_plugin_log::log::info!("[plugin] 插件安装成功 [{name}@{target}]");
+                    tauri_plugin_log::log::info!(
+                        "[plugin.install] plugin={name:?} target={target:?} outcome=success msg=\"插件安装成功\""
+                    );
                 }
                 output
             }
@@ -2095,7 +2097,9 @@ impl AppContext {
                     let output = run_codex_plugin(&home, &["remove", &selector]);
                     // 与安装同口径：用户触发的里程碑动作，Info 级 release 也留痕
                     if output.is_ok() {
-                        tauri_plugin_log::log::info!("[plugin] 插件卸载成功 [{selector}]");
+                        tauri_plugin_log::log::info!(
+                            "[plugin.uninstall] selector={selector:?} outcome=success msg=\"插件卸载成功\""
+                        );
                     }
                     output
                 }

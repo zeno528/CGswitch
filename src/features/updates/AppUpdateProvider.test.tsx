@@ -8,6 +8,7 @@ import { AppUpdateProvider, releaseNotesUrl, UpdateNotice } from "./AppUpdatePro
 
 const providerSource = readFileSync(new URL("./AppUpdateProvider.tsx", import.meta.url), "utf8");
 const dialogSource = readFileSync(new URL("./UpdateNotesDialog.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 const render = (enabled: boolean) => renderToStaticMarkup(
   <FeedbackProvider>
@@ -43,6 +44,8 @@ describe("AppUpdateProvider", () => {
     expect(dialogSource).toContain('t("notice.updateNow")');
     // 品牌渐变头部：项目 logo + 版本标题（hero 变体由 AppDialog 承载）
     expect(dialogSource).toContain('src="/logo.svg"');
+    expect(styles).toContain(".app-dialog-content--hero .app-dialog-title {\n  font-size: 21px;\n  font-weight: 550;\n  letter-spacing: -0.2px;\n  line-height: 1;\n  color: var(--text-primary);");
+    expect(styles).toContain(".app-dialog-hero .app-logo {\n  filter: invert(1);\n}\n\n:root.dark .app-dialog-hero .app-logo {\n  filter: none;");
     expect(dialogSource).toContain('t("notice.noNotes")');
     expect(dialogSource).toContain("void install()");
     expect(dialogSource).toContain('t("notice.updateNow")');
@@ -102,5 +105,7 @@ describe("AppUpdateProvider", () => {
     expect(profilesSource).toContain("<UpdateNotice />");
     expect(providerSource).not.toContain("apple-sidebar-label");
     expect(providerSource).toContain('className="update-notice-trigger"');
+    expect(providerSource).toContain('h-7 w-7');
+    expect(providerSource).toContain('className="setting-title update-notice-label"');
   });
 });

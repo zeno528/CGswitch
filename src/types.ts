@@ -6,6 +6,10 @@ export interface ProfileSummary {
   account_id: string | null;
   /** 官方配置创建时固定的认证来源；旧数据缺失时由 account_id 推断。 */
   auth_source?: "desktop" | "oauth" | null;
+  /** 账号页额度查询所用身份：OAuth 为本地账号 id，Desktop 为 workspace id。 */
+  auth_account_id?: string | null;
+  /** 绑定账号的订阅套餐（free/plus/pro/team…官方原词）；第三方或未知为 null。 */
+  plan_type: string | null;
   model: string | null;
   provider: string | null;
   reasoning_effort: string | null;
@@ -155,6 +159,16 @@ export interface ProfileBalanceInfo {
   weekly_reset_at?: number | null;
   /** 次用量窗口名称；免费方案可为 30 天。 */
   weekly_label?: string | null;
+  /** Codex 主动重置卡可用次数；仅 ChatGPT 订阅账号返回。 */
+  reset_credits_available?: number | null;
+  /** 可用主动重置卡的到期时间。 */
+  reset_credits?: ChatgptResetCredit[] | null;
+}
+
+export interface ChatgptResetCredit {
+  id: string;
+  reset_type?: string | null;
+  expires_at?: number | null;
 }
 
 export interface ProfileBalance {
@@ -169,12 +183,9 @@ export interface DatabaseBackupInfo {
   created_at: number;
 }
 
-export interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
+export interface BrowserLoginStart {
+  authorize_url: string;
   expires_in: number;
-  interval: number;
 }
 
 export interface ManagedAccount {
@@ -182,13 +193,18 @@ export interface ManagedAccount {
   login: string;
   authenticated_at: number;
   is_default: boolean;
+  /** 订阅套餐（free/plus/pro/team…官方原词），未知为 null */
+  plan_type: string | null;
+  /** ChatGPT 订阅到期时间（Unix 毫秒），未知时省略。 */
+  subscription_active_until?: number | null;
 }
 
 export interface AuthStatus {
   authenticated: boolean;
   default_account_id: string | null;
   accounts: ManagedAccount[];
-  external: ManagedAccount | null;
+  /** Desktop 来源账号：由数据库认证快照派生，不随配置切换漂移。 */
+  external: ManagedAccount[];
 }
 
 /** 界面语言设置；"system" 表示跟随系统语言。 */

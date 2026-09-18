@@ -1,6 +1,6 @@
 use super::{
-    app_err, atomic_write, backup_file, now_ms, parse_external_auth_json, read_optional_text,
-    AppContext, AppResult, AuthSource, ManagedAccount, ProfileKind,
+    app_err, atomic_write, backup_file, normalize_auth_override, now_ms, parse_external_auth_json,
+    read_optional_text, AppContext, AppResult, AuthSource, ManagedAccount, ProfileKind,
 };
 use crate::auth::codex_oauth::{CodexOAuthManager, ExternalCodexAuth};
 
@@ -21,36 +21,90 @@ impl AppContext {
     pub(super) fn write_auth_json(&self, content: &str) -> AppResult<()> {
         let destination = self.paths.codex_home.join("auth.json");
         backup_file(&destination, &self.paths.codex_files_backup, "auth")?;
-        atomic_write(&destination, content.as_bytes())?;
+        atomic_write(&destination, content.as_bytes()).map_err(|error| {
+            tauri_plugin_log::log::warn!(
+                "[auth.live_sync] outcome=failure failure_kind=io_error error={error:?} msg=\"live auth.json 写入失败\""
+            );
+            error
+        })?;
+        tauri_plugin_log::log::info!(
+            "[auth.live_sync.write] outcome=success msg=\"已写入 live auth.json，旧文件已备份\""
+        );
         Ok(())
     }
 
-    fn read_external_codex_auth(&self) -> Option<ExternalCodexAuth> {
+    pub(super) fn read_external_codex_auth(&self) -> Option<ExternalCodexAuth> {
         read_optional_text(&self.paths.codex_home.join("auth.json"))
             .as_deref()
             .and_then(parse_external_auth_json)
     }
 
-    /// 识别 Codex 官方外部认证（~/.codex/auth.json，由 codex login 生成）。
-    /// 只读识别、不导入数据库；不是有效的 ChatGPT 订阅认证时返回 None。
-    pub fn external_codex_auth(&self) -> AppResult<Option<ManagedAccount>> {
-        let Some(auth) = self.read_external_codex_auth() else {
-            return Ok(None);
-        };
-        Ok(Some(ManagedAccount {
-            id: auth.account_id,
-            login: auth
-                .email
-                .unwrap_or_else(|| "ChatGPT（Codex 官方认证）".to_string()),
-            authenticated_at: 0,
-            is_default: false,
-        }))
+    /// Desktop 账号清单：真源是数据库中 Desktop 来源官方配置保存的认证快照，
+    /// 不读 live auth.json（切换配置时该文件会被覆写，身份不能跟着漂移）。
+    /// 同一账号存在多个配置时按 (workspace, 用户身份) 去重。
+    pub fn desktop_auth_accounts(&self) -> AppResult<Vec<ManagedAccount>> {
+        let mut seen: Vec<(String, Option<String>)> = Vec::new();
+        let mut accounts = Vec::new();
+        for stored in self.database.profiles()? {
+            if stored
+                .payload
+                .effective_auth_source(stored.kind, stored.account_id.as_deref())
+                != Some(AuthSource::Desktop)
+            {
+                continue;
+            }
+            let Some(auth) = normalize_auth_override(stored.payload.raw_auth.as_deref())
+                .and_then(|text| parse_external_auth_json(&text))
+            else {
+                continue;
+            };
+            let key = (auth.account_id.clone(), auth.user_identity.clone());
+            if seen.contains(&key) {
+                continue;
+            }
+            seen.push(key);
+            accounts.push(ManagedAccount {
+                id: auth.account_id,
+                login: auth
+                    .email
+                    .unwrap_or_else(|| "ChatGPT（Codex 官方认证）".to_string()),
+                authenticated_at: 0,
+                is_default: false,
+                plan_type: auth.plan_type,
+                subscription_active_until: auth.subscription_active_until,
+            });
+        }
+        Ok(accounts)
     }
 
-    /// 读取 live auth.json 中有效的 ChatGPT 订阅 access_token（外部 Codex 认证）。
-    pub fn external_codex_access_token(&self) -> AppResult<Option<String>> {
-        Ok(self
-            .read_external_codex_auth()
+    /// 指定 workspace 的 Desktop 认证快照 token（额度查询用，与账号页身份同源）。
+    pub fn desktop_auth_snapshot_for_account(
+        &self,
+        account_id: &str,
+    ) -> AppResult<Option<(String, Option<String>)>> {
+        for stored in self.database.profiles()? {
+            if stored
+                .payload
+                .effective_auth_source(stored.kind, stored.account_id.as_deref())
+                != Some(AuthSource::Desktop)
+            {
+                continue;
+            }
+            if let Some(auth) = normalize_auth_override(stored.payload.raw_auth.as_deref())
+                .and_then(|text| parse_external_auth_json(&text))
+                .filter(|auth| auth.account_id == account_id)
+            {
+                return Ok(Some((auth.access_token, auth.email)));
+            }
+        }
+        Ok(None)
+    }
+
+    /// 指定 Desktop 配置自身认证快照的 access_token（测试连接按配置维度取用）。
+    pub fn desktop_profile_access_token(&self, id: &str) -> AppResult<Option<String>> {
+        let stored = self.database.profile(id)?;
+        Ok(normalize_auth_override(stored.payload.raw_auth.as_deref())
+            .and_then(|text| parse_external_auth_json(&text))
             .map(|auth| auth.access_token))
     }
 

@@ -41,7 +41,15 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        self.export_database_unlocked()
+        let target = self.export_database_unlocked()?;
+        tauri_plugin_log::log::info!(
+            "[backup.export] target={:?} outcome=success msg=\"已创建数据库备份\"",
+            target
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+        );
+        Ok(target)
     }
 
     pub fn export_database_to(&self, directory: &str) -> AppResult<PathBuf> {
@@ -55,6 +63,13 @@ impl AppContext {
         }
         let target = directory.join(database_backup_name());
         self.database.export_database(&target)?;
+        tauri_plugin_log::log::info!(
+            "[backup.export] target={:?} outcome=success msg=\"已导出数据库备份\"",
+            target
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+        );
         Ok(target)
     }
 
@@ -102,10 +117,10 @@ impl AppContext {
         self.export_database_unlocked()?;
         // 自动备份是静默发生的（无 UI 反馈），文件日志留一行便于事后确认它真的跑过
         if let Some(latest) = self.list_database_backups()?.first() {
-            tauri_plugin_log::log::debug!(
-                "[backup] 自动备份完成 {}（{:.1} MB）",
+            tauri_plugin_log::log::info!(
+                "[backup.auto] path={} size_bytes={} outcome=success msg=\"自动备份完成\"",
                 latest.name,
-                latest.size_bytes as f64 / 1_048_576.0
+                latest.size_bytes
             );
         }
         Ok(true)
@@ -135,6 +150,9 @@ impl AppContext {
             Some("database imported"),
             &now_ms().to_string(),
         )?;
+        tauri_plugin_log::log::info!(
+            "[backup.import] path={path:?} outcome=success msg=\"已导入数据库并恢复\""
+        );
         Ok(())
     }
 
@@ -186,12 +204,19 @@ impl AppContext {
             Some("database restored"),
             &now_ms().to_string(),
         )?;
+        tauri_plugin_log::log::info!(
+            "[backup.restore] path={:?} outcome=success msg=\"已恢复备份\"",
+            path.display().to_string()
+        );
         Ok(())
     }
 
     pub fn delete_database_backup(&self, name: &str) -> AppResult<()> {
         let path = self.database_backup_path(name)?;
         std::fs::remove_file(&path).map_err(|error| app_err!("删除备份失败: {error}"))?;
+        tauri_plugin_log::log::info!(
+            "[backup.delete] target={name:?} outcome=success msg=\"已删除数据库备份\""
+        );
         Ok(())
     }
 
@@ -227,6 +252,12 @@ impl AppContext {
             return Err(app_err!("同名备份已存在"));
         }
         std::fs::rename(&from, &to).map_err(|error| app_err!("重命名备份失败: {error}"))?;
+        tauri_plugin_log::log::info!(
+            "[backup.rename] target={:?} outcome=success msg=\"已重命名数据库备份\"",
+            to.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+        );
         Ok(())
     }
 

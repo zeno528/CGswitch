@@ -197,6 +197,10 @@ pub struct ProfileSummary {
     /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,
     pub auth_source: Option<AuthSource>,
+    /// 账号页额度查询使用的认证账号标识；OAuth 为本地账号主键，Desktop 为 workspace ID。
+    pub auth_account_id: Option<String>,
+    /// 绑定账号的订阅套餐；第三方或未知为 None（get_state 聚合时填充）。
+    pub plan_type: Option<String>,
     pub model: Option<String>,
     pub provider: Option<String>,
     pub reasoning_effort: Option<String>,
@@ -209,6 +213,17 @@ pub struct ProfileSummary {
     pub icon: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatgptResetCredit {
+    pub id: String,
+    /// 官方返回的重置范围（如 full）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_type: Option<String>,
+    /// 主动重置卡的到期时间（Unix 毫秒）；无到期时间时为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -241,6 +256,12 @@ pub struct ProfileBalanceInfo {
     /// 次用量窗口名称；免费方案可为“30天”。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weekly_label: Option<String>,
+    /// Codex 主动重置卡可用次数；仅 ChatGPT 订阅账号返回。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_credits_available: Option<i64>,
+    /// 可用主动重置卡的到期时间；详情接口不可用时为 None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_credits: Option<Vec<ChatgptResetCredit>>,
 }
 
 #[derive(Debug, Clone, Serialize)]

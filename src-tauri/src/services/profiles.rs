@@ -33,6 +33,23 @@ pub(crate) fn validated_icon(icon: Option<&str>) -> AppResult<Option<String>> {
         .transpose()
 }
 
+/// 配置主体块（日志用）：官方配置带 source，名称按 Debug 格式转义为 logfmt 字符串。
+fn profile_subject(summary: &ProfileSummary) -> String {
+    let name = format!("{:?}", summary.name);
+    match summary.auth_source {
+        Some(AuthSource::Oauth) => {
+            format!("profile_id={} profile_name={name} source=oauth", summary.id)
+        }
+        Some(AuthSource::Desktop) => {
+            format!(
+                "profile_id={} profile_name={name} source=desktop",
+                summary.id
+            )
+        }
+        None => format!("profile_id={} profile_name={name}", summary.id),
+    }
+}
+
 impl AppContext {
     pub fn get_state(&self) -> AppResult<AppState> {
         // 刷新/窗口激活等显式时机：外部改过 live 就把激活供应商快照同步回数据库（有差异才写）
@@ -54,9 +71,22 @@ impl AppContext {
         let live_payload = live
             .as_ref()
             .and_then(|document| codex_config::capture_from_document(document).ok());
+        // 配置卡片套餐标识：OAuth 绑定账号取库内套餐，Desktop 取自身数据库认证快照的
+        // 套餐（不读 live auth.json：切换后该文件是别账号的认证，会把徽标带错）；
+        // 账号列表一次查齐避免逐卡片查询
+        let account_plans: std::collections::HashMap<String, String> = self
+            .database
+            .accounts()?
+            .into_iter()
+            .filter_map(|account| {
+                let id = account.id;
+                account.plan_type.map(|plan| (id, plan))
+            })
+            .collect();
         // 应用安装路径固定 + 自动识别，不支持手动覆盖
         let process_ids = codex_process::find_process_ids(None);
         let (display_path, source) = codex_process::codex_display_path(None);
+        let balance_cache = self.load_balance_cache();
 
         Ok(AppState {
             profiles: profiles
@@ -74,7 +104,30 @@ impl AppContext {
                             stored.payload = live;
                         }
                     }
-                    profile_summary(&stored)
+                    let mut summary = profile_summary(&stored);
+                    if summary.auth_source == Some(AuthSource::Desktop) {
+                        summary.auth_account_id = profile
+                            .payload
+                            .raw_auth
+                            .as_deref()
+                            .and_then(parse_external_auth_json)
+                            .map(|auth| auth.account_id);
+                    }
+                    summary.plan_type = match summary.auth_source {
+                        Some(AuthSource::Oauth) => summary
+                            .account_id
+                            .as_deref()
+                            .and_then(|id| account_plans.get(id).cloned()),
+                        // 取覆盖前 DB 行的快照：active 卡的 payload 已被 live 覆盖，raw_auth 为空
+                        Some(AuthSource::Desktop) => profile
+                            .payload
+                            .raw_auth
+                            .as_deref()
+                            .and_then(parse_external_auth_json)
+                            .and_then(|auth| auth.plan_type),
+                        None => None,
+                    };
+                    summary
                 })
                 .collect::<Vec<ProfileSummary>>(),
             active_profile_id,
@@ -86,7 +139,7 @@ impl AppContext {
             settings,
             paths: self.path_info(),
             auth_status: Default::default(),
-            balance_cache: self.load_balance_cache(),
+            balance_cache,
         })
     }
 
@@ -128,6 +181,10 @@ impl AppContext {
             Some("captured live configuration"),
             &timestamp,
         )?;
+        tauri_plugin_log::log::info!(
+            "[provider.profile.create] {} outcome=success msg=\"已捕获 live 配置\"",
+            profile_subject(&summary)
+        );
         Ok(summary)
     }
 
@@ -191,7 +248,12 @@ impl AppContext {
             &timestamp,
         )?;
         let stored = self.database.profile(&summary.id)?;
-        Ok(profile_summary(&stored))
+        let summary = profile_summary(&stored);
+        tauri_plugin_log::log::info!(
+            "[provider.profile.create] {} outcome=success msg=\"已创建配置\"",
+            profile_subject(&summary)
+        );
+        Ok(summary)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -256,7 +318,12 @@ impl AppContext {
             &timestamp,
         )?;
         let stored = self.database.profile(&summary.id)?;
-        Ok(profile_summary(&stored))
+        let summary = profile_summary(&stored);
+        tauri_plugin_log::log::info!(
+            "[provider.profile.create] {} outcome=success msg=\"已创建配置\"",
+            profile_subject(&summary)
+        );
+        Ok(summary)
     }
 
     /// 返回内置模板自带的关联文件原文（deepseek/智谱 的 models.json、minimax 的 custom-catalog.json），
@@ -269,9 +336,15 @@ impl AppContext {
     }
 
     pub fn rename_profile(&self, id: &str, name: &str) -> AppResult<()> {
+        let stored = self.database.profile(id)?;
         let name = validated_name(name)?;
         self.database
-            .rename_profile(id, &name, &now_ms().to_string())
+            .rename_profile(id, &name, &now_ms().to_string())?;
+        tauri_plugin_log::log::info!(
+            "[provider.profile.rename] profile_id={id} profile_name={:?} new_name={name:?} outcome=success msg=\"已重命名配置\"",
+            stored.name
+        );
+        Ok(())
     }
 
     pub fn reorder_profiles(&self, ids: &[String]) -> AppResult<()> {
@@ -279,10 +352,16 @@ impl AppContext {
     }
 
     pub fn delete_profile(&self, id: &str) -> AppResult<()> {
+        let stored = self.database.profile(id)?;
         self.database.delete_profile(id)?;
         if self.active_profile_state()?.as_deref() == Some(id) {
             self.database.set_active_profile(None)?;
         }
+        // 删除清掉的是配置与本地凭据，留痕是唯一审计线索
+        tauri_plugin_log::log::info!(
+            "[provider.profile.delete] profile_id={id} profile_name={:?} outcome=success msg=\"已删除配置\"",
+            stored.name
+        );
         Ok(())
     }
 
@@ -369,6 +448,11 @@ impl AppContext {
             Some("profile duplicated"),
             &timestamp,
         )?;
+        tauri_plugin_log::log::info!(
+            "[provider.profile.duplicate] source_profile_id={id} profile_id={} profile_name={candidate:?} source_profile_name={:?} outcome=success msg=\"已复制配置\"",
+            summary.id,
+            stored.name
+        );
         let stored = self.database.profile(&summary.id)?;
         Ok(profile_summary(&stored))
     }
@@ -572,6 +656,18 @@ impl AppContext {
                 }
             }
         }
+        let mut fields = vec!["config"];
+        if catalog_text.is_some() {
+            fields.push("raw_catalog");
+        }
+        if auth_text.is_some() {
+            fields.push("raw_auth");
+        }
+        tauri_plugin_log::log::info!(
+            "[provider.profile.update] profile_id={id} profile_name={:?} fields={} outcome=success msg=\"已更新配置\"",
+            stored.name,
+            fields.join(",")
+        );
         self.get_profile(id)
     }
 
@@ -621,6 +717,20 @@ impl AppContext {
                 api_key,
             )?;
         }
+        let mut fields = Vec::new();
+        if admin_url.is_some() {
+            fields.push("admin_url");
+        }
+        if base_url.is_some() {
+            fields.push("base_url");
+        }
+        if api_key.is_some() {
+            fields.push("api_key");
+        }
+        tauri_plugin_log::log::info!(
+            "[provider.profile.update] profile_id={id} profile_name={name:?} fields={} outcome=success msg=\"已更新配置\"",
+            fields.join(",")
+        );
         Ok(profile_summary(&updated))
     }
 }

@@ -1,6 +1,7 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { authQuotaErrorKind } from "../../app/authQuotaCache";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
@@ -18,45 +19,50 @@ describe("ProfileCard 官网入口", () => {
     expect(adminButton).toBeLessThan(metaRow);
   });
 
-  it("所有配置激活时使用 ChatGPT 品牌渐变", () => {
+  it("所有配置激活时使用极光靛蓝渐变", () => {
     expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
     expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
     expect(source).not.toContain("third-party-gradient");
     expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
     expect(styles).toContain(".profile-drag-preview.is-active {");
+    expect(styles).toContain("--active-card-gradient-start: #263b63;");
+    expect(styles).toContain("--active-card-gradient-middle: #3f72b8;");
+    expect(styles).toContain("--active-card-gradient-start-mix: 34%;");
+    expect(styles).toContain("--active-card-gradient-middle-mix: 58%;");
+    expect(styles).toContain(":root.dark {\n  color-scheme: dark;");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface,\n.profile-drag-preview.brand-gradient-surface {\n  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) var(--active-card-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--active-card-gradient-blend) var(--active-card-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-fade-mix), transparent) 58%, transparent 100%);");
   });
 
-  it("激活卡使用深色主题的浅色文字层级", () => {
-    expect(styles).toContain("--active-card-text-primary: #ffffff;");
-    expect(styles).toContain("--active-card-text-secondary: rgba(255, 255, 255, 0.68);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--active-card-text-secondary);");
-    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--active-card-text-secondary);");
+  it("激活卡沿用主题文字层级", () => {
+    expect(styles).not.toContain("--active-card-text-primary");
+    expect(styles).not.toContain("--active-card-text-secondary");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--text-secondary);");
+    expect(styles).not.toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--text-secondary);");
   });
 
-  it("激活时不显示描边，但悬停时保留描边", () => {
-    const activeRuleStart = styles.indexOf(".profile-list > .apple-group.is-active {");
-    const activeRuleEnd = styles.indexOf("}", activeRuleStart);
-    const activeRule = styles.slice(activeRuleStart, activeRuleEnd);
-
-    expect(activeRule).toContain("box-shadow: none;");
-    expect(activeRule).not.toContain("outline:");
+  it("激活时保留卡片边缘", () => {
+    expect(styles).not.toContain(".profile-list > .apple-group.is-active {");
+    expect(styles).not.toContain(".profile-list > .apple-group.brand-gradient-surface {");
     expect(styles).toContain(".profile-list > .apple-group:not(.is-active):hover {\n  outline: 1px solid");
     expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
   });
 
-  it("提高渐变卡片的文字与图标对比度", () => {
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--active-card-text-primary);");
-    // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-auth-badge,\n.profile-drag-preview.brand-gradient-surface .profile-card-auth-badge {");
+  it("激活渐变卡沿用默认卡片的圆角和几何", () => {
+    expect(styles).toContain(".apple-group {\n  overflow: hidden;\n  border-radius: var(--radius-card);");
   });
 
-  it("胶囊底色统一定义在 --chip-bg，激活卡使用浅色药丸文字", () => {
+  it("提高渐变卡片的文字与图标对比度", () => {
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
+    // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+  });
+
+  it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {
     expect(styles).toContain("--chip-bg: #e9e9e6;");
     expect(styles).toContain(".apple-chip {\n  align-items: center;\n  background: var(--chip-bg);");
-    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--app-bg);\n  font-size: 12px;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--main-surface-bg);\n  font-size: 12px;");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--main-surface-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
   });
 
   it("让浅色模式的用量成功百分比使用高对比度绿色", () => {
@@ -75,19 +81,9 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("仅在端点或 API Key 缺失时禁用连通测试", () => {
-    expect(source).toContain("const connectionDisabled = !profile.provider ? !subscriptionAuthed : !profile.has_base_url || !profile.has_key;");
+    expect(source).toContain("const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;");
     expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
     expect(source).not.toContain("missingApiCredentialsWarning");
-  });
-
-  it("登录失效错误直接按后端契约前缀判定", () => {
-    expect(source).toContain('const authInvalid = isSubscriptionProfile && balanceError.startsWith("[auth_invalid]");');
-  });
-
-  it("登录失效时余额卡片显示失效文案并复用重启链路拉起 Codex", () => {
-    expect(source).toContain('authInvalid ? <span className="chip-danger">{t("balance.authInvalid")}</span>');
-    expect(source).toContain('title={authInvalid ? t("balance.authInvalidTooltip")');
-    expect(source).toContain("if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.();");
   });
 
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {
@@ -96,7 +92,10 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain("{balanceRefreshing ? <LoadingSpinner size=\"sm\" /> : <Gauge");
     expect(source).toContain("aria-busy={balanceRefreshing}");
     expect(source).toContain("setBalanceRefreshing(true);");
-    expect(source).toContain("void fetchBalance().finally(() => setBalanceRefreshing(false));");
+    expect(source).toContain("void fetchBalance(manual).finally(() => setBalanceRefreshing(false));");
+    expect(authQuotaErrorKind("refresh_token 被服务端拒绝，该账号需要重新登录")).toBe("auth_expired"); // i18n-exempt: Backend error fixture.
+    expect(authQuotaErrorKind("Network request timed out")).toBe("query_failed");
+    expect(source).toContain('feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));');
     // 单飞去重把在途 promise 交回调用方：指示器跟随真正落地的查询，不留真空期
     expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });

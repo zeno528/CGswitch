@@ -2,9 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AppState,
   AuthStatus,
+  BrowserLoginStart,
   CodexAppStatus,
   DatabaseBackupInfo,
-  DeviceCodeResponse,
   ManagedAccount,
   McpServerSpec,
   McpProbeResult,
@@ -25,12 +25,13 @@ import type {
   Settings,
   TomlDiagnostic,
 } from "../types";
-import { webInvoke } from "./web-mock";
-
 export const isTauri = typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
 
-function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  return isTauri ? invoke<T>(command, args) : webInvoke<T>(command, args);
+// web-mock 动态加载：生产 Tauri 永远不会拉取这个 chunk，浏览器 dev 首次调用时才加载
+async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (isTauri) return invoke<T>(command, args);
+  const { webInvoke } = await import("./web-mock");
+  return webInvoke<T>(command, args);
 }
 
 export const api = {
@@ -160,9 +161,9 @@ export const api = {
   restartCodex: () => call<void>("restart_codex"),
   setWindowTheme: (dark: boolean) => call<void>("set_window_theme", { dark }),
   setAppLanguage: (language: string) => call<void>("set_app_language", { language }),
-  authStartLogin: () => call<DeviceCodeResponse>("auth_start_login"),
-  authPollForAccount: (deviceCode: string) =>
-    call<ManagedAccount | null>("auth_poll_for_account", { deviceCode }),
+  authStartBrowserLogin: () => call<BrowserLoginStart>("auth_start_browser_login"),
+  authPollBrowserLogin: () => call<ManagedAccount | null>("auth_poll_browser_login"),
+  authCancelBrowserLogin: () => call<void>("auth_cancel_browser_login"),
   authGetStatus: () => call<AuthStatus>("auth_get_status"),
   authGetQuota: (source: "desktop" | "oauth", accountId?: string) =>
     call<ProfileBalance>("auth_get_quota", { source, accountId }),

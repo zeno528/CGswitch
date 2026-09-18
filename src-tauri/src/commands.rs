@@ -1,8 +1,8 @@
 use tauri::{AppHandle, State};
 
 use crate::auth::codex_oauth::{
-    parse_external_auth_json, AuthStatus, CodexOAuthError, CodexOAuthManager, CodexOAuthState,
-    DeviceCodeResponse, ManagedAccount,
+    parse_external_auth_json, AuthStatus, BrowserLoginStart, CodexOAuthManager, CodexOAuthState,
+    ManagedAccount,
 };
 use crate::builtin;
 use crate::codex::config as codex_config;
@@ -30,29 +30,22 @@ async fn test_account_connection(
     manager: &CodexOAuthManager,
     account_id: &str,
 ) -> AppResult<ProfileConnectionResult> {
-    // live auth.json / 缓存快照里的 account_id 是 workspace ID，行 id 与之解耦后需先换算
+    // live 凭证只作为同步输入；验证统一使用托管账号记录中的有效 access_token。
+    state.sync_live_oauth_auth(manager).await?;
     let workspace = manager.workspace_of(account_id).await;
-    let log_context = format!("account={account_id}");
-    let mut tokens = Vec::with_capacity(2);
-    if let Some(token) = state.external_codex_access_token_for_account(&workspace)? {
-        tokens.push(token);
-    }
-    if let Some(cached) = manager.cached_auth_json(account_id).await {
-        if let Some(auth) =
-            parse_external_auth_json(&cached).filter(|auth| auth.account_id == workspace)
-        {
-            if !tokens.iter().any(|token| token == &auth.access_token) {
-                tokens.push(auth.access_token);
-            }
-        }
-    }
-    for token in tokens {
-        let result = state
-            .test_subscription_connection(&token, &log_context)
-            .await?;
-        if !should_try_next_account_credential(&result) {
-            return Ok(result);
-        }
+    let log_context = format!(
+        "{} source=oauth",
+        manager.account_subject_for(account_id).await
+    );
+    let token = manager
+        .get_valid_token_for_account(account_id)
+        .await
+        .map_err(|error| app_err!("{error}"))?;
+    let result = state
+        .test_subscription_connection(&token, &log_context)
+        .await?;
+    if !should_try_next_account_credential(&result) {
+        return Ok(result);
     }
 
     let auth_json = manager
@@ -293,10 +286,16 @@ pub async fn test_profile_connection(
                 test_account_connection(&state, &oauth.0, &account_id).await
             }
             Some(AuthSource::Desktop) => {
+                // 用配置自身数据库快照的 token：live auth.json 切换后是别账号的认证
                 let token = state
-                    .external_codex_access_token()?
-                    .ok_or_else(|| app_err!("未检测到有效的 Codex Desktop 认证"))?;
-                let log_context = format!("profile={id}");
+                    .desktop_profile_access_token(&id)?
+                    .ok_or_else(|| app_err!("该 Codex 配置尚未保存有效登录"))?;
+                // 日志主体带配置名：id 无法对人区分配置
+                let name = state.get_profile(&id)?.name;
+                let log_context = format!(
+                    "profile_id={id} profile_name=\"{}\" source=desktop",
+                    name.replace('"', "'")
+                );
                 state
                     .test_subscription_connection(&token, &log_context)
                     .await
@@ -532,10 +531,13 @@ pub async fn apply_profile(
     state: State<'_, AppContext>,
     oauth: State<'_, CodexOAuthState>,
 ) -> Result<(), String> {
-    state
-        .apply_profile_with_auth(&id, &oauth.0)
-        .await
-        .map_err(|error| error.to_string())
+    let result = state.apply_profile_with_auth(&id, &oauth.0).await;
+    if let Err(error) = &result {
+        tauri_plugin_log::log::warn!(
+            "[apply.profile.switch] profile_id={id} outcome=failure failure_kind=internal error={error:?} msg=\"配置切换失败\""
+        );
+    }
+    result.map_err(|error| error.to_string())
 }
 
 /// 重启期间后端会阻塞数秒（优雅退出等待 + 启动轮询），必须放到专用 blocking
@@ -683,26 +685,31 @@ pub fn set_window_theme(dark: bool, app: AppHandle) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn auth_start_login(
+pub async fn auth_start_browser_login(
     state: State<'_, CodexOAuthState>,
-) -> Result<DeviceCodeResponse, String> {
+) -> Result<BrowserLoginStart, String> {
     state
         .0
-        .start_device_flow()
+        .start_browser_login()
         .await
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-pub async fn auth_poll_for_account(
-    device_code: String,
+pub async fn auth_poll_browser_login(
     state: State<'_, CodexOAuthState>,
 ) -> Result<Option<ManagedAccount>, String> {
-    match state.0.poll_for_token(&device_code).await {
-        Ok(account) => Ok(account),
-        Err(CodexOAuthError::AuthorizationPending) => Ok(None),
-        Err(error) => Err(error.to_string()),
-    }
+    state
+        .0
+        .poll_browser_login()
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn auth_cancel_browser_login(state: State<'_, CodexOAuthState>) -> Result<(), String> {
+    state.0.cancel_browser_login();
+    Ok(())
 }
 
 #[tauri::command]
@@ -714,12 +721,12 @@ pub async fn auth_get_status(
         .await
         .map_err(|error| error.to_string())?;
     let mut status = oauth.0.get_status().await;
-    // Desktop 和 OAuth 即便属于同一账号也同时展示；来源由配置绑定显式决定，不能在状态层合并。
-    let external = app
-        .external_codex_auth()
+    // Desktop 账号真源是数据库认证快照：不随切换覆写的 live auth.json 漂移；
+    // 与 OAuth 账号各自展示，来源由配置绑定显式决定，不在状态层合并。
+    status.external = app
+        .desktop_auth_accounts()
         .map_err(|error| error.to_string())?;
-    if let Some(external) = external {
-        status.external = Some(external);
+    if !status.external.is_empty() {
         status.authenticated = true;
     }
     Ok(status)

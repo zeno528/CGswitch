@@ -30,6 +30,15 @@ describe("AppSelect styles", () => {
     expect(menuSource).toContain("0 8px 24px rgb(0 0 0 / 0.12)");
     expect(menuSource).not.toContain("border: 1px solid var(--panel-border)");
   });
+
+  it("展开菜单不位移或缩放，避免浮层跳动", () => {
+    const menuSource = styleSource.slice(
+      styleSource.indexOf(".app-select-menu {"),
+      styleSource.indexOf(".app-select-option {"),
+    );
+    expect(menuSource).not.toContain("transform");
+    expect(menuSource).toContain("transition: opacity 150ms ease-out, visibility 180ms;");
+  });
 });
 
 describe("AppSelect 交互", () => {

@@ -249,6 +249,9 @@ impl AppContext {
         }
         let count = fragments.len();
         self.write_mcp_section_to_live(&fragments)?;
+        tauri_plugin_log::log::info!(
+            "[mcp.config.restore] outcome=success count={count} msg=\"已从数据库恢复 MCP 配置\""
+        );
         Ok(count)
     }
 
@@ -263,6 +266,9 @@ impl AppContext {
         let fragments = codex_config::mcp_server_fragments_from_document(&document);
         let count = fragments.len();
         self.replace_mcp_mirror(&fragments)?;
+        tauri_plugin_log::log::info!(
+            "[mcp.config.import] outcome=success count={count} msg=\"已从 live 配置导入 MCP\""
+        );
         Ok(count)
     }
 
@@ -388,6 +394,10 @@ impl AppContext {
             codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
         )?;
         self.replace_mcp_mirror(&codex_config::mcp_server_fragments_from_document(&document))?;
+        tauri_plugin_log::log::info!(
+            "[mcp.config.save] server={:?} outcome=success msg=\"MCP 配置已保存\"",
+            spec.name
+        );
         Ok(())
     }
 
@@ -411,6 +421,9 @@ impl AppContext {
             codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
         )?;
         self.replace_mcp_mirror(&codex_config::mcp_server_fragments_from_document(&document))?;
+        tauri_plugin_log::log::info!(
+            "[mcp.config.delete] server={name:?} outcome=success msg=\"MCP 配置已删除\""
+        );
         Ok(())
     }
 }

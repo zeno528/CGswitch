@@ -1,6 +1,6 @@
 [package]
 name = "cgswitch"
-version = "0.17.7"
+version = "0.18.2"
 description = "A lightweight Codex model profile switcher"
 authors = ["zeno528"]
 license = "MIT"
@@ -38,6 +38,9 @@ reqwest = { version = "0.13.4", features = ["form", "json", "system-proxy"] }
 tokio = { version = "1.53.1", features = ["sync", "time", "macros", "rt"] }
 base64 = "0.23.1"
 chrono = "0.4"
+url = "2.5.8"
+getrandom = "0.4.3"
+sha2 = "0.11.0"
 taplo = "0.14.0"
 
 [target.'cfg(windows)'.dependencies]

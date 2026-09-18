@@ -1,7 +1,7 @@
 use super::profile_config::{parse_provider_detail, stored_provider_api_key};
 use super::{
     app_err, atomic_write, detect_system_proxy, AppContext, AppResult, AuthSource, BTreeMap,
-    PathBuf, ProfileBalanceInfo, ProfileKind,
+    ChatgptResetCredit, PathBuf, ProfileBalanceInfo, ProfileKind,
 };
 use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
 
@@ -76,6 +76,8 @@ mod tests {
             weekly_reset: None,
             weekly_reset_at: None,
             weekly_label: None,
+            reset_credits_available: None,
+            reset_credits: None,
         }
     }
 
@@ -132,10 +134,10 @@ mod tests {
     }
 
     #[test]
-    fn quota_failure_errors_match_relogin_semantics() {
-        // 401/403（非地区拦截）→ 登录失效：唯一带重登契约前缀的类别
+    fn quota_failure_errors_preserve_user_messages() {
+        // 401/403（非地区拦截）→ 登录失效；前端直接展示正常的查询失败状态。
         let error = quota_failure_error(reqwest::StatusCode::UNAUTHORIZED, "{}", "test");
-        assert!(error.0.starts_with("[auth_invalid]"));
+        assert_eq!(error.0, "ChatGPT 登录已失效，请重新登录");
 
         // 地区拦截：换节点可解，不标记为需要重登
         let region = quota_failure_error(
@@ -143,7 +145,7 @@ mod tests {
             r#"{"error":"unsupported_country_region_territory"}"#,
             "test",
         );
-        assert!(!region.0.starts_with("[auth_invalid]"));
+        assert_eq!(region.0, "认证请求被地区限制拦截，请开启系统代理后重试");
 
         // 其他 HTTP 错误按普通失败处理
         let other = quota_failure_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "", "test");
@@ -212,6 +214,28 @@ struct ZhipuQuotaWindow {
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ChatgptUsageResponse {
     pub(crate) rate_limit: Option<ChatgptRateLimit>,
+    pub(crate) rate_limit_reset_credits: Option<ChatgptResetCreditsSummary>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct ChatgptResetCreditsSummary {
+    pub(crate) available_count: Option<i64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ChatgptResetCreditsResponse {
+    #[serde(default)]
+    available_count: Option<i64>,
+    #[serde(default)]
+    credits: Vec<ChatgptResetCreditResponse>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ChatgptResetCreditResponse {
+    id: String,
+    status: Option<String>,
+    reset_type: Option<String>,
+    expires_at: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -288,11 +312,11 @@ fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     Ok((client, proxy))
 }
 
-/// 日志归因后缀：括号内原样输出检测结果——有代理是 URL 原文，无代理是 None，不做措辞加工。
+/// 日志归因后缀：原样输出检测结果——有代理是 URL 原文，无代理是 None，不做措辞加工。
 pub(crate) fn proxy_note(proxy: &Option<String>) -> String {
     match proxy {
-        Some(url) => format!("（proxy={url}）"),
-        None => "（proxy=None）".to_string(),
+        Some(url) => format!(" proxy={url}"),
+        None => " proxy=None".to_string(),
     }
 }
 
@@ -389,6 +413,7 @@ pub(crate) fn connection_error_from_body(value: &serde_json::Value) -> Option<St
 async fn test_opencode_connection(
     base_url: &str,
     api_key: &str,
+    context: &str,
 ) -> AppResult<ProfileConnectionResult> {
     let responses_url = format!("{}/responses", base_url.trim_end_matches('/'));
     let (client, proxy) = http_client()?;
@@ -417,14 +442,8 @@ async fn test_opencode_connection(
             let ok = status.is_success() || probe_validation_rejection;
             let error = (!ok).then(|| provider_http_error_message(status).to_string());
             if ok {
-                tauri_plugin_log::log::info!(
-                    "[provider] 测试连通成功: HTTP {} - {}ms{}",
-                    status.as_u16(),
-                    start.elapsed().as_millis(),
-                    proxy_note(&proxy)
-                );
+                log_provider_connect_success(context, status, start.elapsed().as_millis(), &proxy);
             }
-
             Ok(ProfileConnectionResult {
                 ok,
                 latency_ms,
@@ -439,6 +458,36 @@ async fn test_opencode_connection(
             error: Some(provider_request_error_message(&error).to_string()),
         }),
     }
+}
+
+fn log_provider_connect_success(
+    context: &str,
+    status: reqwest::StatusCode,
+    latency_ms: u128,
+    proxy: &Option<String>,
+) {
+    tauri_plugin_log::log::info!(
+        "[provider.connect.test] {context} outcome=success status_code={} latency_ms={latency_ms} proxy={} msg=\"测试连通成功\"",
+        status.as_u16(),
+        proxy.as_deref().unwrap_or("None")
+    );
+}
+
+fn log_provider_connect_failure(context: &str, result: &ProfileConnectionResult) {
+    let failure_kind = match result.status {
+        Some(401 | 403) => "auth_error",
+        Some(_) => "http_error",
+        None => "network_error",
+    };
+    let status = result
+        .status
+        .map(|status| format!(" status_code={status}"))
+        .unwrap_or_default();
+    let proxy = proxy_note(&detect_system_proxy());
+    let error = result.error.as_deref().unwrap_or("未知错误");
+    tauri_plugin_log::log::warn!(
+        "[provider.connect.test] {context} outcome=failure failure_kind={failure_kind}{status}{proxy} error={error:?} msg=\"测试连通失败\""
+    );
 }
 
 /// 余额/用量请求公共骨架：统一处理鉴权、401/403、错误提取与网络错误；
@@ -531,13 +580,17 @@ async fn query_deepseek_balance(
 
 /// MiniMax Coding Plan 用量查询：GET {base}/api/openplatform/coding_plan/remains。
 /// 接口形态以用户实测可用的 statusline.ps1 为准（国内版 Coding Plan）。
-/// 供应商连通性测试核心，与 profile 无关（创建态表单直接复用）。
-async fn test_models_endpoint(base_url: &str, api_key: &str) -> AppResult<ProfileConnectionResult> {
+/// 供应商连通性测试核心；创建态表单与已保存配置复用。
+async fn test_models_endpoint(
+    base_url: &str,
+    api_key: &str,
+    context: &str,
+) -> AppResult<ProfileConnectionResult> {
     if base_url
         .trim_end_matches('/')
         .eq_ignore_ascii_case("https://opencode.ai/zen/go/v1")
     {
-        return test_opencode_connection(base_url, api_key).await;
+        return test_opencode_connection(base_url, api_key, context).await;
     }
 
     let models_url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -562,11 +615,11 @@ async fn test_models_endpoint(base_url: &str, api_key: &str) -> AppResult<Profil
                                 error: Some(error),
                             })
                         } else {
-                            tauri_plugin_log::log::info!(
-                                "[provider] 测试连通成功: HTTP {} - {}ms{}",
-                                status.as_u16(),
+                            log_provider_connect_success(
+                                context,
+                                status,
                                 start.elapsed().as_millis(),
-                                proxy_note(&proxy)
+                                &proxy,
                             );
                             Ok(ProfileConnectionResult {
                                 ok: true,
@@ -619,7 +672,11 @@ pub async fn test_provider_connection(
     if api_key.is_empty() {
         return Err(app_err!("请填写 API Key"));
     }
-    test_models_endpoint(base_url, api_key).await
+    let result = test_models_endpoint(base_url, api_key, "source=form").await?;
+    if !result.ok {
+        log_provider_connect_failure("source=form", &result);
+    }
+    Ok(result)
 }
 
 async fn query_minimax_balance(
@@ -672,6 +729,8 @@ async fn query_minimax_balance(
                         .and_then(|ms| format_reset(ms, true)),
                     weekly_reset_at: None,
                     weekly_label: None,
+                    reset_credits_available: None,
+                    reset_credits: None,
                 }],
                 latency_ms,
             })
@@ -742,6 +801,8 @@ pub(crate) fn zhipu_quota_info(
         weekly_reset: weekly.and_then(|window| window.reset.clone()),
         weekly_reset_at: weekly.and_then(|window| window.reset_at),
         weekly_label: weekly.map(|_| "7天".to_string()),
+        reset_credits_available: None,
+        reset_credits: None,
     })
 }
 
@@ -865,6 +926,9 @@ fn chatgpt_reset_timestamp(reset_at: Option<i64>) -> Option<i64> {
 }
 
 pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<ProfileBalanceInfo> {
+    let reset_credits_available = response
+        .rate_limit_reset_credits
+        .and_then(|credits| credits.available_count);
     let rate_limit = response.rate_limit?;
     let windows = [rate_limit.primary_window, rate_limit.secondary_window];
     let mut usable_windows = windows
@@ -900,16 +964,19 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
                 .limit_window_seconds
                 .map(|seconds| chatgpt_window_label(Some(seconds), "周期"))
         }),
+        reset_credits_available,
+        reset_credits: None,
     })
 }
 
-fn chatgpt_usage_request(
+fn chatgpt_request(
     client: &reqwest::Client,
+    url: &str,
     access_token: &str,
     account_id: Option<&str>,
 ) -> reqwest::RequestBuilder {
     let mut request = client
-        .get("https://chatgpt.com/backend-api/wham/usage")
+        .get(url)
         .bearer_auth(access_token)
         .header("User-Agent", "codex-cli")
         .header("Accept", "application/json");
@@ -919,9 +986,42 @@ fn chatgpt_usage_request(
     request
 }
 
-/// 前后端契约：带此前缀的余额错误表示「登录已失效」，前端把余额卡片切换成
-/// 重登入口而不是普通「查询失败」。AppError 是纯字符串，只能靠前缀携带语义。
-const AUTH_INVALID_ERROR_PREFIX: &str = "[auth_invalid]";
+pub(crate) fn chatgpt_reset_credit_expiry(value: Option<&str>) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value?)
+        .ok()
+        .map(|time| time.timestamp_millis())
+}
+
+async fn query_chatgpt_reset_credits(
+    client: &reqwest::Client,
+    access_token: &str,
+    account_id: Option<&str>,
+) -> Option<(Option<i64>, Vec<ChatgptResetCredit>)> {
+    let response = chatgpt_request(
+        client,
+        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+        access_token,
+        account_id,
+    )
+    .send()
+    .await
+    .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let details = response.json::<ChatgptResetCreditsResponse>().await.ok()?;
+    let credits = details
+        .credits
+        .into_iter()
+        .filter(|credit| credit.status.as_deref() == Some("available"))
+        .map(|credit| ChatgptResetCredit {
+            id: credit.id,
+            reset_type: credit.reset_type,
+            expires_at: chatgpt_reset_credit_expiry(credit.expires_at.as_deref()),
+        })
+        .collect();
+    Some((details.available_count, credits))
+}
 
 fn quota_failure_error(
     status: reqwest::StatusCode,
@@ -932,17 +1032,22 @@ fn quota_failure_error(
         status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN;
     if auth_status && body.contains("unsupported_country_region_territory") {
         tauri_plugin_log::log::warn!(
-            "[chatgpt] 额度查询被地区限制拦截 [{context}] (HTTP {status})"
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=region_blocked status_code={} msg=\"额度查询被地区限制拦截\"",
+            status.as_u16()
         );
         return app_err!("认证请求被地区限制拦截，请开启系统代理后重试");
     }
     if auth_status {
         tauri_plugin_log::log::warn!(
-            "[chatgpt] 额度查询返回 HTTP {status} [{context}]：登录凭证已失效，需要重新登录"
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=auth_error status_code={} msg=\"登录凭证已失效，需要重新登录\"",
+            status.as_u16()
         );
-        return app_err!("{AUTH_INVALID_ERROR_PREFIX} ChatGPT 登录已失效，请重新登录");
+        return app_err!("ChatGPT 登录已失效，请重新登录");
     }
-    tauri_plugin_log::log::warn!("[chatgpt] 额度查询失败 [{context}]: HTTP {status}");
+    tauri_plugin_log::log::warn!(
+        "[chatgpt.quota.query] {context} outcome=failure failure_kind=http_error status_code={} msg=\"额度查询失败\"",
+        status.as_u16()
+    );
     app_err!("额度查询失败：接口返回 HTTP {status}")
 }
 
@@ -952,45 +1057,66 @@ async fn query_chatgpt_quota(
     context: &str,
 ) -> AppResult<ProfileBalance> {
     let (client, proxy) = http_client().map_err(|error| {
-        tauri_plugin_log::log::warn!("[chatgpt] 额度查询客户端初始化失败 [{context}]: {error}");
+        tauri_plugin_log::log::warn!(
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=internal error={error:?} msg=\"额度查询客户端初始化失败\""
+        );
         error
     })?;
     let start = std::time::Instant::now();
-    let response = chatgpt_usage_request(&client, access_token, account_id)
-        .send()
-        .await
-        .map_err(|error| {
-            // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕
-            tauri_plugin_log::log::warn!(
-                "[chatgpt] 额度查询网络错误 [{context}]: {}{}",
-                reqwest_error_message(&error),
-                proxy_note(&proxy)
-            );
-            app_err!("额度查询失败：{}", reqwest_error_message(&error))
-        })?;
+    let response = chatgpt_request(
+        &client,
+        "https://chatgpt.com/backend-api/wham/usage",
+        access_token,
+        account_id,
+    )
+    .send()
+    .await
+    .map_err(|error| {
+        // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕
+        tauri_plugin_log::log::warn!(
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=network_error proxy={} error={:?} msg=\"额度查询网络错误\"",
+            proxy.as_deref().unwrap_or("None"),
+            reqwest_error_message(&error),
+        );
+        app_err!("额度查询失败：{}", reqwest_error_message(&error))
+    })?;
     let latency = start.elapsed().as_millis();
     let latency_ms = Some(latency);
     let status = response.status();
     let body = response.text().await.map_err(|error| {
-        tauri_plugin_log::log::warn!("[chatgpt] 额度接口响应读取失败 [{context}]: {error}");
+        tauri_plugin_log::log::warn!(
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"额度接口响应读取失败\"",
+            status.as_u16()
+        );
         app_err!("额度接口响应读取失败: {error}")
     })?;
     if !status.is_success() {
         return Err(quota_failure_error(status, &body, context));
     }
     let response = serde_json::from_str::<ChatgptUsageResponse>(&body).map_err(|error| {
-        tauri_plugin_log::log::warn!("[chatgpt] 额度接口响应解析失败 [{context}]: {error}");
+        tauri_plugin_log::log::warn!(
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=parse_error status_code={} error={error:?} msg=\"额度接口响应解析失败\"",
+            status.as_u16()
+        );
         app_err!("额度接口响应解析失败: {error}")
     })?;
-    let info = chatgpt_quota_info(response).ok_or_else(|| {
-        tauri_plugin_log::log::warn!("[chatgpt] 额度查询响应缺少可用的限额窗口 [{context}]");
+    let mut info = chatgpt_quota_info(response).ok_or_else(|| {
+        tauri_plugin_log::log::warn!(
+            "[chatgpt.quota.query] {context} outcome=failure failure_kind=parse_error status_code={} msg=\"额度查询响应缺少可用的限额窗口\"",
+            status.as_u16()
+        );
         app_err!("额度接口未返回可用的限额窗口")
     })?;
+    if let Some((available_count, credits)) =
+        query_chatgpt_reset_credits(&client, access_token, account_id).await
+    {
+        info.reset_credits_available = available_count.or(info.reset_credits_available);
+        info.reset_credits = Some(credits);
+    }
     // 成功也留痕：额度数字不对/没刷新时，靠这行确认最后一次成功查询的时间
-    tauri_plugin_log::log::info!(
-        "[chatgpt] 额度查询成功 [{context}]: HTTP {} - {latency}ms{}",
-        status.as_u16(),
-        proxy_note(&proxy)
+    tauri_plugin_log::log::debug!(
+        "[chatgpt.quota.query] {context} outcome=success latency_ms={latency} proxy={} msg=\"额度查询成功\"",
+        proxy.as_deref().unwrap_or("None")
     );
     Ok(ProfileBalance {
         is_available: true,
@@ -1045,7 +1171,15 @@ impl AppContext {
                 .ok_or_else(|| app_err!("该供应商没有配置 API Key，请先填写后再测试"))?,
         };
 
-        test_models_endpoint(&base_url, &api_key).await
+        let context = format!(
+            "profile_id={} profile_name={:?} source=profile",
+            stored.id, stored.name
+        );
+        let result = test_models_endpoint(&base_url, &api_key, &context).await?;
+        if !result.ok {
+            log_provider_connect_failure(&context, &result);
+        }
+        Ok(result)
     }
 
     /// 验证 ChatGPT 订阅认证连通性：用当前 access_token 请求 Codex 官方后端用量端点
@@ -1057,13 +1191,20 @@ impl AppContext {
         context: &str,
     ) -> AppResult<ProfileConnectionResult> {
         let (client, proxy) = http_client().map_err(|error| {
-            tauri_plugin_log::log::warn!("[chatgpt] 测试连通客户端初始化失败 [{context}]: {error}");
+            tauri_plugin_log::log::warn!(
+                "[chatgpt.connect.test] {context} outcome=failure failure_kind=internal error={error:?} msg=\"测试连通客户端初始化失败\""
+            );
             error
         })?;
         let start = std::time::Instant::now();
-        match chatgpt_usage_request(&client, access_token, None)
-            .send()
-            .await
+        match chatgpt_request(
+            &client,
+            "https://chatgpt.com/backend-api/wham/usage",
+            access_token,
+            None,
+        )
+        .send()
+        .await
         {
             Ok(response) => {
                 let status = response.status();
@@ -1071,9 +1212,9 @@ impl AppContext {
                 if status.is_success() {
                     // 成功也留痕：延迟数据只存在于弹窗，事后无从追溯
                     tauri_plugin_log::log::info!(
-                        "[chatgpt] 测试连通成功 [{context}]: HTTP {} - {latency_ms}ms{}",
+                        "[chatgpt.connect.test] {context} outcome=success status_code={} latency_ms={latency_ms} proxy={} msg=\"测试连通成功\"",
                         status.as_u16(),
-                        proxy_note(&proxy)
+                        proxy.as_deref().unwrap_or("None")
                     );
                     Ok(ProfileConnectionResult {
                         ok: true,
@@ -1089,8 +1230,8 @@ impl AppContext {
                             Ok(text) => text,
                             Err(error) => {
                                 tauri_plugin_log::log::warn!(
-                                    "[chatgpt] 测试连通响应读取失败 [{context}] HTTP {}: {error}",
-                                    status.as_u16()
+                                    "[chatgpt.connect.test] {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"测试连通响应读取失败\"",
+                                    status.as_u16(),
                                 );
                                 String::new()
                             }
@@ -1101,10 +1242,9 @@ impl AppContext {
                     let message = subscription_http_error_message(status, &text);
                     // 测试连通的失败只以返回值形式存在（不是 Err），弹窗错过就无迹可寻
                     tauri_plugin_log::log::warn!(
-                        "[chatgpt] 测试连通失败 [{context}]: HTTP {} - {}{}",
+                        "[chatgpt.connect.test] {context} outcome=failure failure_kind=http_error status_code={} proxy={} error={message:?} msg=\"测试连通失败\"",
                         status.as_u16(),
-                        message,
-                        proxy_note(&proxy)
+                        proxy.as_deref().unwrap_or("None")
                     );
                     Ok(ProfileConnectionResult {
                         ok: false,
@@ -1117,9 +1257,9 @@ impl AppContext {
             Err(error) => {
                 let status = error.status().map(|status| status.as_u16());
                 tauri_plugin_log::log::warn!(
-                    "[chatgpt] 测试连通网络错误 [{context}]: {}{}",
-                    subscription_request_error_message(&error),
-                    proxy_note(&proxy)
+                    "[chatgpt.connect.test] {context} outcome=failure failure_kind=network_error proxy={} error={:?} msg=\"测试连通网络错误\"",
+                    proxy.as_deref().unwrap_or("None"),
+                    subscription_request_error_message(&error)
                 );
                 Ok(ProfileConnectionResult {
                     ok: false,
@@ -1138,30 +1278,52 @@ impl AppContext {
         account_id: Option<&str>,
         oauth: &CodexOAuthManager,
     ) -> AppResult<ProfileBalance> {
+        let source_label = match &source {
+            AuthSource::Desktop => "desktop",
+            AuthSource::Oauth => "oauth",
+        };
+        let mut oauth_subject = None;
         let (access_token, account_id) = match source {
             AuthSource::Desktop => {
-                let account = self
-                    .external_codex_auth()?
-                    .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
-                let token = self
-                    .external_codex_access_token_for_account(&account.id)?
-                    .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
-                (token, Some(account.id))
+                // Desktop 额度优先按请求身份取数据库认证快照（与账号页同源，
+                // 不随切换覆写的 live auth.json 漂移）；无匹配快照时回退 live 认证
+                //（跟随 Codex 登录但尚未建 Desktop 配置的场景）。
+                let db_snapshot = match account_id {
+                    Some(requested) => self.desktop_auth_snapshot_for_account(requested)?,
+                    None => None,
+                };
+                match db_snapshot {
+                    Some((token, _)) => (token, account_id.map(str::to_string)),
+                    None => {
+                        let account = self
+                            .read_external_codex_auth()
+                            .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
+                        let token = self
+                            .external_codex_access_token_for_account(&account.account_id)?
+                            .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
+                        (token, Some(account.account_id))
+                    }
+                }
             }
             AuthSource::Oauth => {
-                let account_id = account_id.ok_or_else(|| app_err!("OAuth 账号不存在"))?;
+                let row_id = account_id.ok_or_else(|| app_err!("OAuth 账号不存在"))?;
                 let token = oauth
-                    .get_valid_token_for_account(account_id)
+                    .get_valid_token_for_account(row_id)
                     .await
                     .map_err(|error| app_err!("{error}"))?;
                 // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
-                (token, Some(oauth.workspace_of(account_id).await))
+                oauth_subject = Some(oauth.account_subject_for(row_id).await);
+                (token, Some(oauth.workspace_of(row_id).await))
             }
         };
-        let context = account_id
-            .as_deref()
-            .map(|id| format!("account={id}"))
-            .unwrap_or_else(|| "source=desktop".to_string());
+        // OAuth 行为标注到具体账号（行 id + debug 门控 email）；desktop 沿用原字段
+        let context = match &oauth_subject {
+            Some(subject) => format!("{subject} source={source_label}"),
+            None => match account_id.as_deref() {
+                Some(id) => format!("account_id={id} source={source_label}"),
+                None => format!("source={source_label}"),
+            },
+        };
         query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await
     }
 
@@ -1174,7 +1336,14 @@ impl AppContext {
         let stored = self.database.profile(id)?;
         let payload = &stored.payload;
         if stored.kind == ProfileKind::Official {
-            let context = format!("profile={id}");
+            // 配置主键和认证来源足以定位；中文 msg 负责快速扫读。
+            let auth_source =
+                payload.effective_auth_source(stored.kind, stored.account_id.as_deref());
+            let source_label = match auth_source {
+                Some(AuthSource::Oauth) => "oauth",
+                _ => "desktop",
+            };
+            let mut context = format!("profile_id={id} source={source_label}");
             let (access_token, account_id) =
                 match payload.effective_auth_source(stored.kind, stored.account_id.as_deref()) {
                     Some(AuthSource::Desktop) => payload
@@ -1193,6 +1362,10 @@ impl AppContext {
                             .await
                             .map_err(|error| app_err!("{error}"))?;
                         // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
+                        context = format!(
+                            "profile_id={id} {} source={source_label}",
+                            oauth.account_subject_for(account_id).await
+                        );
                         (token, Some(oauth.workspace_of(account_id).await))
                     }
                     None => return Err(app_err!("官方配置缺少登录方式")),

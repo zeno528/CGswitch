@@ -37,6 +37,23 @@ fn chatgpt_auth(account_id: &str, access_token: &str) -> String {
     )
 }
 
+/// id_token 带官方嵌套套餐 claim 的认证快照（plan_type 徽标链路用）
+fn chatgpt_auth_with_plan(account_id: &str, access_token: &str, plan: &str) -> String {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+    let payload = URL_SAFE_NO_PAD.encode(
+        serde_json::json!({
+            "chatgpt_account_id": account_id,
+            "https://api.openai.com/auth": { "chatgpt_plan_type": plan }
+        })
+        .to_string()
+        .as_bytes(),
+    );
+    format!(
+        r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"e30.{payload}.sig","access_token":"{access_token}"}}}}"#
+    )
+}
+
 fn oauth_auth(account_id: &str, access_token: &str, refresh_token: &str, id_token: &str) -> String {
     format!(
         r#"{{"auth_mode":"chatgpt","tokens":{{"id_token":"{id_token}","access_token":"{access_token}","refresh_token":"{refresh_token}","account_id":"{account_id}"}}}}"#
@@ -251,6 +268,96 @@ new_field = "accumulated"
 }
 
 #[test]
+fn desktop_profile_plan_badge_reads_own_database_snapshot() {
+    let (_home, context) = chatgpt_test_context();
+    let profile = context
+        .add_builtin_profile("chatgpt", None, None, None, None)
+        .unwrap();
+    let mut stored = context.database.profile(&profile.id).unwrap();
+    stored.payload.raw_auth = Some(chatgpt_auth_with_plan("desktop-ws", "token-1", "plus"));
+    context
+        .database
+        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .unwrap();
+
+    // 回归：live auth.json 被切换覆写为 free 账号后，卡片套餐仍来自自身快照
+    std::fs::write(
+        context.paths.codex_home.join("auth.json"),
+        chatgpt_auth_with_plan("managed-ws", "oauth-live", "free"),
+    )
+    .unwrap();
+    let state = context.get_state().unwrap();
+    let summary = state
+        .profiles
+        .iter()
+        .find(|summary| summary.id == profile.id)
+        .unwrap();
+    assert_eq!(summary.plan_type.as_deref(), Some("plus"));
+}
+
+#[test]
+fn desktop_accounts_derive_from_database_snapshot_not_live_auth() {
+    let (_home, context) = chatgpt_test_context();
+    let profile = context
+        .add_builtin_profile("chatgpt", None, None, None, None)
+        .unwrap();
+    let mut stored = context.database.profile(&profile.id).unwrap();
+    stored.payload.raw_auth = Some(chatgpt_auth("desktop-ws", "token-1"));
+    context
+        .database
+        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .unwrap();
+
+    // 身份来自数据库快照
+    let accounts = context.desktop_auth_accounts().unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].id, "desktop-ws");
+
+    // 回归：live auth.json 被切换覆写为其他账号时，Desktop 身份不受影响
+    std::fs::write(
+        context.paths.codex_home.join("auth.json"),
+        chatgpt_auth("managed-ws", "oauth-live"),
+    )
+    .unwrap();
+    let accounts = context.desktop_auth_accounts().unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].id, "desktop-ws");
+
+    // 快照匹配额度查询：按 workspace 命中自身，错过他账号
+    let snapshot = context
+        .desktop_auth_snapshot_for_account("desktop-ws")
+        .unwrap();
+    assert_eq!(
+        snapshot.expect("desktop snapshot should resolve"),
+        ("token-1".to_string(), None)
+    );
+    assert!(context
+        .desktop_auth_snapshot_for_account("other-ws")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn desktop_accounts_dedupe_same_login_across_profiles() {
+    let (_home, context) = chatgpt_test_context();
+    for updated_at in ["2", "3"] {
+        let profile = context
+            .add_builtin_profile("chatgpt", None, None, None, None)
+            .unwrap();
+        let mut stored = context.database.profile(&profile.id).unwrap();
+        stored.payload.raw_auth = Some(chatgpt_auth("desktop-ws", "token-1"));
+        context
+            .database
+            .update_profile(&profile.id, &stored.name, &stored.payload, updated_at)
+            .unwrap();
+    }
+    // 同一登录存在于多个 Desktop 配置：账号页只出一张卡
+    let accounts = context.desktop_auth_accounts().unwrap();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].id, "desktop-ws");
+}
+
+#[test]
 fn desktop_profile_syncs_and_restores_auth_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
@@ -340,6 +447,7 @@ fn apply_bound_oauth_profile_leaves_auth_for_oauth_writer() {
             auth_json: None,
             chatgpt_account_id: Some("oauth-account".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 1,
         })
         .unwrap();
@@ -388,6 +496,7 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
                 authenticated_at: 1,
                 chatgpt_account_id: Some(id.to_string()),
                 user_identity: None,
+                plan_type: None,
             })
             .unwrap();
     }
@@ -489,6 +598,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
             auth_json: Some(initial_oauth_auth.clone()),
             chatgpt_account_id: Some("oauth-account".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 1,
         })
         .unwrap();
@@ -502,6 +612,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
             auth_json: Some(initial_second_oauth_auth.clone()),
             chatgpt_account_id: Some("oauth-second".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 2,
         })
         .unwrap();
@@ -534,9 +645,16 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
         None
     );
 
+    // 外部刷新的 live access_token 需为带 iat 的 JWT 且新于 authenticated_at(1)，同步才吸收
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    let refreshed_access = {
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(br#"{"iat":100}"#);
+        format!("{header}.{payload}.sig")
+    };
     let externally_refreshed = oauth_auth(
         "oauth-account",
-        "codex-refreshed-access",
+        &refreshed_access,
         "rotated-refresh-token",
         "rotated-id-token",
     );
@@ -592,6 +710,7 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
             auth_json: None,
             chatgpt_account_id: Some("account-1".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 0,
         })
         .unwrap();
@@ -1200,6 +1319,9 @@ fn chatgpt_quota_maps_windows_to_remaining_display_data() {
         .as_secs() as i64
         + 3_600;
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        rate_limit_reset_credits: Some(connections::ChatgptResetCreditsSummary {
+            available_count: Some(2),
+        }),
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
                 used_percent: Some(18.0),
@@ -1223,6 +1345,16 @@ fn chatgpt_quota_maps_windows_to_remaining_display_data() {
     assert_eq!(info.weekly_label.as_deref(), Some("30天"));
     assert!(info.weekly_reset.is_some());
     assert_eq!(info.weekly_reset_at, Some((reset_at + 86_400) * 1_000));
+    assert_eq!(info.reset_credits_available, Some(2));
+}
+
+#[test]
+fn chatgpt_reset_credit_expiry_parses_official_rfc3339_timestamp() {
+    assert_eq!(
+        connections::chatgpt_reset_credit_expiry(Some("2026-10-04T05:12:00Z")),
+        Some(1_791_090_720_000)
+    );
+    assert_eq!(connections::chatgpt_reset_credit_expiry(None), None);
 }
 
 #[test]
@@ -1233,6 +1365,7 @@ fn chatgpt_quota_uses_a_seven_day_primary_window_without_faking_five_hours() {
         .as_secs() as i64
         + 86_400;
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        rate_limit_reset_credits: None,
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
                 used_percent: Some(62.0),
@@ -1255,6 +1388,7 @@ fn chatgpt_quota_uses_a_seven_day_primary_window_without_faking_five_hours() {
 #[test]
 fn chatgpt_quota_skips_empty_primary_window() {
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        rate_limit_reset_credits: None,
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
                 used_percent: None,
@@ -2931,6 +3065,7 @@ base_url = "https://api.example"
             auth_json: None,
             chatgpt_account_id: Some("acc-1".into()),
             user_identity: None,
+            plan_type: None,
             authenticated_at: 1,
         })
         .unwrap();

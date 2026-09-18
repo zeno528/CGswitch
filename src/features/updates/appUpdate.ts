@@ -1,6 +1,7 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { api, isTauri } from "../../api";
+import i18n from "../../i18n";
 
 export interface AppUpdate {
   version: string;
@@ -11,6 +12,14 @@ export interface AppUpdate {
 
 /** 旧版本把更新标记存 localStorage 的键：启动时兜底消费一次，覆盖升级过渡期 */
 export const UPDATED_VERSION_KEY = "cgswitch.updated-version";
+
+function webUpdate(): AppUpdate {
+  return {
+    version: "99.0.0", // ponytail: 哨兵版本号，永远高于真实迭代，无需跟进维护
+    notes: i18n.t("webMock.notes", { ns: "updates" }),
+    install: async () => undefined,
+  };
+}
 
 export function toAppUpdate(update: Pick<Update, "version" | "body" | "download" | "install">): AppUpdate {
   return {
@@ -34,7 +43,7 @@ export function toAppUpdate(update: Pick<Update, "version" | "body" | "download"
 }
 
 export async function checkForAppUpdate(): Promise<AppUpdate | null> {
-  if (!isTauri) return null;
+  if (!isTauri) return webUpdate();
   const update = await check({ timeout: 10_000 });
   return update ? toAppUpdate(update) : null;
 }

@@ -3,9 +3,9 @@ export default {
   list: {
     title: "MCP Servers",
     serverCount: "Installed {{count}}",
-    resolveDiff: "Resolve config differences",
+    resolveDiff: "Resolve differences",
     addServer: "Add server",
-    loadErrorHint: "If config.toml cannot be parsed, click \"Resolve config differences\" to restore the MCP config from the database.",
+    loadErrorHint: "If config.toml cannot be parsed, click \"Resolve differences\" to restore the MCP config from the database.",
     diffChip: "MCP diff",
     diffSummary: "MCP config entries differing from config.toml: {{count}}",
     reviewDiff: "Review and resolve",

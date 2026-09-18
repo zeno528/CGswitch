@@ -1,4 +1,4 @@
-import { ArrowLeft, PackagePlus, PackageSearch, Puzzle, Trash2 } from "lucide-react";
+import { ArrowLeft, PackagePlus, PackageSearch, Puzzle, Search, Trash2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -16,6 +16,14 @@ export function availableSkillCount(candidates: SkillCandidate[]) {
   return candidates.length;
 }
 
+export function selectableSkillPaths(candidates: SkillCandidate[]) {
+  return candidates.filter((candidate) => !candidate.has_content_conflict).map((candidate) => candidate.store_path);
+}
+
+export function matchesSkillName(skill: { name: string }, query: string) {
+  return skill.name.toLowerCase().includes(query.trim().toLowerCase());
+}
+
 export default function SkillsView({ activationEpoch }: { activationEpoch: number }) {
   const feedback = useFeedback();
   const { t } = useTranslation("skills");
@@ -29,8 +37,9 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
   const [previewName, setPreviewName] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState("");
   const [loadError, setLoadError] = useState("");
-  const [availableCount, setAvailableCount] = useState(0);
+  const [query, setQuery] = useState("");
   const updateScanInFlight = useRef(false);
+  const availableCount = availableSkillCount(candidates);
 
   const refresh = async (force = false) => {
     try { const next = await loadSkills(force); setSkills(next); setLoadError(""); }
@@ -39,8 +48,10 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
   };
   const openImport = async () => {
     if (busy) return;
-    setImporting(true); setBusy("scan"); setSelectedPaths([]);
-    try { setCandidates(await api.scanUnmanagedSkills()); }
+    setImporting(true); setSelectedPaths(selectableSkillPaths(candidates));
+    if (candidates.length) return;
+    setBusy("scan");
+    try { const next = await api.scanUnmanagedSkills(); setCandidates(next); setSelectedPaths(selectableSkillPaths(next)); }
     catch (error) { feedback.error(String(error)); }
     finally { setBusy(null); }
   };
@@ -69,7 +80,7 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
     finally { setBusy(null); }
   };
   const toggle = (path: string) => setSelectedPaths((current) => current.includes(path) ? current.filter((item) => item !== path) : [...current, path]);
-  const toggleAll = () => { const selectable = candidates.filter((candidate) => !candidate.has_content_conflict); setSelectedPaths((current) => current.filter((path) => selectable.some((candidate) => candidate.store_path === path)).length === selectable.length ? [] : selectable.map((candidate) => candidate.store_path)); };
+  const toggleAll = () => { const selectable = selectableSkillPaths(candidates); setSelectedPaths((current) => selectable.every((path) => current.includes(path)) ? [] : selectable); };
   const openPreview = async (name: string) => {
     setPreviewName(name); setPreviewContent("");
     try { setPreviewContent(await api.getSkillContent(name)); }
@@ -78,7 +89,7 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
   const scanForUpdates = async () => {
     if (updateScanInFlight.current) return;
     updateScanInFlight.current = true;
-    try { setAvailableCount(availableSkillCount(await api.scanUnmanagedSkills())); }
+    try { setCandidates(await api.scanUnmanagedSkills()); }
     catch { /* 后台扫描失败保留上次结果，导入按钮仍可手动触发完整扫描。 */ }
     finally { updateScanInFlight.current = false; }
   };
@@ -90,7 +101,8 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
 
   if (importing) return <ImportPage candidates={candidates} selectedPaths={selectedPaths} busy={busy} onBack={() => setImporting(false)} onToggle={toggle} onToggleAll={toggleAll} onConfirm={() => void confirmImport()} />;
   const enabledCount = skills.filter((skill) => skill.enabled).length;
-  return <><section className="apple-scroll-page mx-auto w-full max-w-none"><header className="apple-page-bar justify-between gap-4"><div className="flex min-w-0 items-center gap-2.5"><span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent"><Puzzle className="h-[18px] w-[18px]" strokeWidth={2} /></span><div className="flex items-center gap-2"><div className="apple-title">Skill</div>{loaded ? <><span className="apple-chip">{t("installedCount", { count: skills.length })}</span><span className="apple-chip">{t("enabledCount", { count: enabledCount })}</span></> : <LoadingSpinner />}</div></div><button type="button" className="apple-action-button app-button--primary relative" aria-label={availableCount ? t("importSkillAria", { count: availableCount }) : t("importSkill")} title={availableCount ? t("importSkillTitle", { count: availableCount }) : undefined} onClick={() => void openImport()}><PackagePlus className="h-4 w-4" />{t("importSkill")}{availableCount ? <span className="skill-update-badge" aria-hidden="true">{availableCount > 9 ? "9+" : availableCount}</span> : null}</button></header><div className="apple-edit-content">{loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}{!skills.length ? <EmptyStateCard loading={!loaded} icon={<Puzzle className="h-5 w-5" strokeWidth={1.8} />}><p className="muted">{t("empty")}</p><button type="button" className="apple-inline-btn" onClick={() => void openImport()}>{t("importFromLocal")}</button></EmptyStateCard> : null}{skills.length ? <div className="space-y-2">{skills.map((skill) => <SkillRow key={skill.name} skill={skill} busy={busy !== null} onRun={run} onPreview={openPreview} />)}</div> : null}</div></section><AppDialog open={previewName !== null} onOpenChange={(open) => { if (!open) setPreviewName(null); }} title={previewName ?? "Skill"} footer={<button type="button" className="apple-action-button app-button--primary" onClick={() => setPreviewName(null)}>{t("done")}</button>}><Suspense fallback={<div className="flex h-[60vh] flex-col items-center justify-center gap-2"><LoadingSpinner size="md" /><span className="muted meta-xs">{t("loadingPreview")}</span></div>}><div className="skill-markdown-preview h-[60vh] overflow-auto">{previewContent ? <MarkdownPreview>{previewContent}</MarkdownPreview> : <div className="flex h-full flex-col items-center justify-center gap-2"><LoadingSpinner size="md" /><span className="muted meta-xs">{t("loading")}</span></div>}</div></Suspense></AppDialog></>;
+  const visibleSkills = skills.filter((skill) => matchesSkillName(skill, query));
+  return <><section className="apple-scroll-page mx-auto w-full max-w-none"><header className="apple-page-bar flex-wrap justify-between gap-4"><div className="flex min-w-0 items-center gap-2.5"><span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent"><Puzzle className="h-[18px] w-[18px]" strokeWidth={2} /></span><div className="flex items-center gap-2"><div className="apple-title">Skill</div>{loaded ? <><span className="apple-chip">{t("installedCount", { count: skills.length })}</span><span className="apple-chip">{t("enabledCount", { count: enabledCount })}</span></> : <LoadingSpinner />}</div></div><div className="flex items-center gap-2"><div className="relative w-44 shrink-0"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--text-secondary)" strokeWidth={2} /><input type="search" className="app-input app-input--pill" placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")} value={query} onChange={(event) => setQuery(event.target.value)} /></div><button type="button" className="apple-action-button app-button--primary relative" aria-label={availableCount ? t("importSkillAria", { count: availableCount }) : t("importSkill")} title={availableCount ? t("importSkillTitle", { count: availableCount }) : undefined} onClick={() => void openImport()}><PackagePlus className="h-4 w-4" />{t("importSkill")}{availableCount ? <span className="skill-update-badge" aria-hidden="true">{availableCount > 9 ? "9+" : availableCount}</span> : null}</button></div></header><div className="apple-edit-content">{loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}{!skills.length ? <EmptyStateCard loading={!loaded} icon={<Puzzle className="h-5 w-5" strokeWidth={1.8} />}><p className="muted">{t("empty")}</p><button type="button" className="apple-inline-btn" onClick={() => void openImport()}>{t("importFromLocal")}</button></EmptyStateCard> : null}{skills.length ? <div className="space-y-2">{visibleSkills.map((skill) => <SkillRow key={skill.name} skill={skill} busy={busy !== null} onRun={run} onPreview={openPreview} />)}</div> : null}</div></section><AppDialog open={previewName !== null} onOpenChange={(open) => { if (!open) setPreviewName(null); }} title={previewName ?? "Skill"} footer={<button type="button" className="apple-action-button app-button--primary" onClick={() => setPreviewName(null)}>{t("done")}</button>}><Suspense fallback={<div className="flex h-[60vh] flex-col items-center justify-center gap-2"><LoadingSpinner size="md" /><span className="muted meta-xs">{t("loadingPreview")}</span></div>}><div className="skill-markdown-preview h-[60vh] overflow-auto">{previewContent ? <MarkdownPreview>{previewContent}</MarkdownPreview> : <div className="flex h-full flex-col items-center justify-center gap-2"><LoadingSpinner size="md" /><span className="muted meta-xs">{t("loading")}</span></div>}</div></Suspense></AppDialog></>;
 }
 
 function ImportPage({ candidates, selectedPaths, busy, onBack, onToggle, onToggleAll, onConfirm }: { candidates: SkillCandidate[]; selectedPaths: string[]; busy: string | null; onBack: () => void; onToggle: (path: string) => void; onToggleAll: () => void; onConfirm: () => void }) {
