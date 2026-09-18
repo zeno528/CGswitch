@@ -66,27 +66,28 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(":root.dark .setting-description {\n  color: var(--text-secondary);\n}");
   });
 
-  it("让窗口控制区与主卡片仅保留微小间隙", () => {
-    expect(styles).toContain("--window-chrome-height: 1.875rem;");
-    expect(styles).toContain("margin: 0.125rem 0.3125rem 0.3125rem 0;");
+  it("让窗口控制区底边与主卡片顶边重合", () => {
+    expect(styles).toContain("--window-chrome-height: 2rem;");
+    expect(styles).toContain("margin: 0 3px 3px 0;");
   });
 
   it("浅色主题的侧栏与窗口标题栏使用统一背景色", () => {
-    expect(styles).toContain("--sidebar-bg: #f5f5f5;");
+    expect(styles).toContain("--sidebar-bg: var(--panel-bg);");
     expect(styles).toMatch(/\.apple-window-chrome \{[\s\S]*?background: var\(--sidebar-bg\);/);
     expect(styles).toMatch(/\.apple-sidebar \{[\s\S]*?background: var\(--sidebar-bg\);/);
   });
 
   it("让全局卡片浅色使用微暖白、深色保持原卡片底色", () => {
-    expect(styles).toContain("--panel-bg: #fffeff;");
+    expect(styles).toContain("--panel-bg: #f5f5f5;");
     expect(styles).toContain("--panel-bg: #292b30;");
     expect(styles).toMatch(/\.apple-group \{[\s\S]*?background: var\(--panel-bg\);/);
     expect(styles).toMatch(/\.panel \{[\s\S]*?background: var\(--panel-bg\);/);
   });
 
-  it("让主内容表面浅色使用白色、深色保持原底色", () => {
+  it("让主内容表面浅色使用白色、深色使用 #1e1e1e", () => {
     expect(styles).toContain("--main-surface-bg: #ffffff;");
-    expect(styles).toContain("--main-surface-bg: var(--app-bg);");
+    expect(styles).toContain("--main-surface-bg: #1e1e1e;");
+    expect(styles).toContain("--input-bg: var(--main-surface-bg);");
     expect(styles).toMatch(/\.apple-main-card \{[\s\S]*?background: var\(--main-surface-bg\);/);
     expect(styles).toMatch(/\.apple-page-bar \{[\s\S]*?background: var\(--main-surface-bg\);/);
     expect(styles).toMatch(/\.apple-edit-toolbar--footer \{[\s\S]*?background: var\(--main-surface-bg\);/);
@@ -96,13 +97,13 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-toolbar-group > .apple-icon-button {\n  border-radius: 999px;");
   });
 
-  it("让 Codex 状态胶囊使用主题表面,仅圆点承载运行色并让运行圆点呼吸", () => {
-    const capsuleStyles = styles.match(/\.codex-status \{[\s\S]*?\n\}/)?.[0] ?? "";
+  it("让 Codex 状态操作组使用主题表面,仅圆点承载运行色并让运行圆点呼吸", () => {
+    const capsuleStyles = styles.match(/\.codex-status-control \{[\s\S]*?\n\}/)?.[0] ?? "";
     const signalStyles = styles.match(/\.codex-status__signal \{[\s\S]*?\n\}/)?.[0] ?? "";
-    expect(capsuleStyles).toContain("border: 1px solid var(--panel-border);");
-    expect(capsuleStyles).toContain("background: var(--panel-bg);");
+    expect(capsuleStyles).toContain("border: 1px solid var(--primary-button-hover-bg);");
+    expect(capsuleStyles).toContain("background: var(--primary-button-bg);");
     expect(styles).not.toContain("color-mix(in srgb, var(--success) 18%, var(--panel-ring))");
-    expect(signalStyles).toContain("color: var(--text-secondary);");
+    expect(signalStyles).toContain("color: color-mix(in srgb, var(--primary-button-text) 65%, transparent);");
     expect(signalStyles).toContain("background: transparent;");
     expect(styles).not.toContain("color-mix(in srgb, var(--text-secondary) 8%, transparent)");
     expect(styles).toContain(".codex-status--running .codex-status__signal {\n  color: var(--success);\n}");
@@ -114,10 +115,26 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("filter: blur(2px);");
     expect(styles).toContain(".codex-status--running .codex-status__signal-dot::after {\n  animation: codex-status-breathe-halo 2.8s ease-in-out infinite;");
     expect(styles).toContain("@keyframes codex-status-breathe-halo {");
-    expect(styles).toContain("0%, 100% { opacity: 0; transform: scale(1); }\n  50% { opacity: 0.1; transform: scale(1.35); }");
+    expect(styles).toContain("0%, 100% { opacity: 0; transform: scale(1); }\n  50% { opacity: 0.18; transform: scale(1.35); }");
     expect(styles).not.toContain("codex-status-halo");
     expect(styles).not.toContain("codex-status-sheen");
     expect(styles).not.toContain(".codex-status--running::after");
+    expect(styles).toContain(".codex-status__action {");
+    expect(styles).toContain("border-radius: 50%;");
+    expect(styles).toContain("width: calc(var(--control-height) - 0.125rem);");
+    expect(styles).toContain("height: calc(var(--control-height) - 0.125rem);");
+    expect(styles).toContain("margin: 0.125rem;");
+    expect(styles).toContain("border: 0;");
+    expect(styles).toContain("background: color-mix(in srgb, currentColor 12%, transparent);");
+  });
+
+  it("让标题栏药丸共用统一高度", () => {
+    expect(styles).toContain("--toolbar-control-height: calc(var(--control-height) + 2px);");
+    expect(styles).toContain(".update-notice-trigger {\n  display: inline-flex;\n  min-width: var(--icon-button-size);\n  min-height: var(--toolbar-control-height);");
+    expect(styles).toContain(".codex-status-control {\n  display: inline-flex;\n  height: var(--toolbar-control-height);");
+    expect(styles).toContain(".apple-action-button {\n  align-items: center;");
+    expect(styles).toContain("height: var(--toolbar-control-height);");
+    expect(styles).toContain(".app-input--pill {\n  height: var(--toolbar-control-height);");
   });
 
   it("让主题分段控件与工具栏容器共用药丸圆角", () => {

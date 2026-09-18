@@ -19,17 +19,21 @@
   --warning: #ff9f0a;
   --danger: #ff3b30;
   --app-bg: #f7f7f9;
-  --panel-bg: #fffeff;
+  --panel-bg: #f5f5f5;
   --main-surface-bg: #ffffff;
   --panel-border: rgba(60, 60, 67, 0.12);
   --panel-ring: rgba(60, 60, 67, 0.08);
   --panel-divider: rgba(60, 60, 67, 0.1);
+  --active-card-gradient-start: #263b63;
+  --active-card-gradient-middle: #3f72b8;
+  --active-card-gradient-start-mix: 34%;
+  --active-card-gradient-middle-mix: 17%;
+  --active-card-gradient-blend: color-mix(in srgb, var(--active-card-gradient-start) 55%, var(--active-card-gradient-middle));
+  --active-card-gradient-blend-mix: 25%;
+  --active-card-gradient-fade-mix: 9%;
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
-  /* 激活配置卡沿用深色主题的浅色文字层级。 */
-  --active-card-text-primary: #ffffff;
-  --active-card-text-secondary: rgba(255, 255, 255, 0.68);
-  --sidebar-bg: #f5f5f5;
+  --sidebar-bg: var(--panel-bg);
   --selection-bg: rgba(0, 122, 255, 0.12);
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
   --success-text: #27c840;
@@ -37,7 +41,7 @@
   --toast-icon-foreground: #1c1c1e;
   --chip-bg: #e9e9e6;
   --profile-chip-bg: rgb(0 0 0 / 0.04);
-  --input-bg: #f5f5f5;
+  --input-bg: var(--main-surface-bg);
   --profile-meta-text: rgba(60, 60, 67, 0.68);
   /* 品牌图标底色：按文字色派生的浅灰砖，深浅主题共用同一公式自动适配 */
   --tile-bg: color-mix(in srgb, var(--text-secondary) 12%, transparent);
@@ -62,6 +66,8 @@
   --sidebar-icon-size: 1.125rem;
   --brand-logo-size: 1.75rem;
   --control-height: 2.25rem;
+  /* 标题栏内的按钮、搜索和状态胶囊统一高度；普通表单控件仍使用 --control-height。 */
+  --toolbar-control-height: calc(var(--control-height) + 2px);
   /* 输入类控件（.app-input/.app-select）最小高：行高 1.6 + 上下 padding + 边框，允许换行到两行 */
   --input-min-height: calc(1.6em + 1rem + 2px);
   --icon-button-size: 2rem;
@@ -79,7 +85,7 @@
   /* 页面顶部栏与底部操作栏统一高度 */
   --toolbar-height: 3.625rem;
   /* 窗口标题栏高度：品牌区与窗口控制按钮共用同一垂直中心 */
-  --window-chrome-height: 1.875rem;
+  --window-chrome-height: 2rem;
   /* 卡片、高亮分区和配置编辑器容器统一圆角 */
   --radius-card: 1.125rem;
   /* 右侧滚动条占位宽度，启动时由 JS 实测写入，保证左右视觉间距完全一致 */
@@ -98,20 +104,24 @@
   --success: #3fb950;
   --app-bg: #1a1d1f;
   --panel-bg: #292b30;
-  --main-surface-bg: var(--app-bg);
+  --main-surface-bg: #1e1e1e;
   --panel-border: #42434a;
   --panel-ring: rgba(255, 255, 255, 0.14);
   --panel-divider: rgba(255, 255, 255, 0.1);
+  --active-card-gradient-start-mix: 78%;
+  --active-card-gradient-middle-mix: 58%;
+  --active-card-gradient-blend-mix: 68%;
+  --active-card-gradient-fade-mix: 38%;
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.68);
-  --sidebar-bg: #25282b;
+  --sidebar-bg: var(--panel-bg);
   --selection-bg: rgba(0, 122, 255, 0.16);
   --success-text: #6ee7a0;
   --chip-success: #63e68a;
   --toast-icon-foreground: #ffffff;
   --chip-bg: #1e1e1e;
   --profile-chip-bg: #1e1e1e;
-  --input-bg: #1e1e1e;
+  --input-bg: var(--main-surface-bg);
   --profile-meta-text: rgba(255, 255, 255, 0.62);
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 15%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
@@ -187,9 +197,13 @@ body {
   filter: none;
 }
 
-/* 更新弹窗头部使用浅色渐变，logo 始终保持源图的白色，并带深蓝投影浮在光上。 */
+/* 更新弹窗头部的 Logo 与标题共用主题纯色。 */
 .app-dialog-hero .app-logo {
-  filter: drop-shadow(0 6px 18px rgb(10 20 80 / 0.65));
+  filter: invert(1);
+}
+
+:root.dark .app-dialog-hero .app-logo {
+  filter: none;
 }
 
 .app-version {
@@ -537,7 +551,7 @@ main:has(.apple-edit-page) {
 }
 
 .apple-main-card {
-  margin: 0.125rem 0.3125rem 0.3125rem 0;
+  margin: 0 3px 3px 0;
   border: 1px solid rgb(0 0 0 / 0.07);
   border-radius: 0.75rem;
   background: var(--main-surface-bg);
@@ -556,7 +570,7 @@ main:has(.apple-edit-page) {
   flex-direction: column;
 }
 
-.apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {
+.apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
   animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -781,7 +795,7 @@ body.drag-active * {
 .update-notice-trigger {
   display: inline-flex;
   min-width: var(--icon-button-size);
-  min-height: var(--icon-button-size);
+  min-height: var(--toolbar-control-height);
   align-items: center;
   gap: 0.375rem;
   border-radius: 999px;
@@ -1027,17 +1041,24 @@ body.drag-active * {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.codex-status-control {
+  display: inline-flex;
+  height: var(--toolbar-control-height);
+  align-items: center;
+  border: 1px solid var(--primary-button-hover-bg);
+  border-radius: 999px;
+  color: var(--primary-button-text);
+  background: var(--primary-button-bg);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .codex-status {
   display: inline-flex;
-  height: 1.75rem;
   align-items: center;
-  gap: 0.375rem;
-  border: 1px solid var(--panel-border);
-  border-radius: 999px;
-  padding-inline: 0.5rem;
-  color: inherit;
-  background: var(--panel-bg);
-  white-space: nowrap;
+  gap: 0.5rem;
+  padding-left: 0.875rem;
+  padding-right: 0.75rem;
 }
 
 .codex-status__signal {
@@ -1046,7 +1067,7 @@ body.drag-active * {
   height: 1.125rem;
   place-items: center;
   border-radius: 50%;
-  color: var(--text-secondary);
+  color: color-mix(in srgb, var(--primary-button-text) 65%, transparent);
   background: transparent;
 }
 
@@ -1090,15 +1111,32 @@ body.drag-active * {
   color: inherit;
 }
 
-.codex-status__divider {
-  width: 1px;
-  height: 0.75rem;
-  background: currentColor;
-  opacity: 0.28;
+.codex-status__label {
+  color: color-mix(in srgb, currentColor 72%, transparent);
 }
 
-.codex-status__label {
-  color: currentColor;
+/* Codex 状态右侧的圆形操作区：与状态同属一个胶囊，点击目标保持明确。 */
+.codex-status__action {
+  display: grid;
+  width: calc(var(--control-height) - 0.125rem);
+  height: calc(var(--control-height) - 0.125rem);
+  margin: 0.125rem;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  transition: background-color 150ms ease-out;
+}
+
+.codex-status__action:hover:not(:disabled),
+.codex-status__action:focus-visible:not(:disabled) {
+  background: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.codex-status__action:focus-visible {
+  outline: 2px solid var(--primary-button-text);
+  outline-offset: 1px;
 }
 
 @keyframes codex-status-breathe {
@@ -1108,7 +1146,7 @@ body.drag-active * {
 
 @keyframes codex-status-breathe-halo {
   0%, 100% { opacity: 0; transform: scale(1); }
-  50% { opacity: 0.1; transform: scale(1.35); }
+  50% { opacity: 0.18; transform: scale(1.35); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1120,12 +1158,7 @@ body.drag-active * {
   overflow: hidden;
   border-radius: var(--radius-card);
   background: var(--panel-bg);
-  box-shadow: 0 0 0 1px var(--panel-ring);
-}
-
-/* 账号卡片直接复用侧边栏底色。 */
-.accounts-page .apple-group {
-  background: var(--sidebar-bg);
+  box-shadow: 0 0 0 1px var(--panel-border);
 }
 
 /* 浅色账号卡片用既有面板边缘色补一圈细描边，保持深色层级不变。 */
@@ -1139,14 +1172,9 @@ body.drag-active * {
   border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 
-/* ChatGPT / OpenAI 官网品牌配色：以后提到该官网蓝紫渐变时统一使用这里。 */
+/* 激活卡片取更新页的深靛紫和中心冷蓝，左侧清晰、向右渐淡。 */
 .brand-gradient-surface {
-  background-image:
-    radial-gradient(42% 62% at 2% 20%, rgba(112, 160, 255, 0.78), transparent 100%),
-    radial-gradient(46% 72% at 98% 24%, rgba(89, 90, 239, 0.82), transparent 100%),
-    radial-gradient(44% 55% at 26% 100%, rgba(144, 190, 255, 0.7), transparent 100%),
-    radial-gradient(38% 48% at 78% 94%, rgba(207, 201, 255, 0.75), transparent 100%),
-    linear-gradient(118deg, #6d8fec 0%, #9bb8fa 48%, #8787ee 100%);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) 12%, transparent) 0%, color-mix(in srgb, var(--active-card-gradient-middle) 5%, transparent) 46%, transparent 100%);
 }
 
 .settings-about__actions > .apple-action-button {
@@ -1159,23 +1187,20 @@ body.drag-active * {
   border-radius: var(--radius-card);
 }
 
-.profile-list > .apple-group.is-active {
-  box-shadow: none;
-}
-
-/* WebView2 移动窗口时强制把渐变层裁进圆角，避免合成帧露出边缘颜色。 */
-.profile-list > .apple-group.brand-gradient-surface {
-  clip-path: inset(0 round var(--radius-card));
+/* 激活卡单独提高极光靛蓝的显色；其他品牌渐变表面不受影响。 */
+.profile-list > .apple-group.brand-gradient-surface,
+.profile-drag-preview.brand-gradient-surface {
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) var(--active-card-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--active-card-gradient-blend) var(--active-card-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text {
-  color: var(--active-card-text-primary);
+  color: var(--text-primary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta,
 .profile-drag-preview.brand-gradient-surface .profile-card-meta {
-  color: var(--active-card-text-secondary);
+  color: var(--text-secondary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
@@ -1199,11 +1224,11 @@ body.drag-active * {
 .profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
 .profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
-  color: var(--active-card-text-primary);
+  color: var(--text-primary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .drag-handle {
-  color: var(--active-card-text-secondary);
+  color: var(--text-secondary);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .chip-success {
@@ -1241,7 +1266,7 @@ body.drag-active * {
   background: var(--secondary-button-bg);
   display: inline-flex;
   gap: 0.5rem;
-  height: calc(var(--control-height) + 6px);
+  height: var(--toolbar-control-height);
   justify-content: center;
   padding-inline: 16px;
   font-size: var(--font-size-base);
@@ -1647,26 +1672,22 @@ button:focus-visible {
   gap: 9px;
 }
 
-/* hero 标题：白→品牌浅蓝渐变文字 + 投影，浮在渐变光晕上 */
+/* hero 标题使用主题纯色文字，避免渐变与投影影响版本信息可读性。 */
 .app-dialog-content--hero .app-dialog-title {
   font-size: 21px;
   font-weight: 550;
   letter-spacing: -0.2px;
   line-height: 1;
-  background: linear-gradient(180deg, #ffffff 30%, #b9c8f7);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 3px 12px rgb(80 110 230 / 0.45));
+  color: var(--text-primary);
 }
 
 .app-dialog-content--hero .app-dialog-close {
-  color: rgb(255 255 255);
+  color: var(--text-primary);
 }
 
 .app-dialog-content--hero .app-dialog-close:hover {
-  background: rgb(255 255 255 / 0.18);
-  color: rgb(255 255 255);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-primary);
 }
 
 .app-dialog-content--hero .app-dialog-body {
@@ -2083,9 +2104,9 @@ button:focus-visible {
   outline: none;
 }
 
-/* 药丸形输入变体：搜索框等筛选入口用，高度对齐标题栏按钮（--control-height）、预留左侧图标位，其余沿用 .app-input */
+/* 药丸形输入变体：搜索框等筛选入口用，高度对齐标题栏胶囊、预留左侧图标位，其余沿用 .app-input */
 .app-input--pill {
-  height: var(--control-height);
+  height: var(--toolbar-control-height);
   min-height: 0;
   border-radius: 999px;
   padding-left: 2rem;

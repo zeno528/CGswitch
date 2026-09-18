@@ -7,6 +7,8 @@ export default {
   toolbar: {
     restart: "重启Codex APP",
     restarting: "重启中…",
+    start: "启动",
+    starting: "启动中…",
     capture: "从当前配置新建",
     addProvider: "添加供应商",
   },

@@ -7,6 +7,8 @@ export default {
   toolbar: {
     restart: "Restart Codex app",
     restarting: "Restarting...",
+    start: "Start",
+    starting: "Starting...",
     capture: "Create from current config",
     addProvider: "Add provider",
   },

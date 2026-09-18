@@ -1,12 +1,26 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { codexActionFor } from "./ProfilesView";
 
 const source = readFileSync(new URL("./ProfilesView.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const cardSource = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("ProfilesView 拖拽预览", () => {
+  it("将状态与操作合并，且只让右侧操作区触发启动或重启", () => {
+    expect(codexActionFor(true)).toBe("restart");
+    expect(codexActionFor(false)).toBe("start");
+    expect(source).toContain('className="codex-status__action"');
+    expect(source).toContain('onClick={() => void restart(false)}');
+    expect(source).toContain('role="status"');
+  });
+
+  it("无更新提示时保留左侧占位，使右侧操作组不回流", () => {
+    expect(source).toContain('<div className="min-w-0"><UpdateNotice /></div>');
+    expect(source).toContain('apple-page-bar flex-wrap justify-between gap-4');
+  });
+
   it("将拖拽浮层挂到 body，避免被页面 transform 容器偏移", () => {
     expect(source).toContain('import { createPortal } from "react-dom";');
     expect(source).toContain("createPortal(<DragOverlay");
@@ -47,8 +61,8 @@ describe("ProfilesView 拖拽预览", () => {
     expect(styles).not.toContain(":root.dark .profile-drag-preview.is-active {");
   });
 
-  it("激活卡拖拽预览的官网按钮沿用浅色文字层级", () => {
+  it("激活卡拖拽预览的官网按钮沿用主题文字层级", () => {
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {\n  color: var(--active-card-text-primary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {\n  color: var(--text-primary);");
   });
 });

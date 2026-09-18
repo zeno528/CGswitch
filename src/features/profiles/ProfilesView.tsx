@@ -1,4 +1,4 @@
-import { Camera, GripVertical, Layers2, Plus, RefreshCw } from "lucide-react";
+import { Camera, GripVertical, Layers2, Play, Plus, RefreshCw } from "lucide-react";
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
@@ -20,6 +20,10 @@ interface ProfilesViewProps {
   activationEpoch: number;
   onRefresh: () => Promise<void>;
   onManageChatgptAccounts: () => void;
+}
+
+export function codexActionFor(running: boolean) {
+  return running ? "restart" : "start";
 }
 
 function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
@@ -46,7 +50,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const { t } = useTranslation("profiles");
   const [items, setItems] = useState(state.profiles);
   const [busy, setBusy] = useState(false);
-  const [restarting, setRestarting] = useState(false);
+  const [codexAction, setCodexAction] = useState<"restart" | "start" | null>(null);
   const [editingProfile, setEditingProfile] = useState<ProfileSummary | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [modal, setModal] = useState<"capture" | "rename" | null>(null);
@@ -157,7 +161,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const restart = async (force = false, notifySuccess = true) => {
     if (busy && !force) return false;
     setBusy(true);
-    setRestarting(true);
+    setCodexAction(codexActionFor(state.codex.running));
     try {
       await api.restartCodex();
       if (notifySuccess) feedback.success(t("feedback.codexRestarted"));
@@ -167,7 +171,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
       feedback.error(String(error));
       return false;
     } finally {
-      setRestarting(false);
+      setCodexAction(null);
       setBusy(false);
     }
   };
@@ -226,30 +230,23 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
     return <ProfileEdit profile={editingProfile} create={creatingProfile} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
   }
 
+  const nextCodexAction = codexActionFor(state.codex.running);
+
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
+        <div className="min-w-0"><UpdateNotice /></div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
-          <span
-            className={`codex-status codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span className="codex-status__signal" aria-hidden="true"><span className="codex-status__signal-dot" /></span>
-            <span className="codex-status__name">Codex</span>
-            <span className="codex-status__divider" aria-hidden="true" />
-            <span className="codex-status__label">{state.codex.running ? t("status.running") : t("status.stopped")}</span>
-          </span>
-          <UpdateNotice />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="apple-action-button apple-action-button--quaternary"
-            disabled={busy}
-            title={t("toolbar.restart")} onClick={() => void restart(false)}>
-            {restarting ? <LoadingSpinner size="md" /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
-            {restarting ? t("toolbar.restarting") : t("toolbar.restart")}
-          </button>
+          <div className={`codex-status-control codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}>
+            <span className="codex-status" role="status" aria-live="polite" aria-atomic="true">
+              <span className="codex-status__signal" aria-hidden="true"><span className="codex-status__signal-dot" /></span>
+              <span className="codex-status__name">Codex</span>
+              <span className="codex-status__label">{state.codex.running ? t("status.running") : t("status.stopped")}</span>
+            </span>
+            <button type="button" className="codex-status__action" disabled={busy} title={t(`toolbar.${nextCodexAction}`)} aria-label={codexAction ? t(`toolbar.${codexAction}ing`) : t(`toolbar.${nextCodexAction}`)} onClick={() => void restart(false)}>
+              {codexAction ? <LoadingSpinner size="md" /> : nextCodexAction === "restart" ? <RefreshCw className="h-4 w-4" strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}
+            </button>
+          </div>
           <button type="button" className="apple-action-button app-button--primary" disabled={busy}
             onClick={() => setCreatingProfile(true)}>
             <Plus className="h-4 w-4" strokeWidth={2} />{t("toolbar.addProvider")}

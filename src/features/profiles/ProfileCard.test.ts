@@ -19,39 +19,41 @@ describe("ProfileCard 官网入口", () => {
     expect(adminButton).toBeLessThan(metaRow);
   });
 
-  it("所有配置激活时使用 ChatGPT 品牌渐变", () => {
+  it("所有配置激活时使用极光靛蓝渐变", () => {
     expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
     expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
     expect(source).not.toContain("third-party-gradient");
     expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
     expect(styles).toContain(".profile-drag-preview.is-active {");
+    expect(styles).toContain("--active-card-gradient-start: #263b63;");
+    expect(styles).toContain("--active-card-gradient-middle: #3f72b8;");
+    expect(styles).toContain("--active-card-gradient-start-mix: 34%;");
+    expect(styles).toContain("--active-card-gradient-middle-mix: 58%;");
+    expect(styles).toContain(":root.dark {\n  color-scheme: dark;");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface,\n.profile-drag-preview.brand-gradient-surface {\n  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) var(--active-card-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--active-card-gradient-blend) var(--active-card-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-fade-mix), transparent) 58%, transparent 100%);");
   });
 
-  it("激活卡使用深色主题的浅色文字层级", () => {
-    expect(styles).toContain("--active-card-text-primary: #ffffff;");
-    expect(styles).toContain("--active-card-text-secondary: rgba(255, 255, 255, 0.68);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--active-card-text-secondary);");
+  it("激活卡沿用主题文字层级", () => {
+    expect(styles).not.toContain("--active-card-text-primary");
+    expect(styles).not.toContain("--active-card-text-secondary");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--text-secondary);");
     expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--active-card-text-secondary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--text-secondary);");
   });
 
-  it("激活时不显示描边，但悬停时保留描边", () => {
-    const activeRuleStart = styles.indexOf(".profile-list > .apple-group.is-active {");
-    const activeRuleEnd = styles.indexOf("}", activeRuleStart);
-    const activeRule = styles.slice(activeRuleStart, activeRuleEnd);
-
-    expect(activeRule).toContain("box-shadow: none;");
-    expect(activeRule).not.toContain("outline:");
+  it("激活时保留卡片边缘", () => {
+    expect(styles).not.toContain(".profile-list > .apple-group.is-active {");
+    expect(styles).not.toContain(".profile-list > .apple-group.brand-gradient-surface {");
     expect(styles).toContain(".profile-list > .apple-group:not(.is-active):hover {\n  outline: 1px solid");
     expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
   });
 
-  it("激活渐变卡在移动窗口时保持圆角裁切", () => {
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface {\n  clip-path: inset(0 round var(--radius-card));");
+  it("激活渐变卡沿用默认卡片的圆角和几何", () => {
+    expect(styles).toContain(".apple-group {\n  overflow: hidden;\n  border-radius: var(--radius-card);");
   });
 
   it("提高渐变卡片的文字与图标对比度", () => {
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--active-card-text-primary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
   });

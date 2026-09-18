@@ -1,7 +1,7 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { availableSkillCount, matchesSkillName } from "./SkillsView";
+import { availableSkillCount, matchesSkillName, selectableSkillPaths } from "./SkillsView";
 
 const viewSource = readFileSync(new URL("./SkillsView.tsx", import.meta.url), "utf8");
 
@@ -31,6 +31,23 @@ describe("matchesSkillName", () => {
     const skill = { name: "Ponytail", description: "精简实现工作流", enabled: true };
     expect(matchesSkillName(skill, " pony ")).toBe(true);
     expect(matchesSkillName(skill, "workflow")).toBe(false);
+  });
+});
+
+describe("Skill 导入默认选择", () => {
+  it("进入导入页时默认选择所有可导入项，跳过内容冲突项", () => {
+    expect(selectableSkillPaths([
+      { name: "new-skill", description: null, store_path: "/tmp/new", source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 },
+      { name: "conflict-skill", description: null, store_path: "/tmp/conflict", source: "Agent", has_content_conflict: true, is_update: false, modified_at: 0 },
+    ])).toEqual(["/tmp/new"]);
+    expect(viewSource).toContain("setSelectedPaths(selectableSkillPaths(candidates));");
+    expect(viewSource).toContain("setSelectedPaths(selectableSkillPaths(next));");
+  });
+});
+
+describe("Skill 标题栏", () => {
+  it("复用 MCP 和插件页的可换行标题栏结构，避免跨页垂直偏移", () => {
+    expect(viewSource).toContain('className="apple-page-bar flex-wrap justify-between gap-4"');
   });
 });
 
