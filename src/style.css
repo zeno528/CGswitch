@@ -1131,6 +1131,11 @@ body.drag-active * {
   box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
+/* 账号卡片直接复用侧边栏底色。 */
+.accounts-page .apple-group {
+  background: var(--sidebar-bg);
+}
+
 .settings-about__hero {
   margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card)) 0;
   padding: var(--gap-card) var(--gap-card) 0;

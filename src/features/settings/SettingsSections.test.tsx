@@ -252,8 +252,7 @@ describe("SettingsSections", () => {
     // 套餐徽标：官方原词首字母大写，pro 走强调色 chip
     expect(html).toContain(">Plus</span>");
     expect(html).toContain(">Pro</span>");
-    expect(html).toContain("套餐续期日（GMT+8）：");
-    expect(html.match(/GMT\+8/g)).toHaveLength(2);
+    expect(html.match(/套餐续期日（[^）]+）：/g)).toHaveLength(2);
     expect(html).toContain("天后");
     expect(accountsViewSource).toContain('timeZoneName: "short"');
     expect(html.indexOf("跟随 Codex登录")).toBeLessThan(html.indexOf(">Plus</span>"));

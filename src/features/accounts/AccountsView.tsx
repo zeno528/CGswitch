@@ -339,7 +339,7 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
     <div className="grid grid-cols-1 gap-[var(--gap-card)] md:grid-cols-2">
       {status.external.map((account) => (
         <div key={account.id} className="apple-group p-3">
-          <div className="flex min-w-0 flex-nowrap items-center gap-3">
+          <div className="flex min-h-8 min-w-0 flex-nowrap items-center gap-3">
             <AuthSourceIcon source="desktop" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
             <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
               <span className="mono min-w-0 truncate title-sm">{account.login}</span>
@@ -351,7 +351,7 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
         </div>
       ))}
       {status.accounts.map((account) => <div key={`${account.id}:${account.authenticated_at}`} className="apple-group p-3">
-        <div className="flex min-w-0 flex-nowrap items-center gap-3">
+        <div className="flex min-h-8 min-w-0 flex-nowrap items-center gap-3">
           <AuthSourceIcon source="oauth" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
           <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
             <span className="mono min-w-0 truncate title-sm">{account.login}</span>
