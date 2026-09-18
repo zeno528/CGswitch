@@ -790,28 +790,43 @@ fn log_probe_outcome(
     result: &McpProbeResult,
     route: &str,
 ) {
-    let latency = result
-        .latency_ms
-        .map(|ms| ms.to_string())
-        .unwrap_or_else(|| "-".to_string());
+    let latency = result.latency_ms.unwrap_or_default();
     if !result.ok {
         // 静默探测失败也记：状态点错过仍可在日志溯源
         let error = result.error.as_deref().unwrap_or("未知错误");
-        tauri_plugin_log::log::warn!("[mcp] {name} 连通失败: {error}{route}");
+        let failure_kind = match result.status {
+            Some(401 | 403) => "auth_error",
+            Some(_) => "http_error",
+            None if error.contains("环境变量未设置") => "validation_error",
+            None => "network_error",
+        };
+        let status = result
+            .status
+            .map(|status| format!(" status_code={status}"))
+            .unwrap_or_default();
+        tauri_plugin_log::log::warn!(
+            "[mcp.probe] server={name:?} outcome=failure failure_kind={failure_kind}{status} latency_ms={latency}{route} error={error:?} msg=\"连通失败\""
+        );
         return;
     }
     if let Some(error) = &result.tools_error {
-        tauri_plugin_log::log::warn!("[mcp] {name} 工具失败: {error}{route}");
+        tauri_plugin_log::log::warn!(
+            "[mcp.probe.tools] server={name:?} outcome=failure failure_kind=parse_error latency_ms={latency} error={error:?}{route} msg=\"工具列举失败\""
+        );
         return;
     }
     // 静默探测成功记 Debug：开发时可见，release（Info 阈值）自动消失不吵用户
     let line = if include_tools {
         format!(
-            "[mcp] {name} 工具 {} 个 {latency}ms{route}",
-            result.tools.len()
+            "[mcp.probe.tools] server={name:?} outcome=success latency_ms={latency} count={}{} msg=\"工具列举成功\"",
+            result.tools.len(),
+            route
         )
     } else {
-        format!("[mcp] {name} 连通 {latency}ms{route}")
+        format!(
+            "[mcp.probe] server={name:?} outcome=success latency_ms={latency}{} msg=\"连通成功\"",
+            route
+        )
     };
     if manual {
         tauri_plugin_log::log::info!("{line}");

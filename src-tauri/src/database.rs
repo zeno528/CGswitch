@@ -842,6 +842,7 @@ fn summary(
             },
             account_id,
         ),
+        auth_account_id: None,
         // 套餐由 get_state 聚合时按绑定账号/live 认证填充，Database 层不知道
         plan_type: None,
         model: display_text(payload.model_values.get("model")),

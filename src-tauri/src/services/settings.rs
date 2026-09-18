@@ -93,6 +93,9 @@ impl AppContext {
                     Some(message),
                     &now_ms().to_string(),
                 )?;
+                tauri_plugin_log::log::warn!(
+                    "[settings.restart] outcome=failure failure_kind=timeout msg=\"Codex 未在超时时间内退出，已取消重新启动\""
+                );
                 return Err(app_err!("{message}"));
             }
             // 优雅路径静默失效（权限被拒/托盘拦截/headless）时唯一可观测的痕迹
@@ -104,14 +107,14 @@ impl AppContext {
             if let Some(bounds) = &window_bounds {
                 if codex_window_state::persist_window_bounds(&self.paths.codex_home, bounds) {
                     tauri_plugin_log::log::debug!(
-                        "[settings] restart 回写窗口尺寸 [codex-global-state]: ok {}x{}（max={}）",
+                        "[settings.restart.window_bounds] outcome=success width={} height={} maximized={} msg=\"回写窗口尺寸\"",
                         bounds.width,
                         bounds.height,
                         bounds.is_maximized
                     );
                 } else {
                     tauri_plugin_log::log::warn!(
-                        "[settings] restart 回写窗口尺寸 [codex-global-state]: 失败，跳过还原"
+                        "[settings.restart.window_bounds] outcome=failure failure_kind=io_error msg=\"回写窗口尺寸失败，跳过还原\""
                     );
                 }
             }
@@ -135,6 +138,14 @@ impl AppContext {
             message.as_deref(),
             &now_ms().to_string(),
         )?;
+        match &result {
+            Ok(()) => tauri_plugin_log::log::info!(
+                "[settings.restart] outcome=success msg=\"Codex 已重新启动\""
+            ),
+            Err(error) => tauri_plugin_log::log::warn!(
+                "[settings.restart] outcome=failure failure_kind=internal error={error:?} msg=\"Codex 重启失败\""
+            ),
+        }
         result
     }
 
@@ -182,13 +193,16 @@ impl AppContext {
             ".db",
             backup_keep_count(settings.database_backup_keep_count),
         );
+        tauri_plugin_log::log::info!("[settings.save] outcome=success msg=\"设置已保存\"");
         Ok(settings)
     }
 
     pub fn set_update_marker(&self, version: &str) -> AppResult<()> {
         atomic_write(&self.paths.update_marker, version.as_bytes())?;
         // 安装器启动（Windows 下随即杀进程）前最后一条日志，升级排障以此为界
-        tauri_plugin_log::log::info!("[update] v{version} 下载完成，写入升级标记，启动安装器");
+        tauri_plugin_log::log::info!(
+            "[update.install] version={version:?} outcome=success msg=\"下载完成，写入升级标记，启动安装器\""
+        );
         Ok(())
     }
 
@@ -200,9 +214,13 @@ impl AppContext {
                 let _ = std::fs::remove_file(&self.paths.update_marker);
                 let version = text.trim().to_string();
                 if rollback {
-                    tauri_plugin_log::log::warn!("[update] 安装失败，回滚升级标记 v{version}");
+                    tauri_plugin_log::log::warn!(
+                        "[update.install] version={version:?} outcome=failure failure_kind=internal msg=\"安装失败，回滚升级标记\""
+                    );
                 } else {
-                    tauri_plugin_log::log::info!("[update] 升级成功落地 v{version}");
+                    tauri_plugin_log::log::info!(
+                        "[update.install] version={version:?} outcome=success msg=\"升级成功落地\""
+                    );
                 }
                 Ok(Some(version))
             }

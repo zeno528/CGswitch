@@ -58,7 +58,7 @@ Custom providers can use the Responses API-compatible configuration supported by
 
 ### ChatGPT accounts and usage
 
-- Sign in to ChatGPT with an OAuth device code.
+- Sign in to ChatGPT in the system browser via OAuth.
 - Manage multiple accounts, choose a default account, and bind an account to a provider profile.
 - Test ChatGPT authentication and inspect quota information when available.
 - Test third-party provider connectivity, including response status and latency.

@@ -1,10 +1,7 @@
 //! ChatGPT 官方订阅的 OAuth 认证（对齐官方 Codex CLI 的登录流程）。
 //!
-//! 两条登录路径，换 Token 之后共用同一套落库与刷新逻辑：
-//! - 浏览器授权码登录（主路径）：PKCE + 本地 127.0.0.1:1455 回环回调，
-//!   `prompt=login` 强制弹登录/选号页，用户无需输入设备码；
-//! - 设备码登录（后备）：向 OpenAI 申请 user_code 与验证网址，用户在浏览器
-//!   完成授权后轮询换取 authorization_code + code_verifier。
+//! 浏览器授权码登录：PKCE + 本地 127.0.0.1:1455 回环回调，`prompt=login`
+//! 强制弹登录/选号页。
 //!
 //! 账号持久化（只存 refresh_token 与账号标识），access_token 内存缓存、到期前自动刷新。
 //!
@@ -25,13 +22,8 @@ use crate::error::AppResult;
 
 /// OpenAI OAuth 客户端 ID（与官方 Codex CLI 相同）
 const CODEX_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-const DEVICE_AUTH_USERCODE_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/usercode";
-const DEVICE_AUTH_TOKEN_URL: &str = "https://auth.openai.com/api/accounts/deviceauth/token";
 const OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
-const DEVICE_VERIFICATION_URL: &str = "https://auth.openai.com/codex/device";
-const DEVICE_REDIRECT_URI: &str = "https://auth.openai.com/deviceauth/callback";
 const TOKEN_REFRESH_BUFFER_MS: i64 = 60_000;
-const DEVICE_CODE_DEFAULT_EXPIRES_IN: u64 = 900;
 const CODEX_USER_AGENT: &str = "cgswitch-codex-oauth";
 const REGION_BLOCKED_MARKER: &str = "unsupported_country_region_territory";
 
@@ -48,12 +40,8 @@ const OAUTH_SCOPE_BROWSER: &str = "openid email profile offline_access";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CodexOAuthError {
-    #[error("等待用户授权中")]
-    AuthorizationPending,
     #[error("用户拒绝授权")]
     AccessDenied,
-    #[error("设备码已过期")]
-    ExpiredToken,
     #[error("OAuth 请求失败: {0}")]
     RequestFailed(String),
     #[error("Refresh Token 失效或已过期")]
@@ -72,16 +60,6 @@ impl From<reqwest::Error> for CodexOAuthError {
     fn from(error: reqwest::Error) -> Self {
         CodexOAuthError::NetworkError(error.to_string())
     }
-}
-
-/// 返回给前端的设备码信息
-#[derive(Debug, Clone, Serialize)]
-pub struct DeviceCodeResponse {
-    pub device_code: String,
-    pub user_code: String,
-    pub verification_uri: String,
-    pub expires_in: u64,
-    pub interval: u64,
 }
 
 /// 返回给前端的浏览器授权入口
@@ -138,24 +116,8 @@ pub struct AuthStatus {
     pub authenticated: bool,
     pub default_account_id: Option<String>,
     pub accounts: Vec<ManagedAccount>,
-    /// Codex CLI 官方认证（~/.codex/auth.json），只识别不导入数据库。
-    pub external: Option<ManagedAccount>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RawDeviceCodeResponse {
-    device_auth_id: String,
-    user_code: String,
-    #[serde(default)]
-    interval: Option<serde_json::Value>,
-    #[serde(default)]
-    expires_in: Option<u64>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RawDevicePollSuccess {
-    authorization_code: String,
-    code_verifier: String,
+    /// Desktop 来源账号（由 commands 层从数据库认证快照派生填充）。
+    pub external: Vec<ManagedAccount>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -173,6 +135,9 @@ struct IdTokenClaims {
     /// 跨刷新稳定的用户身份：同一 workspace 的不同用户 sub 不同
     #[serde(default)]
     sub: Option<String>,
+    /// JWT access token 的过期时间（NumericDate，秒）。
+    #[serde(default)]
+    exp: Option<i64>,
     #[serde(default)]
     chatgpt_account_id: Option<String>,
     #[serde(default)]
@@ -212,13 +177,6 @@ impl CachedAccessToken {
     fn is_expiring_soon(&self) -> bool {
         self.expires_at_ms - now_ms() < TOKEN_REFRESH_BUFFER_MS
     }
-}
-
-/// 进行中的设备码流程
-#[derive(Debug, Clone)]
-struct PendingDeviceCode {
-    user_code: String,
-    expires_at_ms: i64,
 }
 
 /// 持久化的账号数据（refresh_token/id_token + 上次生成的 auth.json 缓存，access_token 不落盘）
@@ -283,6 +241,10 @@ impl From<&CodexAccountData> for StoredAccount {
 /// 账号本地主键的进程内自增后缀：同一毫秒内登录多个账号也不会撞主键
 static ACCOUNT_ID_SEQ: AtomicU64 = AtomicU64::new(0);
 
+fn should_log_unmanaged_live_sync(last_workspace: &mut Option<String>, workspace: &str) -> bool {
+    last_workspace.replace(workspace.to_string()).as_deref() != Some(workspace)
+}
+
 /// 多账号认证管理器
 pub struct CodexOAuthManager {
     client: Mutex<reqwest::Client>,
@@ -290,9 +252,10 @@ pub struct CodexOAuthManager {
     default_account_id: Arc<RwLock<Option<String>>>,
     access_tokens: Arc<RwLock<HashMap<String, CachedAccessToken>>>,
     refresh_locks: Arc<RwLock<HashMap<String, Arc<Mutex<()>>>>>,
-    pending_device_codes: Arc<RwLock<HashMap<String, PendingDeviceCode>>>,
     /// 浏览器登录同一时刻只有一个；无跨 await 持锁，用同步锁避免 Send 问题
     pending_browser: std::sync::Mutex<Option<PendingBrowserLogin>>,
+    /// 非托管 live auth.json 是常态；同一 workspace 每个进程只记一次诊断行。
+    last_unmanaged_live_sync_workspace: std::sync::Mutex<Option<String>>,
     database: Arc<Database>,
 }
 
@@ -318,14 +281,17 @@ impl CodexOAuthManager {
             let client = self.client.lock().await.clone();
             let response = make(client).send().await.map_err(|error| {
                 tauri_plugin_log::log::warn!(
-                    "[auth] {operation}{retry_prefix}网络请求失败 [{context}]: {error}"
+                    "[auth.request] op={:?} subject={context:?} outcome=failure failure_kind=network_error error={error:?} msg=\"网络请求失败\"",
+                    format!("{operation}{retry_prefix}")
                 );
                 CodexOAuthError::from(error)
             })?;
             let status = response.status();
             let text = response.text().await.map_err(|error| {
                 tauri_plugin_log::log::warn!(
-                    "[auth] {operation}{retry_prefix}响应读取失败 [{context}] HTTP {status}: {error}"
+                    "[auth.request] op={:?} subject={context:?} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"响应读取失败\"",
+                    format!("{operation}{retry_prefix}"),
+                    status.as_u16()
                 );
                 CodexOAuthError::from(error)
             })?;
@@ -348,12 +314,14 @@ impl CodexOAuthManager {
             default_account_id: Arc::new(RwLock::new(None)),
             access_tokens: Arc::new(RwLock::new(HashMap::new())),
             refresh_locks: Arc::new(RwLock::new(HashMap::new())),
-            pending_device_codes: Arc::new(RwLock::new(HashMap::new())),
             pending_browser: std::sync::Mutex::new(None),
+            last_unmanaged_live_sync_workspace: std::sync::Mutex::new(None),
             database,
         };
         if let Err(error) = manager.load_accounts() {
-            tauri_plugin_log::log::warn!("[auth] 加载认证账号失败: {error}");
+            tauri_plugin_log::log::warn!(
+                "[auth.account.load] outcome=failure failure_kind=io_error error={error:?} msg=\"加载认证账号失败\""
+            );
         }
         manager
     }
@@ -361,124 +329,6 @@ impl CodexOAuthManager {
     /// 数据库恢复/导入后，重新从 SQLite 加载账号（不再触发旧 JSON 导入）。
     pub fn reload_from_database(&self) -> AppResult<()> {
         self.load_accounts()
-    }
-
-    // ==================== 设备码流程 ====================
-
-    /// 启动设备码流程，返回需要展示给用户的 user_code 与验证网址
-    pub async fn start_device_flow(&self) -> Result<DeviceCodeResponse, CodexOAuthError> {
-        let (status, text) = self
-            .request_with_proxy_retry("设备码申请", "login", |client| {
-                client
-                    .post(DEVICE_AUTH_USERCODE_URL)
-                    .header("Content-Type", "application/json")
-                    .json(&serde_json::json!({ "client_id": CODEX_CLIENT_ID }))
-            })
-            .await?;
-        if !status.is_success() {
-            tauri_plugin_log::log::warn!("[auth] 设备码申请失败 [login]: HTTP {status}");
-            return Err(CodexOAuthError::RequestFailed(format!(
-                "设备码请求失败: {status} - {text}"
-            )));
-        }
-        let device: RawDeviceCodeResponse = serde_json::from_str(&text).map_err(|error| {
-            tauri_plugin_log::log::warn!("[auth] 设备码响应解析失败 [login]: {error}");
-            CodexOAuthError::ParseError(error.to_string())
-        })?;
-
-        let interval = parse_interval(device.interval.as_ref());
-        let expires_in = device.expires_in.unwrap_or(DEVICE_CODE_DEFAULT_EXPIRES_IN);
-        let expires_at_ms = now_ms() + expires_in as i64 * 1000;
-
-        {
-            let mut pending = self.pending_device_codes.write().await;
-            let now = now_ms();
-            pending.retain(|_, entry| entry.expires_at_ms > now);
-            pending.insert(
-                device.device_auth_id.clone(),
-                PendingDeviceCode {
-                    user_code: device.user_code.clone(),
-                    expires_at_ms,
-                },
-            );
-        }
-
-        tauri_plugin_log::log::info!("[auth] 设备码已申请，等待用户在浏览器完成授权 [login]");
-        Ok(DeviceCodeResponse {
-            device_code: device.device_auth_id,
-            user_code: device.user_code,
-            verification_uri: DEVICE_VERIFICATION_URL.to_string(),
-            expires_in,
-            interval,
-        })
-    }
-
-    /// 轮询设备码状态，用户尚未授权时返回 `Ok(None)`
-    pub async fn poll_for_token(
-        &self,
-        device_code: &str,
-    ) -> Result<Option<ManagedAccount>, CodexOAuthError> {
-        let entry = self
-            .pending_device_codes
-            .read()
-            .await
-            .get(device_code)
-            .cloned()
-            .ok_or_else(|| {
-                CodexOAuthError::RequestFailed("未找到对应的用户码，请重新启动登录流程".to_string())
-            })?;
-        if entry.expires_at_ms <= now_ms() {
-            self.pending_device_codes.write().await.remove(device_code);
-            return Err(CodexOAuthError::ExpiredToken);
-        }
-
-        let (status, text) = self
-            .request_with_proxy_retry("设备码轮询", "login", |client| {
-                client
-                    .post(DEVICE_AUTH_TOKEN_URL)
-                    .header("Content-Type", "application/json")
-                    .json(&serde_json::json!({
-                        "device_auth_id": device_code,
-                        "user_code": entry.user_code,
-                    }))
-            })
-            .await?;
-        if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::NOT_FOUND {
-            if text.contains(REGION_BLOCKED_MARKER) {
-                tauri_plugin_log::log::warn!(
-                    "[auth] 设备码轮询被地区限制拦截 [login] HTTP {status}"
-                );
-                return Err(CodexOAuthError::RequestFailed(format!(
-                    "设备码轮询失败: {status} - {text}"
-                )));
-            }
-            return Err(CodexOAuthError::AuthorizationPending);
-        }
-        if status == reqwest::StatusCode::GONE {
-            self.pending_device_codes.write().await.remove(device_code);
-            return Err(CodexOAuthError::ExpiredToken);
-        }
-        if !status.is_success() {
-            tauri_plugin_log::log::warn!("[auth] 设备码轮询失败 [login]: HTTP {status}");
-            return Err(CodexOAuthError::RequestFailed(format!(
-                "设备码轮询失败: {status} - {text}"
-            )));
-        }
-
-        let success: RawDevicePollSuccess = serde_json::from_str(&text).map_err(|error| {
-            tauri_plugin_log::log::warn!("[auth] 设备码轮询响应解析失败 [login]: {error}");
-            CodexOAuthError::ParseError(error.to_string())
-        })?;
-        let tokens = self
-            .exchange_code_for_tokens(
-                &success.authorization_code,
-                &success.code_verifier,
-                DEVICE_REDIRECT_URI,
-            )
-            .await?;
-        self.pending_device_codes.write().await.remove(device_code);
-        tauri_plugin_log::log::info!("[auth] 设备码授权完成，已换取 Token，落库中 [login]");
-        Ok(Some(self.complete_login(tokens).await?))
     }
 
     async fn exchange_code_for_tokens(
@@ -502,29 +352,38 @@ impl CodexOAuthManager {
             })
             .await?;
         if !status.is_success() {
-            tauri_plugin_log::log::warn!("[auth] 换取 Token 失败 [login]: HTTP {status}");
+            tauri_plugin_log::log::warn!(
+                "[auth.login.token] outcome=failure failure_kind=http_error status_code={} msg=\"授权码换 Token 失败\"",
+                status.as_u16()
+            );
             return Err(CodexOAuthError::RequestFailed(format!(
                 "换取 Token 失败: {status} - {text}"
             )));
         }
         serde_json::from_str(&text).map_err(|error| {
-            tauri_plugin_log::log::warn!("[auth] Token 响应解析失败 [login]: {error}");
+            tauri_plugin_log::log::warn!(
+                "[auth.login.token] outcome=failure failure_kind=parse_error error={error:?} msg=\"Token 响应解析失败\""
+            );
             CodexOAuthError::ParseError(error.to_string())
         })
     }
 
-    /// 设备码与浏览器登录共用的收尾：落库 + 登录响应自带的 access_token 入缓存
+    /// 浏览器登录的收尾：落库 + 登录响应自带的 access_token 入缓存
     async fn complete_login(
         &self,
         tokens: OAuthTokenResponse,
     ) -> Result<ManagedAccount, CodexOAuthError> {
         let refresh_token = tokens.refresh_token.clone().ok_or_else(|| {
-            tauri_plugin_log::log::warn!("[auth] 登录响应缺少 refresh_token [login]");
+            tauri_plugin_log::log::warn!(
+                "[auth.login.token] outcome=failure failure_kind=validation_error error=\"missing refresh_token\" msg=\"登录响应缺少 refresh_token\""
+            );
             CodexOAuthError::RequestFailed("响应缺少 refresh_token".to_string())
         })?;
         let (chatgpt_account_id, email) = extract_identity_from_tokens(&tokens);
         let chatgpt_account_id = chatgpt_account_id.ok_or_else(|| {
-            tauri_plugin_log::log::warn!("[auth] Token 响应缺少 ChatGPT 账号标识 [login]");
+            tauri_plugin_log::log::warn!(
+                "[auth.login.token] outcome=failure failure_kind=validation_error error=\"missing chatgpt account id\" msg=\"Token 响应缺少 ChatGPT 账号标识\""
+            );
             CodexOAuthError::ParseError("无法从 token 中提取账号标识".to_string())
         })?;
         let id_token = tokens.id_token.clone();
@@ -585,7 +444,7 @@ impl CodexOAuthManager {
                 }
                 Err(error) => {
                     tauri_plugin_log::log::warn!(
-                        "[auth] 浏览器登录回调端口绑定失败 [login]: {error}"
+                        "[auth.login.browser.start] outcome=failure failure_kind=io_error error={error:?} msg=\"浏览器登录回调端口绑定失败\""
                     );
                     return Err(CodexOAuthError::RequestFailed(format!(
                         "本地端口 {BROWSER_CALLBACK_PORT} 绑定失败: {error}"
@@ -594,7 +453,9 @@ impl CodexOAuthManager {
             }
         }
         let listener = listener.ok_or_else(|| {
-            tauri_plugin_log::log::warn!("[auth] 浏览器登录回调端口持续被占用 [login]");
+            tauri_plugin_log::log::warn!(
+                "[auth.login.browser.start] outcome=failure failure_kind=io_error msg=\"浏览器登录回调端口持续被占用\""
+            );
             CodexOAuthError::RequestFailed(format!(
                 "本地端口 {BROWSER_CALLBACK_PORT} 被占用（可能其他程序正在登录），请稍后重试"
             ))
@@ -612,15 +473,16 @@ impl CodexOAuthManager {
             serve_browser_callback(listener, callback_state, code_tx);
         });
         let authorize_url = build_authorize_url(&state, &pkce_code_challenge(&code_verifier));
-        tauri_plugin_log::log::info!("[auth] 浏览器登录已启动，等待授权回调 [login]");
+        tauri_plugin_log::log::info!(
+            "[auth.login.browser.start] outcome=success msg=\"浏览器登录已启动，等待授权回调\""
+        );
         Ok(BrowserLoginStart {
             authorize_url,
             expires_in: BROWSER_LOGIN_TIMEOUT_SECS,
         })
     }
 
-    /// 轮询浏览器登录结果：用户尚未在浏览器完成授权时返回 `Ok(None)`。
-    /// 授权完成即换 Token 并落库，等价于设备码流程的 `poll_for_token`。
+    /// 轮询浏览器登录结果：用户尚未在浏览器完成授权时返回 `Ok(None)`。授权完成即换 Token 并落库。
     pub async fn poll_browser_login(&self) -> Result<Option<ManagedAccount>, CodexOAuthError> {
         let mut code_rx = {
             let mut pending = self.browser_pending_lock();
@@ -657,7 +519,7 @@ impl CodexOAuthManager {
             Ok(Ok(BrowserCallback::Timeout)) => {
                 self.clear_pending_browser_login();
                 tauri_plugin_log::log::warn!(
-                    "[auth] 浏览器登录等待超时（{BROWSER_LOGIN_TIMEOUT_SECS}s）[login]"
+                    "[auth.login.browser.failure] outcome=failure failure_kind=timeout msg=\"浏览器登录等待超时\""
                 );
                 return Err(CodexOAuthError::RequestFailed(
                     "浏览器登录等待超时，请重试".to_string(),
@@ -665,7 +527,9 @@ impl CodexOAuthManager {
             }
             Ok(Ok(BrowserCallback::Denied(message))) => {
                 self.clear_pending_browser_login();
-                tauri_plugin_log::log::warn!("[auth] 浏览器授权被拒绝或中断 [login]: {message}");
+                tauri_plugin_log::log::info!(
+                    "[auth.login.browser.denied] outcome=denied error={message:?} msg=\"浏览器授权被拒绝或中断\""
+                );
                 return Err(CodexOAuthError::RequestFailed(format!(
                     "浏览器授权未完成: {message}"
                 )));
@@ -686,14 +550,20 @@ impl CodexOAuthManager {
         let tokens = self
             .exchange_code_for_tokens(&code, &code_verifier, BROWSER_REDIRECT_URI)
             .await?;
-        tauri_plugin_log::log::info!("[auth] 浏览器授权回调已换取 Token，落库中 [login]");
-        Ok(Some(self.complete_login(tokens).await?))
+        let account = self.complete_login(tokens).await?;
+        tauri_plugin_log::log::info!(
+            "[auth.login.browser.success] account_id={} source=oauth outcome=success msg=\"浏览器授权完成\"",
+            account.id
+        );
+        Ok(Some(account))
     }
 
     /// 取消进行中的浏览器登录：丢弃 receiver 使监听线程退出并释放回调端口。
     pub fn cancel_browser_login(&self) {
         if self.clear_pending_browser_login() {
-            tauri_plugin_log::log::info!("[auth] 已取消浏览器登录等待 [login]");
+            tauri_plugin_log::log::info!(
+                "[auth.login.browser.cancel] outcome=denied msg=\"已取消浏览器登录等待\""
+            );
         }
     }
 
@@ -722,9 +592,25 @@ impl CodexOAuthManager {
                     ])
             })
             .await?;
+        #[cfg(debug_assertions)]
+        let subject = {
+            let email = self
+                .accounts
+                .read()
+                .await
+                .get(account_id)
+                .and_then(|account| account.email.clone());
+            match email {
+                Some(email) => format!("account_id={account_id} email={email:?}"),
+                None => format!("account_id={account_id}"),
+            }
+        };
+        #[cfg(not(debug_assertions))]
+        let subject = format!("account_id={account_id}");
         if text.contains(REGION_BLOCKED_MARKER) {
             tauri_plugin_log::log::warn!(
-                "[auth] Token 刷新被地区限制拦截 [{account_id}] HTTP {status}"
+                "[auth.token.refresh] {subject} outcome=failure failure_kind=region_blocked status_code={} msg=\"Token 刷新被地区限制拦截\"",
+                status.as_u16()
             );
             return Err(CodexOAuthError::RequestFailed(format!(
                 "刷新 Token 失败: {status} - {text}"
@@ -733,22 +619,28 @@ impl CodexOAuthManager {
         if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
             // 服务端吊销/拒绝（refresh_token_invalidated）：掉登录的唯一信号源，必须留痕
             tauri_plugin_log::log::warn!(
-                "[auth] refresh_token 被服务端拒绝 [{account_id}] (HTTP {status})，该账号需要重新登录"
+                "[auth.token.refresh] {subject} outcome=failure failure_kind=auth_error status_code={} msg=\"refresh_token 被服务端拒绝，该账号需要重新登录\"",
+                status.as_u16()
             );
             return Err(CodexOAuthError::RefreshTokenInvalid);
         }
         if !status.is_success() {
-            tauri_plugin_log::log::warn!("[auth] token 刷新请求失败 [{account_id}]: HTTP {status}");
+            tauri_plugin_log::log::warn!(
+                "[auth.token.refresh] {subject} outcome=failure failure_kind=http_error status_code={} msg=\"token 刷新请求失败\"",
+                status.as_u16()
+            );
             return Err(CodexOAuthError::RequestFailed(format!(
                 "刷新 Token 失败: {status} - {text}"
             )));
         }
         let tokens = serde_json::from_str::<OAuthTokenResponse>(&text).map_err(|error| {
-            tauri_plugin_log::log::warn!("[auth] token 刷新响应解析失败 [{account_id}]: {error}");
+            tauri_plugin_log::log::warn!(
+                "[auth.token.refresh] {subject} outcome=failure failure_kind=parse_error error={error:?} msg=\"token 刷新响应解析失败\""
+            );
             CodexOAuthError::ParseError(error.to_string())
         })?;
         tauri_plugin_log::log::info!(
-            "[auth] token 刷新成功，新 access_token 有效期约 {} 秒",
+            "[auth.token.refresh] {subject} outcome=success expires_in={} msg=\"token 刷新成功，新 access_token 已取得\"",
             tokens.expires_in.unwrap_or(0)
         );
         Ok(tokens)
@@ -776,17 +668,33 @@ impl CodexOAuthManager {
             }
         }
 
-        let refresh_token = {
+        let account = {
             let accounts = self.accounts.read().await;
             accounts
                 .get(account_id)
-                .map(|account| account.refresh_token.clone())
+                .cloned()
                 .ok_or_else(|| {
-                    tauri_plugin_log::log::warn!("[auth] Token 刷新找不到托管账号 [{account_id}]");
+                    tauri_plugin_log::log::warn!(
+                        "[auth.token.refresh] account_id={account_id} outcome=failure failure_kind=not_found msg=\"Token 刷新找不到托管账号\""
+                    );
                     CodexOAuthError::AccountNotFound(account_id.to_string())
                 })?
         };
-        let new_tokens = self.refresh_with_token(account_id, &refresh_token).await?;
+
+        // 账号 auth.json 是 access_token 的持久化快照。进程缓存丢失后，若快照中的
+        // token 尚未过期，继续使用它；不要因 refresh_token 已失效而提前阻断切换/查额。
+        if let Some(cached) = reusable_auth_snapshot_access_token(&account) {
+            let token = cached.token.clone();
+            self.access_tokens
+                .write()
+                .await
+                .insert(account_id.to_string(), cached);
+            return Ok(token);
+        }
+
+        let new_tokens = self
+            .refresh_with_token(account_id, &account.refresh_token)
+            .await?;
 
         let new_refresh = new_tokens.refresh_token.clone();
         let new_id_token = new_tokens.id_token.clone();
@@ -816,9 +724,10 @@ impl CodexOAuthManager {
                 }
                 if changed {
                     // refresh_token 轮换落库是后续离线复用 auth.json 的依据，必须留痕
+                    let subject = format!("account_id={account_id}");
                     self.save_account(account)?;
                     tauri_plugin_log::log::info!(
-                        "[auth] 账号 {account_id} 凭证已轮换并持久化到数据库"
+                        "[auth.token.rotate] {subject} outcome=success msg=\"凭证已轮换并持久化到数据库\""
                     );
                 }
             }
@@ -878,7 +787,9 @@ impl CodexOAuthManager {
                 if account.auth_json.as_deref() != Some(text.as_str()) {
                     account.auth_json = Some(text.clone());
                     if let Err(error) = self.save_account(account) {
-                        tauri_plugin_log::log::warn!("[auth] 缓存 auth.json 失败: {error}");
+                        tauri_plugin_log::log::warn!(
+                            "[auth.live_sync] outcome=failure failure_kind=io_error error={error:?} msg=\"缓存 auth.json 失败\""
+                        );
                     }
                 }
             }
@@ -915,10 +826,9 @@ impl CodexOAuthManager {
         let Some(refresh_token) = auth.refresh_token.clone() else {
             return Ok(false);
         };
-        // 纯跟随登录（没有任何托管账号）时归属不到是常态，降到 trace 避免每次
-        // 焦点刷新都刷一行；只有「有托管账号但归属失败」才是「切完掉登录」的前兆
+        // 纯跟随登录（没有任何托管账号）时归属不到是常态，不留日志；只有
+        // 「有托管账号但归属失败」才是「切完掉登录」的前兆。
         if self.accounts.read().await.is_empty() {
-            tauri_plugin_log::log::trace!("[auth] 无托管账号，跳过 live auth.json 归属同步");
             return Ok(false);
         }
         let Some(row_id) = self.resolve_external_auth_owner(&auth).await else {
@@ -932,12 +842,19 @@ impl CodexOAuthManager {
             let workspace = auth.account_id.as_str();
             if same_workspace {
                 tauri_plugin_log::log::warn!(
-                    "[auth] live auth.json 已被外部刷新且 workspace 匹配托管账号，但用户身份对不上，跳过同步 [{workspace}]"
+                    "[auth.live_sync] workspace={workspace:?} outcome=failure failure_kind=auth_error msg=\"live auth.json 已被外部刷新且 workspace 匹配托管账号，但用户身份对不上，跳过同步\""
                 );
             } else {
-                tauri_plugin_log::log::debug!(
-                    "[auth] live auth.json 属于非托管账号，跳过归属同步 [{workspace}]"
-                );
+                let should_log = self
+                    .last_unmanaged_live_sync_workspace
+                    .lock()
+                    .map(|mut last| should_log_unmanaged_live_sync(&mut last, workspace))
+                    .unwrap_or(false);
+                if should_log {
+                    tauri_plugin_log::log::debug!(
+                        "[auth.live_sync.skip] workspace={workspace:?} source=live_auth_json outcome=success msg=\"live auth.json 属于非托管账号，跳过归属同步\""
+                    );
+                }
             }
             return Ok(false);
         };
@@ -989,10 +906,14 @@ impl CodexOAuthManager {
         // 下一次生成 auth.json 时必须按数据库里的 refresh_token 重新验证。
         self.access_tokens.write().await.remove(&row_id);
         self.save_account(&account).map_err(|error| {
-            tauri_plugin_log::log::warn!("[auth] 同步外部 auth.json 落库失败 [{row_id}]: {error}");
+            tauri_plugin_log::log::warn!(
+                "[auth.live_sync] account_id={row_id} outcome=failure failure_kind=io_error error={error:?} msg=\"同步外部 auth.json 落库失败\""
+            );
             error
         })?;
-        tauri_plugin_log::log::info!("[auth] 已把外部刷新的 live auth.json 同步回账号 {row_id}");
+        tauri_plugin_log::log::info!(
+            "[auth.live_sync] account_id={row_id} outcome=success msg=\"已把外部刷新的 live auth.json 同步回账号\""
+        );
         Ok(true)
     }
 
@@ -1049,7 +970,7 @@ impl CodexOAuthManager {
             authenticated: !accounts.is_empty(),
             default_account_id: default_id.clone(),
             accounts: sorted_accounts(&accounts, default_id.as_deref()),
-            external: None,
+            external: Vec::new(),
         }
     }
 
@@ -1058,13 +979,12 @@ impl CodexOAuthManager {
     }
 
     pub async fn remove_account(&self, account_id: &str) -> Result<(), CodexOAuthError> {
-        let removed_email = {
+        {
             let mut accounts = self.accounts.write().await;
-            let removed = accounts
+            accounts
                 .remove(account_id)
                 .ok_or_else(|| CodexOAuthError::AccountNotFound(account_id.to_string()))?;
-            removed.email
-        };
+        }
         self.database
             .delete_account(account_id)
             .map_err(|error| CodexOAuthError::IoError(error.to_string()))?;
@@ -1080,11 +1000,10 @@ impl CodexOAuthManager {
         let default = self.default_account_id.read().await.clone();
         self.save_default_account(default.as_deref())?;
         // 删除是用户触发的里程碑，且清掉的是长期凭据，必须留痕
-        let login_hint = removed_email
-            .as_deref()
-            .map(|mail| format!(" {mail}"))
-            .unwrap_or_default();
-        tauri_plugin_log::log::info!("[auth] 已移除托管账号 [{account_id}]{login_hint}");
+        let subject = format!("account_id={account_id}");
+        tauri_plugin_log::log::info!(
+            "[auth.account.remove] {subject} outcome=success msg=\"已移除托管账号\""
+        );
         Ok(())
     }
 
@@ -1100,11 +1019,6 @@ impl CodexOAuthManager {
             .get(row_id)
             .and_then(|account| account.workspace_id())
             .unwrap_or_else(|| row_id.to_string())
-    }
-
-    /// 行 id 对应的账号邮箱（日志主体可读化用），未知账号返回 None。
-    pub async fn account_email(&self, row_id: &str) -> Option<String> {
-        self.accounts.read().await.get(row_id)?.email.clone()
     }
 
     // ==================== 内部方法 ====================
@@ -1320,7 +1234,10 @@ impl CodexOAuthManager {
             .into_iter()
             .map(|account| (account.id.clone(), account.into()))
             .collect();
-        tauri_plugin_log::log::debug!("[auth] 已加载 {} 个托管账号", accounts.len());
+        tauri_plugin_log::log::debug!(
+            "[auth.account.load] count={} outcome=success msg=\"已加载托管账号\"",
+            accounts.len()
+        );
         let default = self
             .database
             .app_state()?
@@ -1381,15 +1298,6 @@ fn fallback_default_account_id(accounts: &HashMap<String, CodexAccountData>) -> 
         .map(|(id, _)| id.clone())
 }
 
-fn parse_interval(value: Option<&serde_json::Value>) -> u64 {
-    let raw = match value {
-        Some(serde_json::Value::Number(number)) => number.as_u64().unwrap_or(5),
-        Some(serde_json::Value::String(text)) => text.parse::<u64>().unwrap_or(5),
-        _ => 5,
-    };
-    raw.max(1)
-}
-
 fn compute_expires_at_ms(expires_in: Option<i64>) -> i64 {
     now_ms() + expires_in.unwrap_or(3600) * 1000
 }
@@ -1401,6 +1309,28 @@ fn parse_jwt_claims(token: &str) -> Option<IdTokenClaims> {
     }
     let decoded = URL_SAFE_NO_PAD.decode(parts[1]).ok()?;
     serde_json::from_slice(&decoded).ok()
+}
+
+fn reusable_auth_snapshot_access_token(account: &CodexAccountData) -> Option<CachedAccessToken> {
+    let auth = parse_external_auth_json(account.auth_json.as_deref()?)?;
+    if account.workspace_id().as_deref() != Some(auth.account_id.as_str()) {
+        return None;
+    }
+    if matches!(
+        (account.user_identity.as_deref(), auth.user_identity.as_deref()),
+        (Some(expected), Some(actual)) if expected != actual
+    ) {
+        return None;
+    }
+
+    let expires_at_ms = parse_jwt_claims(&auth.access_token)?
+        .exp?
+        .saturating_mul(1_000);
+    let cached = CachedAccessToken {
+        token: auth.access_token,
+        expires_at_ms,
+    };
+    (!cached.is_expiring_soon()).then_some(cached)
 }
 
 /// 从 JWT 提取稳定用户身份（sub）：跨刷新不变，判重与 live auth 所有权校验的依据。
@@ -1743,11 +1673,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_interval_handles_number_string_and_default() {
-        assert_eq!(parse_interval(Some(&serde_json::json!(5))), 5);
-        assert_eq!(parse_interval(Some(&serde_json::json!("10"))), 10);
-        assert_eq!(parse_interval(None), 5);
-        assert_eq!(parse_interval(Some(&serde_json::json!(0))), 1);
+    fn unmanaged_live_sync_logs_once_per_workspace() {
+        let mut last = None;
+        assert!(should_log_unmanaged_live_sync(&mut last, "workspace-a"));
+        assert!(!should_log_unmanaged_live_sync(&mut last, "workspace-a"));
+        assert!(should_log_unmanaged_live_sync(&mut last, "workspace-b"));
     }
 
     #[test]
@@ -1855,6 +1785,120 @@ mod tests {
             expires_at_ms: now + 3_600_000,
         }
         .is_expiring_soon());
+    }
+
+    #[test]
+    fn auth_snapshot_access_token_requires_matching_identity_and_valid_expiry() {
+        let access_token = test_access_token(
+            "workspace-a",
+            chrono::Utc::now().timestamp().saturating_add(3_600),
+        );
+        let id_token = test_id_token("subject-a", "workspace-a");
+        let auth_json = serde_json::json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": access_token,
+                "id_token": id_token,
+                "refresh_token": "snapshot-refresh",
+                "account_id": "workspace-a",
+            },
+        })
+        .to_string();
+        let account = CodexAccountData {
+            account_id: "row-a".to_string(),
+            email: None,
+            id_token: Some(id_token),
+            refresh_token: "rejected-refresh".to_string(),
+            auth_json: Some(auth_json),
+            authenticated_at: 0,
+            chatgpt_account_id: Some("workspace-a".to_string()),
+            user_identity: Some("subject-a".to_string()),
+            plan_type: None,
+        };
+
+        let cached = reusable_auth_snapshot_access_token(&account).unwrap();
+        assert_eq!(cached.token, access_token);
+        assert!(!cached.is_expiring_soon());
+
+        let mut wrong_workspace = account.clone();
+        wrong_workspace.chatgpt_account_id = Some("workspace-b".to_string());
+        assert!(reusable_auth_snapshot_access_token(&wrong_workspace).is_none());
+
+        let mut wrong_user = account.clone();
+        wrong_user.user_identity = Some("subject-b".to_string());
+        assert!(reusable_auth_snapshot_access_token(&wrong_user).is_none());
+
+        let expired_access_token = test_access_token(
+            "workspace-a",
+            chrono::Utc::now().timestamp().saturating_add(30),
+        );
+        let mut expiring = account;
+        expiring.auth_json = Some(
+            serde_json::json!({
+                "auth_mode": "chatgpt",
+                "tokens": {
+                    "access_token": expired_access_token,
+                    "id_token": test_id_token("subject-a", "workspace-a"),
+                    "refresh_token": "snapshot-refresh",
+                    "account_id": "workspace-a",
+                },
+            })
+            .to_string(),
+        );
+        assert!(reusable_auth_snapshot_access_token(&expiring).is_none());
+    }
+
+    #[tokio::test]
+    async fn valid_auth_snapshot_token_is_used_before_refreshing_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let database = setup(dir.path());
+        let manager = CodexOAuthManager::new(database);
+        let account = manager
+            .add_account_internal(test_credentials(
+                "workspace-a",
+                "rejected-refresh",
+                Some("a@example.com"),
+                Some(test_id_token("subject-a", "workspace-a")),
+            ))
+            .await
+            .unwrap();
+        let access_token = test_access_token(
+            "workspace-a",
+            chrono::Utc::now().timestamp().saturating_add(3_600),
+        );
+        let auth_json = serde_json::json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": access_token,
+                "id_token": test_id_token("subject-a", "workspace-a"),
+                "refresh_token": "rejected-refresh",
+                "account_id": "workspace-a",
+            },
+        })
+        .to_string();
+        let account_for_save = {
+            let mut accounts = manager.accounts.write().await;
+            let account_data = accounts.get_mut(&account.id).unwrap();
+            account_data.auth_json = Some(auth_json);
+            account_data.clone()
+        };
+        manager.save_account(&account_for_save).unwrap();
+
+        assert_eq!(
+            manager
+                .get_valid_token_for_account(&account.id)
+                .await
+                .unwrap(),
+            access_token
+        );
+    }
+
+    fn test_access_token(chatgpt_account_id: &str, exp: i64) -> String {
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            serde_json::json!({ "chatgpt_account_id": chatgpt_account_id, "exp": exp }).to_string(),
+        );
+        format!("{header}.{payload}.")
     }
 
     #[tokio::test]

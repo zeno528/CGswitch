@@ -1,7 +1,8 @@
-import { Check, Copy, CreditCard, ExternalLink, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { CircleAlert, CreditCard, ExternalLink, LogIn, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { authQuotaCacheKey, authQuotaErrorKind, getAuthQuotaBalance, getAuthQuotaError, getVisibleAuthQuota, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { PlanBadge } from "../../components/PlanBadge";
@@ -10,13 +11,12 @@ import { TrashIcon } from "../../components/TrashIcon";
 import { providerIconUrl } from "../../icons";
 import { balanceChipClass } from "../../presets";
 import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
-import type { AuthStatus, BrowserLoginStart, ChatgptResetCredit, DeviceCodeResponse, ProfileBalanceInfo } from "../../types";
+import type { AuthStatus, BrowserLoginStart, ChatgptResetCredit, ProfileBalanceInfo } from "../../types";
 
-const authQuotaCache = new Map<string, ProfileBalanceInfo>();
 const chatgptLogo = providerIconUrl("openai-chatgpt");
 
-function authQuotaCacheKey(source: "desktop" | "oauth", accountId?: string) {
-  return `auth:${source}:${accountId ?? "codex-external"}`;
+export function isOAuthLoginExpiredError(message: string) {
+  return authQuotaErrorKind(message) === "auth_expired";
 }
 
 function remainingPercent(usedPercent: number) {
@@ -102,20 +102,28 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   </div>;
 }
 
-function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" | "oauth"; accountId?: string; cachedBalance?: ProfileBalanceInfo }) {
+function AccountQuota({ source, accountId, cachedBalance, onRelogin, reloginDisabled }: {
+  source: "desktop" | "oauth";
+  accountId: string;
+  cachedBalance?: ProfileBalanceInfo;
+  onRelogin?: () => void;
+  reloginDisabled?: boolean;
+}) {
   const { t } = useTranslation("settings");
+  const feedback = useFeedback();
   // 窗口标签的文案在 profiles 命名空间，另取一个对应的 t
   const { t: tBalance } = useTranslation("profiles");
   const cacheKey = authQuotaCacheKey(source, accountId);
-  const [quota, setQuota] = useState<ProfileBalanceInfo | null>(() => authQuotaCache.get(cacheKey) ?? cachedBalance ?? null);
-  const [error, setError] = useState("");
+  const initialQuota = getVisibleAuthQuota(cacheKey, cachedBalance ?? null);
+  const [quota, setQuota] = useState<ProfileBalanceInfo | null>(initialQuota);
+  const [error, setError] = useState(() => getAuthQuotaError(cacheKey));
   const [loading, setLoading] = useState(false);
   const [animationRevision, setAnimationRevision] = useState(0);
   const [animationFromQuota, setAnimationFromQuota] = useState<ProfileBalanceInfo | null>(null);
-  const displayedQuotaRef = useRef(quota);
+  const displayedQuotaRef = useRef(getAuthQuotaBalance(cacheKey) ?? cachedBalance ?? null);
   const loadingRef = useRef(false);
 
-  const refresh = async () => {
+  const refresh = async (manual = false) => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
@@ -128,15 +136,19 @@ function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" 
       setAnimationFromQuota(previousQuota);
       setQuota(info);
       setAnimationRevision((revision) => revision + 1);
-      authQuotaCache.set(cacheKey, info);
+      setAuthQuotaSuccess(cacheKey, info);
       // 复用现有持久化余额缓存，只用 auth 命名空间隔离账号。
       void api.setProfileBalance(cacheKey, info);
       setError("");
     } catch (cause) {
-      displayedQuotaRef.current = null;
+      const message = String(cause);
+      setAuthQuotaFailure(cacheKey, message);
       setQuota(null);
-      authQuotaCache.delete(cacheKey);
-      setError(String(cause));
+      setError(message);
+      if (manual) {
+        const loginExpired = source === "oauth" && isOAuthLoginExpiredError(message);
+        feedback.error(loginExpired ? t("account.quotaLoginExpired") : t("account.quotaRefreshFailed"));
+      }
     }
     finally {
       loadingRef.current = false;
@@ -145,10 +157,13 @@ function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" 
   };
 
   useEffect(() => {
-    const nextQuota = authQuotaCache.get(cacheKey) ?? cachedBalance ?? null;
+    const knownError = getAuthQuotaError(cacheKey);
+    const nextQuota = getAuthQuotaBalance(cacheKey) ?? cachedBalance ?? null;
     displayedQuotaRef.current = nextQuota;
-    setQuota(nextQuota);
-    void refresh();
+    setQuota(knownError ? null : nextQuota);
+    setError(knownError);
+    // 已知错误（尤其登录失效）挂载即重试必然再失败，还会让按钮闪一下禁用态；留给手动刷新
+    if (!knownError) void refresh();
     // Cache identity changes are the only reload trigger; refresh keeps the latest value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey]);
@@ -156,8 +171,50 @@ function AccountQuota({ source, accountId, cachedBalance }: { source: "desktop" 
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
   const primaryLabel = localizeBalanceLabel(quota?.usage_label, tBalance) ?? t("account.quotaLabel");
   const weeklyLabel = localizeBalanceLabel(quota?.weekly_label, tBalance) ?? t("account.periodLabel");
+  const loginExpired = source === "oauth" && isOAuthLoginExpiredError(error);
+  const errorAction = loginExpired && onRelogin ? onRelogin : () => void refresh(true);
 
-  return <div className="mt-3 border-t border-[var(--panel-divider)] pt-2">{quota?.usage_percent != null ? <div className="space-y-2"><QuotaProgressBar label={primaryLabel} usedPercent={quota.usage_percent} resetAt={quota.usage_reset_at} resetIn={quota.usage_reset} onRefresh={() => void refresh()} loading={loading} animationRevision={animationRevision} animationFromRemaining={animationFromQuota?.usage_percent == null ? undefined : remainingPercent(animationFromQuota.usage_percent)} />{quota.weekly_usage_percent != null ? <QuotaProgressBar label={weeklyLabel} usedPercent={quota.weekly_usage_percent} resetAt={quota.weekly_reset_at} resetIn={quota.weekly_reset} animationRevision={animationRevision} animationFromRemaining={animationFromQuota?.weekly_usage_percent == null ? undefined : remainingPercent(animationFromQuota.weekly_usage_percent)} /> : null}</div> : <p className={`mt-1 text-xs ${error ? "text-[var(--danger)]" : "muted"}`}>{error ? t("account.quotaFailed") : t("account.quotaLoading")}</p>}{quota && (quota.reset_credits_available ?? 0) > 0 ? <ResetCredits availableCount={quota.reset_credits_available ?? 0} credits={quota.reset_credits} /> : null}</div>;
+  return <div className="mt-3 border-t border-[var(--panel-divider)] pt-3">
+    {quota?.usage_percent != null ? (
+      <div className="space-y-2">
+        <QuotaProgressBar
+          label={primaryLabel}
+          usedPercent={quota.usage_percent}
+          resetAt={quota.usage_reset_at}
+          resetIn={quota.usage_reset}
+          onRefresh={() => void refresh(true)}
+          loading={loading}
+          animationRevision={animationRevision}
+          animationFromRemaining={animationFromQuota?.usage_percent == null ? undefined : remainingPercent(animationFromQuota.usage_percent)}
+        />
+        {quota.weekly_usage_percent != null ? <QuotaProgressBar
+          label={weeklyLabel}
+          usedPercent={quota.weekly_usage_percent}
+          resetAt={quota.weekly_reset_at}
+          resetIn={quota.weekly_reset}
+          animationRevision={animationRevision}
+          animationFromRemaining={animationFromQuota?.weekly_usage_percent == null ? undefined : remainingPercent(animationFromQuota.weekly_usage_percent)}
+        /> : null}
+      </div>
+    ) : error ? (
+      <div role="alert" className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--panel-border)] bg-(--profile-chip-bg) px-3 py-2.5">
+        <div className="flex min-w-0 items-start gap-2">
+          <CircleAlert className={`mt-0.5 h-4 w-4 shrink-0 ${loginExpired ? "text-[var(--warning)]" : "text-[var(--danger)]"}`} strokeWidth={2} />
+          <div className="min-w-0">
+            <div className="field-label">{loginExpired ? t("account.quotaLoginExpiredTitle") : t("account.quotaFailed")}</div>
+            <p className="setting-description mt-0.5">{loginExpired ? t("account.quotaLoginExpiredDescription") : t("account.quotaRefreshFailed")}</p>
+          </div>
+        </div>
+        <button type="button" className="apple-action-button app-button--primary shrink-0" disabled={loading || (loginExpired && reloginDisabled)} onClick={errorAction}>
+          {loginExpired && onRelogin ? <LogIn className="h-4 w-4" strokeWidth={2} /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
+          {loginExpired && onRelogin ? t("account.relogin") : t("account.retryQuota")}
+        </button>
+      </div>
+    ) : (
+      <p className="mt-1 text-xs muted">{t("account.quotaLoading")}</p>
+    )}
+    {quota && (quota.reset_credits_available ?? 0) > 0 ? <ResetCredits availableCount={quota.reset_credits_available ?? 0} credits={quota.reset_credits} /> : null}
+  </div>;
 }
 
 function ResetCredits({ availableCount, credits }: { availableCount: number; credits?: ChatgptResetCredit[] | null }) {
@@ -169,13 +226,13 @@ function ResetCredits({ availableCount, credits }: { availableCount: number; cre
 
   return <section className="mt-3 border-t border-[var(--panel-divider)] pt-3">
     <div className="flex items-center gap-3">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><CreditCard className="h-[18px] w-[18px]" strokeWidth={2} /></span>
+      <CreditCard className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
       <div className="flex min-w-0 items-baseline gap-2"><div className="setting-title">{t("account.resetCreditsTitle")}</div><div className="setting-description">{t("account.resetCredits", { count: availableCount })}</div></div>
     </div>
     {credits?.length ? <div className="mt-3 divide-y divide-[var(--panel-divider)]">
       {credits.map((credit) => {
         const days = daysRemaining(credit.expires_at);
-        return <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 first:pt-0 last:pb-0"><div className="field-subtitle min-w-0">{resetTitle(credit.reset_type)}</div><div className="whitespace-nowrap text-xs">{t("account.resetCreditExpiry", { time: formatExpiry(credit.expires_at) })}{days == null ? null : <span className="muted"> · {t("account.resetCreditDaysRemaining", { count: days })}</span>}</div></div>;
+        return <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 first:pt-0 last:pb-0"><div className="field-label min-w-0">{resetTitle(credit.reset_type)}</div><div className="whitespace-nowrap text-xs">{t("account.resetCreditExpiry", { time: formatExpiry(credit.expires_at) })}{days == null ? null : <span className="muted"> · {t("account.resetCreditDaysRemaining", { count: days })}</span>}</div></div>;
       })}
     </div> : null}
   </section>;
@@ -195,31 +252,16 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
   const [status, setStatus] = useState(initialStatus);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [login, setLogin] = useState<DeviceCodeResponse | null>(null);
   const [browserLogin, setBrowserLogin] = useState<BrowserLoginStart | null>(null);
-  const [copied, setCopied] = useState(false);
   const disposed = useRef(false);
   const pollCancelled = useRef(false);
-  const copyResetTimer = useRef<number | undefined>(undefined);
 
   const refreshStatus = async () => {
     try { const next = await api.authGetStatus(); if (!disposed.current) { setStatus(next); setLoadError(""); } }
     catch (error) { if (!disposed.current) setLoadError(String(error)); }
   };
-  useEffect(() => { disposed.current = false; void refreshStatus(); return () => { disposed.current = true; if (copyResetTimer.current !== undefined) window.clearTimeout(copyResetTimer.current); }; }, []);
+  useEffect(() => { disposed.current = false; void refreshStatus(); return () => { disposed.current = true; }; }, []);
   useEffect(() => setStatus(initialStatus), [initialStatus]);
-
-  const poll = async (current: DeviceCodeResponse) => {
-    try {
-      const deadline = Date.now() + current.expires_in * 1000;
-      while (!disposed.current && !pollCancelled.current && Date.now() < deadline) {
-        const account = await api.authPollForAccount(current.device_code);
-        if (account) { setLogin(null); await refreshStatus(); feedback.success(t("account.addedToast")); break; }
-        await new Promise((resolve) => window.setTimeout(resolve, current.interval * 1000));
-      }
-    } catch (error) { if (!disposed.current) { feedback.error(String(error)); setLogin(null); } }
-    finally { if (!disposed.current) setBusy(false); }
-  };
 
   const pollBrowser = async (current: BrowserLoginStart) => {
     try {
@@ -234,19 +276,11 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
     finally { if (!disposed.current) setBusy(false); }
   };
 
-  // 主路径：浏览器授权码登录（PKCE 回环回调），无需手动输入设备码
+  // 浏览器授权码登录（PKCE 回环回调）
   const startLogin = async () => {
     if (busy) return;
-    setBusy(true); setLogin(null); setBrowserLogin(null); pollCancelled.current = false;
+    setBusy(true); setBrowserLogin(null); pollCancelled.current = false;
     try { const next = await api.authStartBrowserLogin(); setBrowserLogin(next); await api.openUrl(next.authorize_url); void pollBrowser(next); }
-    catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? t("account.regionBlocked") : text); setBusy(false); }
-  };
-
-  // 后备路径：设备码登录（本地回调端口不可用等场景）
-  const startDeviceLogin = async () => {
-    if (busy) return;
-    setBusy(true); setBrowserLogin(null); setLogin(null); setCopied(false); pollCancelled.current = false;
-    try { const next = await api.authStartLogin(); setLogin(next); await api.openUrl(next.verification_uri); void poll(next); }
     catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? t("account.regionBlocked") : text); setBusy(false); }
   };
 
@@ -255,16 +289,6 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
     void api.authCancelBrowserLogin().catch(() => {});
     setBrowserLogin(null);
     setBusy(false);
-  };
-
-  const copyUserCode = async () => {
-    if (!login) return;
-    try {
-      await navigator.clipboard.writeText(login.user_code);
-      setCopied(true);
-      if (copyResetTimer.current !== undefined) window.clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = window.setTimeout(() => setCopied(false), 1600);
-    } catch { feedback.error(t("account.copyFailed")); }
   };
 
   const removeAccount = async (accountId: string) => {
@@ -282,7 +306,7 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
           </span>
           <span className="apple-title">{t("account.sectionTitle")}</span>
         </div>
-        {!browserLogin && !login ? <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><Plus className="h-4 w-4" strokeWidth={2} />{t("account.addAnother")}</button> : null}
+        {!browserLogin ? <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><Plus className="h-4 w-4" strokeWidth={2} />{t("account.addAnother")}</button> : null}
       </header>
       <div className="apple-edit-content">{content}</div>
     </section>
@@ -298,42 +322,39 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
         <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
       </div>
       <div className="apple-group p-3">
-        <button type="button" className="apple-action-button w-full" onClick={() => void api.openUrl(browserLogin.authorize_url)}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.reopenBrowser")}</button>
-        <div className="mt-4 flex flex-col items-center gap-2">
-          <button type="button" className="apple-action-button" onClick={cancelBrowserLogin}>{t("account.cancelLogin")}</button>
-          <button type="button" className="text-xs text-(--text-secondary) hover:text-accent hover:underline" onClick={() => void startDeviceLogin()}>{t("account.deviceFallback")}</button>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (login) return page(
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span>
-          <div><div className="setting-title">{t("account.deviceLoginTitle")}</div><p className="setting-description mt-0.5">{t("account.deviceLoginDescription")}</p></div>
-        </div>
-        <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
-      </div>
-      <div className="apple-group p-3">
-        <div className="text-center">
-          <div className="field-label">{t("account.authCodeLabel")}</div>
-          <div className="mt-2 flex items-center justify-center gap-2">
-            <code className="mono whitespace-nowrap rounded-lg bg-black/8 px-4 py-2 text-2xl font-bold tracking-[0.3em] dark:bg-white/8">{login.user_code}</code>
-            <button type="button" className={`grid h-8 w-8 place-items-center rounded-full ${copied ? "bg-success/10 text-success" : "text-accent hover:bg-(--profile-chip-bg)"}`} title={copied ? t("account.copied") : t("account.copyCode")} aria-label={copied ? t("account.codeCopied") : t("account.copyCode")} onClick={() => void copyUserCode()}>{copied ? <Check className="h-4 w-4" strokeWidth={2} /> : <Copy className="h-4 w-4" strokeWidth={2} />}</button>
-          </div>
-        </div>
-        <div className="mt-3 border-t border-[var(--panel-border)] pt-3 text-center"><div className="muted text-xs">{t("account.authPage")}</div><button type="button" className="mt-1 flex w-full min-w-0 items-center justify-center gap-1.5 text-sm font-medium text-accent hover:underline" title={login.verification_uri} onClick={() => void api.openUrl(login.verification_uri)}><span className="truncate">{login.verification_uri}</span><ExternalLink className="h-4 w-4 shrink-0" strokeWidth={2} /></button></div>
-        <div className="mt-4 flex justify-center"><button type="button" className="apple-action-button" onClick={() => { pollCancelled.current = true; setLogin(null); setBusy(false); }}>{t("account.cancelLogin")}</button></div>
+        <button type="button" className="apple-action-button app-button--primary w-full" onClick={() => void api.openUrl(browserLogin.authorize_url)}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.reopenBrowser")}</button>
+        <button type="button" className="apple-action-button w-full mt-3" onClick={cancelBrowserLogin}>{t("account.cancelLogin")}</button>
       </div>
     </div>
   );
 
   if (status.authenticated) return page(
     <div className="grid grid-cols-1 gap-[var(--gap-card)] md:grid-cols-2">
-      {status.external ? <div className="apple-group p-3"><div className="flex min-w-0 flex-nowrap items-center gap-3"><AuthSourceIcon source="desktop" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{status.external.login}</span><span className="apple-chip muted shrink-0">{t("account.followCodex")}</span></div></div><SubscriptionExpiry plan={status.external.plan_type} expiresAt={status.external.subscription_active_until} /><AccountQuota source="desktop" accountId={status.external.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", status.external.id)]} /></div> : null}
-      {status.accounts.map((account) => <div key={account.id} className="apple-group p-3"><div className="flex min-w-0 flex-nowrap items-center gap-3"><AuthSourceIcon source="oauth" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} /><div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap"><span className="mono min-w-0 truncate title-sm">{account.login}</span><span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span></div><button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id)}><TrashIcon /></button></div><SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} /><AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} /></div>)}
+      {status.external.map((account) => (
+        <div key={account.id} className="apple-group p-3">
+          <div className="flex min-w-0 flex-nowrap items-center gap-3">
+            <AuthSourceIcon source="desktop" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
+            <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
+              <span className="mono min-w-0 truncate title-sm">{account.login}</span>
+              <span className="apple-chip muted shrink-0">{t("account.followCodex")}</span>
+            </div>
+          </div>
+          <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
+          <AccountQuota source="desktop" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} />
+        </div>
+      ))}
+      {status.accounts.map((account) => <div key={`${account.id}:${account.authenticated_at}`} className="apple-group p-3">
+        <div className="flex min-w-0 flex-nowrap items-center gap-3">
+          <AuthSourceIcon source="oauth" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
+          <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
+            <span className="mono min-w-0 truncate title-sm">{account.login}</span>
+            <span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span>
+          </div>
+          <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id)}><TrashIcon /></button>
+        </div>
+        <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
+        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRelogin={() => void startLogin()} reloginDisabled={busy} />
+      </div>)}
     </div>
   );
 

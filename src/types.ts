@@ -6,6 +6,8 @@ export interface ProfileSummary {
   account_id: string | null;
   /** 官方配置创建时固定的认证来源；旧数据缺失时由 account_id 推断。 */
   auth_source?: "desktop" | "oauth" | null;
+  /** 账号页额度查询所用身份：OAuth 为本地账号 id，Desktop 为 workspace id。 */
+  auth_account_id?: string | null;
   /** 绑定账号的订阅套餐（free/plus/pro/team…官方原词）；第三方或未知为 null。 */
   plan_type: string | null;
   model: string | null;
@@ -181,14 +183,6 @@ export interface DatabaseBackupInfo {
   created_at: number;
 }
 
-export interface DeviceCodeResponse {
-  device_code: string;
-  user_code: string;
-  verification_uri: string;
-  expires_in: number;
-  interval: number;
-}
-
 export interface BrowserLoginStart {
   authorize_url: string;
   expires_in: number;
@@ -209,7 +203,8 @@ export interface AuthStatus {
   authenticated: boolean;
   default_account_id: string | null;
   accounts: ManagedAccount[];
-  external: ManagedAccount | null;
+  /** Desktop 来源账号：由数据库认证快照派生，不随配置切换漂移。 */
+  external: ManagedAccount[];
 }
 
 /** 界面语言设置；"system" 表示跟随系统语言。 */

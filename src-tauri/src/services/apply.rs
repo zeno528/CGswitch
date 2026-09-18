@@ -131,7 +131,15 @@ impl AppContext {
         // 显式记录当前激活供应商，避免依赖应用日志反推
         self.database.set_active_profile(Some(id))?;
         // 操作审计在数据库 record_event 里；文件日志留一行，只发 logs 目录也能重建切换史
-        tauri_plugin_log::log::info!("[apply] 配置切换成功 [{id}]");
+        let source_label =
+            match payload.effective_auth_source(profile_kind, profile.account_id.as_deref()) {
+                Some(AuthSource::Oauth) => "oauth",
+                _ => "desktop",
+            };
+        tauri_plugin_log::log::info!(
+            "[apply.profile.switch] profile_id={id} profile_name={:?} source={source_label} outcome=success msg=\"配置切换成功\"",
+            profile.name
+        );
         Ok(())
     }
 

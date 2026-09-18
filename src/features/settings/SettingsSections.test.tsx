@@ -233,7 +233,7 @@ describe("SettingsSections", () => {
     const status: AuthStatus = {
       authenticated: true,
       default_account_id: "desktop",
-      external: { id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true, plan_type: "plus", subscription_active_until: 1_789_694_940_000 },
+      external: [{ id: "desktop", login: "desktop@example.com", authenticated_at: 0, is_default: true, plan_type: "plus", subscription_active_until: 1_789_694_940_000 }],
       accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false, plan_type: "pro", subscription_active_until: 1_789_694_940_000 }],
     };
     const balance: ProfileBalanceInfo = {
@@ -257,7 +257,7 @@ describe("SettingsSections", () => {
     expect(html).toContain("天后");
     expect(accountsViewSource).toContain('timeZoneName: "short"');
     expect(html.indexOf("跟随 Codex登录")).toBeLessThan(html.indexOf(">Plus</span>"));
-    expect(html).toContain("可用 2 张重置卡");
+    expect(html).toContain("2 次");
     expect(html).toContain("完全重置（每周 + 5 小时）");
     expect(html).toContain("到期：");
     expect(html).toContain("3h12m 后");
@@ -265,7 +265,7 @@ describe("SettingsSections", () => {
     expect(html).not.toContain("恢复 5 小时和每周使用限额");
     const zeroCreditHtml = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={status} balanceCache={{ "auth:desktop:desktop": { ...balance, reset_credits_available: 0, reset_credits: [] } }} /></FeedbackProvider>);
     expect(zeroCreditHtml).not.toContain("可用 0 张重置卡");
-    const freeHtml = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={{ ...status, external: { ...status.external!, plan_type: "free" }, accounts: [] }} /></FeedbackProvider>);
+    const freeHtml = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={{ ...status, external: [{ ...status.external[0]!, plan_type: "free" }], accounts: [] }} /></FeedbackProvider>);
     expect(freeHtml).toContain(">Free</span>");
     expect(freeHtml).not.toContain("套餐续期日：");
     expect(accountsViewSource).toContain('grid grid-cols-1 gap-[var(--gap-card)] md:grid-cols-2');

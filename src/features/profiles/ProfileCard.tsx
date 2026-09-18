@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { api } from "../../api";
+import { authQuotaErrorKind, getAuthQuotaError, getVisibleAuthQuota, profileAuthQuotaCacheKey, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
 import type { ProfileBalanceInfo, ProfileSummary } from "../../types";
 import { useFeedback } from "../../app/Feedback";
@@ -16,12 +17,16 @@ import { localizeBalanceLabel } from "./balanceLabel";
 const balanceInfoCache = new Map<string, ProfileBalanceInfo>();
 const balanceErrorCache = new Map<string, string>();
 
-export function getCachedProfileBalance(profileId: string, fallback: ProfileBalanceInfo | null = null) {
+export function getCachedProfileBalance(profileId: string, fallback: ProfileBalanceInfo | null = null, authQuotaKey?: string | null) {
+  if (authQuotaKey) {
+    return getVisibleAuthQuota(authQuotaKey, balanceInfoCache.get(profileId) ?? fallback);
+  }
   if (balanceErrorCache.has(profileId)) return null;
   return balanceInfoCache.get(profileId) ?? fallback;
 }
 
-export function getCachedProfileBalanceError(profileId: string) {
+export function getCachedProfileBalanceError(profileId: string, authQuotaKey?: string | null) {
+  if (authQuotaKey) return getAuthQuotaError(authQuotaKey);
   return balanceErrorCache.get(profileId) ?? "";
 }
 
@@ -37,7 +42,6 @@ interface ProfileCardProps {
   onEdit: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
-  onOpenCodexApp?: () => void;
 }
 
 interface ProfileCardContentProps {
@@ -45,8 +49,7 @@ interface ProfileCardContentProps {
   balanceInfos: ProfileBalanceInfo[];
   balanceError: string;
   balanceRefreshing: boolean;
-  onRefreshBalance?: () => void;
-  onOpenCodexApp?: () => void;
+  onRefreshBalance?: (manual?: boolean) => void;
   onOpenAdmin?: () => void;
   onRename?: () => void;
 }
@@ -57,7 +60,6 @@ export function ProfileCardContent({
   balanceError,
   balanceRefreshing,
   onRefreshBalance,
-  onOpenCodexApp,
   onOpenAdmin,
   onRename,
 }: ProfileCardContentProps) {
@@ -66,7 +68,6 @@ export function ProfileCardContent({
   const isSubscriptionProfile = profile.kind === "official";
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
-  const authInvalid = isSubscriptionProfile && balanceError.startsWith("[auth_invalid]");
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
   const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.quota"));
   const weeklyLabel = localizeBalanceLabel(balanceInfo?.weekly_label, t) ?? (isUsageProvider ? t("balance.window7d") : t("balance.period"));
@@ -82,15 +83,15 @@ export function ProfileCardContent({
       <div className="profile-card-content__text min-w-0 flex-1">
         <div className="flex min-h-7 items-center gap-2">
           <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title={t("card.clickToRename")} onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
-          {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
           {isSubscriptionProfile ? <PlanBadge plan={profile.plan_type} /> : null}
+          {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
         </div>
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>
           {profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}
-          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={authInvalid ? t("balance.authInvalidTooltip") : balanceError ? t("balance.queryFailedRetry") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} aria-busy={balanceRefreshing} onClick={(event) => { event.stopPropagation(); if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.(); }}>
+          {supportsBalance && profile.show_balance ? <button type="button" className="apple-chip" title={balanceError ? t("balance.queryFailedRetry") : t("balance.clickToRefresh")} aria-label={isSubscriptionProfile ? t("balance.chatgptQuota") : balanceLabel} aria-busy={balanceRefreshing} onClick={(event) => { event.stopPropagation(); onRefreshBalance?.(true); }}>
             {balanceRefreshing ? <LoadingSpinner size="sm" /> : <Gauge className={`h-3 w-3${balanceError ? " chip-danger" : ""}`} strokeWidth={2} aria-hidden="true" />}
-            {authInvalid ? <span className="chip-danger">{t("balance.authInvalid")}</span> : balanceError ? <span>{t("balance.queryFailed")}</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>{t("balance.balancePrefix")}</span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
+            {balanceError ? <span>{t("balance.queryFailed")}</span> : primaryUsagePercent != null ? <><span>{primaryUsageText}</span><span className={balanceChipClass(balanceInfo?.usage_percent ?? null, false)}>{primaryUsagePercent}%</span>{balanceInfo?.usage_reset ? <span> {balanceInfo.usage_reset}</span> : null}{weeklyUsagePercent != null ? <><span> · {weeklyUsageText}</span><span className={balanceChipClass(balanceInfo?.weekly_usage_percent ?? null, false)}>{weeklyUsagePercent}%</span>{balanceInfo?.weekly_reset ? <span> {balanceInfo.weekly_reset}</span> : null}</> : null}</> : balanceInfo && !isUsageProvider ? <><span>{t("balance.balancePrefix")}</span>{balanceInfos.map((info, index) => <span key={info.currency || index} className="inline-flex items-center gap-1">{index > 0 ? <span aria-hidden="true">/</span> : null}<span className={balanceChipClass(null, false, info.total_balance)}>{info.total_balance.startsWith("-") ? "-" : ""}{info.currency === "USD" ? "$" : "¥"}{info.total_balance.replace(/^-/, "")}</span><span> {info.currency}</span></span>)}</> : <span>{`${balanceLabel} --`}</span>}
           </button> : null}
         </div>
       </div>
@@ -139,13 +140,16 @@ export default function ProfileCard({
   onEdit,
   onRemove,
   onDuplicate,
-  onOpenCodexApp,
 }: ProfileCardProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
+  const authQuotaKey = profileAuthQuotaCacheKey(profile);
+  const initialQuota = authQuotaKey
+    ? getVisibleAuthQuota(authQuotaKey, balanceCache?.[profile.id] ?? null)
+    : null;
   const [testing, setTesting] = useState(false);
-  const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>([]);
-  const [balanceError, setBalanceError] = useState("");
+  const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>(() => initialQuota ? [initialQuota] : []);
+  const [balanceError, setBalanceError] = useState(() => authQuotaKey ? getAuthQuotaError(authQuotaKey) : getCachedProfileBalanceError(profile.id));
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const balanceInFlightRef = useRef<Promise<void> | null>(null);
   const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
@@ -157,9 +161,12 @@ export default function ProfileCard({
     balanceInfoCache.delete(profile.id);
     setBalanceError(message);
     balanceErrorCache.set(profile.id, message);
+    if (authQuotaKey) {
+      setAuthQuotaFailure(authQuotaKey, message);
+    }
   };
 
-  const fetchBalance = async (): Promise<void> => {
+  const fetchBalance = async (manual = false): Promise<void> => {
     // 单飞去重：在途时把同一次请求的 promise 交回给调用方，点击重试的指示器
     // 才能跟随真正落地的那次查询，而不是早退熄灯留下结果未知的真空期
     if (balanceInFlightRef.current) return balanceInFlightRef.current;
@@ -178,8 +185,17 @@ export default function ProfileCard({
         setBalanceInfos(infos);
         balanceInfoCache.set(profile.id, infos[0]);
         void api.setProfileBalance(profile.id, infos[0]);
+        if (authQuotaKey) {
+          setAuthQuotaSuccess(authQuotaKey, infos[0]);
+          void api.setProfileBalance(authQuotaKey, infos[0]);
+        }
       } catch (error) {
-        invalidateBalance(String(error));
+        const message = String(error);
+        invalidateBalance(message);
+        if (manual) {
+          const authInvalid = authQuotaErrorKind(message) === "auth_expired";
+          feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));
+        }
       } finally {
         balanceInFlightRef.current = null;
       }
@@ -190,14 +206,18 @@ export default function ProfileCard({
 
   useEffect(() => {
     if (!supportsBalance) return;
-    const cachedError = getCachedProfileBalanceError(profile.id);
-    const cachedInfo = balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null;
+    const cachedError = authQuotaKey
+      ? getAuthQuotaError(authQuotaKey)
+      : getCachedProfileBalanceError(profile.id);
+    const cachedInfo = authQuotaKey
+      ? getVisibleAuthQuota(authQuotaKey, balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null)
+      : balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null;
     setBalanceInfos(cachedError || !cachedInfo ? [] : [cachedInfo]);
     setBalanceError(cachedError);
     void fetchBalance();
     // The root owns the single activation listener; cards only react to its epoch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activationEpoch, profile.id, profile.show_balance, supportsBalance]);
+  }, [activationEpoch, profile.id, profile.show_balance, supportsBalance, authQuotaKey]);
 
   useEffect(() => {
     if (!active || !supportsBalance || !profile.show_balance) return;
@@ -250,11 +270,10 @@ export default function ProfileCard({
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         balanceRefreshing={balanceRefreshing}
-        onRefreshBalance={() => {
+        onRefreshBalance={(manual) => {
           setBalanceRefreshing(true);
-          void fetchBalance().finally(() => setBalanceRefreshing(false));
+          void fetchBalance(manual).finally(() => setBalanceRefreshing(false));
         }}
-        onOpenCodexApp={onOpenCodexApp}
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />

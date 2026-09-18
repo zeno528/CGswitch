@@ -1,6 +1,7 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { authQuotaErrorKind } from "../../app/authQuotaCache";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
@@ -79,23 +80,16 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
 
-  it("登录失效错误直接按后端契约前缀判定", () => {
-    expect(source).toContain('const authInvalid = isSubscriptionProfile && balanceError.startsWith("[auth_invalid]");');
-  });
-
-  it("登录失效时余额卡片显示失效文案并复用重启链路拉起 Codex", () => {
-    expect(source).toContain('authInvalid ? <span className="chip-danger">{t("balance.authInvalid")}</span>');
-    expect(source).toContain('title={authInvalid ? t("balance.authInvalidTooltip")');
-    expect(source).toContain("if (authInvalid) { onOpenCodexApp?.(); } onRefreshBalance?.();");
-  });
-
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {
     // 动效只由点击回调开关，静默路径（挂载/聚焦/轮询）不触发
     expect(source).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
     expect(source).toContain("{balanceRefreshing ? <LoadingSpinner size=\"sm\" /> : <Gauge");
     expect(source).toContain("aria-busy={balanceRefreshing}");
     expect(source).toContain("setBalanceRefreshing(true);");
-    expect(source).toContain("void fetchBalance().finally(() => setBalanceRefreshing(false));");
+    expect(source).toContain("void fetchBalance(manual).finally(() => setBalanceRefreshing(false));");
+    expect(authQuotaErrorKind("refresh_token 被服务端拒绝，该账号需要重新登录")).toBe("auth_expired"); // i18n-exempt: Backend error fixture.
+    expect(authQuotaErrorKind("Network request timed out")).toBe("query_failed");
+    expect(source).toContain('feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));');
     // 单飞去重把在途 promise 交回调用方：指示器跟随真正落地的查询，不留真空期
     expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });

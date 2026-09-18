@@ -5,7 +5,6 @@ import type {
   BrowserLoginStart,
   CodexAppStatus,
   DatabaseBackupInfo,
-  DeviceCodeResponse,
   ManagedAccount,
   McpServerSpec,
   McpProbeResult,
@@ -162,9 +161,6 @@ export const api = {
   restartCodex: () => call<void>("restart_codex"),
   setWindowTheme: (dark: boolean) => call<void>("set_window_theme", { dark }),
   setAppLanguage: (language: string) => call<void>("set_app_language", { language }),
-  authStartLogin: () => call<DeviceCodeResponse>("auth_start_login"),
-  authPollForAccount: (deviceCode: string) =>
-    call<ManagedAccount | null>("auth_poll_for_account", { deviceCode }),
   authStartBrowserLogin: () => call<BrowserLoginStart>("auth_start_browser_login"),
   authPollBrowserLogin: () => call<ManagedAccount | null>("auth_poll_browser_login"),
   authCancelBrowserLogin: () => call<void>("auth_cancel_browser_login"),

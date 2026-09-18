@@ -197,6 +197,8 @@ pub struct ProfileSummary {
     /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,
     pub auth_source: Option<AuthSource>,
+    /// 账号页额度查询使用的认证账号标识；OAuth 为本地账号主键，Desktop 为 workspace ID。
+    pub auth_account_id: Option<String>,
     /// 绑定账号的订阅套餐；第三方或未知为 None（get_state 聚合时填充）。
     pub plan_type: Option<String>,
     pub model: Option<String>,

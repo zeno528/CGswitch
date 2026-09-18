@@ -1892,15 +1892,11 @@ button:focus-visible {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px var(--panel-ring);
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px) scale(0.98);
-  transform-origin: top center;
-  transition: opacity 150ms ease-out, transform 180ms cubic-bezier(0.22, 1, 0.36, 1), visibility 180ms;
+  transition: opacity 150ms ease-out, visibility 180ms;
   visibility: hidden;
 }
 
-.app-select-menu[data-open="true"] { opacity: 1; pointer-events: auto; transform: translateY(0) scale(1); visibility: visible; }
-.app-select-menu[data-placement="top"] { transform: translateY(4px) scale(0.98); transform-origin: bottom center; }
-.app-select-menu[data-placement="top"][data-open="true"] { transform: translateY(0) scale(1); }
+.app-select-menu[data-open="true"] { opacity: 1; pointer-events: auto; visibility: visible; }
 
 .app-select-option {
   display: flex;

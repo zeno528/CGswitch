@@ -43,7 +43,7 @@ fn tray_labels(language: &str) -> (&'static str, &'static str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // panic 钩子最先装：崩溃写一条进文件日志再交还默认处理器，闪退才可追溯；
+    // panic 钩子最先装：日志插件就绪后的崩溃写入文件，再交还默认处理器；
     // 这是全项目唯一的 error! 调用（日志规约：error 留给崩溃）
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -59,7 +59,10 @@ pub fn run() {
             .unwrap_or_else(|| "未知位置".to_string());
         let thread = std::thread::current();
         let thread = thread.name().unwrap_or("<unnamed>").to_string();
-        log::error!("[panic] 崩溃 [{thread}]: {message} @{location}");
+        log::error!(
+            "[panic.crash] thread={thread:?} outcome=failure failure_kind=internal error={:?} msg=\"CGswitch 崩溃\"",
+            format!("{message} @{location}")
+        );
         default_hook(info);
     }));
 
@@ -166,8 +169,6 @@ pub fn run() {
             commands::restart_codex,
             commands::set_window_theme,
             commands::set_app_language,
-            commands::auth_start_login,
-            commands::auth_poll_for_account,
             commands::auth_start_browser_login,
             commands::auth_poll_browser_login,
             commands::auth_cancel_browser_login,
@@ -203,12 +204,17 @@ pub fn run() {
             commands::open_path,
         ])
         .setup(|app| {
-            log::info!("CGswitch v{} 启动", env!("CARGO_PKG_VERSION"));
+            log::info!(
+                "[app.start] version=\"{}\" outcome=success msg=\"CGswitch 启动\"",
+                env!("CARGO_PKG_VERSION")
+            );
             // reqwest 的「proxy(...) intercepts」建连日志已随 DEBUG 噪音压掉，
             // 代理走向改由自己记：一场一行，排障时对照请求是否走代理
             match services::detect_system_proxy() {
-                Some(proxy) => log::info!("[net] 检测到系统代理 {proxy}"),
-                None => log::debug!("[net] 未检测到系统代理"),
+                Some(proxy) => {
+                    log::info!("[net.proxy] outcome=success proxy={proxy} msg=\"检测到系统代理\"")
+                }
+                None => log::debug!("[net.proxy] outcome=success proxy=None msg=\"未检测到系统代理\""),
             }
 
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
@@ -233,14 +239,20 @@ pub fn run() {
             let settings = match app.state::<AppContext>().settings() {
                 Ok(settings) => settings,
                 Err(error) => {
-                    log::warn!("[settings] 加载设置失败，本次启动使用默认值: {error}");
+                    log::warn!(
+                        "[settings.load] outcome=failure failure_kind=internal error={error:?} msg=\"加载设置失败，本次启动使用默认值\""
+                    );
                     Default::default()
                 }
             };
             if settings.autostart_enabled {
                 match app.autolaunch().enable() {
-                    Ok(()) => log::debug!("[autostart] 开机自启已启用"),
-                    Err(error) => log::warn!("[autostart] 同步开机自启设置失败: {error}"),
+                    Ok(()) => {
+                        log::debug!("[autostart.sync] outcome=success msg=\"开机自启已启用\"")
+                    }
+                    Err(error) => log::warn!(
+                        "[autostart.sync] outcome=failure failure_kind=internal error={error:?} msg=\"同步开机自启设置失败\""
+                    ),
                 }
             }
 
@@ -249,7 +261,9 @@ pub fn run() {
                 loop {
                     if let Err(error) = scheduler_handle.state::<AppContext>().auto_backup_if_due()
                     {
-                        log::warn!("[backup] 自动备份失败: {error}");
+                        log::warn!(
+                            "[backup.auto] outcome=failure failure_kind=internal error={error:?} msg=\"自动备份调度失败\""
+                        );
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 }

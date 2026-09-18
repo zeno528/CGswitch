@@ -42,6 +42,7 @@ const webProfiles: ProfileSummary[] = [
     kind: "official",
     account_id: null,
     auth_source: "desktop",
+    auth_account_id: "web-codex-account",
     plan_type: "plus",
     model: "gpt-5.6",
     provider: null,
@@ -537,14 +538,16 @@ const webChatgptQuota: ProfileBalanceInfo = {
 const webAuthStatus = {
   authenticated: true,
   default_account_id: null,
-  external: {
-    id: "web-codex-account",
-    login: "codex@example.com",
-    authenticated_at: 0,
-    is_default: false,
-    plan_type: "plus",
-    subscription_active_until: Date.now() + 14 * 86_400_000,
-  },
+  external: [
+    {
+      id: "web-codex-account",
+      login: "codex@example.com",
+      authenticated_at: 0,
+      is_default: false,
+      plan_type: "plus",
+      subscription_active_until: Date.now() + 14 * 86_400_000,
+    },
+  ],
   accounts: ["alpha", "beta", "gamma", "delta", "epsilon"].map((name, index) => ({
     id: "web-" + name,
     login: name + "@example.com",
@@ -1342,7 +1345,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
-    // 认证设备码流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
+    // 认证登录流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
     default:
       throw new Error(`Web 调试模式不支持命令：${command}`);
   }

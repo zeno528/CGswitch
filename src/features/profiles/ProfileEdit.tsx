@@ -169,7 +169,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
       return <span className="font-medium text-accent">{option.label}</span>;
     }
     const desktop = option.value === "";
-    return <span className="inline-flex min-w-0 items-center gap-2"><AuthSourceIcon source={desktop ? "desktop" : "oauth"} className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{desktop ? t("card.authDesktop") : t("card.authOAuth")}</span>{desktop ? null : <><span className="text-[var(--text-secondary)]">·</span><span className="truncate">{option.label}</span></>}</span>;
+    return <span className="inline-flex min-w-0 items-center gap-2"><AuthSourceIcon source={desktop ? "desktop" : "oauth"} className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0">{desktop ? t("card.authDesktop") : t("card.authOAuth")}</span>{desktop ? null : <><span className="text-[var(--text-secondary)]">·</span><span className="truncate">{option.label}</span></>}</span>;
   };
   const refreshAuthPreview = async (accountId: string) => {
     const requestId = ++authPreviewRequest.current;

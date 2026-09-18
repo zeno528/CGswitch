@@ -35,7 +35,6 @@ export function AppSelect<T extends string | number>({
   const selected = options.find((option) => String(option.value) === String(value));
   const hasOptions = options.length > 0;
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<"bottom" | "top">("bottom");
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -65,7 +64,6 @@ export function AppSelect<T extends string | number>({
       // 完整高度 scrollHeight：后者会高估需求，导致下方空间明明够却向上翻转
       const effectiveHeight = Math.min(menuHeight, MENU_MAX_HEIGHT);
       const nextPlacement = below < effectiveHeight && above > below ? "top" : "bottom";
-      setPlacement(nextPlacement);
       setMenuStyle({
         left: `${rect.left}px`,
         width: `${rect.width}px`,
@@ -123,7 +121,7 @@ export function AppSelect<T extends string | number>({
   };
 
   const menu = (
-    <div ref={menuRef} className="app-select-menu" data-open={open} data-placement={placement} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
+    <div ref={menuRef} className="app-select-menu" data-open={open} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
       {options.map((option) => <button
         key={String(option.value)}
         type="button"
