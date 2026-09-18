@@ -298,8 +298,8 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
     setBusy(false);
   };
 
-  const removeAccount = async (accountId: string) => {
-    if (!await feedback.confirm({ title: t("account.removeTitle"), description: t("account.removeDescription"), confirmText: t("account.remove"), destructive: true })) return;
+  const removeAccount = async (accountId: string, login: string) => {
+    if (!await feedback.confirm({ title: t("account.removeTitle"), description: t("account.removeDescription", { login }), confirmText: t("account.remove"), destructive: true })) return;
     try { await api.authRemoveAccount(accountId); feedback.success(t("account.removedToast")); await refreshStatus(); }
     catch (error) { feedback.error(String(error)); }
   };
@@ -357,7 +357,7 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
             <span className="mono min-w-0 truncate title-sm">{account.login}</span>
             <span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span>
           </div>
-          <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id)}><TrashIcon /></button>
+          <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id, account.login)}><TrashIcon /></button>
         </div>
         <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
         <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRelogin={() => void startLogin()} reloginDisabled={busy} />

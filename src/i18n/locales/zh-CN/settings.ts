@@ -62,7 +62,7 @@ export default {
     addedToast: "ChatGPT 账号已添加，可在配置中选择",
     regionBlocked: "认证请求被地区限制拦截。请开启系统代理并确认节点位于 ChatGPT 支持的地区后重试。",
     removeTitle: "移除订阅账号",
-    removeDescription: "确定移除该 ChatGPT 订阅账号吗？移除后本机将清除该账号的登录凭据。",
+    removeDescription: "确定移除 {{login}} 吗？移除后本机将清除该账号的登录凭据。",
     removedToast: "账号已移除",
     resetTime: "重置时间：{{time}}",
     resetCountdown: " · {{time}} 后",

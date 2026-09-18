@@ -62,7 +62,7 @@ export default {
     addedToast: "ChatGPT account added. You can select it in a provider.",
     regionBlocked: "The authentication request was blocked by region restrictions. Turn on your system proxy, make sure the node is in a region ChatGPT supports, and try again.",
     removeTitle: "Remove subscription account",
-    removeDescription: "Remove this ChatGPT subscription account? Its sign-in credentials will be deleted from this machine.",
+    removeDescription: "Remove {{login}}? Its sign-in credentials will be deleted from this machine.",
     removedToast: "Account removed",
     resetTime: "Resets: {{time}}",
     resetCountdown: " · in {{time}}",

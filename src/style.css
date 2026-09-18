@@ -237,29 +237,20 @@ body {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-/* 订阅套餐徽标（配置卡片/账号列表）：统一的灰面胶囊（OpenAI hairline + near-black），
-   档位只靠图标区分（Plus 星 / Pro 皇冠 / Team 群组，Free 无图标）。 */
+/* 订阅套餐徽标（配置卡片/账号列表）：直接透出所在卡片底色，只以细边缘勾勒。 */
 .plan-badge {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 4px;
   border-radius: 9999px;
   padding: 2.5px 9px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
   line-height: 1.4;
-  /* 底色与所在卡片面拉开一档：浅色比白卡深、深色比 #292b30 卡浅 */
-  background: var(--chip-bg);
-  border: 1px solid #d9d9d6;
-  color: #0d0d0d;
-}
-
-:root.dark .plan-badge {
-  background: #3d3f45;
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #ececec;
+  background: transparent;
+  border: 1px solid var(--panel-ring);
+  color: var(--text-primary);
 }
 
 /* 供应商卡片余额/用量药丸：浅色主题下用页面底色(即 #f7f7f9)让它比普通胶囊更轻、融入卡片；
@@ -1136,6 +1127,11 @@ body.drag-active * {
   background: var(--sidebar-bg);
 }
 
+/* 浅色账号卡片用既有面板边缘色补一圈细描边，保持深色层级不变。 */
+:root:not(.dark) .accounts-page .apple-edit-content > .grid > .apple-group {
+  box-shadow: 0 0 0 1px var(--panel-border);
+}
+
 .settings-about__hero {
   margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card)) 0;
   padding: var(--gap-card) var(--gap-card) 0;
@@ -1164,6 +1160,11 @@ body.drag-active * {
 
 .profile-list > .apple-group.is-active {
   box-shadow: none;
+}
+
+/* WebView2 移动窗口时强制把渐变层裁进圆角，避免合成帧露出边缘颜色。 */
+.profile-list > .apple-group.brand-gradient-surface {
+  clip-path: inset(0 round var(--radius-card));
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,
@@ -1583,7 +1584,7 @@ button:focus-visible {
 
 .app-dialog-description {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 1.55;
 }

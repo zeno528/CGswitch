@@ -46,6 +46,10 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
   });
 
+  it("激活渐变卡在移动窗口时保持圆角裁切", () => {
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface {\n  clip-path: inset(0 round var(--radius-card));");
+  });
+
   it("提高渐变卡片的文字与图标对比度", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--active-card-text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
