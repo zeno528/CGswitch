@@ -123,6 +123,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          key: ${{ matrix.rust-target }}
       - run: pnpm install --frozen-lockfile
       - run: pnpm tauri build --target ${{ matrix.rust-target }}
         env:
