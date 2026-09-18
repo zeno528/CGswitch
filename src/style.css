@@ -119,7 +119,7 @@
   --success-text: #6ee7a0;
   --chip-success: #63e68a;
   --toast-icon-foreground: #ffffff;
-  --chip-bg: #1e1e1e;
+  --chip-bg: var(--main-surface-bg);
   --profile-chip-bg: #1e1e1e;
   --input-bg: var(--main-surface-bg);
   --profile-meta-text: rgba(255, 255, 255, 0.62);
@@ -267,10 +267,9 @@ body {
   color: var(--text-primary);
 }
 
-/* 供应商卡片余额/用量药丸：浅色主题下用页面底色(即 #f7f7f9)让它比普通胶囊更轻、融入卡片；
-   深色主题不在此覆盖，由 :root.dark .apple-chip 的 --chip-bg(#1e1e1e) 兜底。 */
+/* 供应商卡片余额/用量药丸统一复用主容器底色，主题只需调整 --main-surface-bg。 */
 .profile-card-meta .apple-chip {
-  background: var(--app-bg);
+  background: var(--main-surface-bg);
   font-size: 12px;
   transition: border-color var(--motion-fast) ease;
 }
@@ -1206,18 +1205,13 @@ body.drag-active * {
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
 .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
   border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
-  background: var(--app-bg);
+  background: var(--main-surface-bg);
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip:hover,
 .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip:hover {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-}
-
-:root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
-:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
-  background: var(--chip-bg);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,

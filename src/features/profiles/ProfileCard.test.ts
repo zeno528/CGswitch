@@ -37,7 +37,7 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).not.toContain("--active-card-text-primary");
     expect(styles).not.toContain("--active-card-text-secondary");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--text-secondary);");
-    expect(styles).toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n:root.dark .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  background: var(--chip-bg);");
+    expect(styles).not.toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--text-secondary);");
   });
 
@@ -58,11 +58,11 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
   });
 
-  it("胶囊底色统一定义在 --chip-bg，激活卡使用浅色药丸文字", () => {
+  it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {
     expect(styles).toContain("--chip-bg: #e9e9e6;");
     expect(styles).toContain(".apple-chip {\n  align-items: center;\n  background: var(--chip-bg);");
-    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--app-bg);\n  font-size: 12px;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--app-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--main-surface-bg);\n  font-size: 12px;");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--main-surface-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
   });
 
   it("让浅色模式的用量成功百分比使用高对比度绿色", () => {
