@@ -19,18 +19,18 @@ describe("ProfileCard 官网入口", () => {
     expect(adminButton).toBeLessThan(metaRow);
   });
 
-  it("所有配置激活时使用极光靛蓝渐变", () => {
+  it("所有配置激活时复用全局品牌渐变", () => {
     expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
     expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
     expect(source).not.toContain("third-party-gradient");
     expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
     expect(styles).toContain(".profile-drag-preview.is-active {");
-    expect(styles).toContain("--active-card-gradient-start: #263b63;");
-    expect(styles).toContain("--active-card-gradient-middle: #3f72b8;");
-    expect(styles).toContain("--active-card-gradient-start-mix: 34%;");
-    expect(styles).toContain("--active-card-gradient-middle-mix: 58%;");
+    expect(styles).toContain("--brand-gradient-start: #263b63;");
+    expect(styles).toContain("--brand-gradient-middle: #3f72b8;");
+    expect(styles).toContain("--brand-gradient-start-mix: 34%;");
+    expect(styles).toContain("--brand-gradient-middle-mix: 58%;");
     expect(styles).toContain(":root.dark {\n  color-scheme: dark;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface,\n.profile-drag-preview.brand-gradient-surface {\n  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) var(--active-card-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--active-card-gradient-blend) var(--active-card-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-fade-mix), transparent) 58%, transparent 100%);");
+    expect(styles).toContain(".brand-gradient-surface {\n  background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);");
   });
 
   it("激活卡沿用主题文字层级", () => {

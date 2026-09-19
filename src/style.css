@@ -24,13 +24,13 @@
   --panel-border: rgba(60, 60, 67, 0.12);
   --panel-ring: rgba(60, 60, 67, 0.08);
   --panel-divider: rgba(60, 60, 67, 0.1);
-  --active-card-gradient-start: #263b63;
-  --active-card-gradient-middle: #3f72b8;
-  --active-card-gradient-start-mix: 34%;
-  --active-card-gradient-middle-mix: 17%;
-  --active-card-gradient-blend: color-mix(in srgb, var(--active-card-gradient-start) 55%, var(--active-card-gradient-middle));
-  --active-card-gradient-blend-mix: 25%;
-  --active-card-gradient-fade-mix: 9%;
+  --brand-gradient-start: #263b63;
+  --brand-gradient-middle: #3f72b8;
+  --brand-gradient-start-mix: 34%;
+  --brand-gradient-middle-mix: 17%;
+  --brand-gradient-blend: color-mix(in srgb, var(--brand-gradient-start) 55%, var(--brand-gradient-middle));
+  --brand-gradient-blend-mix: 25%;
+  --brand-gradient-fade-mix: 9%;
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
   --sidebar-bg: var(--panel-bg);
@@ -108,10 +108,10 @@
   --panel-border: #42434a;
   --panel-ring: rgba(255, 255, 255, 0.14);
   --panel-divider: rgba(255, 255, 255, 0.1);
-  --active-card-gradient-start-mix: 78%;
-  --active-card-gradient-middle-mix: 58%;
-  --active-card-gradient-blend-mix: 68%;
-  --active-card-gradient-fade-mix: 38%;
+  --brand-gradient-start-mix: 78%;
+  --brand-gradient-middle-mix: 58%;
+  --brand-gradient-blend-mix: 68%;
+  --brand-gradient-fade-mix: 38%;
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.68);
   --sidebar-bg: var(--panel-bg);
@@ -1171,9 +1171,9 @@ body.drag-active * {
   border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 
-/* 激活卡片取更新页的深靛紫和中心冷蓝，左侧清晰、向右渐淡。 */
+/* 应用品牌渐变：配置卡激活态、升级弹窗和关于卡片统一复用。 */
 .brand-gradient-surface {
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) 12%, transparent) 0%, color-mix(in srgb, var(--active-card-gradient-middle) 5%, transparent) 46%, transparent 100%);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
 
 .settings-about__actions > .apple-action-button {
@@ -1184,12 +1184,6 @@ body.drag-active * {
 .profile-list > .apple-group,
 .profile-drag-preview {
   border-radius: var(--radius-card);
-}
-
-/* 激活卡单独提高极光靛蓝的显色；其他品牌渐变表面不受影响。 */
-.profile-list > .apple-group.brand-gradient-surface,
-.profile-drag-preview.brand-gradient-surface {
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--active-card-gradient-start) var(--active-card-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--active-card-gradient-blend) var(--active-card-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--active-card-gradient-middle) var(--active-card-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,
@@ -1621,6 +1615,8 @@ button:focus-visible {
 }
 
 .app-dialog-close {
+  display: grid;
+  place-items: center;
   position: absolute;
   right: 0.75rem;
   top: 0.75rem;
@@ -1628,8 +1624,6 @@ button:focus-visible {
   height: 2rem;
   border-radius: var(--radius-control-sm);
   color: var(--text-secondary);
-  font-size: 1.5rem;
-  line-height: 1;
 }
 
 .app-dialog-close:hover {

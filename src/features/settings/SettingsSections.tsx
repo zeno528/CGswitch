@@ -314,7 +314,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
           )}
           </div>
         </div>
-        <hr className="my-4 border-0 border-t border-[var(--panel-divider)]" />
+        <hr className="my-4 border-0 border-t border-t-transparent" />
       </div>
       <h2 className="setting-title">{t("about.dataAndPaths")}</h2>
       <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">

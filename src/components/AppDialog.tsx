@@ -1,5 +1,6 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import { type ReactNode, type RefObject } from "react";
 
 interface AppDialogProps {
@@ -44,7 +45,9 @@ export function AppDialog({ open, onOpenChange, title, hero, description, childr
           {description ? <Dialog.Description className="app-dialog-description">{description}</Dialog.Description> : null}
           <div className="app-dialog-body">{children}</div>
           {footer ? <div className="app-dialog-actions">{footer}</div> : null}
-          <Dialog.Close aria-label={t("window.close")} className="app-dialog-close">×</Dialog.Close>
+          <Dialog.Close aria-label={t("window.close")} className="app-dialog-close">
+            <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          </Dialog.Close>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
