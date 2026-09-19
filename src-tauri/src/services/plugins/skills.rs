@@ -7,12 +7,12 @@ use std::time::UNIX_EPOCH;
 
 use serde_json::Value;
 
+use super::catalog::validate_plugin_name;
+use super::{SkillCandidate, SkillSummary, SKILL_BACKUP_DIRECTORY, SKILL_SOURCE_FILE};
 use crate::error::{app_err, AppResult};
 use crate::paths::now_ms;
 use crate::services::AppContext;
 
-use super::catalog::*;
-use super::*;
 // ponytail: 只读 SKILL.md frontmatter 的单行 description；多行 YAML 描述暂不展开。
 /// 从 SKILL.md frontmatter 提取 description：支持单行值与 YAML 块标量（`|`/`>`，
 /// 含 `|-`、`>+` 等 chomping 变体）。折叠按 YAML 语义简化：相邻行并作空格、

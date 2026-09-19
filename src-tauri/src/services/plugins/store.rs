@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use super::catalog::{derive_contains, read_manifest};
 use super::skills::{read_skill_description, walk_files};
-use super::*;
+use super::{PluginSkill, PluginSummary, PLUGIN_CACHE_RELATIVE_PATH};
 
 pub(super) fn store_contains(plugin_dir: &Path) -> Vec<String> {
     let files = walk_files(plugin_dir);

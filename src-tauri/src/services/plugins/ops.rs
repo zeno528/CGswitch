@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::codex::config as codex_config;
 use crate::error::{app_err, AppResult};
 use crate::fsutil::{atomic_write, backup_file};
 use crate::paths::now_ms;
@@ -10,11 +11,25 @@ use crate::services::plugin_net::{
 };
 use crate::services::AppContext;
 
-use super::catalog::*;
-use super::cli::*;
-use super::skills::*;
-use super::store::*;
-use super::*;
+use super::catalog::{
+    derive_contains, enrich_marketplace_metadata, enrich_plugin_sources, files_under_root,
+    find_plugin_updates, manifest_description, marketplace_sources, parse_manifest_text,
+    parse_marketplace_identities, parse_marketplace_list_output, parse_marketplace_name,
+    parse_marketplace_plugins_output, parse_marketplace_source, parse_plugin_list_output,
+    plugin_roots, read_manifest, resolve_install_marketplace, root_within, sort_marketplaces,
+    validate_plugin_name,
+};
+use super::cli::{find_codex_cli, run_codex_plugin};
+use super::skills::is_registered_skill;
+use super::store::{
+    plugin_store_path, scan_codex_plugin_cache, store_contains, store_skills,
+    trusted_plugin_store_path,
+};
+use super::MANIFEST_RELATIVE_PATH;
+use super::{
+    MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill,
+    PluginSummary, PluginUpdate,
+};
 
 // ==================== AppContext 服务 ====================
 

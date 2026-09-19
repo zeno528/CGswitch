@@ -23,7 +23,6 @@ use crate::services::plugin_net::TreeEntry;
 
 #[cfg(test)]
 use super::AppContext;
-use super::{app_err, codex_config, AppResult};
 /// 前端展示用的已安装插件摘要。
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct PluginSummary {

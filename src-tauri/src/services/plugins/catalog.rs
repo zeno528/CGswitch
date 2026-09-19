@@ -10,7 +10,11 @@ use crate::codex::config::parse_document;
 use crate::services::plugin_net::{parse_github_url, TreeEntry};
 
 use super::store::store_contains;
-use super::*;
+use super::{
+    MarketplacePlugin, PluginManifest, PluginMarketplace, PluginSummary, PluginUpdate,
+    CLAUDE_MANIFEST_RELATIVE_PATH, MANIFEST_RELATIVE_PATH,
+};
+use crate::error::{app_err, AppResult};
 /// 解析 `codex plugin list` 的表格输出：
 /// `<插件>@<市场>  installed, enabled|disabled  <版本>  <路径>`；`not installed` 跳过。
 pub(super) fn parse_plugin_list_output(
