@@ -66,6 +66,20 @@ const CSS_FONT_RULE = /font-family:\s*([^;]+);/g;
 const ALLOWED_FONT_VALUES = /^var\(--font-(?:ui|mono)\)$/;
 const CSS_PATH = fileURLToPath(new URL("../src/style.css", import.meta.url));
 
+/* 共享页头契约：按钮排版不能依赖 feature 外层的 text-/leading- 类继承。 */
+const SHARED_HEADER_CONTRACTS = [
+  {
+    name: "共享页头必须统一控制换行",
+    pattern: /\.apple-page-bar\s*\{[^}]*\bflex-wrap:\s*wrap;/,
+    klass: ".apple-page-bar",
+  },
+  {
+    name: "共享页头按钮必须自带统一行高",
+    pattern: /\.apple-action-button\s*\{[^}]*\bline-height:\s*1\.4;/,
+    klass: ".apple-action-button",
+  },
+];
+
 /* 文件级结构不变量：中间滚动区与页头必须成对出现，防止新页面漏页头或自建布局骨架 */
 const STRUCTURAL_CHECKS = [
   {
@@ -106,8 +120,13 @@ for (const filePath of files) {
 }
 
 /* style.css 单独扫：上面的 RULES 面向 Tailwind 类名写法，直接套到原生 CSS 会误报（如 position: sticky）。 */
+const css = readFileSync(CSS_PATH, "utf8");
+for (const check of SHARED_HEADER_CONTRACTS) {
+  if (!check.pattern.test(css)) violations.push({ rel: "style.css", rule: check.name, klass: check.klass });
+}
+
 const usedFontWhitelist = new Set();
-for (const match of readFileSync(CSS_PATH, "utf8").matchAll(CSS_FONT_RULE)) {
+for (const match of css.matchAll(CSS_FONT_RULE)) {
   const text = match[0].trim();
   const value = match[1].replace(/!\s*important\s*$/, "").trim();
   if (ALLOWED_FONT_VALUES.test(value)) continue;
@@ -137,4 +156,4 @@ if (staleFontWhitelist.length) {
   for (const item of staleFontWhitelist) console.error(`  ${item.text}  ← ${item.reason}`);
   process.exit(1);
 }
-console.log("✔ 样式泄漏扫描通过（字号/色值/中性灰/首卡间距/滚动与 sticky/字体栈 均未越界，结构不变量成立）");
+console.log("✔ 样式泄漏扫描通过（字号/色值/中性灰/首卡间距/滚动与 sticky/字体栈/共享页头契约 均未越界，结构不变量成立）");
