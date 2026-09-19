@@ -61,7 +61,7 @@ describe("SettingsSections", () => {
           <SettingsAbout
             paths={[
               { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
-              { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+              { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups\\database" },
               { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
               { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
             ]}

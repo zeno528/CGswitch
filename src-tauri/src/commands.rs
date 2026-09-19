@@ -820,6 +820,64 @@ pub fn take_update_marker(
     state.take_update_marker(rollback.unwrap_or(false))
 }
 
+fn require_update_version(version: Option<String>) -> AppResult<String> {
+    version
+        .filter(|version| !version.trim().is_empty())
+        .ok_or_else(|| app_err!("更新日志缺少版本号"))
+}
+
+#[tauri::command]
+pub fn log_update_event(event: String, version: Option<String>) -> AppResult<()> {
+    match event.as_str() {
+        "check_available" => {
+            let version = require_update_version(version)?;
+            tauri_plugin_log::log::info!(
+                "[update.check] version={version:?} outcome=success msg=\"检测到新版本 {version}\""
+            );
+        }
+        "check_latest" => {
+            tauri_plugin_log::log::info!("[update.check] outcome=success msg=\"未检测到可用更新\"");
+        }
+        "check_failure" => {
+            tauri_plugin_log::log::warn!(
+                "[update.check] outcome=failure failure_kind=network_error msg=\"检查更新失败\""
+            );
+        }
+        "download_start" => {
+            let version = require_update_version(version)?;
+            tauri_plugin_log::log::info!(
+                "[update.download] version={version:?} outcome=success msg=\"开始下载更新\""
+            );
+        }
+        "download_complete" => {
+            let version = require_update_version(version)?;
+            tauri_plugin_log::log::info!(
+                "[update.download] version={version:?} outcome=success msg=\"更新包下载完成\""
+            );
+        }
+        "download_failure" => {
+            let version = require_update_version(version)?;
+            tauri_plugin_log::log::warn!(
+                "[update.download] version={version:?} outcome=failure failure_kind=network_error msg=\"更新包下载失败\""
+            );
+        }
+        "install_complete" => {
+            let version = require_update_version(version)?;
+            tauri_plugin_log::log::info!(
+                "[update.install] version={version:?} outcome=success msg=\"安装器执行完成\""
+            );
+        }
+        "install_failure" => {
+            let version = require_update_version(version)?;
+            tauri_plugin_log::log::warn!(
+                "[update.install] version={version:?} outcome=failure failure_kind=internal msg=\"安装或重启失败\""
+            );
+        }
+        _ => return Err(app_err!("不支持的更新日志事件")),
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn save_settings(
     app: AppHandle,

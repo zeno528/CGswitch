@@ -50,7 +50,7 @@
   --scrollbar-thumb: color-mix(in srgb, var(--text-secondary) 15%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-secondary) 40%, transparent);
   /* 全局间距参数：页头/标题到首个内容区块，以及相邻卡片/分区之间 */
-  --gap-page: 0.75rem;
+  --gap-page: 0.825rem;
   --gap-section: 1rem;
   /* 卡片内边距基准（上下与未拆分的卡片使用） */
   --gap-card: 1.25rem;
@@ -268,7 +268,7 @@ body {
   align-items: center;
   flex-shrink: 0;
   border-radius: 9999px;
-  padding: 2.5px 9px;
+  padding: 1.5px 9px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -581,7 +581,7 @@ main:has(.apple-edit-page) {
 }
 
 .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
-  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.45, 1) both;
+  animation: apple-page-enter 1000ms cubic-bezier(0.16, 1, 0.45, 1) both;
 }
 
 :root.dark .apple-main-card {

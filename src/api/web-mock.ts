@@ -60,7 +60,7 @@ const webProfiles: ProfileSummary[] = [
 // label 是 i18n key，由前端 t() 翻译展示；与 Rust path_info（services/settings.rs）保持一致
 const webPaths = [
   { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
-  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups" },
+  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups\\database" },
   { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
   { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
 ];
@@ -621,6 +621,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webUpdateMarker = null;
       return marker as T;
     }
+    case "log_update_event":
+      return undefined as T;
     case "get_codex_status":
       return webState().codex as T;
     case "capture_profile": {

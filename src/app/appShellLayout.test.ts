@@ -169,6 +169,11 @@ describe("AppShell 布局", () => {
     expect(styles).not.toContain(".apple-edit-card-frame");
   });
 
+  it("编辑页在详情完成后再一次性揭示，保留页面进入动画", () => {
+    expect(styles).toContain("@keyframes apple-page-enter {\n  from { transform: translateY(6px); }");
+    expect(profileEditSource).toContain("if (!create && !detail && !loadError) return null;");
+  });
+
   it("将内容区滚动条槽从右侧内边距中扣除", () => {
     expect(styles).toContain("padding-right: calc(var(--gap-main) - 8px);");
   });

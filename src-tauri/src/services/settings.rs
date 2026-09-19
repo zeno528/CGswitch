@@ -66,6 +66,32 @@ fn open_in_file_explorer(path: &Path) -> AppResult<()> {
     }
 }
 
+// 用 serde 序列化后 diff，避免手写字段列表与 Settings 结构体漂移
+fn changed_settings_fields(before: &Settings, after: &Settings) -> String {
+    let diff = match (
+        serde_json::to_value(before).ok(),
+        serde_json::to_value(after).ok(),
+    ) {
+        (Some(a), Some(b)) => a
+            .as_object()
+            .zip(b.as_object())
+            .map(|(a, b)| {
+                b.iter()
+                    .filter(|(key, value)| a.get(*key) != Some(value))
+                    .map(|(key, _)| key.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .unwrap_or_else(|| "unknown".into()),
+        _ => "unknown".into(),
+    };
+    if diff.is_empty() {
+        "none".into()
+    } else {
+        diff
+    }
+}
+
 impl AppContext {
     pub fn restart_codex(&self) -> AppResult<()> {
         let _guard = self
@@ -172,6 +198,7 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
+        let previous = self.settings().ok();
         let mut settings = settings.clone();
         settings.theme = settings.theme.trim().to_lowercase();
         if !["system", "light", "dark"].contains(&settings.theme.as_str()) {
@@ -193,21 +220,32 @@ impl AppContext {
             ".db",
             backup_keep_count(settings.database_backup_keep_count),
         );
-        tauri_plugin_log::log::info!("[settings.save] outcome=success msg=\"设置已保存\"");
+        let changed = previous
+            .as_ref()
+            .map(|before| changed_settings_fields(before, &settings))
+            .unwrap_or_else(|| "unknown".into());
+        tauri_plugin_log::log::info!(
+            "[settings.save] changed={changed:?} outcome=success msg=\"设置已保存\""
+        );
         Ok(settings)
     }
 
     pub fn set_update_marker(&self, version: &str) -> AppResult<()> {
-        atomic_write(&self.paths.update_marker, version.as_bytes())?;
+        if let Err(error) = atomic_write(&self.paths.update_marker, version.as_bytes()) {
+            tauri_plugin_log::log::warn!(
+                "[update.install] version={version:?} outcome=failure failure_kind=io_error error={error:?} msg=\"写入更新标记失败\""
+            );
+            return Err(error);
+        }
         // 安装器启动（Windows 下随即杀进程）前最后一条日志，升级排障以此为界
         tauri_plugin_log::log::info!(
-            "[update.install] version={version:?} outcome=success msg=\"下载完成，写入升级标记，启动安装器\""
+            "[update.install] version={version:?} outcome=success msg=\"已写入更新标记，即将启动安装器\""
         );
         Ok(())
     }
 
     /// 读取并清除「已更新到 vX」标记（一次性消费）；无标记返回 None。
-    /// rollback=true 表示安装失败后的取回：同样是有标记，语义从「升级成功」变「回滚」，日志分级不同。
+    /// rollback=true 表示安装失败后的取回：同样是有标记，语义从「更新成功」变「回滚」，日志分级不同。
     pub fn take_update_marker(&self, rollback: bool) -> AppResult<Option<String>> {
         match std::fs::read_to_string(&self.paths.update_marker) {
             Ok(text) => {
@@ -215,17 +253,22 @@ impl AppContext {
                 let version = text.trim().to_string();
                 if rollback {
                     tauri_plugin_log::log::warn!(
-                        "[update.install] version={version:?} outcome=failure failure_kind=internal msg=\"安装失败，回滚升级标记\""
+                        "[update.install] version={version:?} outcome=failure failure_kind=internal msg=\"安装失败，回滚更新标记\""
                     );
                 } else {
                     tauri_plugin_log::log::info!(
-                        "[update.install] version={version:?} outcome=success msg=\"升级成功落地\""
+                        "[update.success] version={version:?} outcome=success msg=\"已更新到 {version}\""
                     );
                 }
                 Ok(Some(version))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(app_err!("无法读取更新标记: {error}")),
+            Err(error) => {
+                tauri_plugin_log::log::warn!(
+                    "[update.success] outcome=failure failure_kind=io_error error={error:?} msg=\"读取更新结果标记失败\""
+                );
+                Err(app_err!("无法读取更新标记: {error}"))
+            }
         }
     }
 
@@ -249,7 +292,7 @@ impl AppContext {
             },
             PathInfo {
                 label: "about.paths.backups".into(),
-                path: self.paths.root.join("backups").display().to_string(),
+                path: self.paths.database_backup.display().to_string(),
             },
             PathInfo {
                 label: "about.paths.logs".into(),
@@ -260,5 +303,24 @@ impl AppContext {
 
     pub(super) fn is_managed_path(&self, path: &str) -> bool {
         self.path_info().iter().any(|item| item.path == path)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_log_lists_changed_fields_without_values() {
+        let before = Settings::default();
+        let mut after = before.clone();
+        after.auto_check_update = false;
+        after.database_backup_keep_count = 10;
+
+        assert_eq!(
+            changed_settings_fields(&before, &after),
+            "auto_check_update,database_backup_keep_count"
+        );
+        assert_eq!(changed_settings_fields(&before, &before), "none");
     }
 }

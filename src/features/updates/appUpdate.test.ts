@@ -1,15 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { toAppUpdate } from "./appUpdate";
+import { checkForAppUpdate, toAppUpdate } from "./appUpdate";
 
-const { setUpdateMarker, takeUpdateMarker } = vi.hoisted(() => ({
+const { check, logUpdateEvent, setUpdateMarker, takeUpdateMarker } = vi.hoisted(() => ({
+  check: vi.fn(),
+  logUpdateEvent: vi.fn(async (_event: string, _version?: string) => undefined),
   setUpdateMarker: vi.fn(async (_version: string) => undefined),
   takeUpdateMarker: vi.fn(async () => null as string | null),
 }));
 
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
+vi.mock("@tauri-apps/plugin-updater", () => ({ check }));
 vi.mock("../../api", () => ({
-  api: { setUpdateMarker, takeUpdateMarker },
+  api: { logUpdateEvent, setUpdateMarker, takeUpdateMarker },
   isTauri: true,
 }));
 
@@ -21,10 +24,28 @@ describe("toAppUpdate", () => {
     expect(toAppUpdate({ version: "0.16.0", download: noop, install: noop }).notes).toBeNull();
   });
 
+  it("记录检查结果：有更新、无更新和检查失败分别可辨识", async () => {
+    logUpdateEvent.mockClear();
+    check.mockResolvedValueOnce(null);
+    expect(await checkForAppUpdate()).toBeNull();
+    expect(logUpdateEvent).toHaveBeenLastCalledWith("check_latest", undefined);
+
+    const download = vi.fn(async () => {});
+    const install = vi.fn(async () => {});
+    check.mockResolvedValueOnce({ version: "0.10.5", body: null, download, install });
+    expect((await checkForAppUpdate())?.version).toBe("0.10.5");
+    expect(logUpdateEvent).toHaveBeenLastCalledWith("check_available", "0.10.5");
+
+    check.mockRejectedValueOnce(new Error("检查失败"));
+    await expect(checkForAppUpdate()).rejects.toThrow("检查失败");
+    expect(logUpdateEvent).toHaveBeenLastCalledWith("check_failure", undefined);
+  });
+
   it("安装成功：下载后先把版本标记原子落盘，再启动安装器", async () => {
     const download = vi.fn(async () => {});
     const install = vi.fn(async () => {});
     vi.mocked(relaunch).mockClear();
+    logUpdateEvent.mockClear();
     setUpdateMarker.mockClear();
     takeUpdateMarker.mockClear();
     const update = toAppUpdate({ version: "0.10.5", download, install });
@@ -41,11 +62,17 @@ describe("toAppUpdate", () => {
     expect(downloadAt).toBeLessThan(markAt);
     expect(markAt).toBeLessThan(installAt);
     expect(setUpdateMarker).toHaveBeenCalledWith("0.10.5");
+    expect(logUpdateEvent.mock.calls).toEqual([
+      ["download_start", "0.10.5"],
+      ["download_complete", "0.10.5"],
+      ["install_complete", "0.10.5"],
+    ]);
     expect(takeUpdateMarker).not.toHaveBeenCalled();
     expect(relaunch).toHaveBeenCalledOnce();
   });
 
   it("安装失败：清除标记并向上抛错", async () => {
+    logUpdateEvent.mockClear();
     setUpdateMarker.mockClear();
     takeUpdateMarker.mockClear();
     const failure = vi.fn(async () => { throw new Error("安装器启动失败"); });
@@ -53,6 +80,11 @@ describe("toAppUpdate", () => {
 
     await expect(update.install()).rejects.toThrow("安装器启动失败");
     expect(setUpdateMarker).toHaveBeenCalledWith("0.10.5");
+    expect(logUpdateEvent.mock.calls).toEqual([
+      ["download_start", "0.10.5"],
+      ["download_complete", "0.10.5"],
+      ["install_failure", "0.10.5"],
+    ]);
     expect(takeUpdateMarker).toHaveBeenCalledOnce();
   });
 });

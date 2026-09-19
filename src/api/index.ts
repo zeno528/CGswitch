@@ -27,6 +27,16 @@ import type {
 } from "../types";
 export const isTauri = typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
 
+export type UpdateLogEvent =
+  | "check_available"
+  | "check_latest"
+  | "check_failure"
+  | "download_start"
+  | "download_complete"
+  | "download_failure"
+  | "install_complete"
+  | "install_failure";
+
 // web-mock 动态加载：生产 Tauri 永远不会拉取这个 chunk，浏览器 dev 首次调用时才加载
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (isTauri) return invoke<T>(command, args);
@@ -173,6 +183,8 @@ export const api = {
   openUrl: (url: string) => call<void>("open_url", { url }),
   getSettings: () => call<Settings>("get_settings"),
   saveSettings: (settings: Settings) => call<Settings>("save_settings", { settings }),
+  logUpdateEvent: (event: UpdateLogEvent, version?: string) =>
+    call<void>("log_update_event", { event, version }),
   setUpdateMarker: (version: string) => call<void>("set_update_marker", { version }),
   takeUpdateMarker: (rollback = false) =>
     call<string | null>("take_update_marker", { rollback }),

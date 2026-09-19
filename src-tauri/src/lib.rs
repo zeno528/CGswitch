@@ -179,6 +179,7 @@ pub fn run() {
             commands::open_url,
             commands::get_settings,
             commands::save_settings,
+            commands::log_update_event,
             commands::set_update_marker,
             commands::take_update_marker,
             commands::list_plugins,
