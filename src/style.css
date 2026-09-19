@@ -1157,12 +1157,7 @@ body.drag-active * {
   overflow: hidden;
   border-radius: var(--radius-card);
   background: var(--panel-bg);
-  box-shadow: 0 0 0 1px var(--panel-border);
-}
-
-/* 浅色账号卡片用既有面板边缘色补一圈细描边，保持深色层级不变。 */
-:root:not(.dark) .accounts-page .apple-edit-content > .grid > .apple-group {
-  box-shadow: 0 0 0 1px var(--panel-border);
+  box-shadow: 0 0 0 0.5px var(--panel-border);
 }
 
 .settings-about__hero {
@@ -1451,7 +1446,7 @@ body.drag-active * {
 /* 暗色下卡片增加纵深：半透明白 hairline 环 + 更强的黑接触阴影，避免贴平背景 */
 :root.dark .panel,
 :root.dark .apple-group {
-  box-shadow: 0 0 0 1px var(--panel-ring);
+  box-shadow: 0 0 0 0.5px var(--panel-ring);
 }
 
 /* 统一大面板：外层用 apple-group，内部区块用 apple-panel-section；
