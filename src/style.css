@@ -581,7 +581,7 @@ main:has(.apple-edit-page) {
 }
 
 .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
-  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.45, 1) both;
 }
 
 :root.dark .apple-main-card {
