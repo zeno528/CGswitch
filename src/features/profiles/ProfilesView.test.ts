@@ -68,13 +68,9 @@ describe("ProfilesView 拖拽预览", () => {
 });
 
 describe("ProfilesView 编辑器加载策略", () => {
-  it("ProfileEdit 延迟加载，CodeMirror 不进首屏 chunk", () => {
-    expect(source).toContain('const ProfileEdit = lazy(() => import("./ProfileEdit"));');
-    expect(source).not.toContain('import ProfileEdit from "./ProfileEdit";');
-  });
-
-  it("ProfileEdit 挂载在 Suspense 下并带骨架占位", () => {
-    expect(source).toContain("<Suspense fallback={");
-    expect(source).toContain("<ProfileEdit profile={editingProfile}");
+  it("ProfileEdit 静态加载：进编辑页零延迟，不出现懒加载骨架", () => {
+    expect(source).toContain('import ProfileEdit from "./ProfileEdit";');
+    expect(source).not.toContain("lazy(");
+    expect(source).not.toContain("Suspense");
   });
 });

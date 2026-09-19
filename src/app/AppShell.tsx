@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,41 +7,17 @@ import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
+import McpView from "../features/mcp/McpView";
+import PluginsView from "../features/plugins/PluginsView";
+import SkillsView from "../features/skills/SkillsView";
+import AccountsView from "../features/accounts/AccountsView";
+import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
 import { setupI18n } from "../i18n";
-
-// 非默认页按访问加载：初始 chunk 只保留首页 ProfilesView，管理页首次进入时再拉对应 chunk
-const McpView = lazy(() => import("../features/mcp/McpView"));
-const PluginsView = lazy(() => import("../features/plugins/PluginsView"));
-const SkillsView = lazy(() => import("../features/skills/SkillsView"));
-const AccountsView = lazy(() => import("../features/accounts/AccountsView"));
-const SettingsView = lazy(() => import("../features/settings/SettingsView"));
 
 const appWindow = isTauri ? getCurrentWindow() : null;
 // macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
 const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
-
-// lazy 页面 chunk 加载期间的占位，结构复用 startup-skeleton
-const pageFallback = (
-  <div className="startup-skeleton" aria-busy="true">
-    <div className="startup-skeleton__title" />
-    <div className="startup-skeleton__subtitle" />
-    <div className="startup-skeleton__panel" />
-    <div className="startup-skeleton__heading" />
-    <div className="startup-skeleton__list" />
-  </div>
-);
-
-// 首屏之后空闲时后台预热 lazy chunk（与各 lazy() 指向同一 chunk，模块缓存幂等），
-// 消除首次切页的骨架闪现；fire-and-forget，失败无感（进入页面时会重试）。
-function preloadLazyViews() {
-  void import("../features/mcp/McpView");
-  void import("../features/plugins/PluginsView");
-  void import("../features/skills/SkillsView");
-  void import("../features/accounts/AccountsView");
-  void import("../features/settings/SettingsView");
-  void import("../features/profiles/ProfileEdit");
-}
 
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
@@ -149,17 +125,6 @@ export default function AppShell() {
     };
     updateScrollbarSize();
   }, []);
-
-  // 预热不挤占首屏：等窗口显示（startupReady）后 idle 再拉 chunk，2s 兜底防饥饿
-  useEffect(() => {
-    if (!startupReady) return;
-    if (typeof window.requestIdleCallback === "function") {
-      const id = window.requestIdleCallback(preloadLazyViews, { timeout: 2000 });
-      return () => window.cancelIdleCallback(id);
-    }
-    const timer = window.setTimeout(preloadLazyViews, 800);
-    return () => window.clearTimeout(timer);
-  }, [startupReady]);
 
   const goProfiles = () => {
     if (view === "profiles") return;
@@ -281,22 +246,18 @@ export default function AppShell() {
                   <div className="startup-skeleton__list" />
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
+              ) : view === "profiles" ? (
+                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
+              ) : view === "mcp" ? (
+                <McpView key={mcpReset} />
+              ) : view === "plugins" ? (
+                <PluginsView state={state} />
+              ) : view === "skills" ? (
+                <SkillsView activationEpoch={activationEpoch} />
+              ) : view === "accounts" ? (
+                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (
-                <Suspense fallback={pageFallback}>
-                  {view === "profiles" ? (
-                    <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
-                  ) : view === "mcp" ? (
-                    <McpView key={mcpReset} />
-                  ) : view === "plugins" ? (
-                    <PluginsView state={state} />
-                  ) : view === "skills" ? (
-                    <SkillsView activationEpoch={activationEpoch} />
-                  ) : view === "accounts" ? (
-                    <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
-                  ) : (
-                    <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
-                  )}
-                </Suspense>
+                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
               )}
             </div>
           </main>

@@ -2,7 +2,7 @@ import { Camera, GripVertical, Layers2, Play, Plus, RefreshCw } from "lucide-rea
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
@@ -12,10 +12,8 @@ import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import type { AppState, ProfileBalanceInfo, ProfileSummary } from "../../types";
 import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent } from "./ProfileCard";
+import ProfileEdit from "./ProfileEdit";
 import { UpdateNotice } from "../updates/AppUpdateProvider";
-
-// 编辑器（含 CodeMirror 全套）按需加载：只有进入编辑态才拉取对应 chunk
-const ProfileEdit = lazy(() => import("./ProfileEdit"));
 
 interface ProfilesViewProps {
   state: AppState;
@@ -230,19 +228,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   const draggedQuotaKey = draggedProfile ? profileAuthQuotaCacheKey(draggedProfile) : null;
 
   if (editingProfile || creatingProfile) {
-    return (
-      <Suspense fallback={
-        <div className="startup-skeleton" aria-busy="true">
-          <div className="startup-skeleton__title" />
-          <div className="startup-skeleton__subtitle" />
-          <div className="startup-skeleton__panel" />
-          <div className="startup-skeleton__heading" />
-          <div className="startup-skeleton__list" />
-        </div>
-      }>
-        <ProfileEdit profile={editingProfile} create={creatingProfile} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />
-      </Suspense>
-    );
+    return <ProfileEdit profile={editingProfile} create={creatingProfile} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
   }
 
   const nextCodexAction = codexActionFor(state.codex.running);
