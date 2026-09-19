@@ -18,6 +18,13 @@ describe("ConfigTextEditor runtime", () => {
     expect(profileEditSource.match(/<ConfigTextEditor[^>]*ref=\{editorRef\}/g)).toHaveLength(3);
   });
 
+  it("uses the longest profile document as the shared editor minimum", () => {
+    expect(editorSource).toContain("minLines?: number;");
+    expect(editorSource).toContain('className="apple-editor-surface"');
+    expect(editorSource).toContain("style={{ minHeight: editorMinHeight }}");
+    expect(profileEditSource.match(/minLines=\{editorMinLines\}/g)).toHaveLength(3);
+  });
+
   it("gates JSON diagnostics behind JSON.parse", () => {
     expect(editorSource).toContain("JSON.parse(text)");
   });

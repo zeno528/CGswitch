@@ -122,6 +122,7 @@ export function computeTextChange(current: string, next: string) {
 interface ConfigTextEditorProps {
   value: string;
   language: "toml" | "json";
+  minLines?: number;
   placeholder?: string;
   readOnly?: boolean;
   validateToml?: (text: string) => Promise<TomlDiagnostic[]>;
@@ -130,7 +131,7 @@ interface ConfigTextEditorProps {
 }
 
 const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProps>(function ConfigTextEditor(
-  { value, language, placeholder, readOnly = false, validateToml = api.validateToml, onChange, onDiagnostics },
+  { value, language, minLines = 1, placeholder, readOnly = false, validateToml = api.validateToml, onChange, onDiagnostics },
   ref,
 ) {
   const { t } = useTranslation();
@@ -147,6 +148,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const lastSummary = useRef<EditorDiagnosticSummary | null>(null);
   const syncingValueRef = useRef(false);
   const editingCompartment = useRef(new Compartment());
+  const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, min(34rem, 60vh))`;
 
   valueRef.current = value;
   onChangeRef.current = onChange;
@@ -328,22 +330,24 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   }, [value]);
 
   return (
-    <div className="apple-editor-shell">
-      <div ref={hostRef} />
-      <div ref={horizontalScrollbarRowRef} className="cm-horizontal-scrollbar-row">
-        <div ref={horizontalScrollbarGutterRef} className="cm-horizontal-scrollbar-gutter" aria-hidden="true" />
-        <div
-          ref={horizontalScrollbarRef}
-          className="cm-horizontal-scrollbar"
-          role="scrollbar"
-          aria-label={t("editor.horizontalScrollbar")}
-          aria-orientation="horizontal"
-          aria-valuemin={0}
-          aria-valuemax={0}
-          aria-valuenow={0}
-          tabIndex={0}
-        >
-          <div ref={horizontalScrollbarContentRef} />
+    <div className="apple-editor-shell" style={{ minHeight: editorMinHeight }}>
+      <div className="apple-editor-surface">
+        <div ref={hostRef} />
+        <div ref={horizontalScrollbarRowRef} className="cm-horizontal-scrollbar-row">
+          <div ref={horizontalScrollbarGutterRef} className="cm-horizontal-scrollbar-gutter" aria-hidden="true" />
+          <div
+            ref={horizontalScrollbarRef}
+            className="cm-horizontal-scrollbar"
+            role="scrollbar"
+            aria-label={t("editor.horizontalScrollbar")}
+            aria-orientation="horizontal"
+            aria-valuemin={0}
+            aria-valuemax={0}
+            aria-valuenow={0}
+            tabIndex={0}
+          >
+            <div ref={horizontalScrollbarContentRef} />
+          </div>
         </div>
       </div>
     </div>

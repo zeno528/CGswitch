@@ -1433,13 +1433,18 @@ body.drag-active * {
 }
 
 .apple-editor-shell {
+  min-width: 0;
+}
+
+/* 短文件不拉伸代码区；外层只负责在切换时保留最长文件的布局高度。 */
+.apple-editor-surface {
   overflow: hidden;
   border-radius: var(--radius-control-sm);
   background: rgb(0 0 0 / 0.04);
   box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
-:root.dark .apple-editor-shell {
+:root.dark .apple-editor-surface {
   background: rgb(255 255 255 / 0.06);
 }
 
@@ -2160,8 +2165,8 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 }
 
 .cm-editor {
+  /* 代码区按文档内容自适应，最长文件的共享占位由外层承担 */
   height: auto;
-  /* 27 行按当前 12px / 1.6 行高完整显示；窗口变小时按视口连续收缩 */
   max-height: min(34rem, 60vh);
   background: transparent;
 }
