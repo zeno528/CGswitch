@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,17 +7,30 @@ import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
-import McpView from "../features/mcp/McpView";
-import PluginsView from "../features/plugins/PluginsView";
-import SkillsView from "../features/skills/SkillsView";
-import AccountsView from "../features/accounts/AccountsView";
-import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
 import { setupI18n } from "../i18n";
+
+// 非默认页按访问加载：初始 chunk 只保留首页 ProfilesView，管理页首次进入时再拉对应 chunk
+const McpView = lazy(() => import("../features/mcp/McpView"));
+const PluginsView = lazy(() => import("../features/plugins/PluginsView"));
+const SkillsView = lazy(() => import("../features/skills/SkillsView"));
+const AccountsView = lazy(() => import("../features/accounts/AccountsView"));
+const SettingsView = lazy(() => import("../features/settings/SettingsView"));
 
 const appWindow = isTauri ? getCurrentWindow() : null;
 // macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
 const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
+
+// lazy 页面 chunk 加载期间的占位，结构复用 startup-skeleton
+const pageFallback = (
+  <div className="startup-skeleton" aria-busy="true">
+    <div className="startup-skeleton__title" />
+    <div className="startup-skeleton__subtitle" />
+    <div className="startup-skeleton__panel" />
+    <div className="startup-skeleton__heading" />
+    <div className="startup-skeleton__list" />
+  </div>
+);
 
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
@@ -246,18 +259,22 @@ export default function AppShell() {
                   <div className="startup-skeleton__list" />
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
-              ) : view === "profiles" ? (
-                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
-              ) : view === "mcp" ? (
-                <McpView key={mcpReset} />
-              ) : view === "plugins" ? (
-                <PluginsView state={state} />
-            ) : view === "skills" ? (
-              <SkillsView activationEpoch={activationEpoch} />
-              ) : view === "accounts" ? (
-                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (
-                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
+                <Suspense fallback={pageFallback}>
+                  {view === "profiles" ? (
+                    <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
+                  ) : view === "mcp" ? (
+                    <McpView key={mcpReset} />
+                  ) : view === "plugins" ? (
+                    <PluginsView state={state} />
+                  ) : view === "skills" ? (
+                    <SkillsView activationEpoch={activationEpoch} />
+                  ) : view === "accounts" ? (
+                    <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
+                  ) : (
+                    <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
+                  )}
+                </Suspense>
               )}
             </div>
           </main>

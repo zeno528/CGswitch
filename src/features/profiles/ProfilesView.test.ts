@@ -66,3 +66,15 @@ describe("ProfilesView 拖拽预览", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {\n  color: var(--text-primary);");
   });
 });
+
+describe("ProfilesView 编辑器加载策略", () => {
+  it("ProfileEdit 延迟加载，CodeMirror 不进首屏 chunk", () => {
+    expect(source).toContain('const ProfileEdit = lazy(() => import("./ProfileEdit"));');
+    expect(source).not.toContain('import ProfileEdit from "./ProfileEdit";');
+  });
+
+  it("ProfileEdit 挂载在 Suspense 下并带骨架占位", () => {
+    expect(source).toContain("<Suspense fallback={");
+    expect(source).toContain("<ProfileEdit profile={editingProfile}");
+  });
+});
