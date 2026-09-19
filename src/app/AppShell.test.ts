@@ -24,4 +24,15 @@ describe("AppShell 页面加载策略", () => {
     expect(source).not.toContain('import AccountsView from');
     expect(source).not.toContain('import SettingsView from');
   });
+
+  it("首屏之后后台预热 lazy chunk，消除首次切页骨架", () => {
+    expect(source).toContain("function preloadLazyViews()");
+    expect(source).toContain('void import("../features/mcp/McpView");');
+    expect(source).toContain('void import("../features/plugins/PluginsView");');
+    expect(source).toContain('void import("../features/skills/SkillsView");');
+    expect(source).toContain('void import("../features/accounts/AccountsView");');
+    expect(source).toContain('void import("../features/settings/SettingsView");');
+    expect(source).toContain('void import("../features/profiles/ProfileEdit");');
+    expect(source).toContain('typeof window.requestIdleCallback === "function"');
+  });
 });

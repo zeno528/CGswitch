@@ -32,6 +32,17 @@ const pageFallback = (
   </div>
 );
 
+// 首屏之后空闲时后台预热 lazy chunk（与各 lazy() 指向同一 chunk，模块缓存幂等），
+// 消除首次切页的骨架闪现；fire-and-forget，失败无感（进入页面时会重试）。
+function preloadLazyViews() {
+  void import("../features/mcp/McpView");
+  void import("../features/plugins/PluginsView");
+  void import("../features/skills/SkillsView");
+  void import("../features/accounts/AccountsView");
+  void import("../features/settings/SettingsView");
+  void import("../features/profiles/ProfileEdit");
+}
+
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
   const [profilesReset, setProfilesReset] = useState(0);
@@ -138,6 +149,17 @@ export default function AppShell() {
     };
     updateScrollbarSize();
   }, []);
+
+  // 预热不挤占首屏：等窗口显示（startupReady）后 idle 再拉 chunk，2s 兜底防饥饿
+  useEffect(() => {
+    if (!startupReady) return;
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(preloadLazyViews, { timeout: 2000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(preloadLazyViews, 800);
+    return () => window.clearTimeout(timer);
+  }, [startupReady]);
 
   const goProfiles = () => {
     if (view === "profiles") return;
