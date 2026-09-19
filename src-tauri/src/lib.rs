@@ -43,6 +43,8 @@ fn tray_labels(language: &str) -> (&'static str, &'static str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 启动埋点：native 阶段分段耗时（debug 级，release 不落盘），供性能基线与回归对比
+    let startup_started = std::time::Instant::now();
     // panic 钩子最先装：日志插件就绪后的崩溃写入文件，再交还默认处理器；
     // 这是全项目唯一的 error! 调用（日志规约：error 留给崩溃）
     let default_hook = std::panic::take_hook();
@@ -204,19 +206,27 @@ pub fn run() {
             commands::uninstall_plugin,
             commands::open_path,
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            log::debug!(
+                "[app.startup] stage=native_ready elapsed_ms={} msg=\"进入 Tauri setup\"",
+                startup_started.elapsed().as_millis()
+            );
             log::info!(
                 "[app.start] version=\"{}\" outcome=success msg=\"CGswitch 启动\"",
                 env!("CARGO_PKG_VERSION")
             );
             // reqwest 的「proxy(...) intercepts」建连日志已随 DEBUG 噪音压掉，
-            // 代理走向改由自己记：一场一行，排障时对照请求是否走代理
-            match services::detect_system_proxy() {
-                Some(proxy) => {
-                    log::info!("[net.proxy] outcome=success proxy={proxy} msg=\"检测到系统代理\"")
+            // 代理走向改由自己记：一场一行，排障时对照请求是否走代理。
+            // reg.exe / scutil 是阻塞子进程调用且此处只喂启动日志，
+            // spawn_blocking 移出 setup 同步路径；各网络请求路径本来就按需现查
+            tauri::async_runtime::spawn_blocking(|| {
+                match services::detect_system_proxy() {
+                    Some(proxy) => {
+                        log::info!("[net.proxy] outcome=success proxy={proxy} msg=\"检测到系统代理\"")
+                    }
+                    None => log::debug!("[net.proxy] outcome=success proxy=None msg=\"未检测到系统代理\""),
                 }
-                None => log::debug!("[net.proxy] outcome=success proxy=None msg=\"未检测到系统代理\""),
-            }
+            });
 
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
             // 统一先隐藏一次；非静默启动时由前端在 settings 加载后 show()。
@@ -311,6 +321,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            log::debug!(
+                "[app.startup] stage=setup_end elapsed_ms={} msg=\"Tauri setup 完成\"",
+                startup_started.elapsed().as_millis()
+            );
             Ok(())
         })
         .on_window_event(|window, event| {
