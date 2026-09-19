@@ -28,7 +28,6 @@ export default {
   action: {
     install: "安装",
     uninstall: "卸载",
-    upgrade: "升级",
     browse: "浏览插件",
     addAndBrowse: "添加并浏览",
     checkUpdates: "检查更新",
@@ -121,6 +120,5 @@ export default {
     installed: "已安装插件「{{name}}」，重启 Codex 后生效",
     installedNeedsAuth: "「{{name}}」安装成功，请在 Codex 桌面端完成授权",
     uninstalled: "已卸载插件「{{name}}」",
-    upgraded: "已升级插件「{{name}}」",
   },
 } as const;

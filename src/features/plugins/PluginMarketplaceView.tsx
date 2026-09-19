@@ -178,8 +178,6 @@ export default function PluginMarketplaceView({
         onBack={() => setSelectedMarketplace(null)}
         onInstalled={onInstalled}
         installedNames={installedNames}
-        updates={updates}
-        onUpgrade={upgrade}
         thirdPartyProfile={thirdPartyProfile}
       />
     );
@@ -197,7 +195,7 @@ export default function PluginMarketplaceView({
         </button>
         <div className="ml-auto flex items-center gap-2">
           <button type="button" className="apple-action-button" disabled={checkingUpdates || upgradingAll} onClick={() => void (updates.length ? upgradeAll() : checkUpdates())}>
-            {checkingUpdates || upgradingAll ? <LoadingSpinner /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
+            <RefreshCw className={`h-4 w-4 ${checkingUpdates || upgradingAll ? "animate-spin" : ""}`} strokeWidth={2} />
             {updates.length ? t("action.upgradeAll") : t("action.checkUpdates")}
           </button>
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setShowAddPlugin(true)}>

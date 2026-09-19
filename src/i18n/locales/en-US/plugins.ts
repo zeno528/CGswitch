@@ -28,7 +28,6 @@ export default {
   action: {
     install: "Install",
     uninstall: "Uninstall",
-    upgrade: "Upgrade",
     browse: "Browse plugins",
     addAndBrowse: "Add and browse",
     checkUpdates: "Check for updates",
@@ -121,6 +120,5 @@ export default {
     installed: "Installed \"{{name}}\". Restart Codex to take effect.",
     installedNeedsAuth: "\"{{name}}\" installed. Please complete authorization in the Codex desktop app.",
     uninstalled: "Uninstalled \"{{name}}\"",
-    upgraded: "Upgraded \"{{name}}\"",
   },
 } as const;

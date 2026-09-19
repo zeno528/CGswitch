@@ -633,3 +633,36 @@ pub(super) fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec
     summaries.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(summaries)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::plugins::test_context;
+
+    #[test]
+    fn desktop_builtin_plugins_are_identified() {
+        for name in [
+            "browser",
+            "chrome",
+            "unified-computer-use",
+            "codex-app-tools",
+        ] {
+            assert!(is_desktop_builtin(name), "{name} 应识别为桌面内置");
+        }
+        assert!(!is_desktop_builtin("computer-use"));
+        assert!(!is_desktop_builtin("ponytail"));
+    }
+
+    #[tokio::test]
+    async fn readonly_plugins_reject_uninstall() {
+        let (home, context) = test_context();
+        std::fs::create_dir_all(home.path().join(".agents/skills")).unwrap();
+        std::fs::write(
+            home.path().join(".agents/.skill-lock.json"),
+            r#"{"version":3,"skills":{"lark-base":{"source":"larksuite/cli","sourceType":"github"}}}"#,
+        )
+        .unwrap();
+        let error = context.uninstall_plugin("lark-base").await.unwrap_err();
+        assert!(error.0.contains("Skill 注册表"));
+    }
+}

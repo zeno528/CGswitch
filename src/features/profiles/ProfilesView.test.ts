@@ -34,7 +34,8 @@ describe("ProfilesView 拖拽预览", () => {
     expect(styles).toContain("animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;");
     expect(styles).toContain(".apple-page-enter > .apple-scroll-page > .profiles-page-content {");
     expect(styles).toContain("from { transform: translateY(6px); }");
-    expect(styles).toContain(".apple-page-enter > .apple-scroll-page > .profiles-page-content > .profiles-page-content__body {\n  isolation: isolate;\n  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;");
+    expect(styles).toContain(".apple-page-enter > .apple-scroll-page > .profiles-page-content > .profiles-page-content__body {\n  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;");
+    expect(styles).not.toContain(".profiles-page-content__body {\n  isolation: isolate;");
   });
 
   it("将拖拽浮层挂到 body，避免被页面 transform 容器偏移", () => {

@@ -147,3 +147,81 @@ pub(super) fn trusted_plugin_store_path(
         .is_some_and(|manifest| manifest.name == name))
     .then_some(path)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_skills_reads_names_and_descriptions() {
+        let root = tempfile::tempdir().unwrap();
+        let skill_dir = root.path().join("skills").join("session-summary");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\ndescription: Summarize sessions\n---\n# Session summary\n",
+        )
+        .unwrap();
+
+        let skills = store_skills(root.path());
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "session-summary");
+        assert_eq!(skills[0].path, "skills/session-summary/SKILL.md");
+        assert_eq!(skills[0].description.as_deref(), Some("Summarize sessions"));
+    }
+
+    #[test]
+    fn plugin_store_path_falls_back_to_cached_version_for_git_source() {
+        let codex_home = tempfile::tempdir().unwrap();
+        let cached = codex_home
+            .path()
+            .join(PLUGIN_CACHE_RELATIVE_PATH)
+            .join("ponytail")
+            .join("ponytail")
+            .join("4.9.0");
+        std::fs::create_dir_all(&cached).unwrap();
+
+        assert_eq!(
+            plugin_store_path(
+                codex_home.path(),
+                "ponytail",
+                "ponytail",
+                Some("4.9.0"),
+                "https://github.com/DietrichGebert/ponytail.git, ref `main`",
+            ),
+            cached
+        );
+    }
+
+    #[tokio::test]
+    async fn scan_codex_plugin_cache_reads_manifest_and_version() {
+        // 直接测底层 cache 扫描函数，避开 list_plugins 的 CLI 探测链。
+        // 本机 PATH 装了真 codex CLI 会劫持 list_plugins 走 CLI 路径，与 cache fixture 无关；
+        // 这里直调 scan_codex_plugin_cache，本机环境跟它零耦合。
+        // fixture 用抽象名（sample-marketplace / sample-plugin / v1.0.0），不撞现实插件。
+        let home = tempfile::tempdir().unwrap();
+        let codex_home = home.path().join(".codex");
+        let cache_dir = codex_home
+            .join("plugins")
+            .join("cache")
+            .join("sample-marketplace")
+            .join("sample-plugin")
+            .join("v1.0.0")
+            .join(".codex-plugin");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::write(
+            cache_dir.join("plugin.json"),
+            r#"{"name":"sample-plugin","description":"Fixture plugin"}"#,
+        )
+        .unwrap();
+
+        let plugins = scan_codex_plugin_cache(&codex_home);
+        assert_eq!(plugins.len(), 1);
+        let plugin = &plugins[0];
+        assert_eq!(plugin.name, "sample-plugin");
+        assert_eq!(plugin.marketplace.as_deref(), Some("sample-marketplace"));
+        assert_eq!(plugin.version.as_deref(), Some("v1.0.0"));
+        assert_eq!(plugin.origin, "codex");
+        assert!(plugin.enabled);
+    }
+}

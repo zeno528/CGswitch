@@ -439,3 +439,219 @@ impl AppContext {
         .map_err(|error| app_err!("Skill 删除任务失败: {error}"))?
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::plugins::test_context;
+
+    #[test]
+    fn read_skill_description_folds_block_scalar() {
+        // 实测样本（nezha-manager 等）：`>` 折叠块曾整段被跳过导致卡片无描述
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("SKILL.md");
+        std::fs::write(
+            &path,
+            "---\nname: demo\ndescription: >\n  First folded line\n  continues here.\n\n  Second paragraph.\nlicense: MIT\n---\n# body\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_skill_description(&path).as_deref(),
+            Some("First folded line continues here.\nSecond paragraph.")
+        );
+    }
+
+    #[test]
+    fn read_skill_description_keeps_literal_block_lines() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("SKILL.md");
+        std::fs::write(
+            &path,
+            "---\ndescription: |-\n  Step one\n  Step two\n---\n# body\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            read_skill_description(&path).as_deref(),
+            Some("Step one\nStep two")
+        );
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_deduplicates_identical_skills() {
+        let (home, context) = test_context();
+        for root in [".agents/skills", ".codex/skills"] {
+            let skill = home.path().join(root).join("same-skill");
+            std::fs::create_dir_all(&skill).unwrap();
+            std::fs::write(skill.join("SKILL.md"), "---\ndescription: 相同内容\n---\n").unwrap();
+        }
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        assert_eq!(
+            candidates
+                .iter()
+                .filter(|candidate| candidate.name == "same-skill")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_marks_same_name_with_different_content() {
+        let (home, context) = test_context();
+        for (root, content) in [
+            (".agents/skills", "---\ndescription: 版本 A\n---\n"),
+            (".codex/skills", "---\ndescription: 版本 B\n---\n"),
+        ] {
+            let skill = home.path().join(root).join("different-skill");
+            std::fs::create_dir_all(&skill).unwrap();
+            std::fs::write(skill.join("SKILL.md"), content).unwrap();
+        }
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        let matches: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| candidate.name == "different-skill")
+            .collect();
+        assert_eq!(matches.len(), 2);
+        assert!(matches
+            .iter()
+            .all(|candidate| candidate.has_content_conflict));
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_reports_auxiliary_changes() {
+        let (home, context) = test_context();
+        for root in [".agents/skills", ".codex/skills"] {
+            let skill = home.path().join(root).join("matching-skill");
+            std::fs::create_dir_all(skill.join("logs")).unwrap();
+            std::fs::write(skill.join("SKILL.md"), "---\ndescription: 相同内容\n---\n").unwrap();
+            std::fs::write(skill.join("logs/source.md"), root).unwrap();
+        }
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        let matches: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| candidate.name == "matching-skill")
+            .collect();
+        assert_eq!(matches.len(), 2);
+        assert!(matches
+            .iter()
+            .all(|candidate| candidate.has_content_conflict));
+        assert!(matches.iter().all(|candidate| !candidate.is_update));
+    }
+
+    #[tokio::test]
+    async fn scan_unmanaged_skills_reports_managed_updates() {
+        let (home, context) = test_context();
+        let repository_root = skill_repository(&context.paths.root);
+        let repository = repository_root.join("managed-skill");
+        std::fs::create_dir_all(&repository).unwrap();
+        std::fs::write(
+            repository.join("SKILL.md"),
+            "---\ndescription: 旧版本\n---\n",
+        )
+        .unwrap();
+
+        let agent_skill = home.path().join(".agents/skills/managed-skill");
+        let codex_skill = home.path().join(".codex/skills/managed-skill");
+        for (skill, description) in [
+            (&agent_skill, "Agent 旧副本"),
+            (&codex_skill, "Codex 新版本"),
+        ] {
+            std::fs::create_dir_all(skill).unwrap();
+            std::fs::write(
+                skill.join("SKILL.md"),
+                format!("---\ndescription: {description}\n---\n"),
+            )
+            .unwrap();
+        }
+        write_skill_sources(
+            &repository_root,
+            &BTreeMap::from([(
+                "managed-skill".to_string(),
+                codex_skill.display().to_string(),
+            )]),
+        )
+        .unwrap();
+
+        let candidates = context.scan_unmanaged_skills().await.unwrap();
+        let matches: Vec<_> = candidates
+            .iter()
+            .filter(|candidate| candidate.name == "managed-skill")
+            .collect();
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].is_update);
+        assert!(!matches[0].has_content_conflict);
+        assert_eq!(matches[0].source, "Codex");
+    }
+
+    #[tokio::test]
+    async fn local_skill_import_and_update_keep_plugin_skills_separate() {
+        let (home, context) = test_context();
+        let source = home.path().join("Downloads/local-skill");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "---\ndescription: 初始版本\n---\n").unwrap();
+
+        context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap();
+        let initial = context.list_skills().await.unwrap();
+        assert_eq!(
+            initial
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .description
+                .as_deref(),
+            Some("初始版本")
+        );
+        let codex_skill = home.path().join(".codex/skills/local-skill");
+        std::fs::create_dir_all(&codex_skill).unwrap();
+        std::fs::write(
+            codex_skill.join("SKILL.md"),
+            "---\ndescription: Codex 中已修改\n---\n",
+        )
+        .unwrap();
+        assert!(
+            context
+                .list_skills()
+                .await
+                .unwrap()
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .enabled
+        );
+
+        std::fs::write(source.join("SKILL.md"), "---\ndescription: 更新版本\n---\n").unwrap();
+        assert!(
+            context
+                .list_skills()
+                .await
+                .unwrap()
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .update_available
+        );
+        context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap();
+        assert_eq!(
+            context
+                .list_skills()
+                .await
+                .unwrap()
+                .iter()
+                .find(|skill| skill.name == "local-skill")
+                .unwrap()
+                .description
+                .as_deref(),
+            Some("更新版本")
+        );
+    }
+}

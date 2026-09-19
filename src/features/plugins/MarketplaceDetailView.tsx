@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -10,23 +10,19 @@ import ContainsChips from "./components/ContainsChips";
 import PluginSearchInput from "./components/PluginSearchInput";
 import SourceLink from "./components/SourceLink";
 import { compareMarketplacePlugins, marketplaceKindLabels, matchesQuery, resolveAliasInstalled } from "./pluginMeta";
-import type { MarketplacePlugin, PluginMarketplace, PluginUpdate } from "../../types";
+import type { MarketplacePlugin, PluginMarketplace } from "../../types";
 
 export default function MarketplaceDetailView({
   marketplace,
   onBack,
   onInstalled,
   installedNames,
-  updates,
-  onUpgrade,
   thirdPartyProfile,
 }: {
   marketplace: PluginMarketplace;
   onBack: () => void;
   onInstalled: () => Promise<void>;
   installedNames: ReadonlySet<string>;
-  updates: PluginUpdate[];
-  onUpgrade: (update: PluginUpdate) => Promise<void>;
   thirdPartyProfile: boolean;
 }) {
   const feedback = useFeedback();
@@ -36,7 +32,6 @@ export default function MarketplaceDetailView({
   const [error, setError] = useState("");
   const [installing, setInstalling] = useState("");
   const [uninstalling, setUninstalling] = useState("");
-  const [upgrading, setUpgrading] = useState("");
   const [query, setQuery] = useState("");
   const resolvedPlugins = resolveAliasInstalled(plugins, installedNames);
   const installedPluginCount = resolvedPlugins.filter((plugin) => plugin.installed).length;
@@ -117,21 +112,6 @@ export default function MarketplaceDetailView({
     }
   };
 
-  const upgrade = async (update: PluginUpdate) => {
-    if (installing || uninstalling || upgrading) return;
-    setUpgrading(update.name);
-    try {
-      await onUpgrade(update);
-      applyPluginPatch(`${update.name}@${update.marketplace}`, { version: update.version });
-      feedback.success(t("toast.upgraded", { name: update.name }));
-      await onInstalled();
-    } catch (reason) {
-      feedback.error(String(reason));
-    } finally {
-      setUpgrading("");
-    }
-  };
-
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
@@ -193,17 +173,7 @@ export default function MarketplaceDetailView({
                       </div>
                     ) : null}
                   </div>
-                  {updates.some((item) => item.name === plugin.name && item.marketplace === marketplace.name) ? (
-                    <button
-                      type="button"
-                      className="apple-action-button app-button--primary shrink-0"
-                      disabled={Boolean(installing) || Boolean(uninstalling) || Boolean(upgrading)}
-                      onClick={() => void upgrade(updates.find((item) => item.name === plugin.name && item.marketplace === marketplace.name)!)}
-                    >
-                      {upgrading === plugin.name ? <LoadingSpinner /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
-                      {t("action.upgrade")}
-                    </button>
-                  ) : !plugin.installed || marketplace.kind === "third-party" ? (
+                  {!plugin.installed || marketplace.kind === "third-party" ? (
                     <button
                       type="button"
                       className={`apple-action-button shrink-0 ${plugin.installed ? "app-button--danger" : "app-button--primary"}`}

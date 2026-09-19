@@ -307,3 +307,138 @@ pub(super) fn run_codex_plugin_inner(home: &Path, args: &[&str]) -> AppResult<St
     }
     Ok(stdout)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn cli_candidates_prefer_path_before_desktop_appserver() {
+        let home = Path::new("/home/user");
+        let candidates = cli_candidates(
+            home,
+            vec![PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")],
+        );
+        let filename = codex_cli_file_name();
+        assert_eq!(candidates[0], home.join(".codex/bin").join(filename));
+        assert_eq!(candidates[1], Path::new("/usr/local/bin").join(filename));
+        assert_eq!(candidates[2], Path::new("/usr/bin").join(filename));
+        assert_eq!(
+            candidates[3],
+            home.join(".codex/plugins/.plugin-appserver").join(filename)
+        );
+    }
+
+    #[test]
+    fn plugin_cli_timeout_and_network_error_detection() {
+        assert_eq!(
+            plugin_cli_timeout(&["marketplace", "add", "o/r"]).as_secs(),
+            PLUGIN_CLI_TIMEOUT_NETWORK_SECS
+        );
+        assert_eq!(
+            plugin_cli_timeout(&["marketplace", "list"]).as_secs(),
+            PLUGIN_CLI_TIMEOUT_FAST_SECS
+        );
+        assert!(looks_like_network_error(
+            "fatal: unable to access 'https://github.com/': Failed to connect"
+        ));
+        assert!(!looks_like_network_error("marketplace already added"));
+    }
+
+    #[test]
+    fn plugin_timeout_message_matches_operation_tier() {
+        let network = plugin_timeout_message(
+            &["marketplace", "add", "o/r"],
+            Duration::from_secs(PLUGIN_CLI_TIMEOUT_NETWORK_SECS),
+        );
+        assert!(network.contains("GitHub"));
+        let local =
+            plugin_timeout_message(&["list"], Duration::from_secs(PLUGIN_CLI_TIMEOUT_FAST_SECS));
+        assert!(!local.contains("GitHub"), "本地操作超时不能诊断为网络问题");
+        assert!(local.contains("20"));
+    }
+
+    /// 管道排水回归测试的子进程入口：父测试以本环境变量拉起当前测试二进制，
+    /// 正常跑测试时无此变量，直接通过。
+    const TEST_CHILD_MODE_ENV: &str = "CGSWITCH_PLUGINS_TEST_CHILD_MODE";
+    #[test]
+    fn plugins_test_child_entry() {
+        let Some(mode) = std::env::var(TEST_CHILD_MODE_ENV).ok() else {
+            return;
+        };
+        match mode.as_str() {
+            // 向 stdout 写 2 MB，远超任何 OS 管道缓冲
+            "firehose" => {
+                use std::io::Write;
+                let chunk = "x".repeat(1024);
+                let mut stdout = std::io::stdout().lock();
+                for _ in 0..2048 {
+                    writeln!(stdout, "{chunk}").ok();
+                }
+                stdout.flush().ok();
+            }
+            // 挂住不退出，验证超时 kill 路径
+            "stall" => std::thread::sleep(Duration::from_secs(60)),
+            _ => {}
+        }
+        std::process::exit(0);
+    }
+
+    fn spawn_test_child(mode: &str) -> std::process::Child {
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("plugins_test_child_entry")
+            .arg("--nocapture")
+            .env(TEST_CHILD_MODE_ENV, mode)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
+    #[test]
+    fn wait_child_drains_large_output_without_deadlock() {
+        let started = Instant::now();
+        let output = wait_child_with_timeout(spawn_test_child("firehose"), Duration::from_secs(15))
+            .unwrap()
+            .expect("大输出必须靠预排水线程收完，否则子进程写满管道永不退出");
+        assert!(output.status.success());
+        // 子进程输出 2048 行 × 1025 字节 ≈ 2 MB（测试框架自身会附加少量字节，
+        // 故用阈值断言：写满管道若未预排水，只能收到 ~64 KB 残留且走超时路径）
+        assert!(
+            output.stdout.len() > 2_000_000,
+            "应完整收下全部输出，实际 {} 字节",
+            output.stdout.len()
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "不应等到超时才返回"
+        );
+    }
+
+    #[test]
+    fn wait_child_kills_stalled_process_on_deadline() {
+        let started = Instant::now();
+        let outcome =
+            wait_child_with_timeout(spawn_test_child("stall"), Duration::from_secs(2)).unwrap();
+        assert!(outcome.is_none(), "挂死的子进程应按超时终止");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "应在超时时间点附近返回"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn scutil_proxy_fields_parse() {
+        let text = "<dictionary> {\n  HTTPEnable : 1\n  HTTPPort : 20080\n  HTTPProxy : 127.0.0.1\n  HTTPSEnable : 1\n  HTTPSPort : 20080\n  HTTPSProxy : 127.0.0.1\n}\n";
+        assert_eq!(
+            scutil_value(text, "HTTPSProxy").as_deref(),
+            Some("127.0.0.1")
+        );
+        assert_eq!(scutil_value(text, "HTTPSPort").as_deref(), Some("20080"));
+        assert_eq!(scutil_value(text, "NoSuchKey"), None);
+    }
+}
