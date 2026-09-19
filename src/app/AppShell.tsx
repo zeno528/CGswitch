@@ -25,7 +25,7 @@ export default function AppShell() {
   const [mcpReset, setMcpReset] = useState(0);
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
-  const { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
+  const { state, stateRef, loadError, authStatusReady, refresh, refreshAuthStatus, updateAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
   // 设置保存后（例如换了界面语言）即时切换，无需重启；托盘菜单文案一并同步。
   useEffect(() => {
@@ -247,7 +247,7 @@ export default function AppShell() {
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
               ) : view === "profiles" ? (
-                <ProfilesView key={profilesReset} state={state} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
+                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
               ) : view === "mcp" ? (
                 <McpView key={mcpReset} />
               ) : view === "plugins" ? (
@@ -255,7 +255,7 @@ export default function AppShell() {
             ) : view === "skills" ? (
               <SkillsView activationEpoch={activationEpoch} />
               ) : view === "accounts" ? (
-                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} />
+                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (
                 <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
               )}

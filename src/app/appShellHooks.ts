@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { api, isTauri } from "../api";
-import type { AppState, CodexAppStatus, Settings } from "../types";
+import type { AppState, AuthStatus, CodexAppStatus, Settings } from "../types";
 
 export type AppView = "profiles" | "mcp" | "plugins" | "skills" | "accounts" | "settings";
 
 export function useAppState() {
   const [state, setState] = useState<AppState | null>(null);
+  const [authStatusReady, setAuthStatusReady] = useState(false);
   const [loadError, setLoadError] = useState("");
   const stateRef = useRef<AppState | null>(null);
 
@@ -26,19 +27,23 @@ export function useAppState() {
     }
   }, []);
 
+  const updateAuthStatus = useCallback((auth_status: AuthStatus) => {
+    const previous = stateRef.current;
+    if (!previous) return;
+    const next = { ...previous, auth_status };
+    stateRef.current = next;
+    setState(next);
+    setAuthStatusReady(true);
+  }, []);
+
   const refreshAuthStatus = useCallback(async () => {
     try {
-      const auth_status = await api.authGetStatus();
-      const previous = stateRef.current;
-      if (previous) {
-        const next = { ...previous, auth_status };
-        stateRef.current = next;
-        setState(next);
-      }
+      updateAuthStatus(await api.authGetStatus());
     } catch {
       // 首屏已经显示时，后台认证刷新失败保留旧快照。
+      setAuthStatusReady(true);
     }
-  }, []);
+  }, [updateAuthStatus]);
 
   const updateCodex = useCallback((codex: CodexAppStatus) => {
     const previous = stateRef.current;
@@ -64,7 +69,7 @@ export function useAppState() {
     setState(next);
   }, []);
 
-  return { state, stateRef, loadError, refresh, refreshAuthStatus, updateCodex, updateSettings, previewTheme };
+  return { state, stateRef, loadError, authStatusReady, refresh, refreshAuthStatus, updateAuthStatus, updateCodex, updateSettings, previewTheme };
 }
 
 export function useThemeMode(theme: Settings["theme"] | undefined) {

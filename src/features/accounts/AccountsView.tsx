@@ -246,7 +246,7 @@ function SubscriptionExpiry({ plan, expiresAt }: { plan?: string | null; expires
   return <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1"><PlanBadge plan={plan ?? null} />{subscriptionExpiry ? <span className="meta-xs muted">{t("account.subscriptionRenewal", { time: formatLocalTime(subscriptionExpiry, i18n.language), timeZone: localTimeZone(i18n.language) })}{days == null ? null : <> · {t("account.subscriptionDaysRemaining", { count: days })}</>}</span> : null}</div>;
 }
 
-export default function AccountsView({ initialStatus, balanceCache }: { initialStatus: AuthStatus; balanceCache?: Record<string, ProfileBalanceInfo> }) {
+export default function AccountsView({ initialStatus, balanceCache, onAuthStatusChange }: { initialStatus: AuthStatus; balanceCache?: Record<string, ProfileBalanceInfo>; onAuthStatusChange?: (status: AuthStatus) => void }) {
   const feedback = useFeedback();
   const { t } = useTranslation("settings");
   const [status, setStatus] = useState(initialStatus);
@@ -257,7 +257,7 @@ export default function AccountsView({ initialStatus, balanceCache }: { initialS
   const pollCancelled = useRef(false);
 
   const refreshStatus = async () => {
-    try { const next = await api.authGetStatus(); if (!disposed.current) { setStatus(next); setLoadError(""); } }
+    try { const next = await api.authGetStatus(); if (!disposed.current) { setStatus(next); onAuthStatusChange?.(next); setLoadError(""); } }
     catch (error) { if (!disposed.current) setLoadError(String(error)); }
   };
   useEffect(() => { disposed.current = false; void refreshStatus(); return () => { disposed.current = true; }; }, []);

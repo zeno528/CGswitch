@@ -18,7 +18,7 @@ import {
   customConfigTemplate,
 } from "../../presets";
 import { patchModelValue, patchProviderFields, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
-import type { EditorDiagnosticSummary, ManagedAccount, ProfileDetail, ProfileSummary } from "../../types";
+import type { AuthStatus, EditorDiagnosticSummary, ProfileDetail, ProfileSummary } from "../../types";
 import ProfileIconEdit from "./ProfileIconEdit";
 
 type EditTab = "config" | "auth" | "models";
@@ -26,6 +26,8 @@ type EditTab = "config" | "auth" | "models";
 interface ProfileEditProps {
   profile: ProfileSummary | null;
   create?: boolean;
+  authStatus: AuthStatus;
+  authStatusReady: boolean;
   onBack: () => void;
   onChanged: () => void;
   onManageChatgptAccounts: () => void;
@@ -63,7 +65,7 @@ function normalizeNewlines(text: string) {
   return text.replace(/\r\n/g, "\n");
 }
 
-export default function ProfileEdit({ profile, create = false, onBack, onChanged, onManageChatgptAccounts }: ProfileEditProps) {
+export default function ProfileEdit({ profile, create = false, authStatus, authStatusReady, onBack, onChanged, onManageChatgptAccounts }: ProfileEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
   const [detail, setDetail] = useState<ProfileDetail | null>(null);
@@ -80,7 +82,7 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [adminUrl, setAdminUrl] = useState("");
-  const [authAccounts, setAuthAccounts] = useState<ManagedAccount[]>([]);
+  const authAccounts = authStatus.accounts;
   const [boundAccountId, setBoundAccountId] = useState<string | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(profile?.icon ?? null);
   const [presetKind, setPresetKind] = useState(create ? "custom" : "");
@@ -197,15 +199,6 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     if (!create && authSource === "oauth" && value) void refreshAuthPreview(value);
   };
 
-  const loadAuthStatus = async () => {
-    try {
-      const status = await api.authGetStatus();
-      setAuthAccounts(status.accounts);
-    } catch {
-      setAuthAccounts([]);
-    }
-  };
-
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -263,7 +256,6 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
           setLoadError(String(error));
         }
       }
-      await loadAuthStatus();
       if (!cancelled) initialized.current = true;
     })();
     return () => { cancelled = true; };
@@ -378,7 +370,6 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     setSystemProxyEnabled(hasSystemProxyOverride(nextConfig));
     setContextMgmtEnabled(hasContextManagementOverride(nextConfig));
     setActiveTab("config");
-    if (kind === "chatgpt") void loadAuthStatus();
   };
 
   const toggleLongContext = async (enabled: boolean) => {
@@ -572,7 +563,9 @@ export default function ProfileEdit({ profile, create = false, onBack, onChanged
     finally { setSaving(false); }
   };
 
-  if (!create && !detail && !loadError) return null;
+  const needsAuthStatus = create ? isOfficial : profile?.auth_source === "oauth" || Boolean(profile?.account_id);
+  const authStatusPending = needsAuthStatus && !authStatusReady;
+  if (((!create && !detail) || authStatusPending) && !loadError) return null;
   if (pickingIcon) return <ProfileIconEdit icon={selectedIcon} onBack={() => setPickingIcon(false)} onSave={(icon) => void saveIcon(icon)} />;
 
   return (

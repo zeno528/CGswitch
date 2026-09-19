@@ -17,6 +17,7 @@ import { UpdateNotice } from "../updates/AppUpdateProvider";
 
 interface ProfilesViewProps {
   state: AppState;
+  authStatusReady: boolean;
   activationEpoch: number;
   onRefresh: () => Promise<void>;
   onManageChatgptAccounts: () => void;
@@ -45,7 +46,7 @@ function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos
   );
 }
 
-export default function ProfilesView({ state, activationEpoch, onRefresh, onManageChatgptAccounts }: ProfilesViewProps) {
+export default function ProfilesView({ state, authStatusReady, activationEpoch, onRefresh, onManageChatgptAccounts }: ProfilesViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
   const [items, setItems] = useState(state.profiles);
@@ -227,7 +228,7 @@ export default function ProfilesView({ state, activationEpoch, onRefresh, onMana
   const draggedQuotaKey = draggedProfile ? profileAuthQuotaCacheKey(draggedProfile) : null;
 
   if (editingProfile || creatingProfile) {
-    return <ProfileEdit profile={editingProfile} create={creatingProfile} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
+    return <ProfileEdit profile={editingProfile} create={creatingProfile} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
   }
 
   const nextCodexAction = codexActionFor(state.codex.running);

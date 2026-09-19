@@ -56,4 +56,13 @@ describe("ProfileEdit 用量查询", () => {
     expect(zhLocale).toContain('savedWithMissingFields: "{{message}}；未填写{{fields}}，可能无法测试连通和用量查询"');
     expect(enLocale).toContain('savedWithMissingFields: "{{message}}; {{fields}} missing, connection tests and usage queries may not work"');
   });
+
+  it("编辑官方配置时复用全局 OAuth 账号快照，未完成认证刷新前不揭示空选项", () => {
+    expect(source).toContain("authStatus: AuthStatus;");
+    expect(source).toContain("authStatusReady: boolean;");
+    expect(source).toContain("const authAccounts = authStatus.accounts;");
+    expect(source).toContain('const needsAuthStatus = create ? isOfficial : profile?.auth_source === "oauth" || Boolean(profile?.account_id);');
+    expect(source).toContain("const authStatusPending = needsAuthStatus && !authStatusReady;");
+    expect(source).not.toContain("loadAuthStatus");
+  });
 });

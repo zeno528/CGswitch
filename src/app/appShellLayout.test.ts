@@ -44,6 +44,13 @@ describe("AppShell 布局", () => {
     expect(source.indexOf("setStartupReady(true);")).toBeGreaterThan(source.indexOf("await appWindow?.show();"));
   });
 
+  it("认证快照由全局状态完成后再交给配置编辑页", () => {
+    expect(hooksSource).toContain("const [authStatusReady, setAuthStatusReady] = useState(false);");
+    expect(hooksSource).toContain("setAuthStatusReady(true);");
+    expect(source).toContain("authStatusReady={authStatusReady}");
+    expect(source).toContain("onAuthStatusChange={updateAuthStatus}");
+  });
+
   it("移除侧栏激活装饰条，并固定悬浮卡片为普通字重", () => {
     expect(source).not.toContain("apple-sidebar-indicator");
     expect(source).toContain('const navClass = "apple-sidebar-nav-button app-selection-state";');
@@ -171,7 +178,7 @@ describe("AppShell 布局", () => {
 
   it("编辑页在详情完成后再一次性揭示，保留页面进入动画", () => {
     expect(styles).toContain("@keyframes apple-page-enter {\n  from { transform: translateY(6px); }");
-    expect(profileEditSource).toContain("if (!create && !detail && !loadError) return null;");
+    expect(profileEditSource).toContain("if (((!create && !detail) || authStatusPending) && !loadError) return null;");
   });
 
   it("将内容区滚动条槽从右侧内边距中扣除", () => {
