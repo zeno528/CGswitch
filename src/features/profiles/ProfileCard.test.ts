@@ -99,4 +99,9 @@ describe("ProfileCard 官网入口", () => {
     // 单飞去重把在途 promise 交回调用方：指示器跟随真正落地的查询，不留真空期
     expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });
+
+  it("切页后的静默额度刷新保留首绘延迟", () => {
+    expect(source).toContain("window.setTimeout(() => void fetchBalance(), active ? 500 : 1200);");
+    expect(source).not.toContain("lastSeenEpoch");
+  });
 });

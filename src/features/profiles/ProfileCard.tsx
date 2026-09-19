@@ -144,12 +144,17 @@ export default function ProfileCard({
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
   const authQuotaKey = profileAuthQuotaCacheKey(profile);
-  const initialQuota = authQuotaKey
-    ? getVisibleAuthQuota(authQuotaKey, balanceCache?.[profile.id] ?? null)
-    : null;
+  // 恢复缓存显示的唯一入口：内存缓存（上次查询的最新值）优先，回退 DB 快照。
+  // 初始化器与挂载 effect 必须同源，否则第一帧后会跳变（数字↔失败态）造成整卡闪动。
+  const restoreCachedBalance = () => {
+    const error = getCachedProfileBalanceError(profile.id, authQuotaKey);
+    const info = getCachedProfileBalance(profile.id, balanceCache?.[profile.id] ?? null, authQuotaKey);
+    return { error, info: error || !info ? null : info };
+  };
+  const initial = restoreCachedBalance();
   const [testing, setTesting] = useState(false);
-  const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>(() => initialQuota ? [initialQuota] : []);
-  const [balanceError, setBalanceError] = useState(() => authQuotaKey ? getAuthQuotaError(authQuotaKey) : getCachedProfileBalanceError(profile.id));
+  const [balanceInfos, setBalanceInfos] = useState<ProfileBalanceInfo[]>(() => (initial.info ? [initial.info] : []));
+  const [balanceError, setBalanceError] = useState(() => initial.error);
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const balanceInFlightRef = useRef<Promise<void> | null>(null);
   const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
@@ -206,16 +211,12 @@ export default function ProfileCard({
 
   useEffect(() => {
     if (!supportsBalance) return;
-    const cachedError = authQuotaKey
-      ? getAuthQuotaError(authQuotaKey)
-      : getCachedProfileBalanceError(profile.id);
-    const cachedInfo = authQuotaKey
-      ? getVisibleAuthQuota(authQuotaKey, balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null)
-      : balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null;
-    setBalanceInfos(cachedError || !cachedInfo ? [] : [cachedInfo]);
-    setBalanceError(cachedError);
+    const { error, info } = restoreCachedBalance();
+    // 值相同则保持原引用跳过重渲染：切页重挂载时卡片不闪
+    setBalanceInfos((current) => (current.length === (info ? 1 : 0) && (info ? current[0] === info : true)) ? current : info ? [info] : []);
+    setBalanceError(error);
     // 网络刷新延后到首绘出窗之后：缓存数字先行显示，避免挂载即发的请求挤占冷启动尾部；
-    // 手动刷新按钮仍立即执行
+    // 手动刷新按钮仍立即执行，窗口激活时由 activationEpoch 重新调度。
     const timer = window.setTimeout(() => void fetchBalance(), active ? 500 : 1200);
     return () => window.clearTimeout(timer);
     // The root owns the single activation listener; cards only react to its epoch.
