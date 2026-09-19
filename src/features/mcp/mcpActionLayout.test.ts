@@ -38,7 +38,8 @@ describe("MCP 操作入口", () => {
   });
 
   it("工具加载不占用工具按钮，完成后不强制重新展开", () => {
-    expect(viewSource).toContain("{toolsBusy ? <MetaChip><LoadingSpinner /></MetaChip> : null}");
+    expect(viewSource).toContain("{toolsBusy ? <span className=\"muted shrink-0\"><LoadingSpinner /></span> : null}");
+    expect(viewSource).not.toContain("{toolsBusy ? <MetaChip><LoadingSpinner /></MetaChip> : null}");
     expect(viewSource).toContain("<McpToolsPanel result={result} />");
     expect(viewSource).not.toContain("{loading ? <div className=\"grid place-items-center py-2\"><LoadingSpinner /></div>");
     expect(viewSource).not.toContain("disabled={toolsBusy}");

@@ -108,7 +108,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
               <MetaChip>{mcpTransportText(server, t)}</MetaChip>
               {result?.server_info?.version ? <MetaChip>{result.server_info.version}</MetaChip> : null}
               {toolsLoaded ? <MetaChip>{t("list.toolCount", { count: result?.tools.length ?? 0 })}</MetaChip> : null}
-              {toolsBusy ? <MetaChip><LoadingSpinner /></MetaChip> : null}
+              {toolsBusy ? <span className="muted shrink-0"><LoadingSpinner /></span> : null}
             </div>
             <div className="mono muted meta-xs truncate">{metaOf(server)}</div>
           </div>

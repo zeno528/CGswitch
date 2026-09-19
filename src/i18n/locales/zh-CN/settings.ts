@@ -47,7 +47,7 @@ export default {
   account: {
     sectionTitle: "ChatGPT 账号管理",
     browserLoginTitle: "添加账号",
-    browserLoginDescription: "已在系统浏览器打开 ChatGPT 授权页面。",
+    browserLoginDescription: "ChatGPT 官方授权页已在系统浏览器打开。",
     browserLoginPendingHint: "授权完成后，账号会自动添加到账号列表。",
     reopenBrowser: "重新打开授权页面",
     loginTimeout: "登录等待超时，请重试",

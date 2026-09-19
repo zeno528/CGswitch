@@ -47,7 +47,7 @@ export default {
   account: {
     sectionTitle: "ChatGPT account management",
     browserLoginTitle: "Add account",
-    browserLoginDescription: "The ChatGPT authorization page is open in your system browser.",
+    browserLoginDescription: "ChatGPT’s official authorization page is open in your system browser.",
     browserLoginPendingHint: "After authorization, the account will be added to your account list automatically.",
     reopenBrowser: "Reopen authorization",
     loginTimeout: "Sign-in timed out. Please try again.",
