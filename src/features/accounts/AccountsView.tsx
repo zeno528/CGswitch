@@ -199,14 +199,15 @@ function AccountQuota({ source, accountId, cachedBalance, onRelogin, reloginDisa
     ) : error ? (
       <div role="alert" className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-[var(--panel-border)] bg-(--profile-chip-bg) px-3 py-2.5">
         <div className="flex min-w-0 items-start gap-2">
-          <CircleAlert className={`mt-0.5 h-4 w-4 shrink-0 ${loginExpired ? "text-[var(--warning)]" : "text-[var(--danger)]"}`} strokeWidth={2} />
+          {/* 感叹号撑满文本块两行高度：拉伸自适应行高，宽度按 1:1 viewBox 跟随 */}
+          <CircleAlert className={`h-auto w-auto self-stretch shrink-0 ${loginExpired ? "text-[var(--warning)]" : "text-[var(--danger)]"}`} strokeWidth={2} />
           <div className="min-w-0">
             <div className="field-label">{loginExpired ? t("account.quotaLoginExpiredTitle") : t("account.quotaFailed")}</div>
-            <p className="setting-description mt-0.5">{loginExpired ? t("account.quotaLoginExpiredDescription") : t("account.quotaRefreshFailed")}</p>
+            <p className="setting-description mt-0.5">{loginExpired ? t("account.quotaLoginExpiredDescription") : t("account.quotaRetryHint")}</p>
           </div>
         </div>
         <button type="button" className="apple-action-button app-button--primary shrink-0" disabled={loading || (loginExpired && reloginDisabled)} onClick={errorAction}>
-          {loginExpired && onRelogin ? <LogIn className="h-4 w-4" strokeWidth={2} /> : <RefreshCw className="h-4 w-4" strokeWidth={2} />}
+          {loginExpired && onRelogin ? <LogIn className="h-4 w-4" strokeWidth={2} /> : <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} />}
           {loginExpired && onRelogin ? t("account.relogin") : t("account.retryQuota")}
         </button>
       </div>

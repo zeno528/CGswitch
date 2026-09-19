@@ -88,6 +88,7 @@ export default {
     quotaLoginExpiredTitle: "登录已失效",
     quotaLoginExpiredDescription: "重新登录此账号后，可恢复额度查询。",
     quotaRefreshFailed: "额度刷新失败，请检查网络后重试",
+    quotaRetryHint: "请检查网络后重试",
     retryQuota: "重试",
     relogin: "重新登录",
     quotaLoading: "正在查询额度…",

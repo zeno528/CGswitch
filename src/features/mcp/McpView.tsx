@@ -88,7 +88,10 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
   const Icon = transportIcon(server);
 
   return (
-    <div className="apple-group">
+    <div className="apple-group" onClick={(event) => {
+      if (!detailsVisible || !(event.target instanceof HTMLElement) || event.target.closest('button, input, code, [role="switch"]')) return;
+      onToggleTools(server);
+    }}>
       <div className="apple-list-row mcp-expanded-card__header">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="settings-icon-tile grid h-8 w-8 shrink-0 place-items-center rounded-lg text-accent">
@@ -105,6 +108,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
               <MetaChip>{mcpTransportText(server, t)}</MetaChip>
               {result?.server_info?.version ? <MetaChip>{result.server_info.version}</MetaChip> : null}
               {toolsLoaded ? <MetaChip>{t("list.toolCount", { count: result?.tools.length ?? 0 })}</MetaChip> : null}
+              {toolsBusy ? <MetaChip><LoadingSpinner /></MetaChip> : null}
             </div>
             <div className="mono muted meta-xs truncate">{metaOf(server)}</div>
           </div>
@@ -132,12 +136,11 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
           <button
             type="button"
             className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={toolsBusy}
             title={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
             aria-label={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
             onClick={() => onToggleTools(server)}
           >
-            {toolsBusy ? <LoadingSpinner /> : <Wrench className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
+            <Wrench className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </button>
           <AppSwitch size="sm" checked={server.enabled !== false} label={t("list.enableServer", { name: server.name })} onCheckedChange={(value) => onToggleEnabled(server, value)} />
         </div>
@@ -269,7 +272,7 @@ export default function McpView() {
 
   const probeTools = async (server: McpServerSpec, showLoading = true, open = true) => {
     const name = server.name;
-    if (open && toolsLoaded[name]) setToolsOpen((current) => ({ ...current, [name]: true }));
+    if (open) setToolsOpen((current) => ({ ...current, [name]: true }));
     if (showLoading) setToolsLoading((current) => ({ ...current, [name]: true }));
     try {
       const result = await api.probeMcpServer(name, true, showLoading);
@@ -278,7 +281,6 @@ export default function McpView() {
       setProbeResults((current) => ({ ...current, [name]: result }));
       setCachedMcpProbe(name, { fingerprint: mcpServerFingerprint(server), result, toolsLoaded: true });
       setToolsLoaded((current) => ({ ...current, [name]: true }));
-      if (open) setToolsOpen((current) => ({ ...current, [name]: true }));
     } catch (error) {
       if (showLoading) feedback.error(String(error));
     } finally {
@@ -294,6 +296,10 @@ export default function McpView() {
     const name = server.name;
     if (toolsOpen[name]) {
       setToolsOpen((current) => ({ ...current, [name]: false }));
+      return;
+    }
+    if (toolsLoading[name]) {
+      setToolsOpen((current) => ({ ...current, [name]: true }));
       return;
     }
     void probeTools(server);

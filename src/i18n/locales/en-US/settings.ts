@@ -88,6 +88,7 @@ export default {
     quotaLoginExpiredTitle: "Login expired",
     quotaLoginExpiredDescription: "Sign in to this account again to restore quota checks.",
     quotaRefreshFailed: "Failed to refresh quota. Check your network and try again.",
+    quotaRetryHint: "Check your network and try again.",
     retryQuota: "Retry",
     relogin: "Sign in again",
     quotaLoading: "Checking quota...",

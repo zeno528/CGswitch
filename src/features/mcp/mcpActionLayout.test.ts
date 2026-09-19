@@ -31,6 +31,21 @@ describe("MCP 操作入口", () => {
     expect(viewSource).toContain("api.probeMcpServer(name, true, showLoading)");
   });
 
+  it("MCP 卡片空白处可折叠且不抢占操作控件", () => {
+    expect(viewSource).toContain('event.target.closest(\'button, input, code, [role="switch"]\')');
+    expect(viewSource).toContain("if (!detailsVisible");
+    expect(viewSource).toContain("onToggleTools(server);");
+  });
+
+  it("工具加载不占用工具按钮，完成后不强制重新展开", () => {
+    expect(viewSource).toContain("{toolsBusy ? <MetaChip><LoadingSpinner /></MetaChip> : null}");
+    expect(viewSource).toContain("<McpToolsPanel result={result} />");
+    expect(viewSource).not.toContain("{loading ? <div className=\"grid place-items-center py-2\"><LoadingSpinner /></div>");
+    expect(viewSource).not.toContain("disabled={toolsBusy}");
+    expect(viewSource).toContain("if (toolsLoading[name])");
+    expect([...viewSource.matchAll(/if \(open\) setToolsOpen\(\(current\)/g)]).toHaveLength(1);
+  });
+
   it("列表按类型分组（stdio → http → unknown）优先、组内按名称", () => {
     expect(viewSource).toContain("orderedServers.map((server) => (");
     const fixture = [
