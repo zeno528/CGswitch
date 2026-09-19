@@ -214,7 +214,10 @@ export default function ProfileCard({
       : balanceInfoCache.get(profile.id) ?? balanceCache?.[profile.id] ?? null;
     setBalanceInfos(cachedError || !cachedInfo ? [] : [cachedInfo]);
     setBalanceError(cachedError);
-    void fetchBalance();
+    // 网络刷新延后到首绘出窗之后：缓存数字先行显示，避免挂载即发的请求挤占冷启动尾部；
+    // 手动刷新按钮仍立即执行
+    const timer = window.setTimeout(() => void fetchBalance(), active ? 500 : 1200);
+    return () => window.clearTimeout(timer);
     // The root owns the single activation listener; cards only react to its epoch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activationEpoch, profile.id, profile.show_balance, supportsBalance, authQuotaKey]);
