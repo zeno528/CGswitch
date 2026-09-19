@@ -18,6 +18,8 @@ import {
   customConfigTemplate,
 } from "../../presets";
 import { patchModelValue, patchProviderFields, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
+import ProfileAdvancedControls from "./editor/ProfileAdvancedControls";
+import { useProfileAdvancedPatches } from "./editor/useProfileAdvancedPatches";
 import type { AuthStatus, EditorDiagnosticSummary, ProfileDetail, ProfileSummary } from "../../types";
 import ProfileIconEdit from "./ProfileIconEdit";
 
@@ -34,32 +36,6 @@ interface ProfileEditProps {
 }
 
 const manageChatgptAccountsValue = "__manage_chatgpt_accounts__";
-const defaultCompactTokenLimit = "900000";
-
-function hasLongContextOverride(text: string) {
-  return /^\s*model_context_window\s*=/m.test(text) && /^\s*model_auto_compact_token_limit\s*=/m.test(text);
-}
-
-// 阈值行格式：readCompactTokenLimit 解析与 replaceCompactTokenLimit 写入共用同一 pattern，二者不可漂移
-const compactTokenLimitLine = /^(\s*model_auto_compact_token_limit\s*=\s*)(\d+)\s*$/m;
-
-function readCompactTokenLimit(text: string) {
-  return compactTokenLimitLine.exec(text)?.[2] ?? defaultCompactTokenLimit;
-}
-
-// 输入框实时联动：把配置文本里的阈值行替换为新值；键不存在时原样返回（由 blur 时的后端补丁兜底补写）
-function replaceCompactTokenLimit(text: string, limit: number) {
-  return text.replace(compactTokenLimitLine, `$1${limit}`);
-}
-
-function hasSystemProxyOverride(text: string) {
-  return /^\s*respect_system_proxy\s*=/m.test(text);
-}
-
-// 仅匹配 [features.context_management] 段内的 experimental_mode = true；[^[] 保证不跨入下一个段头
-function hasContextManagementOverride(text: string) {
-  return /^\s*\[features\.context_management\]\s*\n[^[]*?^\s*experimental_mode\s*=\s*true\s*$/m.test(text);
-}
 
 function normalizeNewlines(text: string) {
   return text.replace(/\r\n/g, "\n");
@@ -97,13 +73,6 @@ export default function ProfileEdit({ profile, create = false, authStatus, authS
   const [authPreviewReady, setAuthPreviewReady] = useState(false);
   const [configTouched, setConfigTouched] = useState(false);
   const [catalogTouched, setCatalogTouched] = useState(false);
-  const [longContextEnabled, setLongContextEnabled] = useState(false);
-  const [compactTokenLimit, setCompactTokenLimit] = useState(defaultCompactTokenLimit);
-  const [patchingLongContext, setPatchingLongContext] = useState(false);
-  const [systemProxyEnabled, setSystemProxyEnabled] = useState(false);
-  const [patchingSystemProxy, setPatchingSystemProxy] = useState(false);
-  const [contextMgmtEnabled, setContextMgmtEnabled] = useState(false);
-  const [patchingContextMgmt, setPatchingContextMgmt] = useState(false);
   // 新增态默认开启余额显示；编辑态先复用列表值，避免详情加载后才从关闭态播放到已存开启态。
   const [showBalance, setShowBalance] = useState(create || Boolean(profile?.show_balance));
   const [savingBalance, setSavingBalance] = useState(false);
@@ -121,6 +90,7 @@ export default function ProfileEdit({ profile, create = false, authStatus, authS
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
   const showProviderFields = create ? (isCustom || Boolean(selectedPreset?.base_url)) : Boolean(detail?.provider);
   const showLongContextOverride = isOfficial;
+  const advanced = useProfileAdvancedPatches({ configText, setConfigText, initialized, showLongContextOverride });
   const supportsBalance = create ? presetKind === "chatgpt" || balanceQueryProviders.has(selectedPreset?.provider ?? "") : isOfficial || balanceQueryProviders.has(detail?.provider ?? "");
   // 创建态下预设的 config 原文统一从后端取（单源真相），避免与 Rust 模板双份维护。
   // 与 configText 同源同时设置（selectPreset 内 await 后一起 set），防止异步晚到
@@ -234,10 +204,7 @@ export default function ProfileEdit({ profile, create = false, authStatus, authS
           setSelectedIcon(loaded.icon);
           setBoundAccountId(loaded.account_id);
           setShowBalance(loaded.show_balance);
-          setLongContextEnabled(loaded.provider === null && hasLongContextOverride(loaded.raw_config ?? loaded.config_fragment));
-          setCompactTokenLimit(readCompactTokenLimit(loaded.raw_config ?? loaded.config_fragment));
-          setSystemProxyEnabled(hasSystemProxyOverride(loaded.raw_config ?? loaded.config_fragment));
-          setContextMgmtEnabled(hasContextManagementOverride(loaded.raw_config ?? loaded.config_fragment));
+          advanced.syncFromConfig(loaded.raw_config ?? loaded.config_fragment, loaded.provider === null);
           if (loaded.provider === null) {
             const source = resolveAuthSource(loaded);
             if (source === "oauth") {
@@ -316,21 +283,7 @@ export default function ProfileEdit({ profile, create = false, authStatus, authS
 
   useEffect(() => {
     if (create && configText !== liveConfigFragment) setConfigTouched(true);
-    if (!patchingLongContext && showLongContextOverride) {
-      setLongContextEnabled(hasLongContextOverride(configText));
-      setCompactTokenLimit(readCompactTokenLimit(configText));
-    }
-  }, [configText, create, liveConfigFragment, patchingLongContext, showLongContextOverride]);
-
-  useEffect(() => {
-    if (!initialized.current) return;
-    if (!patchingSystemProxy) setSystemProxyEnabled(hasSystemProxyOverride(configText));
-  }, [configText, patchingSystemProxy]);
-
-  useEffect(() => {
-    if (!initialized.current) return;
-    if (!patchingContextMgmt) setContextMgmtEnabled(hasContextManagementOverride(configText));
-  }, [configText, patchingContextMgmt]);
+  }, [configText, create, liveConfigFragment]);
 
   const selectPreset = async (kind: string) => {
     const preset = builtinPresets.find((item) => item.kind === kind);
@@ -365,71 +318,8 @@ export default function ProfileEdit({ profile, create = false, authStatus, authS
     const nextConfig = withMcpSection(patchProviderFields(template, preset.base_url, ""), mcpSection);
     setConfigText(nextConfig);
     setConfigInitial(nextConfig);
-    setLongContextEnabled(kind === "chatgpt" && hasLongContextOverride(nextConfig));
-    setCompactTokenLimit(readCompactTokenLimit(nextConfig));
-    setSystemProxyEnabled(hasSystemProxyOverride(nextConfig));
-    setContextMgmtEnabled(hasContextManagementOverride(nextConfig));
+    advanced.syncFromConfig(nextConfig, kind === "chatgpt");
     setActiveTab("config");
-  };
-
-  const toggleLongContext = async (enabled: boolean) => {
-    if (patchingLongContext) return;
-    setPatchingLongContext(true);
-    try {
-      const next = await api.patchChatgptContextConfig(configText, enabled, Number(compactTokenLimit));
-      setConfigText(next);
-      setLongContextEnabled(enabled);
-    } catch (error) {
-      feedback.error(t("edit.errorLongContext", { error: String(error) }));
-    } finally {
-      setPatchingLongContext(false);
-    }
-  };
-
-  const updateCompactTokenLimit = async () => {
-    const limit = Number(compactTokenLimit);
-    if (patchingLongContext || !Number.isInteger(limit) || limit < 1 || limit > 1_000_000) {
-      feedback.error(t("edit.compactLimitRange"));
-      setCompactTokenLimit(readCompactTokenLimit(configText));
-      return;
-    }
-    setPatchingLongContext(true);
-    try {
-      const next = await api.patchChatgptContextConfig(configText, true, limit);
-      setConfigText(next);
-    } catch (error) {
-      feedback.error(t("edit.errorCompactLimit", { error: String(error) }));
-    } finally {
-      setPatchingLongContext(false);
-    }
-  };
-
-  const toggleSystemProxy = async (enabled: boolean) => {
-    if (patchingSystemProxy) return;
-    setPatchingSystemProxy(true);
-    try {
-      const next = await api.patchSystemProxyConfig(configText, enabled);
-      setConfigText(next);
-      setSystemProxyEnabled(enabled);
-    } catch (error) {
-      feedback.error(t("edit.errorSystemProxy", { error: String(error) }));
-    } finally {
-      setPatchingSystemProxy(false);
-    }
-  };
-
-  const toggleContextManagement = async (enabled: boolean) => {
-    if (patchingContextMgmt) return;
-    setPatchingContextMgmt(true);
-    try {
-      const next = await api.patchContextManagementConfig(configText, enabled);
-      setConfigText(next);
-      setContextMgmtEnabled(enabled);
-    } catch (error) {
-      feedback.error(t("edit.errorContextMgmt", { error: String(error) }));
-    } finally {
-      setPatchingContextMgmt(false);
-    }
   };
 
   const formatCurrentDocument = async () => {
@@ -641,37 +531,7 @@ export default function ProfileEdit({ profile, create = false, authStatus, authS
                 {/* flex-wrap：标签用 whitespace-nowrap，英文文案比中文长约 30–50%，装不下时折行而不是被右边缘裁掉 */}
                 {activeTab === "config" ? (
                   <div className="flex select-none flex-wrap items-center justify-end gap-2">
-                    {showLongContextOverride ? (
-                      <div className={`flex h-8 items-center overflow-hidden rounded-[10px] border text-xs transition-colors ${longContextEnabled ? "border-accent/30 bg-accent/10" : "border-[var(--panel-ring)]"}`}>
-                        <label className={`flex h-full cursor-pointer items-center gap-2 px-2.5 transition-colors ${longContextEnabled ? "text-accent" : ""}`} title={t("edit.longContextTitle")}>
-                          <input type="checkbox" checked={longContextEnabled} disabled={patchingLongContext || saving} onChange={(event) => void toggleLongContext(event.target.checked)} />
-                          <span className="whitespace-nowrap font-medium">{t("edit.longContextLabel")}</span>
-                        </label>
-                        <label className={`flex h-full items-center gap-1.5 border-l border-[var(--panel-divider)] px-2.5 transition-opacity ${longContextEnabled ? "" : "opacity-40"}`} title={t("edit.compactLimitTitle")}>
-                          <span className="whitespace-nowrap">{t("edit.compactLimitLabel")}</span>
-                          <input className="app-input app-input--compact compact-token-input h-6 text-center" type="number" min={1} max={1_000_000} step={1} inputMode="numeric" value={compactTokenLimit} disabled={!longContextEnabled || patchingLongContext || saving} onChange={(event) => {
-                          const next = event.target.value;
-                          setCompactTokenLimit(next);
-                          // 实时联动编辑器：合法输入立即写入 configText，最终校验与格式化仍由 blur 时的后端补丁完成
-                          const limit = Number(next);
-                          if (!longContextEnabled || patchingLongContext || !Number.isInteger(limit) || limit < 1 || limit > 1_000_000) return;
-                          setConfigText((current) => replaceCompactTokenLimit(current, limit));
-                        }} onBlur={() => void updateCompactTokenLimit()} />
-                        </label>
-                      </div>
-                    ) : null}
-                    <label
-                      className={`flex h-8 items-center gap-2 rounded-[10px] border px-2.5 text-xs transition-colors ${contextMgmtEnabled ? "border-accent/30 bg-accent/10 text-accent" : "border-[var(--panel-ring)]"}`}
-                      title={t("edit.contextMgmtTitle")}
-                    >
-                      <input type="checkbox" checked={contextMgmtEnabled} disabled={patchingContextMgmt || saving} onChange={(event) => void toggleContextManagement(event.target.checked)} />
-                      <span className="whitespace-nowrap font-medium">{t("edit.contextMgmtLabel")}</span>
-                      <span className="meta-xs muted">{t("edit.experimental")}</span>
-                    </label>
-                    <label className={`flex h-8 items-center gap-2 rounded-[10px] border px-2.5 text-xs transition-colors ${systemProxyEnabled ? "border-accent/30 bg-accent/10 text-accent" : "border-[var(--panel-ring)]"}`} title={t("edit.systemProxyTitle")}>
-                      <input type="checkbox" checked={systemProxyEnabled} disabled={patchingSystemProxy || saving} onChange={(event) => void toggleSystemProxy(event.target.checked)} />
-                      <span className="whitespace-nowrap font-medium">{t("edit.systemProxyLabel")}</span>
-                    </label>
+                    <ProfileAdvancedControls advanced={advanced} saving={saving} />
                   </div>
                 ) : null}
               </div>
