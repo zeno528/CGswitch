@@ -50,7 +50,7 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
   return (
     <div className="flex flex-col gap-[var(--gap-section)]">
       <SettingsPanelSection id="appearance-language" label={t("general.appearanceGroupTitle")}>
-        <div className="apple-group px-[var(--gap-card)]">
+        <div className="apple-group px-[var(--gap-card-inline)]">
           <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
             <div className="flex items-center justify-between gap-4 py-4">
               <div className="flex min-w-0 items-start gap-3">
@@ -100,7 +100,7 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
         </div>
       </SettingsPanelSection>
       <SettingsPanelSection id="startup" label={t("general.startupGroupTitle")}>
-        <div className="apple-group px-[var(--gap-card)]">
+        <div className="apple-group px-[var(--gap-card-inline)]">
           <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
             {[
               ["autostart_enabled", t("startup.autostartTitle"), t("startup.autostartDescription"), Power],
@@ -281,7 +281,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   };
 
   return (
-    <div className="apple-group p-[var(--gap-card)]">
+    <div className="apple-group px-[var(--gap-card-inline)] py-[var(--gap-card)]">
       <div className="settings-about__hero brand-gradient-surface">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">

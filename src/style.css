@@ -23,6 +23,8 @@
   --main-surface-bg: #ffffff;
   --panel-border: rgba(60, 60, 67, 0.12);
   --panel-ring: rgba(60, 60, 67, 0.08);
+  /* 配置卡片与独立列表卡片共用的全局描边 */
+  --card-edge-shadow: 0 0 0 0.5px var(--panel-border);
   --panel-divider: rgba(60, 60, 67, 0.1);
   --brand-gradient-start: #263b63;
   --brand-gradient-middle: #3f72b8;
@@ -50,8 +52,10 @@
   /* 全局间距参数：页头/标题到首个内容区块，以及相邻卡片/分区之间 */
   --gap-page: 0.75rem;
   --gap-section: 1rem;
-  /* 卡片内边距（上下左右统一） */
+  /* 卡片内边距基准（上下与未拆分的卡片使用） */
   --gap-card: 1.25rem;
+  /* 大卡片正文左右内缩：与上下节奏分离，避免内容贴近卡片边缘 */
+  --gap-card-inline: 1.5rem;
   /* 主内容区左右间距基准（卡片到侧边栏/窗口边缘的视觉间距） */
   --gap-main: 1.5rem;
   /* 操作按钮（药丸）之间的统一间距：弹窗底部与编辑页操作栏共用 */
@@ -107,6 +111,7 @@
   --main-surface-bg: #1e1e1e;
   --panel-border: #42434a;
   --panel-ring: rgba(255, 255, 255, 0.14);
+  --card-edge-shadow: 0 0 0 0.5px var(--panel-ring);
   --panel-divider: rgba(255, 255, 255, 0.1);
   --brand-gradient-start-mix: 78%;
   --brand-gradient-middle-mix: 58%;
@@ -178,10 +183,16 @@ body {
   color: #ffffff;
 }
 
+.panel,
+.apple-group,
+.apple-list-row,
+.apple-editor-surface {
+  box-shadow: var(--card-edge-shadow);
+}
+
 .panel {
   background: var(--panel-bg);
   border-radius: var(--radius-card);
-  box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
 .muted {
@@ -1157,12 +1168,11 @@ body.drag-active * {
   overflow: hidden;
   border-radius: var(--radius-card);
   background: var(--panel-bg);
-  box-shadow: 0 0 0 0.5px var(--panel-border);
 }
 
 .settings-about__hero {
-  margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card)) 0;
-  padding: var(--gap-card) var(--gap-card) 0;
+  margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card-inline)) 0;
+  padding: var(--gap-card) var(--gap-card-inline) 0;
   border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 
@@ -1298,7 +1308,6 @@ body.drag-active * {
   gap: 0.75rem;
   border-radius: var(--radius-control);
   padding: 0.625rem 0.75rem;
-  box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
 /* MCP 列表卡片：apple-group 内的首行去掉独立行底色，与下方工具面板合成一张卡 */
@@ -1441,23 +1450,16 @@ body.drag-active * {
   overflow: hidden;
   border-radius: var(--radius-control-sm);
   background: rgb(0 0 0 / 0.04);
-  box-shadow: 0 0 0 1px var(--panel-ring);
 }
 
 :root.dark .apple-editor-surface {
   background: rgb(255 255 255 / 0.06);
 }
 
-/* 暗色下卡片增加纵深：半透明白 hairline 环 + 更强的黑接触阴影，避免贴平背景 */
-:root.dark .panel,
-:root.dark .apple-group {
-  box-shadow: 0 0 0 0.5px var(--panel-ring);
-}
-
 /* 统一大面板：外层用 apple-group，内部区块用 apple-panel-section；
    区块之间以分隔线连接，不再各自成卡（编辑供应商/新建供应商等整页表单用） */
 .apple-panel-section {
-  padding: var(--gap-card);
+  padding: var(--gap-card) var(--gap-card-inline);
 }
 
 .apple-panel-section--compact {
@@ -1473,8 +1475,8 @@ body.drag-active * {
   content: "";
   position: absolute;
   top: 0;
-  right: var(--gap-card);
-  left: var(--gap-card);
+  right: var(--gap-card-inline);
+  left: var(--gap-card-inline);
   border-top: 1px solid var(--panel-divider);
 }
 
@@ -1574,7 +1576,7 @@ button:focus-visible {
   border-radius: var(--radius-card);
   background: var(--panel-bg);
   box-shadow: 0 22px 70px rgb(0 0 0 / 0.22), 0 0 0 1px var(--panel-ring);
-  padding: var(--gap-card);
+  padding: var(--gap-card) var(--gap-card-inline);
   display: flex;
   flex-direction: column;
   gap: var(--gap-section);
@@ -1682,13 +1684,13 @@ button:focus-visible {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--gap-card);
+  padding: var(--gap-card) var(--gap-card-inline);
 }
 
 .app-dialog-content--hero .app-dialog-actions {
   flex-shrink: 0;
   justify-content: center;
-  padding: 1rem var(--gap-card) 1.25rem;
+  padding: 1rem var(--gap-card-inline) 1.25rem;
 }
 
 .app-button--primary {

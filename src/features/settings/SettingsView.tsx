@@ -52,7 +52,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
     {section === "general" ? <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} /> : null}
     {section === "codex" ? (
       <SettingsPanelSection id="codex" label={t("codex.sectionTitle")}>
-        <div className="apple-group px-[var(--gap-card)]">
+        <div className="apple-group px-[var(--gap-card-inline)]">
         <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
           <div className="flex items-center justify-between gap-4 py-4">
             <div className="flex items-start gap-3">

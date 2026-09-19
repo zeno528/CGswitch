@@ -21,7 +21,7 @@ export default function ProfileIconEdit({ icon, onBack, onSave }: ProfileIconEdi
         </button>
       </div>
       <div className="apple-edit-content">
-        <div className="apple-group p-[var(--gap-card)]">
+        <div className="apple-group px-[var(--gap-card-inline)] py-[var(--gap-card)]">
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
             {providerIcons().map((current) => (
               <button

@@ -143,7 +143,12 @@ describe("AppShell 布局", () => {
 
   it("让共享面板的分割线与内容左右内边距对齐", () => {
     expect(styles).toContain(".apple-panel-section + .apple-panel-section {\n  position: relative;\n  border-top: 0;");
-    expect(styles).toContain(".apple-panel-section + .apple-panel-section::before {\n  content: \"\";\n  position: absolute;\n  top: 0;\n  right: var(--gap-card);\n  left: var(--gap-card);\n  border-top: 1px solid var(--panel-divider);");
+    expect(styles).toContain(".apple-panel-section + .apple-panel-section::before {\n  content: \"\";\n  position: absolute;\n  top: 0;\n  right: var(--gap-card-inline);\n  left: var(--gap-card-inline);\n  border-top: 1px solid var(--panel-divider);");
+  });
+
+  it("让配置卡片与独立列表卡片复用全局描边", () => {
+    expect(styles).toContain("--card-edge-shadow: 0 0 0 0.5px var(--panel-border);");
+    expect(styles).toContain(".panel,\n.apple-group,\n.apple-list-row,\n.apple-editor-surface {\n  box-shadow: var(--card-edge-shadow);");
   });
 
   it("让技能预览器的 Markdown 分割线使用全局分割线", () => {

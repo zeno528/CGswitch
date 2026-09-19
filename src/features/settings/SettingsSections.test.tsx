@@ -179,12 +179,12 @@ describe("SettingsSections", () => {
       settingsSectionsSource.indexOf("export function SettingsGeneral"),
       settingsSectionsSource.indexOf("interface SettingsAdvancedProps"),
     );
-    expect(generalSource).toContain('<div className="apple-group px-[var(--gap-card)]">');
+    expect(generalSource).toContain('<div className="apple-group px-[var(--gap-card-inline)]">');
     expect(generalSource).not.toContain('<div className="apple-group p-[var(--gap-card)]">');
   });
 
   it("应用与更新卡片与通用卡片使用相同的上下留白", () => {
-    expect(settingsViewSource).toContain('<div className="apple-group px-[var(--gap-card)]">');
+    expect(settingsViewSource).toContain('<div className="apple-group px-[var(--gap-card-inline)]">');
     expect(settingsViewSource).toContain('className="flex flex-col divide-y divide-[var(--panel-divider)]"');
     expect(settingsViewSource).toContain('className="flex items-center justify-between gap-4 py-4"');
     expect(settingsViewSource).not.toContain('className="flex flex-col gap-5"');
