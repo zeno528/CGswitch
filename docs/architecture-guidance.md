@@ -46,7 +46,7 @@
 
 ### 前端数据边界
 
-- `src/api.ts` 保持 Tauri Command 与 Web 调试 mock 的兼容接口。
+- `src/api/index.ts` 保持 Tauri Command 与 Web 调试 mock 的兼容接口。
 - `AppShell` 持有唯一根 `AppState`；MCP、备份列表和编辑详情只在所属 Feature 内持有局部状态。
 - 不为当前应用引入 QueryClient、路由系统、每条 Command 的 Action 或未来插件市场空接口。
 
@@ -92,4 +92,4 @@ src-tauri/src/targets/
 - `src-tauri/src/paths.rs`：用户数据和备份路径。
 - `src-tauri/src/fsutil.rs`：原子写入、备份和清理策略。
 - `src-tauri/src/database.rs`：SQLite schema、迁移和备份恢复。
-- `src-tauri/src/services.rs`：配置应用、认证文件和 Codex 进程操作。
+- `src-tauri/src/services/`：配置应用、认证文件和 Codex 进程操作等服务编排。
