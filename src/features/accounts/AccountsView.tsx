@@ -326,11 +326,22 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span>
           <div><div className="setting-title">{t("account.browserLoginTitle")}</div><p className="setting-description mt-0.5">{t("account.browserLoginDescription")}</p></div>
         </div>
-        <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
       </div>
-      <div className="apple-group p-3">
-        <button type="button" className="apple-action-button app-button--primary w-full" onClick={() => void api.openUrl(browserLogin.authorize_url)}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.reopenBrowser")}</button>
-        <button type="button" className="apple-action-button w-full mt-3" onClick={cancelBrowserLogin}>{t("account.cancelLogin")}</button>
+      <div className="apple-group p-6 md:p-8">
+        <div className="mx-auto flex max-w-lg flex-col items-center text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-accent/10 text-accent" aria-hidden="true">
+            <AuthSourceIcon source="oauth" className="h-6 w-6" strokeWidth={2} />
+          </span>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+            <span className="apple-chip muted">{t("account.oauthDeviceLogin")}</span>
+            <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
+          </div>
+          <p className="setting-description mt-2 max-w-md">{t("account.browserLoginPendingHint")}</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <button type="button" className="apple-action-button app-button--primary w-56 shrink-0" onClick={() => void api.openUrl(browserLogin.authorize_url)}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.reopenBrowser")}</button>
+            <button type="button" className="apple-action-button w-56 shrink-0" onClick={cancelBrowserLogin}>{t("account.cancelLogin")}</button>
+          </div>
+        </div>
       </div>
     </div>
   );
