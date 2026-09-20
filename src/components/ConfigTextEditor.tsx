@@ -9,7 +9,7 @@ import { crosshairCursor, Decoration, drawSelection, EditorView, gutterLineClass
 import { oneDark } from "@codemirror/theme-one-dark";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
 import i18next from "i18next";
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import type { EditorDiagnosticSummary, TomlDiagnostic } from "../types";
@@ -178,7 +178,9 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     },
   }), []);
 
-  useEffect(() => {
+  // 编辑器实例在首帧绘制前同步创建（useLayoutEffect）：CodeMirror DOM 与页面同帧呈现，
+  // 避免 useEffect（绘后执行）导致编辑器区域晚一帧出现的空壳闪烁。
+  useLayoutEffect(() => {
     const parent = hostRef.current;
     const scrollbarRow = horizontalScrollbarRowRef.current;
     const scrollbarGutter = horizontalScrollbarGutterRef.current;

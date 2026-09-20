@@ -10,7 +10,7 @@ import { useFeedback } from "../../app/Feedback";
 import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
-import type { AppState, ProfileBalanceInfo, ProfileSummary } from "../../types";
+import type { AppState, ProfileBalanceInfo, ProfileDetail, ProfileSummary } from "../../types";
 import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent } from "./ProfileCard";
 import ProfileEdit from "./ProfileEdit";
 import { UpdateNotice } from "../updates/AppUpdateProvider";
@@ -53,6 +53,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   const [busy, setBusy] = useState(false);
   const [codexAction, setCodexAction] = useState<"restart" | "start" | null>(null);
   const [editingProfile, setEditingProfile] = useState<ProfileSummary | null>(null);
+  const [editDetail, setEditDetail] = useState<ProfileDetail | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [modal, setModal] = useState<"capture" | "rename" | null>(null);
   const [modalProfile, setModalProfile] = useState<ProfileSummary | null>(null);
@@ -223,12 +224,22 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
     finally { duplicatingProfileRef.current = false; }
   };
 
-  const closeEdit = async () => { setEditingProfile(null); setCreatingProfile(false); await onRefresh(); };
+  const closeEdit = async () => { setEditingProfile(null); setEditDetail(null); setCreatingProfile(false); await onRefresh(); };
+  // 先预载详情再切换：ProfileEdit 在详情未就绪时整页返回 null，直接切换会空一帧（进入编辑页的闪烁）。
+  // 预载失败不拦截切换，ProfileEdit 内部按原有失败路径展示错误。
+  const openEdit = async (profile: ProfileSummary) => {
+    let detail: ProfileDetail | null = null;
+    try {
+      detail = await api.getProfile(profile.id);
+    } catch { /* 详情由 ProfileEdit 挂载后重取 */ }
+    setEditDetail(detail);
+    setEditingProfile(profile);
+  };
   const draggedProfile = draggedProfileId ? items.find((profile) => profile.id === draggedProfileId) ?? null : null;
   const draggedQuotaKey = draggedProfile ? profileAuthQuotaCacheKey(draggedProfile) : null;
 
   if (editingProfile || creatingProfile) {
-    return <ProfileEdit profile={editingProfile} create={creatingProfile} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
+    return <ProfileEdit profile={editingProfile} create={creatingProfile} initialDetail={editDetail} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
   }
 
   const nextCodexAction = codexActionFor(state.codex.running);
@@ -255,7 +266,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
         </div>
       </header>
       <div className="apple-edit-content">
-            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)] will-change-transform">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => setEditingProfile(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
+            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)] will-change-transform">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
       </div>
       <AppDialog open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }} title={modal === "capture" ? t("dialog.captureTitle") : t("dialog.renameTitle")} initialFocusRef={nameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setModal(null)}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !profileName.trim()} onClick={() => void submitModal()}>{t("dialog.save")}</button></>}>
         <div className="space-y-4"><p className="muted text-sm">{modal === "capture" ? t("dialog.captureDescription") : t("dialog.renameDescription")}</p><input ref={nameInput} className="app-input" maxLength={50} placeholder={t("dialog.namePlaceholder")} value={profileName} onChange={(event) => setProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submitModal(); }} /></div>

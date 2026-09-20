@@ -28,6 +28,7 @@ type EditTab = "config" | "auth" | "models";
 interface ProfileEditProps {
   profile: ProfileSummary | null;
   create?: boolean;
+  initialDetail?: ProfileDetail | null;
   authStatus: AuthStatus;
   authStatusReady: boolean;
   onBack: () => void;
@@ -41,34 +42,36 @@ function normalizeNewlines(text: string) {
   return text.replace(/\r\n/g, "\n");
 }
 
-export default function ProfileEdit({ profile, create = false, authStatus, authStatusReady, onBack, onChanged, onManageChatgptAccounts }: ProfileEditProps) {
+export default function ProfileEdit({ profile, create = false, initialDetail = null, authStatus, authStatusReady, onBack, onChanged, onManageChatgptAccounts }: ProfileEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
-  const [detail, setDetail] = useState<ProfileDetail | null>(null);
+  // 详情由调用方预载（openEdit）：门控与表单/编辑器内容状态全部同源初始化（初始化器与挂载 effect
+  // 同一数据源），首帧即完整内容；挂载后 effect 仍会重取最新值，值未变时 React 跳过重渲染。
+  const [detail, setDetail] = useState<ProfileDetail | null>(initialDetail);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [formatting, setFormatting] = useState(false);
   const [testing, setTesting] = useState(false);
   const [pickingIcon, setPickingIcon] = useState(false);
   const [name, setName] = useState(profile?.name ?? "");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [baseUrl, setBaseUrl] = useState(() => initialDetail?.base_url ?? "");
+  const [apiKey, setApiKey] = useState(() => initialDetail?.api_key ?? "");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [modelValue, setModelValue] = useState("");
-  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [modelValue, setModelValue] = useState(() => readModelValue(initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "") ?? "");
+  const [fetchedModels, setFetchedModels] = useState<string[]>(() => initialDetail?.fetched_models ?? []);
   const [fetchingModels, setFetchingModels] = useState(false);
-  const [adminUrl, setAdminUrl] = useState("");
+  const [adminUrl, setAdminUrl] = useState(() => initialDetail?.admin_url ?? "");
   const authAccounts = authStatus.accounts;
-  const [boundAccountId, setBoundAccountId] = useState<string | null>(null);
+  const [boundAccountId, setBoundAccountId] = useState<string | null>(() => initialDetail?.account_id ?? null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(profile?.icon ?? null);
   const [presetKind, setPresetKind] = useState(create ? "custom" : "");
   const [activeTab, setActiveTab] = useState<EditTab>("config");
-  const [configText, setConfigText] = useState("");
-  const [catalogText, setCatalogText] = useState("");
-  const [authText, setAuthText] = useState("");
-  const [configInitial, setConfigInitial] = useState("");
-  const [catalogInitial, setCatalogInitial] = useState("");
-  const [authInitial, setAuthInitial] = useState("");
+  const [configText, setConfigText] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");
+  const [catalogText, setCatalogText] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");
+  const [authText, setAuthText] = useState(() => initialDetail?.raw_auth ?? "");
+  const [configInitial, setConfigInitial] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");
+  const [catalogInitial, setCatalogInitial] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");
+  const [authInitial, setAuthInitial] = useState(() => initialDetail?.raw_auth ?? "");
   const [authPreviewOnly, setAuthPreviewOnly] = useState(false);
   const [authPreviewReady, setAuthPreviewReady] = useState(false);
   const [configTouched, setConfigTouched] = useState(false);

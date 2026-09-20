@@ -25,6 +25,13 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain('className="apple-action-button app-button--primary disabled:!opacity-100" disabled={busy}');
   });
 
+  it("进入编辑页先预载详情再切换，首帧不空窗", () => {
+    expect(source).toContain("const openEdit = async (profile: ProfileSummary) => {");
+    expect(source).toContain("detail = await api.getProfile(profile.id);");
+    expect(source).toContain("onEdit={() => void openEdit(profile)}");
+    expect(source).toContain("initialDetail={editDetail}");
+  });
+
   it("将拖拽浮层挂到 body，避免被页面 transform 容器偏移", () => {
     expect(source).toContain('import { createPortal } from "react-dom";');
     expect(source).toContain("createPortal(<DragOverlay");
