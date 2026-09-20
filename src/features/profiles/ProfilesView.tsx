@@ -256,7 +256,9 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
               <span className="codex-status__label">{state.codex.running ? t("status.running") : t("status.stopped")}</span>
             </span>
             <button type="button" className="codex-status__action" disabled={busy} title={t(`toolbar.${nextCodexAction}`)} aria-label={codexAction ? t(`toolbar.${codexAction}ing`) : t(`toolbar.${nextCodexAction}`)} onClick={() => void restart(false)}>
-              {codexAction ? <LoadingSpinner size="md" /> : nextCodexAction === "restart" ? <RefreshCw className="h-4 w-4" strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}
+              {/* 动作语义分离：重启全程 RefreshCw 自旋（重启内部先停后启，nextCodexAction 中途会翻转，图标以进行中动作优先）；
+                  启动动作用项目旋转指示器 LoadingSpinner，Play 只在空闲态出现 */}
+              {codexAction === "start" ? <LoadingSpinner size="md" /> : (codexAction ?? nextCodexAction) === "restart" ? <RefreshCw className={`h-4 w-4 ${codexAction ? "animate-spin" : ""}`} strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}
             </button>
           </div>
           <button type="button" className="apple-action-button app-button--primary disabled:!opacity-100" disabled={busy}

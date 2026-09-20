@@ -16,6 +16,11 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain('role="status"');
   });
 
+  it("codex 按钮动作语义分离：重启全程 RefreshCw 自旋，启动中用项目旋转指示器，禁止混用", () => {
+    expect(source).toContain('{codexAction === "start" ? <LoadingSpinner size="md" /> : (codexAction ?? nextCodexAction) === "restart" ? <RefreshCw className={`h-4 w-4 ${codexAction ? "animate-spin" : ""}`} strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}');
+    expect(source).not.toContain("{codexAction ? <LoadingSpinner");
+  });
+
   it("无更新提示时保留左侧占位，使右侧操作组不回流", () => {
     expect(source).toContain('<div className="min-w-0"><UpdateNotice /></div>');
     expect(source).toContain('apple-page-bar flex-wrap justify-between gap-4');
