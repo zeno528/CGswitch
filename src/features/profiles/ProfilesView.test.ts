@@ -25,19 +25,6 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain('className="apple-action-button app-button--primary disabled:!opacity-100" disabled={busy}');
   });
 
-  it("首页保留页面进入动画，同时不为激活渐变卡创建 transform 合成层", () => {
-    expect(source).toContain('className="apple-scroll-page mx-auto w-full max-w-none"');
-    expect(source).toContain('className="apple-edit-content profiles-page-content"');
-    expect(source).toContain('className="profiles-page-content__body"');
-    expect(source).not.toContain("profile-list relative space-y-[var(--gap-page)] will-change-transform");
-    expect(styles).toContain(".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {");
-    expect(styles).toContain("animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;");
-    expect(styles).toContain(".apple-page-enter > .apple-scroll-page > .profiles-page-content {");
-    expect(styles).toContain("from { transform: translateY(6px); }");
-    expect(styles).toContain(".apple-page-enter > .apple-scroll-page > .profiles-page-content > .profiles-page-content__body {\n  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;");
-    expect(styles).not.toContain(".profiles-page-content__body {\n  isolation: isolate;");
-  });
-
   it("将拖拽浮层挂到 body，避免被页面 transform 容器偏移", () => {
     expect(source).toContain('import { createPortal } from "react-dom";');
     expect(source).toContain("createPortal(<DragOverlay");

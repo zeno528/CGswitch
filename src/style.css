@@ -567,8 +567,7 @@ main:has(.apple-edit-page) {
   background: var(--main-surface-bg);
 }
 
-/* 页面切换动画：仅标题栏下方内容区纯位移上浮，不淡入淡出（无黑场），标题栏永不参与。
-   包裹层和配置内容层都不建立长期 isolation 合成边界，避免浅色渐变卡片滚动时留下边缘残影。 */
+/* 页面切换动画：仅标题栏下方内容区纯位移上浮，不淡入淡出（无黑场），标题栏永不参与 */
 @keyframes apple-page-enter {
   from { transform: translateY(6px); }
   to { transform: translateY(0); }
@@ -582,15 +581,6 @@ main:has(.apple-edit-page) {
 }
 
 .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
-  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;
-}
-
-/* 配置首页只移动内容包装层，滚动容器本身保持静止，避免浅色渐变卡片随滚动层合成闪出残影。 */
-.apple-page-enter > .apple-scroll-page > .profiles-page-content {
-  animation: none;
-}
-
-.apple-page-enter > .apple-scroll-page > .profiles-page-content > .profiles-page-content__body {
   animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;
 }
 
@@ -1187,10 +1177,9 @@ body.drag-active * {
   border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 
-/* 应用品牌渐变：配置卡激活态、升级弹窗和关于卡片统一复用。
-   以面板底色作为混合底而非使用透明 stop，避免滚动重绘时露出旧帧边缘。 */
+/* 应用品牌渐变：配置卡激活态、升级弹窗和关于卡片统一复用。 */
 .brand-gradient-surface {
-  background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), var(--panel-bg)) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), var(--panel-bg)) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), var(--panel-bg)) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), var(--panel-bg)) 58%, var(--panel-bg) 100%);
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
 
 .settings-about__actions > .apple-action-button {
@@ -1557,8 +1546,7 @@ button:focus-visible {
   transition-duration: 1ms !important;
   }
 
-  .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content,
-  .apple-page-enter > .apple-scroll-page > .profiles-page-content > .profiles-page-content__body {
+  .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {
     animation: none;
   }
 

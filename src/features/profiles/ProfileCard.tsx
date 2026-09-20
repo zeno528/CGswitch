@@ -217,8 +217,8 @@ export default function ProfileCard({
     setBalanceError(error);
     // 网络刷新延后到首绘出窗之后：缓存数字先行显示，避免挂载即发的请求挤占冷启动尾部；
     // 手动刷新按钮仍立即执行，窗口激活时由 activationEpoch 重新调度。
-    // 激活卡用 900ms 而非 500ms：供应商页内容区的进入动画是 800ms
-    // （style.css .profiles-page-content__body），动画结束前返回会在中段改动卡片内容造成闪动；
+    // 激活卡用 900ms 而非 500ms：供应商页内容区的进入动画是 800ms（style.css 页面切换动画区块），
+    // 动画结束前返回会在中段改动卡片内容造成闪动；
     // 非激活卡的 1200ms 本就在动画之后。
     const timer = window.setTimeout(() => void fetchBalance(), active ? 900 : 1200);
     return () => window.clearTimeout(timer);

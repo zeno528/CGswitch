@@ -30,7 +30,7 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toContain("--brand-gradient-start-mix: 34%;");
     expect(styles).toContain("--brand-gradient-middle-mix: 58%;");
     expect(styles).toContain(":root.dark {\n  color-scheme: dark;");
-    expect(styles).toContain(".brand-gradient-surface {\n  background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), var(--panel-bg)) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), var(--panel-bg)) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), var(--panel-bg)) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), var(--panel-bg)) 58%, var(--panel-bg) 100%);");
+    expect(styles).toContain(".brand-gradient-surface {\n  background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);");
   });
 
   it("激活卡沿用主题文字层级", () => {

@@ -95,7 +95,10 @@ const skills = createManagementCache<SkillSummary[]>(api.listSkills, {
   key: "cgswitch.skills-cache-v1",
   restore: restoreNamedList<SkillSummary>,
 });
-const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers);
+const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers, {
+  key: "cgswitch.mcp-servers-cache-v1",
+  restore: restoreNamedList<McpServerSpec>,
+});
 const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPluginMarketplaces, {
   key: "cgswitch.plugin-marketplaces-cache-v1",
   restore: restoreNamedList<PluginMarketplace>,
