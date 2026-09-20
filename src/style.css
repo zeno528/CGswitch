@@ -1279,12 +1279,15 @@ body.drag-active * {
   background: var(--secondary-button-hover-bg);
 }
 
-/* 操作按钮右上角的数字角标：Skill 可导入数 / MCP 待处理差异数共用 */
+/* 数字角标（全局唯一定义）：Skill 可导入数 / MCP 待处理差异数共用。
+   宿主是药丸按钮（高 38px → 半径 19px），药丸的可见角比外接矩形角往里收
+   19 × (1 - cos45°) ≈ 5.6px；偏移 = 尺寸/2 - 5.6px 时角标中心正好落在药丸边缘上，
+   看上去一半压在按钮、一半露在外面。改尺寸要连偏移一起按这个公式重算 */
 .apple-count-badge {
   position: absolute;
   left: auto;
-  right: -0.45rem;
-  top: -0.45rem;
+  right: -3.4px;
+  top: -3.4px;
   display: grid;
   min-width: 1.125rem;
   height: 1.125rem;
@@ -1296,6 +1299,17 @@ body.drag-active * {
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
+}
+
+/* 侧栏导航行的宿主是 18px 图标（不是药丸按钮），角标按宿主等比缩小，
+   只覆盖尺寸相关项；角标本体仍用上面那一份定义，不另写一套 */
+.apple-sidebar-nav-button .apple-count-badge {
+  top: -4px;
+  right: -4px;
+  min-width: 0.875rem;
+  height: 0.875rem;
+  border-width: 1.5px;
+  font-size: 9px;
 }
 
 .apple-action-button:disabled {

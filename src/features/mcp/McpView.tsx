@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, setCachedMcpProbe, setMcpServersCache } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, setCachedMcpProbe, setMcpDiffCount, setMcpServersCache } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
@@ -200,7 +200,13 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
   const loadPreview = async () => {
     if (previewInFlight.current) return;
     previewInFlight.current = true;
-    try { setSyncPreview(await api.mcpSyncPreview()); setPreviewError(""); }
+    try {
+      const preview = await api.mcpSyncPreview();
+      setSyncPreview(preview);
+      setPreviewError("");
+      // 侧栏角标与页面同源：页面查到就写回共享缓存；查失败时保留旧值不覆盖
+      setMcpDiffCount(preview.entries.length);
+    }
     catch (error) { setPreviewError(String(error)); setSyncPreview(null); }
     finally { previewInFlight.current = false; }
   };

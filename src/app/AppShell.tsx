@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
+import { getMcpDiffCount, setMcpDiffCount, subscribeMcpDiffCount } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -25,6 +26,8 @@ export default function AppShell() {
   const [mcpReset, setMcpReset] = useState(0);
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
+  // 侧栏角标复用 MCP 页的差异计数文案，避免同一件事在两处各写一份
+  const { t: tMcp } = useTranslation("mcp");
   const { state, stateRef, loadError, authStatusReady, refresh, refreshAuthStatus, updateAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
   // 设置保存后（例如换了界面语言）即时切换，无需重启；托盘菜单文案一并同步。
@@ -35,6 +38,9 @@ export default function AppShell() {
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
+  // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
+  // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
+  const mcpDiffCount = useSyncExternalStore(subscribeMcpDiffCount, getMcpDiffCount);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,6 +122,18 @@ export default function AppShell() {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [activate, refresh, refreshAuthStatus, startPolling, stopPolling]);
+
+  // 首屏稳定后再静默查一次 MCP 差异（实测单次 0.5ms 级，但绝不与首帧抢资源）。
+  // 失败静默：保留缓存里的旧值，不编造数字（config.toml 解析失败由 MCP 页自己提示）。
+  useEffect(() => {
+    if (!startupReady) return;
+    const timer = window.setTimeout(() => {
+      void api.mcpSyncPreview()
+        .then((preview) => setMcpDiffCount(preview.entries.length))
+        .catch(() => undefined);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [startupReady]);
 
   useEffect(() => {
     const main = document.querySelector("main");
@@ -205,8 +223,12 @@ export default function AppShell() {
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.providers")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.providers")}</span> : null}
               </button>
-              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <McpIcon className="h-[18px] w-[18px]" />
+              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} title={mcpDiffCount ? tMcp("list.updateDiffAria", { count: mcpDiffCount }) : undefined} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+                {/* 角标锚在图标上：收缩态只剩图标时位置依然正确，且 --sidebar-bg 与 --panel-bg 同色，角标描边不用另配 */}
+                <span className="relative flex shrink-0">
+                  <McpIcon className="h-[18px] w-[18px]" />
+                  {mcpDiffCount ? <span className="apple-count-badge" aria-hidden="true">{mcpDiffCount > 9 ? "9+" : mcpDiffCount}</span> : null}
+                </span>
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.mcp")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.mcp")}</span> : null}
               </button>

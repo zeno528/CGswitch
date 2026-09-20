@@ -20,6 +20,20 @@ describe("AppShell 布局", () => {
     }
   });
 
+  it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {
+    // 首屏：useSyncExternalStore 从 localStorage 缓存直出，不发起任何查询
+    expect(source).toContain("useSyncExternalStore(subscribeMcpDiffCount, getMcpDiffCount)");
+    expect(source).toContain('{mcpDiffCount ? <span className="apple-count-badge"');
+    // 查询：必须被 startupReady 门控 + 固定延迟，禁止直接进首屏/冷启动关键路径
+    expect(source).toContain("if (!startupReady) return;");
+    expect(source).toContain("}, 1500);");
+  });
+
+  it("MCP 页查到差异后写回共享缓存，侧栏与页面数字同源", () => {
+    const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
+    expect(mcpViewSource).toContain("setMcpDiffCount(preview.entries.length)");
+  });
+
   it("只在窗口从非激活状态恢复时刷新", () => {
     expect(hooksSource).toContain("const activeRef = useRef(!document.hidden);");
     expect(hooksSource).toContain("if (activeRef.current) return false;");
@@ -191,8 +205,9 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-edit-content > .apple-group {\n  margin-top: 0;\n  border-radius: var(--radius-card);");
   });
 
-  it("将 Skill 更新徽标锚定在导入按钮右上角", () => {
-    expect(styles).toContain(".apple-count-badge {\n  position: absolute;\n  left: auto;\n  right: -0.45rem;\n  top: -0.45rem;");
+  it("将 Skill 更新徽标锚定在导入按钮右上角，中心落在药丸边缘（一半压按钮一半露出）", () => {
+    // 药丸高 38px → 半径 19px；偏移 = 尺寸/2 - 19×(1-cos45°) = 9 - 5.6 = 3.4px
+    expect(styles).toContain(".apple-count-badge {\n  position: absolute;\n  left: auto;\n  right: -3.4px;\n  top: -3.4px;");
   });
 
   it("让配置编辑器的横向滚动条从行号栏右侧开始", () => {
