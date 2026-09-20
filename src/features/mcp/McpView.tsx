@@ -9,12 +9,30 @@ import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { McpIcon } from "../../components/McpIcon";
 import { mcpTransportText } from "../../utils";
-import type { McpProbeResult, McpServerSpec, McpSyncPreview } from "../../types";
+import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
+import McpDiffPage from "./McpDiffPage";
 import McpEdit from "./McpEdit";
-import McpSyncDialog from "./McpSyncDialog";
 
-type SyncDirection = "live-to-db" | "db-to-live";
 type Transport = "http" | "stdio" | "unknown";
+
+export type McpDiffVerb = "adopt" | "revert";
+
+/// 差异动作：只指向单个条目的单侧（mirror=数据库镜像，live=config.toml）；
+/// fragment 为空表示删除该侧的条目。
+export type McpDiffAction = { side: "mirror" | "live" } & McpDiffEntryAction;
+
+/// 差异×动词到外科手术原语的唯一映射——每条命令只碰单个条目的单侧（镜像或 live），
+/// 不得使用 saveMcpServer/deleteMcpServer（它们会用整段 live 重建镜像，殃及其他未处理差异）：
+/// 同步 = 采纳外部修改（live 片段写入镜像；外部已删除的删除镜像条目）；
+/// 撤销 = 回退外部修改（数据库片段写回 live；外部新增的从 live 移除）。
+export function mcpEntryAction(entry: McpSyncDiffEntry, verb: McpDiffVerb): McpDiffAction | null {
+  if (verb === "adopt") {
+    if (entry.kind === "db_only") return { side: "mirror", name: entry.name, fragment: null };
+    return entry.live_toml ? { side: "mirror", name: entry.name, fragment: entry.live_toml } : null;
+  }
+  if (entry.kind === "live_only") return { side: "live", name: entry.name, fragment: null };
+  return entry.db_toml ? { side: "live", name: entry.name, fragment: entry.db_toml } : null;
+}
 
 function mcpServerFingerprint(server: McpServerSpec) {
   const { enabled, startup_timeout_sec, tool_timeout_sec, ...connection } = server;
@@ -158,7 +176,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
   );
 }
 
-export default function McpView() {
+export default function McpView({ activationEpoch }: { activationEpoch: number }) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const cachedServers = getCachedMcpServers();
@@ -175,12 +193,16 @@ export default function McpView() {
   const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(cachedServers ?? []).toolsLoaded);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
-  const [syncOpen, setSyncOpen] = useState(false);
-  const [applying, setApplying] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const previewInFlight = useRef(false);
 
   const loadPreview = async () => {
+    if (previewInFlight.current) return;
+    previewInFlight.current = true;
     try { setSyncPreview(await api.mcpSyncPreview()); setPreviewError(""); }
     catch (error) { setPreviewError(String(error)); setSyncPreview(null); }
+    finally { previewInFlight.current = false; }
   };
   const refresh = async (force = false, skipProbeName?: string) => {
     let next: McpServerSpec[] | null = null;
@@ -207,6 +229,10 @@ export default function McpView() {
     probedOnceRef.current = true;
     void refresh();
   }, []);
+
+  // 窗口激活时刷新差异预览：差异只可能来自 Codex 侧先改，激活是唯一需要重查差异的时机。
+  // epoch=0 表示尚未激活过（含首次挂载，此时上面的 refresh 已经取过预览），不重复请求。
+  useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);
 
   const notifyProbeFailure = (name: string, message: string) => {
     if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
@@ -312,25 +338,80 @@ export default function McpView() {
     catch (error) { feedback.error(String(error)); }
   };
 
-  const openSyncDialog = () => {
-    if (applying) return;
-    if (previewError) { setSyncOpen(true); return; }
-    if (syncPreview && syncPreview.entries.length === 0) { feedback.info(t("feedback.inSync")); return; }
-    setSyncOpen(true);
-  };
-  const orderedServers = [...servers].sort(compareMcpServers);
-  const onApply = async (direction: SyncDirection) => {
-    if (applying) return;
-    setApplying(true);
-    try {
-      if (direction === "live-to-db") { const count = await api.importMcpFromLive(); feedback.success(t("feedback.importedFromLive", { count })); }
-      else { const count = await api.restoreMcpFromDatabase(); feedback.success(t("feedback.restoredToLive", { count })); }
-      setSyncOpen(false);
-      await refresh(true);
-    } catch (error) { feedback.error(String(error)); }
-    finally { setApplying(false); }
+  const applyDiffAction = async (action: McpDiffAction) => {
+    if (action.side === "mirror") await api.setMcpMirror(action.name, action.fragment);
+    else await api.revertMcpLive(action.name, action.fragment);
   };
 
+  const resolveEntry = async (entry: McpSyncDiffEntry, verb: McpDiffVerb) => {
+    if (resolving) return;
+    const action = mcpEntryAction(entry, verb);
+    if (!action) { feedback.error(t("diff.resolveFailed", { name: entry.name })); return; }
+    setResolving(true);
+    try {
+      await applyDiffAction(action);
+      feedback.success(t(verb === "adopt" ? "diff.adoptedToast" : "diff.revertedToast", { name: entry.name }));
+      await refresh(true);
+    } catch (error) { feedback.error(String(error)); }
+    finally { setResolving(false); }
+  };
+
+  const resolveAll = async (verb: McpDiffVerb) => {
+    if (resolving || !syncPreview?.entries.length) return;
+    const entries = syncPreview.entries;
+    // 整批一次提交：后端在一个文档里逐条原地改写，只备份并写盘一次；
+    // 逐条调用会各备份一次，把备份保留池里操作前的那份挤掉，且中途失败会留下半完成状态
+    const actions = entries
+      .map((entry) => mcpEntryAction(entry, verb))
+      .filter((action): action is McpDiffAction => action !== null)
+      .map(({ name, fragment }) => ({ name, fragment }));
+    if (!actions.length) return;
+    const confirmed = await feedback.confirm({
+      title: t(verb === "adopt" ? "diff.adoptAll" : "diff.revertAll"),
+      description: t(verb === "adopt" ? "diff.confirmAdoptAll" : "diff.confirmRevertAll", { count: actions.length }),
+      confirmText: verb === "adopt" ? t("diff.adoptAll") : t("diff.revertAll"),
+      destructive: verb === "revert",
+    });
+    if (!confirmed) return;
+    setResolving(true);
+    try {
+      const count = verb === "adopt"
+        ? await api.setMcpMirrorEntries(actions)
+        : await api.revertMcpLiveEntries(actions);
+      feedback.success(t("diff.resolvedAllToast", { count }));
+      await refresh(true);
+    } catch (error) { feedback.error(String(error)); }
+    finally { setResolving(false); }
+  };
+
+  const rebuildFromDatabase = async () => {
+    if (resolving) return;
+    setResolving(true);
+    try {
+      const count = await api.restoreMcpFromDatabase();
+      feedback.success(t("feedback.restoredToLive", { count }));
+      setDiffOpen(false);
+      await refresh(true);
+    } catch (error) { feedback.error(String(error)); }
+    finally { setResolving(false); }
+  };
+
+  const orderedServers = [...servers].sort(compareMcpServers);
+  const diffCount = syncPreview?.entries.length ?? 0;
+
+  if (diffOpen) {
+    return (
+      <McpDiffPage
+        preview={syncPreview}
+        previewError={previewError}
+        resolving={resolving}
+        onBack={() => setDiffOpen(false)}
+        onResolve={(entry, verb) => void resolveEntry(entry, verb)}
+        onResolveAll={(verb) => void resolveAll(verb)}
+        onRebuild={() => void rebuildFromDatabase()}
+      />
+    );
+  }
   if (editingServer || creatingServer) {
     return (
       <McpEdit
@@ -364,10 +445,13 @@ export default function McpView() {
           </div>
         </div>
         <div className="flex w-full max-w-md items-center justify-end gap-2">
-          <button type="button" className="apple-action-button" disabled={applying} onClick={openSyncDialog}>
-            <GitCompare className="h-4 w-4" strokeWidth={2} />
-            {t("list.resolveDiff")}
-          </button>
+          {diffCount || previewError ? (
+            <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
+              <GitCompare className="h-4 w-4" strokeWidth={2} />
+              {t("list.resolveDiff")}
+              <span className="apple-count-badge" aria-hidden="true">{diffCount ? (diffCount > 9 ? "9+" : diffCount) : "!"}</span>
+            </button>
+          ) : null}
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
             <Plus className="h-4 w-4" strokeWidth={2} />
             {t("list.addServer")}
@@ -382,17 +466,6 @@ export default function McpView() {
           </p>
         ) : null}
         <div>
-          {syncPreview && syncPreview.entries.length ? (
-            <div className="apple-list-row mcp-diff-card mb-1">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="apple-chip chip-warn">{t("list.diffChip")}</span>
-                <span className="muted truncate text-sm">{t("list.diffSummary", { count: syncPreview.entries.length })}</span>
-              </span>
-              <button type="button" className="apple-inline-btn" onClick={openSyncDialog}>
-                {t("list.reviewDiff")}
-              </button>
-            </div>
-          ) : null}
           {!servers.length ? (
             <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
               <p className="muted">{t("empty.description")}</p>
@@ -418,7 +491,6 @@ export default function McpView() {
           ) : null}
         </div>
       </div>
-      <McpSyncDialog open={syncOpen} preview={syncPreview} previewError={previewError} busy={applying} onClose={() => setSyncOpen(false)} onApply={(direction) => void onApply(direction)} />
     </section>
   );
 }

@@ -1279,7 +1279,8 @@ body.drag-active * {
   background: var(--secondary-button-hover-bg);
 }
 
-.skill-update-badge {
+/* 操作按钮右上角的数字角标：Skill 可导入数 / MCP 待处理差异数共用 */
+.apple-count-badge {
   position: absolute;
   left: auto;
   right: -0.45rem;
@@ -1319,12 +1320,11 @@ body.drag-active * {
   box-shadow: none;
 }
 
-/* 独立成卡的列表行：覆盖 .apple-list-row 的 control 圆角改用整卡圆角（插件行 / Skill 行 / MCP 差异提示行共用） */
+/* 独立成卡的列表行：覆盖 .apple-list-row 的 control 圆角改用整卡圆角（插件行 / Skill 行共用） */
 .plugin-list-row,
-.skill-list-row,
-.mcp-diff-card { border-radius: var(--radius-card); }
+.skill-list-row { border-radius: var(--radius-card); }
 
-/* MCP 工具面板展开时去掉 body 顶部内边距，工具 chips 紧贴卡片头 */
+/* MCP 卡片展开体（工具面板/差异详情共用）：去掉 body 顶部内边距，内容紧贴卡片头 */
 .mcp-tools-disclosure.apple-disclosure--open .apple-disclosure__body { padding-top: 0; }
 
 .apple-icon-button {
@@ -1369,79 +1369,33 @@ body.drag-active * {
   background: var(--tile-bg);
 }
 
-.mcp-sync-confirm {
+/* MCP 差异页：行级 diff 的代码区域容器——背景/描边对齐编辑页输入框（.app-input），把变更代码块与卡片头部区分开 */
+.mcp-diff-block {
   display: grid;
-  gap: var(--gap-section);
-}
-
-.mcp-sync-confirm__scope {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.6rem;
-  margin: 0;
-  font-size: var(--font-size-base);
-  line-height: 1.55;
-}
-
-.mcp-sync-confirm__changes {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border-radius: var(--radius-control-sm);
-  background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--panel-bg));
-}
-
-.mcp-sync-confirm__list {
-  display: grid;
-  gap: 0.35rem;
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: var(--font-size-base);
-  line-height: 1.45;
-}
-
-.mcp-sync-choice {
-  background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--panel-bg));
-}
-
-.mcp-sync-choice:hover,
-.mcp-sync-choice:focus-visible {
-  background: var(--selection-bg);
-}
-
-.mcp-sync-diff {
-  overflow: hidden;
+  gap: 2px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
-  background: var(--panel-bg);
-  box-shadow: 0 0 0 1px var(--panel-ring);
+  background: var(--input-bg);
 }
 
-.mcp-sync-diff.apple-disclosure--open .apple-disclosure__body { padding-top: 0; }
-
-.mcp-sync-diff .apple-disclosure__summary {
-  min-height: var(--control-height);
-  padding: 0.625rem 0.75rem;
-  background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--panel-bg));
+/* 变更行——红/绿只做背景高亮，行内文字保持正文同色（VS Code 变更行语义）。
+   负外边距抵消水平内边距：高亮圈外扩 6px，文字仍与未变更行同列，不产生伪缩进 */
+.mcp-diff-line--del,
+.mcp-diff-line--add {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: -6px;
+  border-radius: var(--radius-control-sm);
+  padding: 2px 6px;
 }
 
-.mcp-sync-diff .apple-disclosure__summary:hover,
-.mcp-sync-diff .apple-disclosure__summary:focus-visible {
-  background: var(--selection-bg);
-}
+.mcp-diff-line--del { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+.mcp-diff-line--add { background: color-mix(in srgb, var(--success) 20%, transparent); }
 
-.mcp-sync-diff__detail {
-  border-top: 1px solid var(--panel-divider);
-  background: color-mix(in srgb, var(--sidebar-bg) 22%, var(--panel-bg));
-  padding: 0.75rem;
-}
-
-.mcp-sync-diff__values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  color: var(--text-secondary);
-}
+/* 暗色底上 15% 混合会闷成暗块，单独提浓度保证红绿可辨 */
+:root.dark .mcp-diff-line--del { background: color-mix(in srgb, var(--danger) 32%, transparent); }
+:root.dark .mcp-diff-line--add { background: color-mix(in srgb, var(--success) 32%, transparent); }
 
 .apple-editor-shell {
   min-width: 0;

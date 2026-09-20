@@ -192,7 +192,7 @@ describe("AppShell 布局", () => {
   });
 
   it("将 Skill 更新徽标锚定在导入按钮右上角", () => {
-    expect(styles).toContain(".skill-update-badge {\n  position: absolute;\n  left: auto;\n  right: -0.45rem;\n  top: -0.45rem;");
+    expect(styles).toContain(".apple-count-badge {\n  position: absolute;\n  left: auto;\n  right: -0.45rem;\n  top: -0.45rem;");
   });
 
   it("让配置编辑器的横向滚动条从行号栏右侧开始", () => {

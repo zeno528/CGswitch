@@ -146,7 +146,12 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
   };
 
   return (
-    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col" onKeyDown={(event) => { if (event.ctrlKey && event.key === "Enter") void save(); }}>
+    <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col" onKeyDown={(event) => {
+      if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))) {
+        event.preventDefault();
+        void save();
+      }
+    }}>
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header justify-between">
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={() => onBack()}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />

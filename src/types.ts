@@ -105,12 +105,6 @@ export interface McpProbeResult {
 /** MCP 同步预览的一条差异（live = config.toml，db = 数据库镜像）。 */
 export type McpSyncEntryKind = "live_only" | "db_only" | "changed";
 
-export interface McpSyncFieldDiff {
-  field: string;
-  live: unknown;
-  db: unknown;
-}
-
 export interface McpSyncDiffEntry {
   name: string;
   kind: McpSyncEntryKind;
@@ -118,7 +112,12 @@ export interface McpSyncDiffEntry {
   db_spec: McpServerSpec | null;
   live_toml: string | null;
   db_toml: string | null;
-  changed_fields: McpSyncFieldDiff[];
+}
+
+/** MCP 差异批量处理的一条动作：fragment 为 null 表示删除该侧条目。 */
+export interface McpDiffEntryAction {
+  name: string;
+  fragment: string | null;
 }
 
 export interface McpSyncPreview {

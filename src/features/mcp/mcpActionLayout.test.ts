@@ -24,6 +24,11 @@ describe("MCP 操作入口", () => {
     expect(editSource).toContain('{t("edit.uninstall")}');
   });
 
+  it("只在编辑器外响应回车，且不再要求 Ctrl", () => {
+    expect(editSource).toContain('event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))');
+    expect(editSource).not.toContain('event.ctrlKey && event.key === "Enter"');
+  });
+
   it("进入列表只做静默连通性探测，工具按钮才刷新工具", () => {
     expect(viewSource).not.toContain("MCP_STATUS_REFRESH_MS");
     expect(viewSource).toContain("probeServer(server, false, false)");

@@ -86,3 +86,10 @@ describe("ProfileEdit 用量查询", () => {
     expect(source).toContain("const [boundAccountId, setBoundAccountId] = useState<string | null>(() => initialDetail?.account_id ?? null);");
   });
 });
+
+describe("编辑页回车保存", () => {
+  it("只在编辑器外响应回车，且不再要求 Ctrl", () => {
+    expect(source).toContain('event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))');
+    expect(source).not.toContain('event.ctrlKey && event.key === "Enter"');
+  });
+});

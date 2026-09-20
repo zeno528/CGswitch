@@ -1,6 +1,6 @@
 use super::{
     app_err, atomic_write, backup_file, codex_config, now_ms, AppContext, AppResult, BTreeMap,
-    McpServerSpec, McpSyncDiffEntry, McpSyncEntryKind, McpSyncFieldDiff, McpSyncPreview,
+    McpDiffEntryAction, McpServerSpec, McpSyncDiffEntry, McpSyncEntryKind, McpSyncPreview,
 };
 
 fn without_blank_lines(text: &str) -> String {
@@ -144,25 +144,6 @@ impl AppContext {
                 .map(|spec| (spec.name.clone(), spec))
                 .collect();
 
-        // 建模字段（除 name 外共 10 项）序列化后逐项比对，顺序即前端展示顺序
-        fn field_values(spec: &McpServerSpec) -> Vec<(&'static str, serde_json::Value)> {
-            fn value<T: serde::Serialize>(field: &T) -> serde_json::Value {
-                serde_json::to_value(field).unwrap_or(serde_json::Value::Null)
-            }
-            vec![
-                ("enabled", value(&spec.enabled)),
-                ("startup_timeout_sec", value(&spec.startup_timeout_sec)),
-                ("tool_timeout_sec", value(&spec.tool_timeout_sec)),
-                ("command", value(&spec.command)),
-                ("args", value(&spec.args)),
-                ("env", value(&spec.env)),
-                ("url", value(&spec.url)),
-                ("bearer_token_env_var", value(&spec.bearer_token_env_var)),
-                ("http_headers", value(&spec.http_headers)),
-                ("env_http_headers", value(&spec.env_http_headers)),
-            ]
-        }
-
         let mut entries = Vec::new();
         for (name, live_toml) in &live_fragments {
             let live_spec = live_specs.get(name).cloned();
@@ -174,7 +155,6 @@ impl AppContext {
                     db_spec: None,
                     live_toml: Some(live_toml.clone()),
                     db_toml: None,
-                    changed_fields: Vec::new(),
                 });
                 continue;
             };
@@ -182,24 +162,13 @@ impl AppContext {
                 continue;
             }
             let db_spec = codex_config::spec_from_fragment(name, db_toml);
-            let mut changed_fields = Vec::new();
-            if let (Some(live), Some(db)) = (&live_spec, &db_spec) {
-                for ((field, live_value), (_, db_value)) in
-                    field_values(live).into_iter().zip(field_values(db))
-                {
-                    if live_value != db_value {
-                        changed_fields.push(McpSyncFieldDiff {
-                            field: field.to_string(),
-                            live: live_value,
-                            db: db_value,
-                        });
-                    }
-                }
-            }
             // 建模字段全部相等 = 语义等价（差异只在注释/格式/未建模键），不构成差异：
             // 展示会诱导无意义的“同步”，写回反而会回滚 live 侧的注释与未建模键。
-            if changed_fields.is_empty() && live_spec.is_some() && db_spec.is_some() {
-                continue;
+            // 展示按行对比（前端做），这里的判定仍按建模字段——故用 == 而非文本比较。
+            if let (Some(live), Some(db)) = (&live_spec, &db_spec) {
+                if live == db {
+                    continue;
+                }
             }
             entries.push(McpSyncDiffEntry {
                 name: name.clone(),
@@ -208,7 +177,6 @@ impl AppContext {
                 db_spec,
                 live_toml: Some(live_toml.clone()),
                 db_toml: Some((*db_toml).to_string()),
-                changed_fields,
             });
         }
         let live_names: std::collections::BTreeSet<&str> = live_fragments
@@ -226,7 +194,6 @@ impl AppContext {
                 db_spec: codex_config::spec_from_fragment(name, db_toml),
                 live_toml: None,
                 db_toml: Some(db_toml.clone()),
-                changed_fields: Vec::new(),
             });
         }
         Ok(McpSyncPreview {
@@ -399,6 +366,112 @@ impl AppContext {
             spec.name
         );
         Ok(())
+    }
+
+    /// 差异处理"同步"原语（单条）：见 set_mcp_mirror_entries。
+    pub fn set_mcp_mirror_entry(&self, name: &str, fragment: Option<&str>) -> AppResult<()> {
+        self.set_mcp_mirror_entries(&[McpDiffEntryAction {
+            name: name.to_string(),
+            fragment: fragment.map(str::to_string),
+        }])
+        .map(|_| ())
+    }
+
+    /// 差异处理"同步"原语：把若干条目一次写进数据库镜像——fragment=Some 用 live 片段覆盖该条，
+    /// fragment=None 删除该条（"外部已删除"的同步）。整批校验通过才落一次盘，任一条非法整批不写。
+    /// 只碰镜像，不触碰 live；不能用 save_mcp_server / delete_mcp_server 代替：前者会用整段 live
+    /// 重建镜像、殃及其他未处理差异，后者会因条目已不在 live 而报错。
+    pub fn set_mcp_mirror_entries(&self, actions: &[McpDiffEntryAction]) -> AppResult<usize> {
+        let _guard = self
+            .operation
+            .lock()
+            .map_err(|_| app_err!("操作锁已损坏"))?;
+        if actions.is_empty() {
+            return Ok(0);
+        }
+        let mut fragments: Vec<(String, String)> = self.database.mcp_server_fragments()?;
+        for action in actions {
+            let name = action.name.as_str();
+            if codex_config::is_managed_mcp_name(name) {
+                return Err(app_err!(
+                    "「{name}」由 Codex 官方应用自动管理，不能改写数据库镜像"
+                ));
+            }
+            fragments.retain(|(existing, _)| existing != name);
+            if let Some(fragment) = &action.fragment {
+                if codex_config::spec_from_fragment(name, fragment).is_none() {
+                    return Err(app_err!("片段无法解析为 MCP 服务器 {name}"));
+                }
+                fragments.push((action.name.clone(), fragment.clone()));
+            }
+        }
+        self.replace_mcp_mirror(&fragments)?;
+        tauri_plugin_log::log::info!(
+            "[mcp.diff.batch] source=mirror count={} outcome=success msg=\"已把外部 MCP 修改写入数据库镜像\"",
+            actions.len()
+        );
+        Ok(actions.len())
+    }
+
+    /// 差异处理"撤销"原语（单条）：见 revert_mcp_live_entries。
+    pub fn revert_mcp_live_entry(&self, name: &str, fragment: Option<&str>) -> AppResult<()> {
+        self.revert_mcp_live_entries(&[McpDiffEntryAction {
+            name: name.to_string(),
+            fragment: fragment.map(str::to_string),
+        }])
+        .map(|_| ())
+    }
+
+    /// 差异处理"撤销"原语：把若干条目一次写回 live config.toml——fragment=Some 恢复为数据库内容，
+    /// fragment=None 从 live 移除。逐条原地改写：只动列出的条目，其余条目、其他配置段、
+    /// 段内既有顺序与文件布局全部原样保留。整批改完才备份并写一次盘，任一条失败整批不写
+    /// （逐条调用会各备份一次，把保留池里操作前的备份挤掉）。
+    /// 不能走 write_mcp_section_to_live——那是整段替换语义，会清掉 live 里其他服务器并重排段内条目。
+    pub fn revert_mcp_live_entries(&self, actions: &[McpDiffEntryAction]) -> AppResult<usize> {
+        let _guard = self
+            .operation
+            .lock()
+            .map_err(|_| app_err!("操作锁已损坏"))?;
+        if actions.is_empty() {
+            return Ok(0);
+        }
+        let mut document = codex_config::parse_document(&self.read_live_config()?)?;
+        for action in actions {
+            let name = action.name.as_str();
+            if codex_config::is_managed_mcp_name(name) {
+                return Err(app_err!("「{name}」由 Codex 官方应用自动管理，不能回退"));
+            }
+            let Some(fragment) = &action.fragment else {
+                codex_config::remove_mcp_server(&mut document, name)?;
+                continue;
+            };
+            // 恢复 = 把数据库片段合并进现有 live 文档：只动这一个条目，其余条目原样保留
+            let mut fragment_doc = codex_config::parse_document(fragment)?;
+            let table = fragment_doc
+                .as_table_mut()
+                .get_mut("mcp_servers")
+                .and_then(toml_edit::Item::as_table_mut)
+                .and_then(|servers| servers.remove(name))
+                .ok_or_else(|| app_err!("片段中没有可恢复的服务器 {name}"))?;
+            document
+                .as_table_mut()
+                .entry("mcp_servers")
+                .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()))
+                .as_table_mut()
+                .ok_or_else(|| app_err!("mcp_servers 不是 TOML table"))?
+                .insert(name, table);
+        }
+        let config_path = self.paths.codex_config();
+        backup_file(&config_path, &self.paths.config_backup, "config")?;
+        atomic_write(
+            &config_path,
+            codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
+        )?;
+        tauri_plugin_log::log::info!(
+            "[mcp.diff.batch] source=live count={} outcome=success msg=\"已把数据库 MCP 配置写回 live\"",
+            actions.len()
+        );
+        Ok(actions.len())
     }
 
     /// 删除一个 MCP 服务器（含其全部子表）。

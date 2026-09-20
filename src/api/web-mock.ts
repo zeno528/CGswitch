@@ -2,6 +2,7 @@ import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type Bui
 import type {
   AppState,
   DatabaseBackupInfo,
+  McpDiffEntryAction,
   McpProbeResult,
   McpServerSpec,
   MarketplacePlugin,
@@ -1228,7 +1229,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "import_mcp_from_live":
       return webMcpServers.length as T;
     case "mcp_sync_preview": {
-      // web 调试探样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异弹窗
+      // web 调试样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异页
       const first = webMcpServers[0];
       const changed = first
         ? {
@@ -1236,11 +1237,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
             kind: "changed" as const,
             live_spec: first,
             db_spec: { ...first, url: first.url ? first.url + "-old" : first.url },
-            live_toml: null,
-            db_toml: null,
-            changed_fields: [
-              { field: "url", live: first.url, db: first.url ? first.url + "-old" : null },
-            ],
+            live_toml: `[mcp_servers.${first.name}]\nurl = "${first.url ?? ""}"`,
+            db_toml: `[mcp_servers.${first.name}]\nurl = "${first.url ? first.url + "-old" : ""}"`,
           }
         : null;
       const liveOnly = {
@@ -1260,9 +1258,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           env_http_headers: {},
         },
         db_spec: null,
-        live_toml: null,
+        live_toml: '[mcp_servers.web-demo-live-only]\ncommand = "npx"\nargs = ["-y", "web-demo"]',
         db_toml: null,
-        changed_fields: [],
       };
       const entries = [changed, liveOnly].filter((entry) => entry !== null);
       return {
@@ -1347,6 +1344,22 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
+    case "set_mcp_mirror":
+    case "revert_mcp_live":
+    case "set_mcp_mirror_entries":
+    case "revert_mcp_live_entries": {
+      // web 调试沙箱只有一份服务器列表、没有独立的镜像侧：单条与批量都当同名 upsert 处理，
+      // fragment 为空表示删除该条目；fragment 不做 TOML 解析
+      const batched = Array.isArray(args?.actions);
+      const actions = batched
+        ? (args?.actions as McpDiffEntryAction[])
+        : [{ name: args?.name as string, fragment: (args?.fragment ?? null) as string | null }];
+      for (const action of actions) {
+        webMcpServers = webMcpServers.filter((server) => server.name !== action.name);
+        if (action.fragment) webMcpServers.push({ name: action.name } as McpServerSpec);
+      }
+      return (batched ? actions.length : undefined) as T;
+    }
     // 认证登录流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
     default:
       throw new Error(`Web 调试模式不支持命令：${command}`);

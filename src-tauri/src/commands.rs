@@ -8,8 +8,8 @@ use crate::builtin;
 use crate::codex::config as codex_config;
 use crate::error::{app_err, AppResult};
 use crate::models::{
-    AppState, AuthSource, CodexAppStatus, McpServerSpec, McpSyncPreview, ProfileBalanceInfo,
-    ProfileDetail, ProfileSummary, Settings,
+    AppState, AuthSource, CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview,
+    ProfileBalanceInfo, ProfileDetail, ProfileSummary, Settings,
 };
 use crate::services::{
     AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
@@ -583,6 +583,44 @@ pub fn save_mcp_server(
 #[tauri::command]
 pub fn delete_mcp_server(name: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.delete_mcp_server(&name)
+}
+
+/// 差异处理"同步"：改写数据库镜像中的单个条目（fragment 为空表示删除该条目；均不触碰 live）。
+#[tauri::command]
+pub fn set_mcp_mirror(
+    name: String,
+    fragment: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.set_mcp_mirror_entry(&name, fragment.as_deref())
+}
+
+/// 差异处理"撤销"：仅将单个条目恢复为数据库内容写回 live（fragment 为空时从 live 移除）。
+#[tauri::command]
+pub fn revert_mcp_live(
+    name: String,
+    fragment: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.revert_mcp_live_entry(&name, fragment.as_deref())
+}
+
+/// 差异处理"同步"批量：一次写入多条数据库镜像条目（不触碰 live）。
+#[tauri::command]
+pub fn set_mcp_mirror_entries(
+    actions: Vec<McpDiffEntryAction>,
+    state: State<'_, AppContext>,
+) -> AppResult<usize> {
+    state.set_mcp_mirror_entries(&actions)
+}
+
+/// 差异处理"撤销"批量：一次写回多条 config.toml 条目（fragment 为空表示从 live 移除）。
+#[tauri::command]
+pub fn revert_mcp_live_entries(
+    actions: Vec<McpDiffEntryAction>,
+    state: State<'_, AppContext>,
+) -> AppResult<usize> {
+    state.revert_mcp_live_entries(&actions)
 }
 
 /// 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live。

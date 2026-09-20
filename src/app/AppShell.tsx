@@ -249,7 +249,7 @@ export default function AppShell() {
               ) : view === "profiles" ? (
                 <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
               ) : view === "mcp" ? (
-                <McpView key={mcpReset} />
+                <McpView key={mcpReset} activationEpoch={activationEpoch} />
               ) : view === "plugins" ? (
                 <PluginsView state={state} />
               ) : view === "skills" ? (
