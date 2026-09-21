@@ -228,6 +228,19 @@ pub(super) fn wait_child_with_timeout(
     }))
 }
 
+fn plugin_cli_action(args: &[&str]) -> &'static str {
+    match args {
+        ["list"] => "读取已安装插件列表",
+        ["marketplace", "list"] => "读取插件市场列表",
+        ["marketplace", "add", ..] => "添加插件市场",
+        ["marketplace", "remove", ..] => "移除插件市场",
+        ["marketplace", "upgrade", ..] => "升级插件市场",
+        ["add", ..] => "安装插件",
+        ["remove", ..] => "卸载插件",
+        _ => "执行 Codex 插件命令",
+    }
+}
+
 /// 跑 `codex plugin <args>`，返回 stdout；失败时把 CLI 的报错带出来，
 /// 网络类失败追加代理提示；整体限时，防止 git 卡死拖住 UI。
 /// 所有调用共用一个咽喉：成败各记一行留痕（Warn/Debug），排障不再靠猜。
@@ -235,13 +248,14 @@ pub(super) fn run_codex_plugin(home: &Path, args: &[&str]) -> AppResult<String> 
     let start = std::time::Instant::now();
     let result = run_codex_plugin_inner(home, args);
     let command = format!("plugin {}", args.join(" "));
+    let action = plugin_cli_action(args);
     match &result {
         Ok(_) => tauri_plugin_log::log::debug!(
-            "[plugin.cli.run] command={command:?} outcome=success duration_ms={} msg=\"CLI 完成\"",
+            "[plugin.cli.run] command={command:?} outcome=success duration_ms={} msg=\"{action}成功\"",
             start.elapsed().as_millis()
         ),
         Err(error) => tauri_plugin_log::log::warn!(
-            "[plugin.cli.run] command={command:?} outcome=failure failure_kind=internal duration_ms={} error={error:?} msg=\"CLI 失败\"",
+            "[plugin.cli.run] command={command:?} outcome=failure failure_kind=internal duration_ms={} error={error:?} msg=\"{action}失败\"",
             start.elapsed().as_millis()
         ),
     }
@@ -345,6 +359,16 @@ mod tests {
             "fatal: unable to access 'https://github.com/': Failed to connect"
         ));
         assert!(!looks_like_network_error("marketplace already added"));
+    }
+
+    #[test]
+    fn plugin_cli_action_describes_the_command() {
+        assert_eq!(plugin_cli_action(&["list"]), "读取已安装插件列表");
+        assert_eq!(plugin_cli_action(&["add", "demo@market"]), "安装插件");
+        assert_eq!(
+            plugin_cli_action(&["marketplace", "remove", "market"]),
+            "移除插件市场"
+        );
     }
 
     #[test]

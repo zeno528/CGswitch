@@ -64,12 +64,12 @@ export function useProfileAdvancedPatches(options: {
   const { configText, setConfigText, initialized, showLongContextOverride } = options;
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
-  const [longContextEnabled, setLongContextEnabled] = useState(false);
-  const [compactTokenLimit, setCompactTokenLimit] = useState(defaultCompactTokenLimit);
+  const [longContextEnabled, setLongContextEnabled] = useState(() => showLongContextOverride && hasLongContextOverride(configText));
+  const [compactTokenLimit, setCompactTokenLimit] = useState(() => readCompactTokenLimit(configText));
   const [patchingLongContext, setPatchingLongContext] = useState(false);
-  const [systemProxyEnabled, setSystemProxyEnabled] = useState(false);
+  const [systemProxyEnabled, setSystemProxyEnabled] = useState(() => hasSystemProxyOverride(configText));
   const [patchingSystemProxy, setPatchingSystemProxy] = useState(false);
-  const [contextMgmtEnabled, setContextMgmtEnabled] = useState(false);
+  const [contextMgmtEnabled, setContextMgmtEnabled] = useState(() => hasContextManagementOverride(configText));
   const [patchingContextMgmt, setPatchingContextMgmt] = useState(false);
 
   useEffect(() => {
