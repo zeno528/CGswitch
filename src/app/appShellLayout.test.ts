@@ -69,8 +69,10 @@ describe("AppShell 布局", () => {
   it("启动期预发 get_state：首个 refresh 消费在途结果，后续照常发新请求", () => {
     // IPC 与 React 挂载并行，砍掉"挂载完才发请求"的一轮串行等待
     expect(hooksSource).toContain("let pendingStartupState: Promise<AppState> | null = api.getState();");
-    expect(hooksSource).toContain("await (pendingStartupState ?? api.getState())");
+    expect(hooksSource).toContain("const request = pendingStartupState;");
+    expect(hooksSource).toContain("const nextState = await (request ?? api.getState());");
     expect(hooksSource).toContain("pendingStartupState = null;");
+    expect(hooksSource.indexOf("pendingStartupState = null;")).toBeLessThan(hooksSource.indexOf("const nextState = await (request ?? api.getState());"));
   });
 
   it("只在窗口从非激活状态恢复时刷新", () => {
