@@ -22,16 +22,26 @@ describe("AppShell 布局", () => {
 
   it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {
     // 首屏：useSyncExternalStore 从 localStorage 缓存直出，不发起任何查询
-    expect(source).toContain("useSyncExternalStore(subscribeMcpDiffCount, getMcpDiffCount)");
-    expect(source).toContain('{mcpDiffCount ? <span className="apple-count-badge"');
+    expect(source).toContain("useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge)");
+    expect(source).toContain('{mcpBadge ? <span className="apple-count-badge"');
     // 查询：必须被 startupReady 门控 + 固定延迟，禁止直接进首屏/冷启动关键路径
     expect(source).toContain("if (!startupReady) return;");
     expect(source).toContain("}, 1500);");
   });
 
-  it("MCP 页查到差异后写回共享缓存，侧栏与页面数字同源", () => {
+  it("MCP 页查到差异后写回共享缓存，侧栏与页面同源", () => {
     const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
-    expect(mcpViewSource).toContain("setMcpDiffCount(preview.entries.length)");
+    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: preview.entries.length, error: false })");
+  });
+
+  it("config.toml 解析失败时侧栏角标同步亮起，不点进 MCP 页也能看见", () => {
+    const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
+    // MCP 页查失败写回 error 态
+    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: 0, error: true })");
+    // 启动后的静默刷新同理：失败不能被吞掉
+    expect(source).toContain("setMcpDiffBadge({ count: 0, error: true })");
+    // 角标内容：有差异显示数字，解析失败显示 "!"（与 MCP 页头按钮同款语义）
+    expect(source).toContain('mcpDiffBadge?.error ? "!" : null');
   });
 
   it("只在窗口从非激活状态恢复时刷新", () => {

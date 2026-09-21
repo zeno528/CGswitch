@@ -179,35 +179,44 @@ export function setMcpServersCache(items: McpServerSpec[]): void {
   mcpServers.set(items);
 }
 
-// ==================== MCP 差异数（侧栏角标） ====================
+// ==================== MCP 差异角标（侧栏 + MCP 页） ====================
 
-/// 两个地方共用这一个数字：MCP 页查完写回，侧栏首屏读缓存直出。
-/// 侧栏自己不发起查询——差异查询实测 0.5ms 级，但仍不进启动关键路径（见 AppShell 的延迟刷新）。
+/// 角标两态：`count` 项可逐条处理的差异，或 `error`（config.toml 解析不了，差异
+/// 根本算不出来）。两态共用一条通道是刻意的——"配置坏了"跟"有差异"一样是用户
+/// 不点进 MCP 页就看不见的状况，必须搭同一班车到侧栏。
+/// MCP 页查完写回，侧栏首屏读缓存直出；侧栏自己不发起查询（差异查询实测 0.5ms
+/// 级，但仍不进启动关键路径，见 AppShell 的延迟刷新）。
+export interface McpDiffBadge {
+  count: number;
+  error: boolean;
+}
+
 const MCP_DIFF_COUNT_STORAGE_KEY = "cgswitch.mcp-diff-count-v1";
-let mcpDiffCount: number | null = null;
-let mcpDiffCountRestored = false;
-const mcpDiffCountListeners = new Set<() => void>();
+let mcpDiffBadge: McpDiffBadge | null = null;
+let mcpDiffBadgeRestored = false;
+const mcpDiffBadgeListeners = new Set<() => void>();
 
-export function getMcpDiffCount(): number | null {
-  if (!mcpDiffCountRestored) {
-    mcpDiffCountRestored = true;
+/// 返回的必须是稳定引用（存下来的那个对象），否则 useSyncExternalStore 会无限重渲染。
+export function getMcpDiffBadge(): McpDiffBadge | null {
+  if (!mcpDiffBadgeRestored) {
+    mcpDiffBadgeRestored = true;
     const raw = readJson(MCP_DIFF_COUNT_STORAGE_KEY);
-    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) mcpDiffCount = raw;
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) mcpDiffBadge = { count: raw, error: false };
   }
-  return mcpDiffCount;
+  return mcpDiffBadge;
 }
 
-export function setMcpDiffCount(count: number): void {
-  if (mcpDiffCount === count) return;
-  mcpDiffCount = count;
-  writeJson(MCP_DIFF_COUNT_STORAGE_KEY, count);
-  for (const listener of mcpDiffCountListeners) listener();
+export function setMcpDiffBadge(next: McpDiffBadge): void {
+  if (mcpDiffBadge && mcpDiffBadge.count === next.count && mcpDiffBadge.error === next.error) return;
+  mcpDiffBadge = next;
+  writeJson(MCP_DIFF_COUNT_STORAGE_KEY, next.count);
+  for (const listener of mcpDiffBadgeListeners) listener();
 }
 
-export function subscribeMcpDiffCount(listener: () => void): () => void {
-  mcpDiffCountListeners.add(listener);
+export function subscribeMcpDiffBadge(listener: () => void): () => void {
+  mcpDiffBadgeListeners.add(listener);
   return () => {
-    mcpDiffCountListeners.delete(listener);
+    mcpDiffBadgeListeners.delete(listener);
   };
 }
 

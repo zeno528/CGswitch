@@ -2157,18 +2157,95 @@ fn mcp_import_from_live_forces_mirror() {
 }
 
 #[test]
-fn restore_mcp_rebuilds_corrupt_config() {
+fn restore_mcp_rewrites_only_the_mcp_region() {
+    let (context, _home) = mcp_test_context(
+        "model = \"gpt-5.6\"\n\n[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n\n[projects.'x']\ntrust_level = \"trusted\"\n",
+    );
+    context.import_mcp_from_live().unwrap();
+
+    // 外部把 tavily 那行的引号删掉：整份文件解析不了，MCP 段之外的内容完好
+    std::fs::write(
+        context.paths.codex_config(),
+        "model = \"gpt-5.6\"\n\n[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\nbearer_token_env_var = \"BROKEN\n\n[projects.'x']\ntrust_level = \"trusted\"\n",
+    )
+    .unwrap();
+
+    let count = context.restore_mcp_from_database().unwrap();
+    assert_eq!(count, 1);
+
+    let config = read_config_text(&context);
+    codex_config::parse_document(&config).unwrap();
+    // MCP 段按镜像重写，坏行消失
+    assert!(!config.contains("BROKEN"), "{config}");
+    // 区域外的配置逐字保留，没有被整份重写殃及
+    assert!(config.contains("model = \"gpt-5.6\""), "{config}");
+    assert!(
+        config.contains("[projects.'x']\ntrust_level = \"trusted\""),
+        "{config}"
+    );
+}
+
+#[test]
+fn restore_mcp_keeps_managed_entries_when_rebuilding_the_region() {
+    const MANAGED: &str = "[mcp_servers.node_repl]\ncommand = \"node_repl.exe\"\n\n[mcp_servers.node_repl.env]\nCODEX_HOME = \"/x\"\n";
+    let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{MANAGED}");
+    let (context, _home) = mcp_test_context(&live);
+    context.import_mcp_from_live().unwrap();
+
+    // 解析不了时重建 MCP 区域：托管条目不在镜像里，必须按 live 原文留在原位
+    std::fs::write(
+        context.paths.codex_config(),
+        format!("model = \"gpt-5.6\"\n\n[mcp_servers.github]\nurl = \"https://g/mcp\"\nbroken = \"oops\n\n{MANAGED}"),
+    )
+    .unwrap();
+
+    context.restore_mcp_from_database().unwrap();
+
+    let config = read_config_text(&context);
+    codex_config::parse_document(&config).unwrap();
+    assert!(!config.contains("oops"), "{config}");
+    assert!(config.contains("[mcp_servers.node_repl]"), "{config}");
+    assert!(config.contains("node_repl.env"), "{config}");
+    assert!(config.contains("CODEX_HOME = \"/x\""), "{config}");
+}
+
+#[test]
+fn restore_mcp_region_stops_at_the_next_section() {
+    // MCP 段后面紧跟别的区域时，重建必须止步于下一个表头——尤其数组表头
+    // （[[skills.config]]）也要能终止区域，否则邻接区域的条目会被当成 MCP 块吞掉
+    const TAIL: &str = "[[skills.config]]\npath = 'C:\\skills\\a\\SKILL.md'\nenabled = false\n\n[plugins.\"browser@openai-bundled\"]\nenabled = true\n";
+    let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{TAIL}");
+    let (context, _home) = mcp_test_context(&live);
+    context.import_mcp_from_live().unwrap();
+
+    std::fs::write(
+        context.paths.codex_config(),
+        format!("model = \"gpt-5.6\"\n\n[mcp_servers.github]\nurl = \"https://g/mcp\"\nbroken = \"oops\n\n{TAIL}"),
+    )
+    .unwrap();
+
+    context.restore_mcp_from_database().unwrap();
+
+    let config = read_config_text(&context);
+    codex_config::parse_document(&config).unwrap();
+    assert!(!config.contains("oops"), "{config}");
+    assert!(config.contains("[mcp_servers.github]"), "{config}");
+    // 邻接区域逐字保留，一个字节都没被 MCP 区域吞掉
+    assert!(config.ends_with(TAIL), "{config}");
+    assert!(config.contains("model = \"gpt-5.6\""), "{config}");
+}
+
+#[test]
+fn restore_mcp_refuses_when_no_mcp_region_can_be_located() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
     context.import_mcp_from_live().unwrap();
 
-    // 配置文件彻底损坏（无法解析）：恢复按镜像重建整个文件，原文件已自动备份
+    // 文件彻底损坏且不含 MCP 段：拒绝整份重写（那会丢掉区域外的全部配置），
+    // 原文件一个字节都不动，交由备份恢复处理
     std::fs::write(context.paths.codex_config(), "not [ valid").unwrap();
-    let count = context.restore_mcp_from_database().unwrap();
-    assert_eq!(count, 1);
-    let config = read_config_text(&context);
-    assert!(config.contains("mcp_servers.tavily"), "{config}");
-    codex_config::parse_document(&config).unwrap();
+    assert!(context.restore_mcp_from_database().is_err());
+    assert_eq!(read_config_text(&context), "not [ valid");
 }
 
 #[test]

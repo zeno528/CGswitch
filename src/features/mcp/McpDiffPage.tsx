@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, CircleQuestionMark, GitCompare, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, CircleQuestionMark, GitCompare, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -151,10 +151,17 @@ export default function McpDiffPage({ preview, previewError, resolving, onBack, 
       </div>
       <div className="apple-edit-content">
         {previewError ? (
-          <div className="space-y-3">
-            <p className="muted text-sm">{previewError}</p>
-            <p className="muted text-sm">{t("diff.rebuildDescription")}</p>
-            <button type="button" className="apple-action-button" disabled={resolving} onClick={onRebuild}>{t("diff.rebuild")}</button>
+          <div className="apple-group p-4">
+            {/* 图标放标题右侧：标题、描述、按钮、报错盒子左边缘对齐，不留悬挂缩进 */}
+            <div className="flex items-center gap-2">
+              <div className="setting-title">{t("diff.parseFailedTitle")}</div>
+              <CircleAlert className="h-[18px] w-[18px] shrink-0 text-[var(--danger)]" strokeWidth={2} aria-hidden="true" />
+            </div>
+            <p className="setting-description mt-1">{t("diff.parseFailedImpact")}</p>
+            <button type="button" className="apple-action-button app-button--primary mt-3" disabled={resolving} onClick={onRebuild}>{t("diff.rebuild")}</button>
+            {/* 报错原文是唯一能定位到行的信息，默认摊开——这页就是为它存在的 */}
+            <div className="field-label mt-3">{t("diff.rawError")}</div>
+            <pre className="mono meta-xs muted m-0 mt-1.5 whitespace-pre-wrap break-all rounded-[var(--radius-control)] border border-[var(--panel-border)] bg-(--profile-chip-bg) px-2.5 py-2">{previewError}</pre>
           </div>
         ) : entries.length ? (
           <div className="space-y-2">

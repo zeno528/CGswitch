@@ -98,7 +98,22 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        self.sync_active_profile_from_live_locked()?;
+        // 拉起前先读一次 live config：这份文件读不了，Codex 也起不来，日志必须留痕
+        // （否则这条真相只能靠 [plugin.cli.run] 的失败间接暴露，归错域）。
+        // 同一次读取/解析顺带完成原来的快照同步——不是新增开销。
+        // 读不了也**不拦**：Codex 自己会报错，CGswitch 不替它做判断。
+        // 刻意不带 error 正文：解析报错会内嵌出错那一行的原文，可能是密钥。
+        match self.live_document_checked() {
+            Ok(Some(document)) => {
+                self.sync_active_profile_document(&document)?;
+            }
+            Ok(None) => {}
+            Err(_) => {
+                tauri_plugin_log::log::warn!(
+                    "[app.config.parse] outcome=failure failure_kind=parse_error msg=\"config.toml 无法读取或解析，Codex 可能无法启动\""
+                );
+            }
+        }
         let process_ids = codex_process::find_process_ids(None);
         // 本次动作由 Codex 是否在跑决定：在跑＝先停后启的重启，没跑＝纯启动。两者共用本函数，
         // 收尾日志必须自己区分，否则纯启动也会记成“已重新启动”。
@@ -172,9 +187,11 @@ impl AppContext {
             &now_ms().to_string(),
         )?;
         match &result {
+            // 只断言验证过的事实：进程拉起来了。start/restart 的区分已经在 action= 字段里，
+            // 而"应用是否真的可用"CGswitch 无从验证——配置坏掉时进程照样会起来并弹错误框，
+            // 那时候记"已启动"就是撒谎（19:40 那次就是这么记的）。
             Ok(()) => tauri_plugin_log::log::info!(
-                "[settings.restart] action={action} outcome=success msg=\"{}\"",
-                if action == "start" { "Codex 已启动" } else { "Codex 已重新启动" }
+                "[settings.restart] action={action} outcome=success msg=\"Codex 进程已拉起\""
             ),
             Err(error) => tauri_plugin_log::log::warn!(
                 "[settings.restart] action={action} outcome=failure failure_kind=internal error={error:?} msg=\"{}\"",

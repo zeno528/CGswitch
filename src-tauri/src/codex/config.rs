@@ -740,6 +740,92 @@ pub fn replace_mcp_section_from_fragments(
     }
 }
 
+/// 文本级重建 `[mcp_servers.*]` 区域：整份文件解析不了时的专用路径。
+///
+/// 与 `replace_mcp_section_from_fragments` 的关键区别是**它不依赖文档能解析**——
+/// 按行认出 MCP 区域，只替换区域内的行，区域外（projects / plugins / desktop /
+/// model …）逐字节原样保留。托管条目（node_repl 等）不在镜像里，按 live 原文
+/// 留在原位。区域边界一律以「行首 `[`」为准，绝不跨过任何表头吞并相邻段落。
+///
+/// 定位不到 MCP 区域、或镜像片段一条都不可用时返回 `None`：那时只能走备份恢复，
+/// 整份重写会连带丢掉区域外的全部配置，代价远高于收益。
+pub fn rebuild_mcp_region_text(live_text: &str, fragments: &[(String, String)]) -> Option<String> {
+    let replacement = render_mcp_fragments(fragments);
+    if replacement.is_empty() {
+        return None;
+    }
+    let lines: Vec<&str> = live_text.split_inclusive('\n').collect();
+    let start = lines
+        .iter()
+        .position(|line| mcp_region_name(line).is_some())?;
+    let end = lines[start..]
+        .iter()
+        .position(|line| is_table_header(line) && mcp_region_name(line).is_none())
+        .map_or(lines.len(), |offset| start + offset);
+
+    let mut rebuilt = Vec::new();
+    let mut placed = false;
+    let mut index = start;
+    while index < end {
+        // 块边界 = 下一个表头行：托管子表（`[mcp_servers.x.env]`）自成一块但同名同待遇
+        let block_end = (index + 1..end)
+            .find(|&line| is_table_header(lines[line]))
+            .unwrap_or(end);
+        if is_managed_mcp_name(mcp_region_name(lines[index]).unwrap_or_default()) {
+            rebuilt.extend(
+                lines[index..block_end]
+                    .iter()
+                    .map(|line| (*line).to_string()),
+            );
+        } else if !placed {
+            // 镜像片段落在第一个非托管块的位置，托管块留在它们原来的位置
+            placed = true;
+            rebuilt.extend(replacement.iter().cloned());
+        }
+        index = block_end;
+    }
+    if !placed {
+        rebuilt.extend(replacement);
+    }
+
+    let mut text = lines[..start].concat();
+    text.extend(rebuilt);
+    text.push_str(&lines[end..].concat());
+    Some(text)
+}
+
+/// 行首表头里 `mcp_servers` 之后的名字（`[mcp_servers]` 自身返回空串）；
+/// 不是 mcp_servers 表头返回 `None`。只看行首，不做完整 TOML 解析——
+/// 调用它的场景就是"整份文档已经解析不了"。
+fn mcp_region_name(line: &str) -> Option<&str> {
+    let rest = line.trim_start().strip_prefix('[')?.trim_start_matches('[');
+    let rest = rest.strip_prefix("mcp_servers")?;
+    match rest.as_bytes().first()? {
+        b'.' => {
+            let name = &rest[1..];
+            let end = name
+                .find(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
+                .unwrap_or(name.len());
+            Some(&name[..end])
+        }
+        b']' => Some(""),
+        _ => None,
+    }
+}
+
+fn is_table_header(line: &str) -> bool {
+    line.trim_start().starts_with('[')
+}
+
+/// 镜像片段渲染成可直接拼接的文本，跳过解析不了的那些。
+fn render_mcp_fragments(fragments: &[(String, String)]) -> Vec<String> {
+    fragments
+        .iter()
+        .filter(|(name, fragment)| !is_managed_mcp_name(name) && parse_document(fragment).is_ok())
+        .map(|(_, fragment)| format!("{}\n\n", fragment.trim()))
+        .collect()
+}
+
 /// 把表单建模字段写进单服务器片段文本（编辑页"表单 → 编辑器"实时同步用）。
 /// 复用保存路径的 upsert：未建模键、注释、格式原样保留；
 /// 段内现有服务器名与 spec.name 不同时按重命名处理（删旧建新）。

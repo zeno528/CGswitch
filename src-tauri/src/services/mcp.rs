@@ -48,49 +48,61 @@ impl AppContext {
         Ok(document)
     }
 
-    /// 把数据库镜像的 MCP 段写进 live config.toml。
-    /// live 解析失败（损坏/被重置）时从镜像重建整个文件；写前照常自动备份原文件。
+    /// 把数据库镜像的 MCP 段写进 live config.toml；写前照常自动备份原文件。
     /// 建模字段与 live 一致的服务器保留 live 原文：注释/未建模键跟随 live，
     /// 恢复动作只覆盖真有差异的条目，不做整段格式回滚。
+    ///
+    /// live 解析失败时**只做文本层面 MCP 区域的重建**，区域外逐字节保留。
+    /// 定位不到 MCP 区域就如实报错——整份重写会连带丢掉区域外的 projects /
+    /// plugins / desktop 等全部配置，代价远高于收益，那种情况该走备份恢复。
     pub(super) fn write_mcp_section_to_live(
         &self,
         fragments: &[(String, String)],
     ) -> AppResult<()> {
         let live_text = self.read_live_config()?;
-        let mut document = match codex_config::parse_document(&live_text) {
-            Ok(document) => document,
-            Err(_) => toml_edit::DocumentMut::new(),
+        let text = match codex_config::parse_document(&live_text) {
+            Ok(mut document) => {
+                let live_fragments = codex_config::mcp_server_fragments_from_document(&document);
+                let live_specs: BTreeMap<String, McpServerSpec> =
+                    codex_config::mcp_servers_from_document(&document)
+                        .into_iter()
+                        .map(|spec| (spec.name.clone(), spec))
+                        .collect();
+                let merged = fragments
+                    .iter()
+                    .map(|(name, toml)| {
+                        let semantically_equal = live_specs.get(name).is_some_and(|live| {
+                            codex_config::spec_from_fragment(name, toml)
+                                .is_some_and(|db| *live == db)
+                        });
+                        if semantically_equal {
+                            live_fragments
+                                .iter()
+                                .find(|(live_name, _)| live_name == name)
+                                .cloned()
+                                .unwrap_or_else(|| (name.clone(), toml.clone()))
+                        } else {
+                            (name.clone(), toml.clone())
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                codex_config::replace_mcp_section_from_fragments(&mut document, &merged);
+                codex_config::normalize_global_section_order(&document.to_string())
+            }
+            Err(_) => {
+                let repaired = codex_config::rebuild_mcp_region_text(&live_text, fragments)
+                    .ok_or_else(|| {
+                        app_err!("config.toml 中定位不到 MCP 段，无法就地重建；请改用备份恢复")
+                    })?;
+                // 修完必须能解析才允许落盘：改不动就报错，不做"尽力而为地写下去"
+                codex_config::parse_document(&repaired)
+                    .map_err(|error| app_err!("重建 MCP 段后配置仍无法解析：{error}"))?;
+                repaired
+            }
         };
-        let live_fragments = codex_config::mcp_server_fragments_from_document(&document);
-        let live_specs: BTreeMap<String, McpServerSpec> =
-            codex_config::mcp_servers_from_document(&document)
-                .into_iter()
-                .map(|spec| (spec.name.clone(), spec))
-                .collect();
-        let merged = fragments
-            .iter()
-            .map(|(name, toml)| {
-                let semantically_equal = live_specs.get(name).is_some_and(|live| {
-                    codex_config::spec_from_fragment(name, toml).is_some_and(|db| *live == db)
-                });
-                if semantically_equal {
-                    live_fragments
-                        .iter()
-                        .find(|(live_name, _)| live_name == name)
-                        .cloned()
-                        .unwrap_or_else(|| (name.clone(), toml.clone()))
-                } else {
-                    (name.clone(), toml.clone())
-                }
-            })
-            .collect::<Vec<_>>();
-        codex_config::replace_mcp_section_from_fragments(&mut document, &merged);
         let config_path = self.paths.codex_config();
         backup_file(&config_path, &self.paths.config_backup, "config")?;
-        atomic_write(
-            &config_path,
-            codex_config::normalize_global_section_order(&document.to_string()).as_bytes(),
-        )?;
+        atomic_write(&config_path, text.as_bytes())?;
         Ok(())
     }
 

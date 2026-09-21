@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
-import { getMcpDiffCount, setMcpDiffCount, subscribeMcpDiffCount } from "./managementDataCache";
+import { getMcpDiffBadge, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -40,7 +40,12 @@ export default function AppShell() {
   const sidebar = useSidebar();
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
-  const mcpDiffCount = useSyncExternalStore(subscribeMcpDiffCount, getMcpDiffCount);
+  const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
+  // 有可逐条处理的差异显示数字；配置解析不了显示 "!"（与 MCP 页头按钮同款语义）
+  const mcpBadge = mcpDiffBadge?.count ? (mcpDiffBadge.count > 9 ? "9+" : String(mcpDiffBadge.count)) : mcpDiffBadge?.error ? "!" : null;
+  const mcpBadgeTitle = mcpDiffBadge?.count
+    ? tMcp("list.updateDiffAria", { count: mcpDiffBadge.count })
+    : mcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;
 
   useEffect(() => {
     let cancelled = false;
@@ -124,13 +129,14 @@ export default function AppShell() {
   }, [activate, refresh, refreshAuthStatus, startPolling, stopPolling]);
 
   // 首屏稳定后再静默查一次 MCP 差异（实测单次 0.5ms 级，但绝不与首帧抢资源）。
-  // 失败静默：保留缓存里的旧值，不编造数字（config.toml 解析失败由 MCP 页自己提示）。
+  // 失败不静默：写回 error 态让侧栏角标亮起——config.toml 解析失败是"不点进 MCP 页
+  // 就发现不了"的状况，正是这个角标存在的意义（MCP 页自己也会看到同一条状态）。
   useEffect(() => {
     if (!startupReady) return;
     const timer = window.setTimeout(() => {
       void api.mcpSyncPreview()
-        .then((preview) => setMcpDiffCount(preview.entries.length))
-        .catch(() => undefined);
+        .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
+        .catch(() => setMcpDiffBadge({ count: 0, error: true }));
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [startupReady]);
@@ -223,11 +229,11 @@ export default function AppShell() {
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.providers")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.providers")}</span> : null}
               </button>
-              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} title={mcpDiffCount ? tMcp("list.updateDiffAria", { count: mcpDiffCount }) : undefined} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} title={mcpBadgeTitle} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                 {/* 角标锚在图标上：收缩态只剩图标时位置依然正确，且 --sidebar-bg 与 --panel-bg 同色，角标描边不用另配 */}
                 <span className="relative flex shrink-0">
                   <McpIcon className="h-[18px] w-[18px]" />
-                  {mcpDiffCount ? <span className="apple-count-badge" aria-hidden="true">{mcpDiffCount > 9 ? "9+" : mcpDiffCount}</span> : null}
+                  {mcpBadge ? <span className="apple-count-badge" aria-hidden="true">{mcpBadge}</span> : null}
                 </span>
                 <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.mcp")}</span>
                 {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.mcp")}</span> : null}

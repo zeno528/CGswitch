@@ -12,10 +12,6 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        self.sync_active_profile_from_live_locked()
-    }
-
-    pub(super) fn sync_active_profile_from_live_locked(&self) -> AppResult<bool> {
         let Some(document) = self.live_document() else {
             return Ok(false);
         };

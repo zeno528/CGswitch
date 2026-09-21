@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, setCachedMcpProbe, setMcpDiffCount, setMcpServersCache } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, setCachedMcpProbe, setMcpDiffBadge, setMcpServersCache } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
@@ -204,10 +204,16 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
       const preview = await api.mcpSyncPreview();
       setSyncPreview(preview);
       setPreviewError("");
-      // 侧栏角标与页面同源：页面查到就写回共享缓存；查失败时保留旧值不覆盖
-      setMcpDiffCount(preview.entries.length);
+      // 侧栏角标与页面同源：页面查到就写回共享缓存
+      setMcpDiffBadge({ count: preview.entries.length, error: false });
     }
-    catch (error) { setPreviewError(String(error)); setSyncPreview(null); }
+    catch (error) {
+      setPreviewError(String(error));
+      setSyncPreview(null);
+      // 差异算不出来本身就是一种状态：写回 error 让侧栏跟着亮，
+      // 否则用户不点进 MCP 页就不知道 config.toml 坏了
+      setMcpDiffBadge({ count: 0, error: true });
+    }
     finally { previewInFlight.current = false; }
   };
   const refresh = async (force = false, skipProbeName?: string) => {

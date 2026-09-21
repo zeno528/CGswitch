@@ -132,8 +132,24 @@ describe("MCP 差异二级页", () => {
     expect(pageSource).toContain("pointer-events-none");
   });
 
-  it("解析失败提供从数据库整段重建的兜底", () => {
-    expect(pageSource).toContain("{t(\"diff.rebuild\")}");
+  it("解析失败时先讲后果与重建边界，报错原文默认摊开", () => {
+    // 用户要知道的是"Codex 起不来"，不是解析器报错原文
+    expect(pageSource).toContain('{t("diff.parseFailedTitle")}');
+    expect(pageSource).toContain('{t("diff.parseFailedImpact")}');
+    expect(pageSource).toContain('{t("diff.rebuild")}');
+    // 报错原文是唯一能定位到行的信息，这页就是为它存在的：摊开，不藏进折叠
+    expect(pageSource).toContain('{t("diff.rawError")}');
+    expect(pageSource).toContain("{previewError}</pre>");
+    expect(pageSource).not.toContain("<details");
+    expect(pageSource).not.toContain("diff.rebuildDescription");
+    expect(pageSource).not.toContain("diff.rebuildScope");
+  });
+
+  it("图标锚在标题行右侧，不随内容高度拉伸、也不产生悬挂缩进", () => {
+    // self-stretch 是账号卡那种多行文本块的处理；这里图标跟的是单行标题，拉伸会让它飘到卡片中间
+    expect(pageSource).not.toContain("self-stretch");
+    // 图标在标题之后：卡片里所有文本左边缘对齐
+    expect(pageSource).toContain('<div className="setting-title">{t("diff.parseFailedTitle")}</div>\n              <CircleAlert className="h-[18px] w-[18px] shrink-0 text-[var(--danger)]" strokeWidth={2} aria-hidden="true" />');
   });
 
   it("页脚提供全部同步/全部撤销批量动作", () => {

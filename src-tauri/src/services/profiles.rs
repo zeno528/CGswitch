@@ -159,6 +159,19 @@ impl AppContext {
         codex_config::parse_document(&text).ok()
     }
 
+    /// 与 `live_document` 同一次读取、同一次解析，但把解析错误交出来而不是吞成 `None`。
+    /// 拉起 Codex 前用它：这份文件读不了，Codex 也起不来，日志必须留痕。
+    /// 文件不存在仍返回 `None`（首次运行），与 `live_document` 保持一致。
+    pub(super) fn live_document_checked(&self) -> AppResult<Option<toml_edit::DocumentMut>> {
+        let path = self.paths.codex_config();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(app_err!("无法读取 {}: {error}", path.display())),
+        };
+        Ok(Some(codex_config::parse_document(&text)?))
+    }
+
     pub fn capture_profile(&self, name: &str) -> AppResult<ProfileSummary> {
         let name = validated_name(name)?;
         let mut payload = codex_config::read_profile(&self.paths.codex_config())?;
