@@ -13,8 +13,8 @@ use crate::database::{profile_summary, Database};
 use crate::error::{app_err, AppResult};
 use crate::fsutil::{atomic_write, backup_file, prune_backups};
 use crate::models::{
-    AppState, AuthSource, ChatgptResetCredit, CodexAppStatus, McpServerSpec, McpSyncDiffEntry,
-    McpSyncEntryKind, McpSyncFieldDiff, McpSyncPreview, PathInfo, ProfileBalanceInfo,
+    AppState, AuthSource, ChatgptResetCredit, CodexAppStatus, McpDiffEntryAction, McpServerSpec,
+    McpSyncDiffEntry, McpSyncEntryKind, McpSyncPreview, PathInfo, ProfileBalanceInfo,
     ProfileDetail, ProfileKind, ProfilePayload, ProfileSummary, Settings,
 };
 use crate::paths::{now_ms, AppPaths};

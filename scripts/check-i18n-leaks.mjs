@@ -2,14 +2,17 @@
 //   1) 已迁移的代码里不得有硬编码中文 —— 必须走 t()；
 //   2) 英文资源里不得留中文 —— 键对齐测试只保证「两边都有这个键」，不保证值真的翻了；
 //   3) 两种豁免都必须可追溯：整文件 WHITELIST 与英文白名单指向不存在的条目时报错，防止腐烂。
+//   4) 工作区修改的中英文资源必须成对出现，避免只改一侧语言。
 // 两级豁免：
 //   - 整文件 WHITELIST —— 尚未迁移的文件，写明分期，迁移一个摘一个；
 //   - 行内 `i18n-exempt: <理由>` —— 不能翻的单行（配置值、正则片段等），必须写清为什么。
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
-const SRC_ROOT = fileURLToPath(new URL("../src", import.meta.url));
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const SRC_ROOT = join(ROOT, "src");
 /** 译文所在目录，其内容本身就是中文，不参与代码扫描。 */
 const LOCALES_PREFIX = "i18n/locales";
 /** 行内豁免标记，写在需要豁免的那一行上（行尾注释即可）。 */
@@ -26,6 +29,22 @@ const EN_ALLOWLIST = [
 ];
 
 const CJK = /[一-鿿]/;
+
+function changedFiles() {
+  try {
+    const output = execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    return new Set(output.split(/\r?\n/).filter(Boolean).map((line) => {
+      const path = line.slice(3);
+      const renameSeparator = path.lastIndexOf(" -> ");
+      return renameSeparator >= 0 ? path.slice(renameSeparator + 4) : path;
+    }));
+  } catch {
+    return new Set();
+  }
+}
 
 /**
  * 去掉注释后只剩会被渲染或参与逻辑的代码。注释永远不可能显示给用户，必须剥离，
@@ -88,6 +107,18 @@ for (const filePath of walk(join(SRC_ROOT, "i18n", "locales", "en-US"))) {
 
 const staleWhitelist = WHITELIST.filter((item) => !files.some((f) => rel(f) === item.file));
 const staleEnAllowlist = EN_ALLOWLIST.filter((item) => !usedAllowlist.has(`${item.file}::${item.key}`));
+
+const changed = changedFiles();
+for (const file of changed) {
+  const match = file.match(/^src\/i18n\/locales\/(zh-CN|en-US)\/(.+)$/);
+  if (!match) continue;
+  const [, locale, relativePath] = match;
+  const counterpartLocale = locale === "zh-CN" ? "en-US" : "zh-CN";
+  const counterpart = `src/i18n/locales/${counterpartLocale}/${relativePath}`;
+  if (existsSync(join(ROOT, counterpart)) && !changed.has(counterpart)) {
+    violations.push({ file, detail: `对应的 ${counterpart} 未同步修改` });
+  }
+}
 
 if (violations.length) {
   console.error(`✖ i18n 扫描发现 ${violations.length} 处问题：`);

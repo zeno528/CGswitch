@@ -65,4 +65,31 @@ describe("ProfileEdit 用量查询", () => {
     expect(source).toContain("const authStatusPending = needsAuthStatus && !authStatusReady;");
     expect(source).not.toContain("loadAuthStatus");
   });
+
+  it("以预载详情初始化 detail，详情就绪后才挂载即首帧完整揭示", () => {
+    expect(source).toContain("initialDetail?: ProfileDetail | null;");
+    expect(source).toContain("useState<ProfileDetail | null>(initialDetail)");
+  });
+
+  it("表单与编辑器内容状态以预载详情惰性初始化，首帧不为空壳", () => {
+    expect(source).toContain('const [configText, setConfigText] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");');
+    expect(source).toContain('const [catalogText, setCatalogText] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");');
+    expect(source).toContain('const [authText, setAuthText] = useState(() => initialDetail?.raw_auth ?? "");');
+    expect(source).toContain('const [configInitial, setConfigInitial] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");');
+    expect(source).toContain('const [catalogInitial, setCatalogInitial] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");');
+    expect(source).toContain('const [authInitial, setAuthInitial] = useState(() => initialDetail?.raw_auth ?? "");');
+    expect(source).toContain('const [baseUrl, setBaseUrl] = useState(() => initialDetail?.base_url ?? "");');
+    expect(source).toContain('const [apiKey, setApiKey] = useState(() => initialDetail?.api_key ?? "");');
+    expect(source).toContain('const [modelValue, setModelValue] = useState(() => readModelValue(initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "") ?? "");');
+    expect(source).toContain("const [fetchedModels, setFetchedModels] = useState<string[]>(() => initialDetail?.fetched_models ?? []);");
+    expect(source).toContain('const [adminUrl, setAdminUrl] = useState(() => initialDetail?.admin_url ?? "");');
+    expect(source).toContain("const [boundAccountId, setBoundAccountId] = useState<string | null>(() => initialDetail?.account_id ?? null);");
+  });
+});
+
+describe("编辑页回车保存", () => {
+  it("只在编辑器外响应回车，且不再要求 Ctrl", () => {
+    expect(source).toContain('event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))');
+    expect(source).not.toContain('event.ctrlKey && event.key === "Enter"');
+  });
 });

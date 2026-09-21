@@ -8,8 +8,8 @@ use crate::builtin;
 use crate::codex::config as codex_config;
 use crate::error::{app_err, AppResult};
 use crate::models::{
-    AppState, AuthSource, CodexAppStatus, McpServerSpec, McpSyncPreview, ProfileBalanceInfo,
-    ProfileDetail, ProfileSummary, Settings,
+    AppState, AuthSource, CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview,
+    ProfileBalanceInfo, ProfileDetail, ProfileSummary, Settings,
 };
 use crate::services::{
     AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
@@ -63,6 +63,21 @@ async fn test_account_connection(
 #[tauri::command]
 pub fn get_state(state: State<'_, AppContext>) -> AppResult<AppState> {
     state.get_state()
+}
+
+/// 前端启动里程碑上报（只写日志不落库）：与 native 埋点共用同一把进程起点尺子。
+/// stage 由调用方给定（state_ready / window_shown），detail 是补充定位（如 raf 路径）。
+#[tauri::command]
+pub fn report_startup_mark(
+    state: State<'_, crate::StartupClock>,
+    stage: String,
+    frontend_elapsed_ms: u64,
+    detail: Option<String>,
+) {
+    tauri_plugin_log::log::info!(
+        "[app.startup] stage={stage} frontend_elapsed_ms={frontend_elapsed_ms} rust_elapsed_ms={} detail={detail:?} msg=\"前端启动里程碑\"",
+        state.0.elapsed().as_millis()
+    );
 }
 
 #[tauri::command]
@@ -585,6 +600,44 @@ pub fn delete_mcp_server(name: String, state: State<'_, AppContext>) -> AppResul
     state.delete_mcp_server(&name)
 }
 
+/// 差异处理"同步"：改写数据库镜像中的单个条目（fragment 为空表示删除该条目；均不触碰 live）。
+#[tauri::command]
+pub fn set_mcp_mirror(
+    name: String,
+    fragment: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.set_mcp_mirror_entry(&name, fragment.as_deref())
+}
+
+/// 差异处理"撤销"：仅将单个条目恢复为数据库内容写回 live（fragment 为空时从 live 移除）。
+#[tauri::command]
+pub fn revert_mcp_live(
+    name: String,
+    fragment: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.revert_mcp_live_entry(&name, fragment.as_deref())
+}
+
+/// 差异处理"同步"批量：一次写入多条数据库镜像条目（不触碰 live）。
+#[tauri::command]
+pub fn set_mcp_mirror_entries(
+    actions: Vec<McpDiffEntryAction>,
+    state: State<'_, AppContext>,
+) -> AppResult<usize> {
+    state.set_mcp_mirror_entries(&actions)
+}
+
+/// 差异处理"撤销"批量：一次写回多条 config.toml 条目（fragment 为空表示从 live 移除）。
+#[tauri::command]
+pub fn revert_mcp_live_entries(
+    actions: Vec<McpDiffEntryAction>,
+    state: State<'_, AppContext>,
+) -> AppResult<usize> {
+    state.revert_mcp_live_entries(&actions)
+}
+
 /// 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live。
 #[tauri::command]
 pub fn get_mcp_section_toml(state: State<'_, AppContext>) -> AppResult<String> {
@@ -604,9 +657,15 @@ pub fn import_mcp_from_live(state: State<'_, AppContext>) -> AppResult<usize> {
 }
 
 /// 对比 live config.toml 与数据库镜像的 MCP 差异（只读不写），供同步前人工裁决。
+/// 窗口激活时会与 get_state 一起被调用，而它会等 operation 锁——重启/切换持锁数秒，
+/// 同步命令在主线程等锁会把窗口消息泵占死。与 restart_codex 同理丢到 blocking 线程：
+/// 这里确实会阻塞数秒，不能占着 async runtime 的工作线程。
 #[tauri::command]
-pub fn mcp_sync_preview(state: State<'_, AppContext>) -> AppResult<McpSyncPreview> {
-    state.mcp_sync_preview()
+pub async fn mcp_sync_preview(state: State<'_, AppContext>) -> AppResult<McpSyncPreview> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mcp_sync_preview())
+        .await
+        .map_err(|error| app_err!("MCP 差异检查任务失败: {error}"))?
 }
 
 /// MCP 编辑页初始化：读取 live 中指定服务器的原始片段（含未建模键与注释）。

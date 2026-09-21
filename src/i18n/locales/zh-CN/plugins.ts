@@ -18,7 +18,7 @@ export default {
   // 插件来源 / 市场类型的数据值 → 展示标签
   origin: {
     official: "官方市场",
-    thirdParty: "外部市场",
+    thirdParty: "第三方市场",
   },
   source: {
     openGithub: "打开 GitHub",
@@ -28,7 +28,6 @@ export default {
   action: {
     install: "安装",
     uninstall: "卸载",
-    upgrade: "升级",
     browse: "浏览插件",
     addAndBrowse: "添加并浏览",
     checkUpdates: "检查更新",
@@ -69,11 +68,11 @@ export default {
     removeAria: "卸载插件市场 {{name}}",
     empty: "暂未添加 Codex 插件市场。",
     foundUpdates: "发现 {{count}} 个可升级插件",
-    upToDate: "外部插件已是最新版本",
-    allUpgraded: "外部插件已全部升级",
+    upToDate: "第三方插件已是最新版本",
+    allUpgraded: "第三方插件已全部升级",
     entered: "已进入插件市场「{{name}}」",
     removedToast: "已卸载插件市场「{{name}}」",
-    removeConfirmTitle: "卸载外部市场",
+    removeConfirmTitle: "卸载第三方市场",
     removeConfirm: "确定移除「{{name}}」吗？只会移除市场来源，不会自动卸载其中已经安装的插件。",
   },
   recommended: {
@@ -97,13 +96,13 @@ export default {
     rootDir: "仓库根目录",
     files: "文件清单（{{count}} 项）",
     filesMore: "…其余 {{count}} 个文件",
-    missingMarketUrl: "请先填写外部插件市场地址",
+    missingMarketUrl: "请先填写第三方插件市场地址",
     missingRepoUrl: "请先填写 GitHub 插件仓库地址",
     added: "已添加并进入插件市场「{{name}}」",
   },
   list: {
     loading: "正在加载插件…",
-    empty: "还没有安装插件。点击右上角「插件市场」添加外部市场。",
+    empty: "还没有安装插件。点击右上角「插件市场」添加第三方市场。",
     searchPlaceholder: "搜索插件…",
     noMatch: "没有匹配的插件。",
     viewDetailAria: "查看 {{name}} 详情",
@@ -121,6 +120,5 @@ export default {
     installed: "已安装插件「{{name}}」，重启 Codex 后生效",
     installedNeedsAuth: "「{{name}}」安装成功，请在 Codex 桌面端完成授权",
     uninstalled: "已卸载插件「{{name}}」",
-    upgraded: "已升级插件「{{name}}」",
   },
 } as const;

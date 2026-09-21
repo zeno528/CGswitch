@@ -1754,6 +1754,17 @@ fn read_config_text(context: &AppContext) -> String {
     String::from_utf8(std::fs::read(context.paths.codex_config()).unwrap()).unwrap()
 }
 
+fn config_backup_count(context: &AppContext) -> usize {
+    std::fs::read_dir(&context.paths.config_backup)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_name().to_string_lossy().starts_with("config-"))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 #[test]
 fn mcp_save_edit_preserves_unmodeled_keys_and_subtables() {
     let (context, _home) = mcp_test_context(
@@ -2146,18 +2157,95 @@ fn mcp_import_from_live_forces_mirror() {
 }
 
 #[test]
-fn restore_mcp_rebuilds_corrupt_config() {
+fn restore_mcp_rewrites_only_the_mcp_region() {
+    let (context, _home) = mcp_test_context(
+        "model = \"gpt-5.6\"\n\n[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n\n[projects.'x']\ntrust_level = \"trusted\"\n",
+    );
+    context.import_mcp_from_live().unwrap();
+
+    // 外部把 tavily 那行的引号删掉：整份文件解析不了，MCP 段之外的内容完好
+    std::fs::write(
+        context.paths.codex_config(),
+        "model = \"gpt-5.6\"\n\n[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\nbearer_token_env_var = \"BROKEN\n\n[projects.'x']\ntrust_level = \"trusted\"\n",
+    )
+    .unwrap();
+
+    let count = context.restore_mcp_from_database().unwrap();
+    assert_eq!(count, 1);
+
+    let config = read_config_text(&context);
+    codex_config::parse_document(&config).unwrap();
+    // MCP 段按镜像重写，坏行消失
+    assert!(!config.contains("BROKEN"), "{config}");
+    // 区域外的配置逐字保留，没有被整份重写殃及
+    assert!(config.contains("model = \"gpt-5.6\""), "{config}");
+    assert!(
+        config.contains("[projects.'x']\ntrust_level = \"trusted\""),
+        "{config}"
+    );
+}
+
+#[test]
+fn restore_mcp_keeps_managed_entries_when_rebuilding_the_region() {
+    const MANAGED: &str = "[mcp_servers.node_repl]\ncommand = \"node_repl.exe\"\n\n[mcp_servers.node_repl.env]\nCODEX_HOME = \"/x\"\n";
+    let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{MANAGED}");
+    let (context, _home) = mcp_test_context(&live);
+    context.import_mcp_from_live().unwrap();
+
+    // 解析不了时重建 MCP 区域：托管条目不在镜像里，必须按 live 原文留在原位
+    std::fs::write(
+        context.paths.codex_config(),
+        format!("model = \"gpt-5.6\"\n\n[mcp_servers.github]\nurl = \"https://g/mcp\"\nbroken = \"oops\n\n{MANAGED}"),
+    )
+    .unwrap();
+
+    context.restore_mcp_from_database().unwrap();
+
+    let config = read_config_text(&context);
+    codex_config::parse_document(&config).unwrap();
+    assert!(!config.contains("oops"), "{config}");
+    assert!(config.contains("[mcp_servers.node_repl]"), "{config}");
+    assert!(config.contains("node_repl.env"), "{config}");
+    assert!(config.contains("CODEX_HOME = \"/x\""), "{config}");
+}
+
+#[test]
+fn restore_mcp_region_stops_at_the_next_section() {
+    // MCP 段后面紧跟别的区域时，重建必须止步于下一个表头——尤其数组表头
+    // （[[skills.config]]）也要能终止区域，否则邻接区域的条目会被当成 MCP 块吞掉
+    const TAIL: &str = "[[skills.config]]\npath = 'C:\\skills\\a\\SKILL.md'\nenabled = false\n\n[plugins.\"browser@openai-bundled\"]\nenabled = true\n";
+    let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{TAIL}");
+    let (context, _home) = mcp_test_context(&live);
+    context.import_mcp_from_live().unwrap();
+
+    std::fs::write(
+        context.paths.codex_config(),
+        format!("model = \"gpt-5.6\"\n\n[mcp_servers.github]\nurl = \"https://g/mcp\"\nbroken = \"oops\n\n{TAIL}"),
+    )
+    .unwrap();
+
+    context.restore_mcp_from_database().unwrap();
+
+    let config = read_config_text(&context);
+    codex_config::parse_document(&config).unwrap();
+    assert!(!config.contains("oops"), "{config}");
+    assert!(config.contains("[mcp_servers.github]"), "{config}");
+    // 邻接区域逐字保留，一个字节都没被 MCP 区域吞掉
+    assert!(config.ends_with(TAIL), "{config}");
+    assert!(config.contains("model = \"gpt-5.6\""), "{config}");
+}
+
+#[test]
+fn restore_mcp_refuses_when_no_mcp_region_can_be_located() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
     context.import_mcp_from_live().unwrap();
 
-    // 配置文件彻底损坏（无法解析）：恢复按镜像重建整个文件，原文件已自动备份
+    // 文件彻底损坏且不含 MCP 段：拒绝整份重写（那会丢掉区域外的全部配置），
+    // 原文件一个字节都不动，交由备份恢复处理
     std::fs::write(context.paths.codex_config(), "not [ valid").unwrap();
-    let count = context.restore_mcp_from_database().unwrap();
-    assert_eq!(count, 1);
-    let config = read_config_text(&context);
-    assert!(config.contains("mcp_servers.tavily"), "{config}");
-    codex_config::parse_document(&config).unwrap();
+    assert!(context.restore_mcp_from_database().is_err());
+    assert_eq!(read_config_text(&context), "not [ valid");
 }
 
 #[test]
@@ -2208,16 +2296,6 @@ fn mcp_preview_flags_live_only_db_only_and_changed() {
         .find(|entry| entry.name == "a")
         .unwrap();
     assert_eq!(changed.kind, McpSyncEntryKind::Changed);
-    assert_eq!(changed.changed_fields.len(), 1);
-    assert_eq!(changed.changed_fields[0].field, "url");
-    assert_eq!(
-        changed.changed_fields[0].live,
-        serde_json::json!("https://a/v2")
-    );
-    assert_eq!(
-        changed.changed_fields[0].db,
-        serde_json::json!("https://a/mcp")
-    );
 
     let live_only = preview
         .entries
@@ -2239,6 +2317,196 @@ fn mcp_preview_flags_live_only_db_only_and_changed() {
         .find(|entry| entry.name == "a")
         .unwrap();
     assert_eq!(db_only.kind, McpSyncEntryKind::DbOnly);
+}
+
+#[test]
+fn mcp_diff_verbs_are_surgical_to_one_entry() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    context.import_mcp_from_live().unwrap();
+
+    // 外部同时修改 a、b：出现两条 changed 差异
+    std::fs::write(
+        context.paths.codex_config(),
+        "[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[mcp_servers.b]\nurl = \"https://b/v2\"\n",
+    )
+    .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert_eq!(preview.entries.len(), 2, "{:?}", preview.entries);
+
+    // 只同步 a：镜像仅收 a，b 的差异必须原样保留（回归：单条操作不得全量重写镜像）
+    let entry_a = preview
+        .entries
+        .iter()
+        .find(|entry| entry.name == "a")
+        .unwrap();
+    context
+        .set_mcp_mirror_entry("a", Some(entry_a.live_toml.as_deref().unwrap()))
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert_eq!(preview.entries.len(), 1, "{:?}", preview.entries);
+    assert_eq!(preview.entries[0].name, "b");
+    let mirror = context.list_mcp_servers().unwrap();
+    let a = mirror.iter().find(|server| server.name == "a").unwrap();
+    assert_eq!(a.url.as_deref(), Some("https://a/v2"));
+
+    // 只撤销 b：live 的 b 恢复为数据库旧值，镜像不动
+    let db_b = preview.entries[0].db_toml.as_deref().unwrap();
+    context.revert_mcp_live_entry("b", Some(db_b)).unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(preview.entries.is_empty(), "{:?}", preview.entries);
+    let live_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    assert!(live_text.contains("https://b/mcp"), "{live_text}");
+    assert!(!live_text.contains("https://b/v2"), "{live_text}");
+
+    // live_only 的撤销 = 从 live 移除单条，镜像中其他条目保留
+    std::fs::write(
+        context.paths.codex_config(),
+        "[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
+    )
+    .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert_eq!(preview.entries.len(), 2, "{:?}", preview.entries);
+    context.revert_mcp_live_entry("c", None).unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert_eq!(preview.entries.len(), 1, "{:?}", preview.entries);
+    assert_eq!(preview.entries[0].kind, McpSyncEntryKind::DbOnly);
+    let live_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    assert!(!live_text.contains("mcp_servers.c"), "{live_text}");
+
+    // db_only 的同步 = 仅删镜像条目，live 不动
+    context.set_mcp_mirror_entry("b", None).unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(preview.entries.is_empty(), "{:?}", preview.entries);
+    let live_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    assert!(live_text.contains("https://a/v2"), "{live_text}");
+}
+
+#[test]
+fn mcp_diff_entry_action_accepts_frontend_payload() {
+    // 前端批量提交的载荷形状：fragment 为字符串表示写入该条，null 表示删除该条
+    let actions: Vec<McpDiffEntryAction> = serde_json::from_value(serde_json::json!([
+        { "name": "a", "fragment": "[mcp_servers.a]\nurl = \"https://a/mcp\"\n" },
+        { "name": "b", "fragment": null }
+    ]))
+    .unwrap();
+    assert_eq!(actions.len(), 2);
+    assert_eq!(
+        actions[0].fragment.as_deref(),
+        Some("[mcp_servers.a]\nurl = \"https://a/mcp\"\n")
+    );
+    assert_eq!(actions[1].fragment, None);
+}
+
+#[test]
+fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
+    let (context, _home) = mcp_test_context(
+        "model = \"gpt-5\"\n\n[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n\n[scale]\nkeep = true\n",
+    );
+    context.import_mcp_from_live().unwrap();
+
+    // 外部把两条都改了，且把顺序调换成 b、a
+    std::fs::write(
+        context.paths.codex_config(),
+        "model = \"gpt-5\"\n\n[mcp_servers.b]\nurl = \"https://b/v2\"\n\n[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[scale]\nkeep = true\n",
+    )
+    .unwrap();
+
+    let actions: Vec<McpDiffEntryAction> = context
+        .mcp_sync_preview()
+        .unwrap()
+        .entries
+        .iter()
+        .map(|entry| McpDiffEntryAction {
+            name: entry.name.clone(),
+            fragment: entry.db_toml.clone(),
+        })
+        .collect();
+    let backups = config_backup_count(&context);
+
+    assert_eq!(context.revert_mcp_live_entries(&actions).unwrap(), 2);
+    assert_eq!(
+        config_backup_count(&context),
+        backups + 1,
+        "批量撤销只应产生一份备份（逐条调用会把保留池里操作前的备份挤掉）"
+    );
+
+    // 原地改写：段内顺序、其他配置段、文件布局全部保留，只把内容改回数据库版本
+    let live = read_config_text(&context);
+    let pos = |needle: &str| {
+        live.find(needle)
+            .unwrap_or_else(|| panic!("缺少 {needle}：\n{live}"))
+    };
+    assert!(pos("[mcp_servers.b]") < pos("[mcp_servers.a]"), "{live}");
+    assert!(pos("[mcp_servers.a]") < pos("[scale]"), "{live}");
+    assert!(
+        live.contains("https://a/mcp") && live.contains("https://b/mcp"),
+        "{live}"
+    );
+    assert!(!live.contains("/v2"), "{live}");
+    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
+}
+
+#[test]
+fn mcp_batch_diff_live_aborts_without_writing_when_one_entry_fails() {
+    let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
+    context.import_mcp_from_live().unwrap();
+    let before = read_config_text(&context);
+    let backups = config_backup_count(&context);
+
+    // 第二条的片段里没有 b：整批必须失败，且一条都不能落盘
+    let actions = vec![
+        McpDiffEntryAction {
+            name: "a".to_string(),
+            fragment: Some("[mcp_servers.a]\nurl = \"https://a/v2\"\n".to_string()),
+        },
+        McpDiffEntryAction {
+            name: "b".to_string(),
+            fragment: Some("[mcp_servers.other]\nurl = \"https://other/mcp\"\n".to_string()),
+        },
+    ];
+    assert!(context.revert_mcp_live_entries(&actions).is_err());
+    assert_eq!(read_config_text(&context), before, "整批失败时不应落盘");
+    assert_eq!(
+        config_backup_count(&context),
+        backups,
+        "整批失败时不应产生备份"
+    );
+}
+
+#[test]
+fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n\n[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
+    );
+    context.import_mcp_from_live().unwrap();
+
+    // 外部只改了 a、b；c 保持原样
+    std::fs::write(
+        context.paths.codex_config(),
+        "[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[mcp_servers.b]\nurl = \"https://b/v2\"\n\n[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
+    )
+    .unwrap();
+
+    let actions: Vec<McpDiffEntryAction> = context
+        .mcp_sync_preview()
+        .unwrap()
+        .entries
+        .iter()
+        .map(|entry| McpDiffEntryAction {
+            name: entry.name.clone(),
+            fragment: entry.live_toml.clone(),
+        })
+        .collect();
+    assert_eq!(context.set_mcp_mirror_entries(&actions).unwrap(), 2);
+
+    let mirror = context.list_mcp_servers().unwrap();
+    let server = |name: &str| mirror.iter().find(|server| server.name == name).unwrap();
+    assert_eq!(server("a").url.as_deref(), Some("https://a/v2"));
+    assert_eq!(server("b").url.as_deref(), Some("https://b/v2"));
+    assert_eq!(server("c").url.as_deref(), Some("https://c/mcp"));
+    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
 }
 
 #[test]

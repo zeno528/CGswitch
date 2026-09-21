@@ -16,9 +16,29 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain('role="status"');
   });
 
+  it("codex 按钮动作语义分离：重启全程 RefreshCw 自旋，启动中用项目旋转指示器，禁止混用", () => {
+    expect(source).toContain('{codexAction === "start" ? <LoadingSpinner size="md" /> : (codexAction ?? nextCodexAction) === "restart" ? <RefreshCw className={`h-4 w-4 ${codexAction ? "animate-spin" : ""}`} strokeWidth={2} /> : <Play className="h-4 w-4" strokeWidth={2} />}');
+    expect(source).not.toContain("{codexAction ? <LoadingSpinner");
+  });
+
+  it("成功通知区分启动与重启，不写死「已重启」", () => {
+    expect(source).toContain('t(action === "restart" ? "feedback.codexRestarted" : "feedback.codexStarted")');
+  });
+
   it("无更新提示时保留左侧占位，使右侧操作组不回流", () => {
     expect(source).toContain('<div className="min-w-0"><UpdateNotice /></div>');
     expect(source).toContain('apple-page-bar flex-wrap justify-between gap-4');
+  });
+
+  it("切换期间添加供应商按钮保留禁用语义但不闪烁", () => {
+    expect(source).toContain('className="apple-action-button app-button--primary disabled:!opacity-100" disabled={busy}');
+  });
+
+  it("进入编辑页先预载详情再切换，首帧不空窗", () => {
+    expect(source).toContain("const openEdit = async (profile: ProfileSummary) => {");
+    expect(source).toContain("detail = await api.getProfile(profile.id);");
+    expect(source).toContain("onEdit={() => void openEdit(profile)}");
+    expect(source).toContain("initialDetail={editDetail}");
   });
 
   it("将拖拽浮层挂到 body，避免被页面 transform 容器偏移", () => {
@@ -45,7 +65,7 @@ describe("ProfilesView 拖拽预览", () => {
     expect(refreshIndex).toBeGreaterThan(-1);
     expect(restartIndex).toBeGreaterThan(refreshIndex);
     expect(applySource).toContain('feedback.success(t("feedback.switchSuccess"))');
-    expect(applySource).toContain('feedback.success(t("feedback.switchRestarted"))');
+    expect(applySource).toContain('t(action === "restart" ? "feedback.switchRestarted" : "feedback.switchStarted")');
     expect(applySource).not.toContain('feedback.success(t("feedback.switchSuccess"));\n      if (state.settings.auto_restart)');
   });
 
@@ -64,5 +84,13 @@ describe("ProfilesView 拖拽预览", () => {
   it("激活卡拖拽预览的官网按钮沿用主题文字层级", () => {
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {\n  color: var(--text-primary);");
+  });
+});
+
+describe("ProfilesView 编辑器加载策略", () => {
+  it("ProfileEdit 静态加载：进编辑页零延迟，不出现懒加载骨架", () => {
+    expect(source).toContain('import ProfileEdit from "./ProfileEdit";');
+    expect(source).not.toContain("lazy(");
+    expect(source).not.toContain("Suspense");
   });
 });

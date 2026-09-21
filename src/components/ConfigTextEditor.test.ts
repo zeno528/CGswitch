@@ -18,6 +18,10 @@ describe("ConfigTextEditor runtime", () => {
     expect(profileEditSource.match(/<ConfigTextEditor[^>]*ref=\{editorRef\}/g)).toHaveLength(3);
   });
 
+  it("在首帧绘制前同步创建编辑器，内容与页面同帧呈现", () => {
+    expect(editorSource).toMatch(/useLayoutEffect\(\(\) => \{\r?\n\s+const parent = hostRef\.current;/);
+  });
+
   it("uses the longest profile document as the shared editor minimum", () => {
     expect(editorSource).toContain("minLines?: number;");
     expect(editorSource).toContain('className="apple-editor-surface"');

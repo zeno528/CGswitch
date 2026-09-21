@@ -3,18 +3,36 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, setCachedMcpProbe, setMcpServersCache } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setMcpDiffBadge, setMcpServersCache } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { McpIcon } from "../../components/McpIcon";
 import { mcpTransportText } from "../../utils";
-import type { McpProbeResult, McpServerSpec, McpSyncPreview } from "../../types";
+import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
+import McpDiffPage from "./McpDiffPage";
 import McpEdit from "./McpEdit";
-import McpSyncDialog from "./McpSyncDialog";
 
-type SyncDirection = "live-to-db" | "db-to-live";
 type Transport = "http" | "stdio" | "unknown";
+
+export type McpDiffVerb = "adopt" | "revert";
+
+/// 差异动作：只指向单个条目的单侧（mirror=数据库镜像，live=config.toml）；
+/// fragment 为空表示删除该侧的条目。
+export type McpDiffAction = { side: "mirror" | "live" } & McpDiffEntryAction;
+
+/// 差异×动词到外科手术原语的唯一映射——每条命令只碰单个条目的单侧（镜像或 live），
+/// 不得使用 saveMcpServer/deleteMcpServer（它们会用整段 live 重建镜像，殃及其他未处理差异）：
+/// 同步 = 采纳外部修改（live 片段写入镜像；外部已删除的删除镜像条目）；
+/// 撤销 = 回退外部修改（数据库片段写回 live；外部新增的从 live 移除）。
+export function mcpEntryAction(entry: McpSyncDiffEntry, verb: McpDiffVerb): McpDiffAction | null {
+  if (verb === "adopt") {
+    if (entry.kind === "db_only") return { side: "mirror", name: entry.name, fragment: null };
+    return entry.live_toml ? { side: "mirror", name: entry.name, fragment: entry.live_toml } : null;
+  }
+  if (entry.kind === "live_only") return { side: "live", name: entry.name, fragment: null };
+  return entry.db_toml ? { side: "live", name: entry.name, fragment: entry.db_toml } : null;
+}
 
 function mcpServerFingerprint(server: McpServerSpec) {
   const { enabled, startup_timeout_sec, tool_timeout_sec, ...connection } = server;
@@ -50,7 +68,7 @@ export function compareMcpServers(left: McpServerSpec, right: McpServerSpec): nu
 function transportIcon(server: McpServerSpec) { const current = transportOf(server); return current === "http" ? Globe : current === "stdio" ? Terminal : CircleDashed; }
 function metaOf(server: McpServerSpec) { return server.command ? [server.command, ...server.args.slice(0, 2)].join(" ") : server.url ?? ""; }
 
-function McpToolsPanel({ result }: { result: McpProbeResult }) {
+function McpToolsPanel({ result, pending }: { result: McpProbeResult; pending: boolean }) {
   const { t } = useTranslation("mcp");
 
   return (
@@ -59,7 +77,9 @@ function McpToolsPanel({ result }: { result: McpProbeResult }) {
         {result.tools.map((tool) => (
           <code key={tool.name} className="apple-chip mono">{tool.name}</code>
         ))}
-        {!result.tools.length ? <p className="muted meta-xs">{t("list.noTools")}</p> : null}
+        {/* 工具清单还在路上（或压根没取过）时不下结论：此刻的 result 是连通探测留下的，
+            空列表只说明"还没取"，不说明"服务端没有工具" */}
+        {!result.tools.length && !pending ? <p className="muted meta-xs">{t("list.noTools")}</p> : null}
       </div>
     </div>
   );
@@ -88,7 +108,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
   const Icon = transportIcon(server);
 
   return (
-    <div className="apple-group" onClick={(event) => {
+    <div onClick={(event) => {
       if (!detailsVisible || !(event.target instanceof HTMLElement) || event.target.closest('button, input, code, [role="switch"]')) return;
       onToggleTools(server);
     }}>
@@ -149,7 +169,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
         <div className={`apple-disclosure mcp-tools-disclosure ${detailsVisible ? "apple-disclosure--open" : ""}`}>
           <div className="apple-disclosure__content" aria-hidden={!detailsVisible} inert={!detailsVisible}>
             <div className="apple-disclosure__body">
-              <McpToolsPanel result={result} />
+              <McpToolsPanel result={result} pending={toolsBusy || !toolsLoaded} />
             </div>
           </div>
         </div>
@@ -158,7 +178,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
   );
 }
 
-export default function McpView() {
+export default function McpView({ activationEpoch }: { activationEpoch: number }) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const cachedServers = getCachedMcpServers();
@@ -175,14 +195,37 @@ export default function McpView() {
   const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(cachedServers ?? []).toolsLoaded);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
-  const [syncOpen, setSyncOpen] = useState(false);
-  const [applying, setApplying] = useState(false);
+  const [diffOpen, setDiffOpen] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const previewInFlight = useRef(false);
 
   const loadPreview = async () => {
-    try { setSyncPreview(await api.mcpSyncPreview()); setPreviewError(""); }
-    catch (error) { setPreviewError(String(error)); setSyncPreview(null); }
+    if (previewInFlight.current) return;
+    previewInFlight.current = true;
+    try {
+      const preview = await api.mcpSyncPreview();
+      setSyncPreview(preview);
+      setPreviewError("");
+      // 侧栏角标与页面同源：页面查到就写回共享缓存
+      setMcpDiffBadge({ count: preview.entries.length, error: false });
+    }
+    catch (error) {
+      setPreviewError(String(error));
+      setSyncPreview(null);
+      // 差异算不出来本身就是一种状态：写回 error 让侧栏跟着亮，
+      // 否则用户不点进 MCP 页就不知道 config.toml 坏了
+      setMcpDiffBadge({ count: 0, error: true });
+    }
+    finally { previewInFlight.current = false; }
   };
-  const refresh = async (force = false, skipProbeName?: string) => {
+  /// 重新读列表 + 查差异，顺带决定要不要重连 MCP。
+  /// 规则只有一条：**只有配置真的被改过的那几台才值得重连**——重连意味着把本机
+  /// stdio 服务真的拉起来再发网络请求，不能因为"数据变了"就无脑全量重探。
+  /// probe 不传 = 全连（挂载、整段重建这类配置整体变了的场景）；
+  /// `[]` = 一台都不连；`[name]` = 只连这几台。
+  /// 调用方若还要单独处理某一台（比如刚保存的要验一次连通），传 `[]`
+  /// 再自己调 probeServer——不要用"跳过它"来绕，那会把其余几台也全探一遍。
+  const refresh = async (force = false, only?: string[]) => {
     let next: McpServerSpec[] | null = null;
     try {
       next = await loadMcpServers(force);
@@ -195,7 +238,10 @@ export default function McpView() {
       setLoadError("");
     } catch (error) { setLoadError(String(error)); }
     finally { setLoaded(true); }
-    if (next) void Promise.all(next.filter((server) => server.name !== skipProbeName).map((server) => probeServer(server, false, false)));
+    if (next) {
+      const targets = only ? next.filter((server) => only.includes(server.name)) : next;
+      if (targets.length) void Promise.all(targets.map((server) => probeServer(server, false, false)));
+    }
     await loadPreview();
     return next;
   };
@@ -207,6 +253,10 @@ export default function McpView() {
     probedOnceRef.current = true;
     void refresh();
   }, []);
+
+  // 窗口激活时刷新差异预览：差异只可能来自 Codex 侧先改，激活是唯一需要重查差异的时机。
+  // epoch=0 表示尚未激活过（含首次挂载，此时上面的 refresh 已经取过预览），不重复请求。
+  useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);
 
   const notifyProbeFailure = (name: string, message: string) => {
     if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
@@ -308,29 +358,96 @@ export default function McpView() {
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
-    try { await api.deleteMcpServer(server.name); deleteCachedMcpProbe(server.name); setEditingServer(null); feedback.success(t("feedback.deleted")); await refresh(true); }
+    try {
+      await api.deleteMcpServer(server.name);
+      deleteCachedMcpProbe(server.name);
+      setEditingServer(null);
+      feedback.success(t("feedback.deleted"));
+      // 删掉的那台已经不存在了，其余几台的配置一个字没动 → 一台都不用重连
+      await refresh(true, []);
+    }
     catch (error) { feedback.error(String(error)); }
   };
 
-  const openSyncDialog = () => {
-    if (applying) return;
-    if (previewError) { setSyncOpen(true); return; }
-    if (syncPreview && syncPreview.entries.length === 0) { feedback.info(t("feedback.inSync")); return; }
-    setSyncOpen(true);
-  };
-  const orderedServers = [...servers].sort(compareMcpServers);
-  const onApply = async (direction: SyncDirection) => {
-    if (applying) return;
-    setApplying(true);
-    try {
-      if (direction === "live-to-db") { const count = await api.importMcpFromLive(); feedback.success(t("feedback.importedFromLive", { count })); }
-      else { const count = await api.restoreMcpFromDatabase(); feedback.success(t("feedback.restoredToLive", { count })); }
-      setSyncOpen(false);
-      await refresh(true);
-    } catch (error) { feedback.error(String(error)); }
-    finally { setApplying(false); }
+  const applyDiffAction = async (action: McpDiffAction) => {
+    if (action.side === "mirror") await api.setMcpMirror(action.name, action.fragment);
+    else await api.revertMcpLive(action.name, action.fragment);
   };
 
+  const resolveEntry = async (entry: McpSyncDiffEntry, verb: McpDiffVerb) => {
+    if (resolving) return;
+    const action = mcpEntryAction(entry, verb);
+    if (!action) { feedback.error(t("diff.resolveFailed", { name: entry.name })); return; }
+    setResolving(true);
+    try {
+      await applyDiffAction(action);
+      feedback.success(t(verb === "adopt" ? "diff.adoptedToast" : "diff.revertedToast", { name: entry.name }));
+      // 同步只写数据库镜像，配置文件没被碰过 → 一台都不用重连；
+      // 撤回写回了 live，只有这一台的内容变了 → 只重连它
+      await refresh(true, verb === "revert" ? [entry.name] : []);
+    } catch (error) { feedback.error(String(error)); }
+    finally { setResolving(false); }
+  };
+
+  const resolveAll = async (verb: McpDiffVerb) => {
+    if (resolving || !syncPreview?.entries.length) return;
+    const entries = syncPreview.entries;
+    // 整批一次提交：后端在一个文档里逐条原地改写，只备份并写盘一次；
+    // 逐条调用会各备份一次，把备份保留池里操作前的那份挤掉，且中途失败会留下半完成状态
+    const actions = entries
+      .map((entry) => mcpEntryAction(entry, verb))
+      .filter((action): action is McpDiffAction => action !== null)
+      .map(({ name, fragment }) => ({ name, fragment }));
+    if (!actions.length) return;
+    const confirmed = await feedback.confirm({
+      title: t(verb === "adopt" ? "diff.adoptAll" : "diff.revertAll"),
+      description: t(verb === "adopt" ? "diff.confirmAdoptAll" : "diff.confirmRevertAll", { count: actions.length }),
+      confirmText: verb === "adopt" ? t("diff.adoptAll") : t("diff.revertAll"),
+      destructive: verb === "revert",
+    });
+    if (!confirmed) return;
+    setResolving(true);
+    try {
+      const count = verb === "adopt"
+        ? await api.setMcpMirrorEntries(actions)
+        : await api.revertMcpLiveEntries(actions);
+      feedback.success(t("diff.resolvedAllToast", { count }));
+      // 同 resolveEntry：同步不碰配置文件，撤回只动被处理的那几台
+      await refresh(true, verb === "revert" ? actions.map((action) => action.name) : []);
+    } catch (error) { feedback.error(String(error)); }
+    finally { setResolving(false); }
+  };
+
+  const rebuildFromDatabase = async () => {
+    if (resolving) return;
+    setResolving(true);
+    try {
+      const count = await api.restoreMcpFromDatabase();
+      feedback.success(t("feedback.restoredToLive", { count }));
+      setDiffOpen(false);
+      await refresh(true);
+    } catch (error) { feedback.error(String(error)); }
+    finally { setResolving(false); }
+  };
+
+  const orderedServers = [...servers].sort(compareMcpServers);
+  const diffCount = syncPreview?.entries.length ?? 0;
+  // 角标文本与侧栏同源：这条规则只住在 managementDataCache，不在这里再写一遍
+  const badgeText = mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) });
+
+  if (diffOpen) {
+    return (
+      <McpDiffPage
+        preview={syncPreview}
+        previewError={previewError}
+        resolving={resolving}
+        onBack={() => setDiffOpen(false)}
+        onResolve={(entry, verb) => void resolveEntry(entry, verb)}
+        onResolveAll={(verb) => void resolveAll(verb)}
+        onRebuild={() => void rebuildFromDatabase()}
+      />
+    );
+  }
   if (editingServer || creatingServer) {
     return (
       <McpEdit
@@ -340,11 +457,13 @@ export default function McpView() {
           setEditingServer(null);
           setCreatingServer(false);
           void (async () => {
-            const next = await refresh(true, savedServer?.name);
-            if (savedServer) {
-              const saved = next?.find((server) => server.name === savedServer.name);
-              if (saved) await probeTools(saved, false, false);
-            }
+            // 保存后必须单独验一次这台的连通性——保存的最终结论就是"它还能不能用"。
+            // 只探这一台：其余几台的配置一个字没动，没有理由重连。
+            // 顺序不能反：refresh 结尾会拿缓存整体重铺一遍探测结果，而刚改过的这台
+            // 指纹已变、缓存里没有它，先探会被刷掉，灯反而灭。所以先等列表对齐再探，
+            // 且用表单保存下来的 spec 直接探，不依赖 refresh 的返回值（它可能为 null）。
+            try { await refresh(true, []); } catch { /* 列表刷新失败不拖累连通性验证 */ }
+            if (savedServer) await probeServer(savedServer, false, false);
           })();
         }}
         onDelete={editingServer ? () => removeServer(editingServer) : undefined}
@@ -364,10 +483,13 @@ export default function McpView() {
           </div>
         </div>
         <div className="flex w-full max-w-md items-center justify-end gap-2">
-          <button type="button" className="apple-action-button" disabled={applying} onClick={openSyncDialog}>
-            <GitCompare className="h-4 w-4" strokeWidth={2} />
-            {t("list.resolveDiff")}
-          </button>
+          {badgeText ? (
+            <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
+              <GitCompare className="h-4 w-4" strokeWidth={2} />
+              {t("list.resolveDiff")}
+              <span className="apple-count-badge" aria-hidden="true">{badgeText}</span>
+            </button>
+          ) : null}
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
             <Plus className="h-4 w-4" strokeWidth={2} />
             {t("list.addServer")}
@@ -382,23 +504,12 @@ export default function McpView() {
           </p>
         ) : null}
         <div>
-          {syncPreview && syncPreview.entries.length ? (
-            <div className="apple-list-row mcp-diff-card mb-1">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="apple-chip chip-warn">{t("list.diffChip")}</span>
-                <span className="muted truncate text-sm">{t("list.diffSummary", { count: syncPreview.entries.length })}</span>
-              </span>
-              <button type="button" className="apple-inline-btn" onClick={openSyncDialog}>
-                {t("list.reviewDiff")}
-              </button>
-            </div>
-          ) : null}
           {!servers.length ? (
             <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
               <p className="muted">{t("empty.description")}</p>
             </EmptyStateCard>
           ) : servers.length ? (
-            <div className="space-y-2">
+            <div className="apple-group apple-list-card">
               {orderedServers.map((server) => (
                 <McpServerRow
                   key={server.name}
@@ -418,7 +529,6 @@ export default function McpView() {
           ) : null}
         </div>
       </div>
-      <McpSyncDialog open={syncOpen} preview={syncPreview} previewError={previewError} busy={applying} onClose={() => setSyncOpen(false)} onApply={(direction) => void onApply(direction)} />
     </section>
   );
 }

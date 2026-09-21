@@ -2,6 +2,7 @@ import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type Bui
 import type {
   AppState,
   DatabaseBackupInfo,
+  McpDiffEntryAction,
   McpProbeResult,
   McpServerSpec,
   MarketplacePlugin,
@@ -172,7 +173,7 @@ let webPlugins: PluginSummary[] = [
     name: "ponytail",
     version: "4.9.0",
     display_name: "Ponytail",
-    description: "用户自装的外部市场插件（经 codex CLI 卸载）",
+    description: "用户自装的第三方市场插件（经 codex CLI 卸载）",
     category: null,
     capabilities: [],
     contains: ["skills"],
@@ -216,7 +217,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "third-party",
     source_url: "https://github.com/DietrichGebert/ponytail.git",
     display_name: "Ponytail",
-    description: "外部插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流。",
+    description: "第三方插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流。",
   },
   {
     name: "youmind",
@@ -224,7 +225,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "third-party",
     source_url: "https://github.com/YouMind-OpenLab/plugin-marketplace.git",
     display_name: "YouMind",
-    description: "YouMind 外部插件市场，收录创作、设计和内容工作流插件。",
+    description: "YouMind 第三方插件市场，收录创作、设计和内容工作流插件。",
   },
 ];
 
@@ -258,7 +259,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_USE",
       source: "https://github.com/xiaolai/grill-for-claude.git",
       display_name: "Grill",
-      description: "用于代码工作流与开发辅助的外部插件。",
+      description: "用于代码工作流与开发辅助的第三方插件。",
       category: "Development",
       capabilities: ["Instructions"],
       contains: ["skills"],
@@ -271,7 +272,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_USE",
       source: "https://github.com/xiaolai/xros.git",
       display_name: "XROS",
-      description: "面向终端工作流的外部插件。",
+      description: "面向终端工作流的第三方插件。",
       category: "Productivity",
       capabilities: ["Instructions"],
       contains: ["skills"],
@@ -1027,8 +1028,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         source_url: source,
         display_name: name === "xiaolai" ? "xiaolai (Codex)" : name,
         description: name === "xiaolai"
-          ? "外部 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件。"
-          : "外部 Codex 插件市场。",
+          ? "第三方 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件。"
+          : "第三方 Codex 插件市场。",
       };
       webMarketplaces = [...webMarketplaces.filter((item) => item.name !== name), marketplace];
       webMarketplacePlugins[name] ??= (webRecommendedMarketplacePlugins[name] ?? []).map((plugin) => ({ ...plugin }));
@@ -1076,7 +1077,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const update = webPluginUpdates.find((item) => item.name === name && item.marketplace === marketplace);
       const target = webPlugins.find((item) => item.name === name && item.marketplace === marketplace);
       if (!update || !target || webMarketplaces.find((item) => item.name === marketplace)?.kind !== "third-party") {
-        throw new Error("只能升级外部插件市场中的插件");
+        throw new Error("只能升级第三方插件市场中的插件");
       }
       target.version = update.version;
       (webMarketplacePlugins[marketplace] ?? []).forEach((plugin) => {
@@ -1177,6 +1178,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     case "open_path":
       return undefined as T;
+    // 启动里程碑只落桌面端日志；web 调试无日志管道，直接吞掉
+    case "report_startup_mark":
+      return undefined as T;
     case "save_settings":
       webSettings = { ...(args?.settings as Settings) };
       webBackups = webBackups.slice(0, webSettings.database_backup_keep_count);
@@ -1197,7 +1201,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         ok: true,
         latency_ms: 18,
         status: name === "tavily" ? 200 : null,
-        protocol_version: "2025-03-26",
+        protocol_version: "2025-11-25",
         server_info: { name: `${name} demo`, version: "1.0.0" },
         tools: includeTools ? [
           {
@@ -1228,7 +1232,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "import_mcp_from_live":
       return webMcpServers.length as T;
     case "mcp_sync_preview": {
-      // web 调试探样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异弹窗
+      // web 调试样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异页
       const first = webMcpServers[0];
       const changed = first
         ? {
@@ -1236,11 +1240,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
             kind: "changed" as const,
             live_spec: first,
             db_spec: { ...first, url: first.url ? first.url + "-old" : first.url },
-            live_toml: null,
-            db_toml: null,
-            changed_fields: [
-              { field: "url", live: first.url, db: first.url ? first.url + "-old" : null },
-            ],
+            live_toml: `[mcp_servers.${first.name}]\nurl = "${first.url ?? ""}"`,
+            db_toml: `[mcp_servers.${first.name}]\nurl = "${first.url ? first.url + "-old" : ""}"`,
           }
         : null;
       const liveOnly = {
@@ -1260,9 +1261,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           env_http_headers: {},
         },
         db_spec: null,
-        live_toml: null,
+        live_toml: '[mcp_servers.web-demo-live-only]\ncommand = "npx"\nargs = ["-y", "web-demo"]',
         db_toml: null,
-        changed_fields: [],
       };
       const entries = [changed, liveOnly].filter((entry) => entry !== null);
       return {
@@ -1347,6 +1347,22 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
+    case "set_mcp_mirror":
+    case "revert_mcp_live":
+    case "set_mcp_mirror_entries":
+    case "revert_mcp_live_entries": {
+      // web 调试沙箱只有一份服务器列表、没有独立的镜像侧：单条与批量都当同名 upsert 处理，
+      // fragment 为空表示删除该条目；fragment 不做 TOML 解析
+      const batched = Array.isArray(args?.actions);
+      const actions = batched
+        ? (args?.actions as McpDiffEntryAction[])
+        : [{ name: args?.name as string, fragment: (args?.fragment ?? null) as string | null }];
+      for (const action of actions) {
+        webMcpServers = webMcpServers.filter((server) => server.name !== action.name);
+        if (action.fragment) webMcpServers.push({ name: action.name } as McpServerSpec);
+      }
+      return (batched ? actions.length : undefined) as T;
+    }
     // 认证登录流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
     default:
       throw new Error(`Web 调试模式不支持命令：${command}`);

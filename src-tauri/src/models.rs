@@ -162,24 +162,23 @@ pub enum McpSyncEntryKind {
     Changed,
 }
 
-/// 建模字段的逐项差异（值经 serde_json 序列化，前端直接展示）。
-#[derive(Debug, Clone, Serialize)]
-pub struct McpSyncFieldDiff {
-    pub field: String,
-    pub live: serde_json::Value,
-    pub db: serde_json::Value,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct McpSyncDiffEntry {
     pub name: String,
     pub kind: McpSyncEntryKind,
     pub live_spec: Option<McpServerSpec>,
     pub db_spec: Option<McpServerSpec>,
-    /// 两侧的原始 TOML 片段（单侧独有时另一侧为 None），展开明细时展示。
+    /// 两侧的原始 TOML 片段（单侧独有时另一侧为 None），展开明细时逐行对比展示。
     pub live_toml: Option<String>,
     pub db_toml: Option<String>,
-    pub changed_fields: Vec<McpSyncFieldDiff>,
+}
+
+/// 差异批量处理的一条动作：fragment=Some 写入该侧内容，fragment=None 表示删除该侧条目。
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpDiffEntryAction {
+    pub name: String,
+    #[serde(default)]
+    pub fragment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

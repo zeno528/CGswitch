@@ -9,6 +9,7 @@ import type {
   McpServerSpec,
   McpProbeResult,
   McpSyncPreview,
+  McpDiffEntryAction,
   PluginMarketplace,
   MarketplacePlugin,
   PluginSkill,
@@ -46,6 +47,9 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const api = {
   getState: () => call<AppState>("get_state"),
+  // 启动里程碑：只写日志（Rust 侧折算到进程起点），无返回值语义
+  reportStartupMark: (stage: string, frontendElapsedMs: number, detail?: string) =>
+    call<void>("report_startup_mark", { stage, frontendElapsedMs, detail }),
   getCodexStatus: () => call<CodexAppStatus>("get_codex_status"),
   fetchProviderModels: (baseUrl: string, apiKey: string) =>
     call<string[]>("fetch_provider_models", { baseUrl, apiKey }),
@@ -168,6 +172,11 @@ export const api = {
   // MCP 编辑页实时同步：片段解析回建模字段（编辑器 → 表单）
   parseMcpFragment: (toml: string) => call<McpServerSpec>("parse_mcp_fragment", { toml }),
   deleteMcpServer: (name: string) => call<void>("delete_mcp_server", { name }),
+  setMcpMirror: (name: string, fragment: string | null) => call<void>("set_mcp_mirror", { name, fragment }),
+  revertMcpLive: (name: string, fragment: string | null) => call<void>("revert_mcp_live", { name, fragment }),
+  // 批量差异处理：整批一次写入（只备份/写盘一次），返回实际处理的条目数
+  setMcpMirrorEntries: (actions: McpDiffEntryAction[]) => call<number>("set_mcp_mirror_entries", { actions }),
+  revertMcpLiveEntries: (actions: McpDiffEntryAction[]) => call<number>("revert_mcp_live_entries", { actions }),
   restartCodex: () => call<void>("restart_codex"),
   setWindowTheme: (dark: boolean) => call<void>("set_window_theme", { dark }),
   setAppLanguage: (language: string) => call<void>("set_app_language", { language }),

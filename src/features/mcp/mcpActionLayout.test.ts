@@ -24,10 +24,16 @@ describe("MCP 操作入口", () => {
     expect(editSource).toContain('{t("edit.uninstall")}');
   });
 
+  it("只在编辑器外响应回车，且不再要求 Ctrl", () => {
+    expect(editSource).toContain('event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))');
+    expect(editSource).not.toContain('event.ctrlKey && event.key === "Enter"');
+  });
+
   it("进入列表只做静默连通性探测，工具按钮才刷新工具", () => {
     expect(viewSource).not.toContain("MCP_STATUS_REFRESH_MS");
     expect(viewSource).toContain("probeServer(server, false, false)");
-    expect(viewSource).toContain("probeTools(saved, false, false)");
+    // 工具只从扳手来（保存等其余路径一律只验连通性，不拉清单）
+    expect([...viewSource.matchAll(/probeTools\(/g)]).toHaveLength(1);
     expect(viewSource).toContain("api.probeMcpServer(name, true, showLoading)");
   });
 
@@ -40,7 +46,9 @@ describe("MCP 操作入口", () => {
   it("工具加载不占用工具按钮，完成后不强制重新展开", () => {
     expect(viewSource).toContain("{toolsBusy ? <span className=\"muted shrink-0\"><LoadingSpinner /></span> : null}");
     expect(viewSource).not.toContain("{toolsBusy ? <MetaChip><LoadingSpinner /></MetaChip> : null}");
-    expect(viewSource).toContain("<McpToolsPanel result={result} />");
+    expect(viewSource).toContain("<McpToolsPanel result={result} pending={toolsBusy || !toolsLoaded} />");
+    // 工具还在取的时候不下"服务端没有返回工具"的结论：那一刻的 result 是连通探测留下的空壳
+    expect(viewSource).toContain("!result.tools.length && !pending");
     expect(viewSource).not.toContain("{loading ? <div className=\"grid place-items-center py-2\"><LoadingSpinner /></div>");
     expect(viewSource).not.toContain("disabled={toolsBusy}");
     expect(viewSource).toContain("if (toolsLoading[name])");

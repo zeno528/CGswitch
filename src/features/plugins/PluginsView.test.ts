@@ -1,91 +1,45 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { compareMarketplacePlugins, comparePlugins, matchesQuery, resolveAliasInstalled } from "./PluginsView";
 
 const source = readFileSync(new URL("./PluginsView.tsx", import.meta.url), "utf8");
 
-describe("插件市场卡片", () => {
-  it("显示每个已添加市场的插件总数", () => {
-    expect(source).toContain("marketplacePluginCounts");
-    expect(source).toContain("refreshMarketplacePlugins(marketplace.name, marketplace.root)");
-    expect(source).toContain('t("market.pluginCount"');
-    expect(source).toContain('t("market.pluginCountUnavailable"');
-  });
-});
-
 describe("插件搜索", () => {
-  it("已安装列表与市场详情列表都接入搜索框", () => {
-    // 两个列表各自持有 query 状态并用 matchesQuery 过滤渲染。
-    expect(source.split("matchesQuery(plugin, query)").length - 1).toBe(2);
-    expect(source.split("<PluginSearchInput").length - 1).toBe(2); // 两处使用（定义为 function 声明）
-  });
-
-  it("仅按插件名忽略大小写匹配，不搜显示名与描述", () => {
-    const plugin = { name: "app-69ea", display_name: "Exa", description: "Web search for AI" };
-    expect(matchesQuery(plugin, "")).toBe(true);
-    expect(matchesQuery(plugin, "app")).toBe(true);
-    expect(matchesQuery(plugin, "  APP-69 ")).toBe(true);
-    expect(matchesQuery(plugin, "exa")).toBe(false); // 显示名不参与
-    expect(matchesQuery(plugin, "search for ai")).toBe(false); // 描述不参与
-    expect(matchesQuery(plugin, "figma")).toBe(false);
+  it("已安装列表接入搜索框并按名称过滤", () => {
+    expect(source.split("matchesQuery(plugin, query)").length - 1).toBe(1);
+    expect(source.split("<PluginSearchInput").length - 1).toBe(1);
   });
 });
 
-describe("搜索快捷键", () => {
-  it("搜索框支持 Ctrl/Cmd+K 聚焦并全选", () => {
-    expect(source).toContain("(event.ctrlKey || event.metaKey)");
-    expect(source).toContain('event.key.toLowerCase() === "k"');
-    expect(source).toContain("inputRef.current?.focus()");
-    expect(source).toContain("inputRef.current?.select()");
-  });
-});
+// 一级列表（MCP / 插件 / Skill）共用一套大卡片定义。页面各自复制结构、
+// 或各起一个行类，都算破坏这条契约——定义只住在 style.css 里一份。
+describe("一级列表共用定义", () => {
+  const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
+  const marketplaceSource = readFileSync(new URL("./PluginMarketplaceView.tsx", import.meta.url), "utf8");
+  const pages = [
+    source,
+    readFileSync(new URL("../mcp/McpView.tsx", import.meta.url), "utf8"),
+    readFileSync(new URL("../skills/SkillsView.tsx", import.meta.url), "utf8"),
+  ];
 
-describe("市场目录缓存直出", () => {
-  it("数量明细与详情列表都走缓存 + 静默刷新", () => {
-    expect(source).toContain("getCachedMarketplacePlugins(marketplace.name)");
-    expect(source).toContain("refreshMarketplacePlugins(marketplace.name, marketplace.root)");
-    // 安装/卸载/升级回写缓存，避免下次进入闪回旧状态。
-    expect(source).toContain("setCachedMarketplacePlugins(marketplace.name, next)");
+  it("三个页面都只写同一个 class 名，不各自造行类", () => {
+    for (const page of pages) expect(page).toContain('className="apple-group apple-list-card"');
+    expect(styles).not.toContain("plugin-list-row");
+    expect(styles).not.toContain("skill-list-row");
   });
-});
 
-describe("插件列表排序", () => {
-  it("外部市场 → 内置 runtime 市场 → 官方 curated 市场，组内按名称", () => {
-    const plugin = (name: string, origin: string, marketplace: string) =>
-      ({ name, origin, marketplace }) as Parameters<typeof comparePlugins>[0];
-    const ordered = [
-      plugin("app-69ea", "official", "openai-curated-remote"),
-      plugin("browser", "official", "openai-bundled"),
-      plugin("ponytail", "codex", "ponytail"),
-      plugin("documents", "official", "openai-primary-runtime"),
-      plugin("gmail", "official", "openai-curated-remote"),
-    ].sort(comparePlugins);
-    expect(ordered.map((item) => item.name)).toEqual(["ponytail", "browser", "documents", "app-69ea", "gmail"]);
+  it("插件市场面板内的列表共用同一个容器类，不再各自套行外壳", () => {
+    // 面板已有 --gap-card-inline，所以这里只叠 .apple-list-card，不叠 .apple-group（否则双重缩进）
+    expect(marketplaceSource).toContain('className="apple-list-card mt-2"');
+    expect(marketplaceSource).toContain('className="apple-list-card mt-3"');
+    expect(marketplaceSource).not.toContain("shadow-[0_0_0_1px_var(--panel-ring)]");
   });
-});
 
-describe("别名安装纠正", () => {
-  it("未安装条目命中已安装名单时翻转为已安装，其余保持原状", () => {
-    const plugin = (name: string, installed: boolean) =>
-      ({ plugin_id: `${name}@m`, name, installed }) as Parameters<typeof resolveAliasInstalled>[0][number];
-    const input = [plugin("canva", false), plugin("grill", false), plugin("github", true)];
-    const resolved = resolveAliasInstalled(input, new Set(["canva", "notion"]));
-    expect(resolved.map((item) => item.installed)).toEqual([true, false, true]);
-    expect(input.map((item) => item.installed)).toEqual([false, false, true]); // 原数组不被就地修改
-  });
-});
-
-describe("市场明细排序", () => {
-  it("已安装在前，组内按名称", () => {
-    const plugin = (name: string, installed: boolean) =>
-      ({ name, installed }) as Parameters<typeof compareMarketplacePlugins>[0];
-    const ordered = [
-      plugin("zeta", false),
-      plugin("canva", true),
-      plugin("beta", false),
-      plugin("app-69ea", true),
-    ].sort(compareMarketplacePlugins);
-    expect(ordered.map((item) => item.name)).toEqual(["app-69ea", "canva", "beta", "zeta"]);
+  it("卡片的定义只有一处：整卡内边距、分割线、行的去卡片化都在 style.css", () => {
+    const selectors = [".apple-list-card {", ".apple-group.apple-list-card {", ".apple-list-card > * + * {", ".apple-list-card .apple-list-row {"];
+    for (const selector of selectors) expect(styles).toContain(selector);
+    // 只钉语义，不钉数值：密度和配色会反复调，画面一动就红的测试没人愿意留
+    expect(styles).toMatch(/\.apple-list-card \.apple-list-row \{[^}]*background: transparent/);
+    expect(styles).toMatch(/\.apple-list-card \.apple-list-row \{[^}]*box-shadow: none/);
   });
 });

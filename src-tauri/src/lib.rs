@@ -32,6 +32,9 @@ pub struct TrayMenuItems {
     pub quit: MenuItem<tauri::Wry>,
 }
 
+/// 启动时钟：run() 入口的 Instant 交给命令层，前端里程碑折算到同一进程起点。
+pub struct StartupClock(std::time::Instant);
+
 /// 托盘菜单文案。语言由前端解析后传入（Rust 侧无法得知 "system" 对应哪种系统语言）。
 fn tray_labels(language: &str) -> (&'static str, &'static str) {
     if language == "en-US" {
@@ -43,6 +46,9 @@ fn tray_labels(language: &str) -> (&'static str, &'static str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 启动埋点：进程起点时钟。native / webview / 前端三段里程碑都折算到它，
+    // Info 级（一场启动各一行），供性能基线与回归对比
+    let startup_started = std::time::Instant::now();
     // panic 钩子最先装：日志插件就绪后的崩溃写入文件，再交还默认处理器；
     // 这是全项目唯一的 error! 调用（日志规约：error 留给崩溃）
     let default_hook = std::panic::take_hook();
@@ -74,6 +80,17 @@ pub fn run() {
     )));
 
     tauri::Builder::default()
+        // WebView 文档加载完成点：webview 导航结束的里程碑，折算到进程起点。
+        // 只记 Finished——Started 在文档开始拉取时就触发，对启动诊断没有增量信息。
+        // SPA 无二次导航；dev 热重载各多一行，可接受
+        .on_page_load(move |_webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                log::info!(
+                    "[app.startup] stage=page_load_finished elapsed_ms={} msg=\"WebView 文档加载完成\"",
+                    startup_started.elapsed().as_millis()
+                );
+            }
+        })
         // 日志插件放链条首位：其 setup 最先挂全局 logger，后续插件的日志也能被捕获
         .plugin(
             tauri_plugin_log::Builder::new()
@@ -120,6 +137,7 @@ pub fn run() {
         .manage(oauth_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
+            commands::report_startup_mark,
             commands::get_codex_status,
             commands::capture_profile,
             commands::add_builtin_profile,
@@ -159,6 +177,10 @@ pub fn run() {
             commands::probe_mcp_server,
             commands::save_mcp_server,
             commands::delete_mcp_server,
+            commands::set_mcp_mirror,
+            commands::revert_mcp_live,
+            commands::set_mcp_mirror_entries,
+            commands::revert_mcp_live_entries,
             commands::get_mcp_section_toml,
             commands::restore_mcp_from_database,
             commands::import_mcp_from_live,
@@ -204,19 +226,27 @@ pub fn run() {
             commands::uninstall_plugin,
             commands::open_path,
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            log::info!(
+                "[app.startup] stage=native_ready elapsed_ms={} msg=\"进入 Tauri setup\"",
+                startup_started.elapsed().as_millis()
+            );
             log::info!(
                 "[app.start] version=\"{}\" outcome=success msg=\"CGswitch 启动\"",
                 env!("CARGO_PKG_VERSION")
             );
             // reqwest 的「proxy(...) intercepts」建连日志已随 DEBUG 噪音压掉，
-            // 代理走向改由自己记：一场一行，排障时对照请求是否走代理
-            match services::detect_system_proxy() {
-                Some(proxy) => {
-                    log::info!("[net.proxy] outcome=success proxy={proxy} msg=\"检测到系统代理\"")
+            // 代理走向改由自己记：一场一行，排障时对照请求是否走代理。
+            // reg.exe / scutil 是阻塞子进程调用且此处只喂启动日志，
+            // spawn_blocking 移出 setup 同步路径；各网络请求路径本来就按需现查
+            tauri::async_runtime::spawn_blocking(|| {
+                match services::detect_system_proxy() {
+                    Some(proxy) => {
+                        log::info!("[net.proxy] outcome=success proxy={proxy} msg=\"检测到系统代理\"")
+                    }
+                    None => log::debug!("[net.proxy] outcome=success proxy=None msg=\"未检测到系统代理\""),
                 }
-                None => log::debug!("[net.proxy] outcome=success proxy=None msg=\"未检测到系统代理\""),
-            }
+            });
 
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
             // 统一先隐藏一次；非静默启动时由前端在 settings 加载后 show()。
@@ -278,6 +308,8 @@ pub fn run() {
                 show: show_item.clone(),
                 quit: quit_item.clone(),
             });
+            // 启动时钟交给命令层：前端里程碑（state_ready / window_shown）折算到进程起点
+            app.manage(StartupClock(startup_started));
             let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().expect("缺少应用图标").clone())
@@ -311,6 +343,10 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            log::info!(
+                "[app.startup] stage=setup_end elapsed_ms={} msg=\"Tauri setup 完成\"",
+                startup_started.elapsed().as_millis()
+            );
             Ok(())
         })
         .on_window_event(|window, event| {

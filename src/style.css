@@ -262,6 +262,21 @@ body {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* 插件来源胶囊：官方与第三方各用一个着重色区分（形状沿用版本胶囊的圆角矩形，
+   只有配色不同）。第三方走警告色不是随手挑的——marketDetail.thirdPartyNotice
+   本来就在提示第三方插件可能加载失败，配色与既有立场一致。
+   底色是半透明 tint，两种主题共用一档：它直接落在卡片上（不像 .apple-chip--accent
+   底下垫着实心 --chip-bg），深浅差异由卡片自身底色承担。 */
+.origin-chip--official {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.origin-chip--third-party {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
 /* 订阅套餐徽标（配置卡片/账号列表）：直接透出所在卡片底色，只以细边缘勾勒。 */
 .plan-badge {
   display: inline-flex;
@@ -274,7 +289,7 @@ body {
   letter-spacing: 0.01em;
   line-height: 1.4;
   background: transparent;
-  border: 1px solid var(--panel-ring);
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   color: var(--text-primary);
 }
 
@@ -1183,7 +1198,7 @@ body.drag-active * {
 }
 
 .settings-about__actions > .apple-action-button {
-  border-color: color-mix(in srgb, currentColor 20%, transparent);
+  border-color: color-mix(in srgb, currentColor 15%, transparent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
@@ -1279,11 +1294,15 @@ body.drag-active * {
   background: var(--secondary-button-hover-bg);
 }
 
-.skill-update-badge {
+/* 数字角标（全局唯一定义）：Skill 可导入数 / MCP 待处理差异数共用。
+   宿主是药丸按钮（高 38px → 半径 19px），药丸的可见角比外接矩形角往里收
+   19 × (1 - cos45°) ≈ 5.6px；偏移 = 尺寸/2 - 5.6px 时角标中心正好落在药丸边缘上，
+   看上去一半压在按钮、一半露在外面。改尺寸要连偏移一起按这个公式重算 */
+.apple-count-badge {
   position: absolute;
   left: auto;
-  right: -0.45rem;
-  top: -0.45rem;
+  right: -3.4px;
+  top: -3.4px;
   display: grid;
   min-width: 1.125rem;
   height: 1.125rem;
@@ -1297,9 +1316,27 @@ body.drag-active * {
   line-height: 1;
 }
 
+/* 侧栏导航行的宿主是 18px 图标（不是药丸按钮），角标按宿主等比缩小，
+   只覆盖尺寸相关项；角标本体仍用上面那一份定义，不另写一套 */
+.apple-sidebar-nav-button .apple-count-badge {
+  top: -4px;
+  right: -4px;
+  min-width: 0.875rem;
+  height: 0.875rem;
+  border-width: 1.5px;
+  font-size: 9px;
+}
+
 .apple-action-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* MCP 差异卡片头部动作：复用按钮层级，但匹配卡片行高，不沿用工具栏尺寸。 */
+.mcp-diff-action-button {
+  height: var(--icon-button-size);
+  gap: 0.375rem;
+  padding-inline: 0.625rem;
 }
 
 .apple-list-row {
@@ -1312,19 +1349,44 @@ body.drag-active * {
   padding: 0.625rem 0.75rem;
 }
 
-/* MCP 列表卡片：apple-group 内的首行去掉独立行底色，与下方工具面板合成一张卡 */
+/* MCP 差异卡片的头行：与下方展开体合成一张卡（差异页的行仍直接嵌在 apple-group 里） */
 .apple-group > .mcp-expanded-card__header {
   background: transparent;
   border-radius: 0;
   box-shadow: none;
 }
 
-/* 独立成卡的列表行：覆盖 .apple-list-row 的 control 圆角改用整卡圆角（插件行 / Skill 行 / MCP 差异提示行共用） */
-.plugin-list-row,
-.skill-list-row,
-.mcp-diff-card { border-radius: var(--radius-card); }
+/* 分组列表：行与行之间一条发丝线，行本身不带卡片外观（底色/圆角/描边/横向内边距
+   都归容器）。MCP / 插件 / Skill 一级列表与插件市场面板内的列表共用这一套定义，
+   页面只写 className，不各自复制结构。设置页有同源结构（SettingsSections 的
+   apple-group + divide-y），这里是它的固化版本。 */
+.apple-list-card {
+  display: flex;
+  flex-direction: column;
+}
 
-/* MCP 工具面板展开时去掉 body 顶部内边距，工具 chips 紧贴卡片头 */
+/* 独立成卡时才自己补整卡横向内边距；嵌在 .apple-panel-section 里不要用这条
+   （面板已经有一层 --gap-card-inline，再加就是双重缩进）。 */
+.apple-group.apple-list-card {
+  padding: 0 var(--gap-card-inline);
+}
+
+.apple-list-card > * + * {
+  border-top: 1px solid var(--panel-divider);
+}
+
+/* box-shadow 必须一起去掉：.apple-list-row 自带 --card-edge-shadow（style.css 顶部），
+   留着的话每行都会在分割线之上再画一圈 0.5px 卡片描边，叠成毛边。
+   同源处理见上面的 .apple-group > .mcp-expanded-card__header。
+   行高与设置页对齐（py-4）：行间距不再由独立卡片的间隙提供，只靠这层纵向内边距。 */
+.apple-list-card .apple-list-row {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1rem 0;
+}
+
+/* MCP 卡片展开体（工具面板/差异详情共用）：去掉 body 顶部内边距，内容紧贴卡片头 */
 .mcp-tools-disclosure.apple-disclosure--open .apple-disclosure__body { padding-top: 0; }
 
 .apple-icon-button {
@@ -1369,79 +1431,33 @@ body.drag-active * {
   background: var(--tile-bg);
 }
 
-.mcp-sync-confirm {
+/* MCP 差异页：行级 diff 的代码区域容器——背景/描边对齐编辑页输入框（.app-input），把变更代码块与卡片头部区分开 */
+.mcp-diff-block {
   display: grid;
-  gap: var(--gap-section);
-}
-
-.mcp-sync-confirm__scope {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.6rem;
-  margin: 0;
-  font-size: var(--font-size-base);
-  line-height: 1.55;
-}
-
-.mcp-sync-confirm__changes {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.75rem;
-  border-radius: var(--radius-control-sm);
-  background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--panel-bg));
-}
-
-.mcp-sync-confirm__list {
-  display: grid;
-  gap: 0.35rem;
-  margin: 0;
-  padding-left: 1.1rem;
-  font-size: var(--font-size-base);
-  line-height: 1.45;
-}
-
-.mcp-sync-choice {
-  background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--panel-bg));
-}
-
-.mcp-sync-choice:hover,
-.mcp-sync-choice:focus-visible {
-  background: var(--selection-bg);
-}
-
-.mcp-sync-diff {
-  overflow: hidden;
+  gap: 2px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
-  background: var(--panel-bg);
-  box-shadow: 0 0 0 1px var(--panel-ring);
+  background: var(--input-bg);
 }
 
-.mcp-sync-diff.apple-disclosure--open .apple-disclosure__body { padding-top: 0; }
-
-.mcp-sync-diff .apple-disclosure__summary {
-  min-height: var(--control-height);
-  padding: 0.625rem 0.75rem;
-  background: color-mix(in srgb, var(--sidebar-bg) 34%, var(--panel-bg));
+/* 变更行——红/绿只做背景高亮，行内文字保持正文同色（VS Code 变更行语义）。
+   负外边距抵消水平内边距：高亮圈外扩 6px，文字仍与未变更行同列，不产生伪缩进 */
+.mcp-diff-line--del,
+.mcp-diff-line--add {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: -6px;
+  border-radius: var(--radius-control-sm);
+  padding: 2px 6px;
 }
 
-.mcp-sync-diff .apple-disclosure__summary:hover,
-.mcp-sync-diff .apple-disclosure__summary:focus-visible {
-  background: var(--selection-bg);
-}
+.mcp-diff-line--del { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+.mcp-diff-line--add { background: color-mix(in srgb, var(--success) 20%, transparent); }
 
-.mcp-sync-diff__detail {
-  border-top: 1px solid var(--panel-divider);
-  background: color-mix(in srgb, var(--sidebar-bg) 22%, var(--panel-bg));
-  padding: 0.75rem;
-}
-
-.mcp-sync-diff__values {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 1rem;
-  color: var(--text-secondary);
-}
+/* 暗色底上 15% 混合会闷成暗块，单独提浓度保证红绿可辨 */
+:root.dark .mcp-diff-line--del { background: color-mix(in srgb, var(--danger) 32%, transparent); }
+:root.dark .mcp-diff-line--add { background: color-mix(in srgb, var(--success) 32%, transparent); }
 
 .apple-editor-shell {
   min-width: 0;
@@ -1549,6 +1565,8 @@ button:focus-visible {
   .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {
     animation: none;
   }
+
+  .animate-spin { animation: none; }
 }
 
 /* React shared controls: behavior comes from Radix/native elements; geometry stays on project tokens. */

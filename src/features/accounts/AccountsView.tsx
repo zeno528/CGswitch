@@ -90,7 +90,7 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
       <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="field-subtitle">{title}</span>
-          {onRefresh ? <button type="button" className="apple-icon-button h-5 w-5 text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={onRefresh}>{loading ? <LoadingSpinner /> : <RefreshCw className="h-3.5 w-3.5" strokeWidth={2} />}</button> : null}
+          {onRefresh ? <button type="button" className="apple-icon-button h-5 w-5 text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={onRefresh}><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} strokeWidth={2} /></button> : null}
         </div>
         <span className="meta-xs shrink-0 whitespace-nowrap">{t("account.remainingShort")} <span className={`font-semibold ${balanceChipClass(used, false)}`}>{remaining}%</span></span>
       </div>

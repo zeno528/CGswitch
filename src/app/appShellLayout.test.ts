@@ -20,6 +20,61 @@ describe("AppShell 布局", () => {
     }
   });
 
+  it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {
+    // 首屏：useSyncExternalStore 从 localStorage 缓存直出，不发起任何查询
+    expect(source).toContain("useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge)");
+    expect(source).toContain('{mcpBadge ? <span className="apple-count-badge"');
+    // 查询：必须被 startupReady 门控 + 固定延迟，禁止直接进首屏/冷启动关键路径
+    expect(source).toContain("if (!startupReady) return;");
+    expect(source).toContain("window.setTimeout(checkMcpDiff, 1500);");
+    // 不重复查：非静默启动时 onActive 已经查过，定时器只补静默启动那条路
+    expect(source).toContain("if (activationEpoch > 0) return;");
+  });
+
+  it("MCP 页查到差异后写回共享缓存，侧栏与页面同源", () => {
+    const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
+    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: preview.entries.length, error: false })");
+  });
+
+  it("config.toml 解析失败时侧栏角标同步亮起，不点进 MCP 页也能看见", () => {
+    const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
+    // MCP 页查失败写回 error 态
+    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: 0, error: true })");
+    // 启动后的静默刷新同理：失败不能被吞掉
+    expect(source).toContain("setMcpDiffBadge({ count: 0, error: true })");
+    // 角标文本规则只住在 managementDataCache：侧栏与 MCP 页头必须调同一个函数，
+    // 分家就会出现"一边 9+ 一边 128"或"一边 ! 一边数字"
+    expect(source).toContain("const mcpBadge = mcpDiffBadgeText(mcpDiffBadge)");
+    expect(mcpViewSource).toContain("mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) })");
+  });
+
+  it("窗口激活时顺带查一次 MCP 差异，与启动后那次共用同一条规则", () => {
+    // 激活那几件套：刷新 state / 账号状态 / MCP 差异 / 恢复轮询
+    const onActive = source.slice(source.indexOf("const onActive = ()"), source.indexOf("const onInactive = ()"));
+    expect(onActive).toContain("checkMcpDiff()");
+    expect(onActive).toContain("void refresh()");
+    // 整个 AppShell 里只发这一个请求：复制一份出来就等于两处规则会分家
+    expect(source.split("api.mcpSyncPreview()").length - 1).toBe(1);
+  });
+
+  it("首屏稳定后统一预热管理页数据，失败无感", () => {
+    // 冷启动条款：预热必须延迟（首屏之后）+ 异步 fire-and-forget + 失败无感
+    expect(source).toContain("if (!startupReady) return;");
+    expect(source).toContain("window.setTimeout(() => {");
+    for (const loader of ["loadMcpServers()", "loadSkills()", "loadPlugins()", "loadPluginMarketplaces()"]) {
+      expect(source).toContain(`void ${loader}.catch(() => undefined);`);
+    }
+  });
+
+  it("启动期预发 get_state：首个 refresh 消费在途结果，后续照常发新请求", () => {
+    // IPC 与 React 挂载并行，砍掉"挂载完才发请求"的一轮串行等待
+    expect(hooksSource).toContain("let pendingStartupState: Promise<AppState> | null = api.getState();");
+    expect(hooksSource).toContain("const request = pendingStartupState;");
+    expect(hooksSource).toContain("const nextState = await (request ?? api.getState());");
+    expect(hooksSource).toContain("pendingStartupState = null;");
+    expect(hooksSource.indexOf("pendingStartupState = null;")).toBeLessThan(hooksSource.indexOf("const nextState = await (request ?? api.getState());"));
+  });
+
   it("只在窗口从非激活状态恢复时刷新", () => {
     expect(hooksSource).toContain("const activeRef = useRef(!document.hidden);");
     expect(hooksSource).toContain("if (activeRef.current) return false;");
@@ -37,11 +92,29 @@ describe("AppShell 布局", () => {
     expect(source).toContain('onManageChatgptAccounts={goAccounts}');
   });
 
+  it("冷启动窗口一路透传到供应商卡：余额刷新只在进程启动期间延后", () => {
+    const profilesViewSource = readFileSync(new URL("../features/profiles/ProfilesView.tsx", import.meta.url), "utf8");
+    const profileCardSource = readFileSync(new URL("../features/profiles/ProfileCard.tsx", import.meta.url), "utf8");
+    expect(source).toContain("coldStart={!startupReady}");
+    expect(profilesViewSource).toContain("coldStart={coldStart}");
+    expect(profileCardSource).toContain("coldStart: boolean;");
+  });
+
   it("首屏完成后才启动自动更新检查", () => {
     expect(source).toContain("const [startupReady, setStartupReady] = useState(false);");
     expect(source).toContain("setStartupReady(true);");
     expect(source).toContain('<AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>');
     expect(source.indexOf("setStartupReady(true);")).toBeGreaterThan(source.indexOf("await appWindow?.show();"));
+  });
+
+  it("启动里程碑上报：state_ready 在数据就绪时、pre_show 带留痕、window_shown 在出窗后", () => {
+    // 没有这些埋点，冷启动 650ms 拆不出 JS 段耗时，性能回归就只能靠猜
+    expect(source).toContain('api.reportStartupMark("state_ready"');
+    expect(source).toContain('reportStartupMark("window_pre_show"');
+    expect(source).toContain('let rafPath = "fallback";');
+    // rAF 留痕必须在 show() 之前——探针在窗口可见后就杀进程，show 之后再报会被吃掉
+    expect(source.indexOf("reportStartupMark(\"window_pre_show\"")).toBeLessThan(source.indexOf("await appWindow?.show();"));
+    expect(source.indexOf("reportStartupMark(\"window_shown\"")).toBeGreaterThan(source.indexOf("await appWindow?.show();"));
   });
 
   it("认证快照由全局状态完成后再交给配置编辑页", () => {
@@ -178,6 +251,8 @@ describe("AppShell 布局", () => {
 
   it("编辑页在详情完成后再一次性揭示，保留页面进入动画", () => {
     expect(styles).toContain("@keyframes apple-page-enter {\n  from { transform: translateY(6px); }");
+    expect(styles).toContain(".apple-page-enter {\n  display: flex;");
+    expect(styles).toContain(".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {\n  animation: apple-page-enter");
     expect(profileEditSource).toContain("if (((!create && !detail) || authStatusPending) && !loadError) return null;");
   });
 
@@ -189,8 +264,9 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-edit-content > .apple-group {\n  margin-top: 0;\n  border-radius: var(--radius-card);");
   });
 
-  it("将 Skill 更新徽标锚定在导入按钮右上角", () => {
-    expect(styles).toContain(".skill-update-badge {\n  position: absolute;\n  left: auto;\n  right: -0.45rem;\n  top: -0.45rem;");
+  it("将 Skill 更新徽标锚定在导入按钮右上角，中心落在药丸边缘（一半压按钮一半露出）", () => {
+    // 药丸高 38px → 半径 19px；偏移 = 尺寸/2 - 19×(1-cos45°) = 9 - 5.6 = 3.4px
+    expect(styles).toContain(".apple-count-badge {\n  position: absolute;\n  left: auto;\n  right: -3.4px;\n  top: -3.4px;");
   });
 
   it("让配置编辑器的横向滚动条从行号栏右侧开始", () => {

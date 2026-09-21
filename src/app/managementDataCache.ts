@@ -95,7 +95,10 @@ const skills = createManagementCache<SkillSummary[]>(api.listSkills, {
   key: "cgswitch.skills-cache-v1",
   restore: restoreNamedList<SkillSummary>,
 });
-const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers);
+const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers, {
+  key: "cgswitch.mcp-servers-cache-v1",
+  restore: restoreNamedList<McpServerSpec>,
+});
 const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPluginMarketplaces, {
   key: "cgswitch.plugin-marketplaces-cache-v1",
   restore: restoreNamedList<PluginMarketplace>,
@@ -174,6 +177,56 @@ export function getCachedMcpServers(): McpServerSpec[] | null {
 
 export function setMcpServersCache(items: McpServerSpec[]): void {
   mcpServers.set(items);
+}
+
+// ==================== MCP 差异角标（侧栏 + MCP 页） ====================
+
+/// 角标两态：`count` 项可逐条处理的差异，或 `error`（config.toml 解析不了，差异
+/// 根本算不出来）。两态共用一条通道是刻意的——"配置坏了"跟"有差异"一样是用户
+/// 不点进 MCP 页就看不见的状况，必须搭同一班车到侧栏。
+/// MCP 页查完写回，侧栏首屏读缓存直出；侧栏自己不发起查询（差异查询实测 0.5ms
+/// 级，但仍不进启动关键路径，见 AppShell 的延迟刷新）。
+export interface McpDiffBadge {
+  count: number;
+  error: boolean;
+}
+
+const MCP_DIFF_COUNT_STORAGE_KEY = "cgswitch.mcp-diff-count-v1";
+let mcpDiffBadge: McpDiffBadge | null = null;
+let mcpDiffBadgeRestored = false;
+const mcpDiffBadgeListeners = new Set<() => void>();
+
+/// 返回的必须是稳定引用（存下来的那个对象），否则 useSyncExternalStore 会无限重渲染。
+export function getMcpDiffBadge(): McpDiffBadge | null {
+  if (!mcpDiffBadgeRestored) {
+    mcpDiffBadgeRestored = true;
+    const raw = readJson(MCP_DIFF_COUNT_STORAGE_KEY);
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) mcpDiffBadge = { count: raw, error: false };
+  }
+  return mcpDiffBadge;
+}
+
+/// 角标文本：有差异显示数量（>9 折成 9+），差异算不出来显示 `!`，都没有则不显示。
+/// 侧栏与 MCP 页头共用这一条规则——同一个状态在两处必须长一样，分家就会一边 9+
+/// 一边 128，或者一边 `!` 一边数字。
+export function mcpDiffBadgeText(badge: McpDiffBadge | null): string | null {
+  if (!badge) return null;
+  if (badge.count > 0) return badge.count > 9 ? "9+" : String(badge.count);
+  return badge.error ? "!" : null;
+}
+
+export function setMcpDiffBadge(next: McpDiffBadge): void {
+  if (mcpDiffBadge && mcpDiffBadge.count === next.count && mcpDiffBadge.error === next.error) return;
+  mcpDiffBadge = next;
+  writeJson(MCP_DIFF_COUNT_STORAGE_KEY, next.count);
+  for (const listener of mcpDiffBadgeListeners) listener();
+}
+
+export function subscribeMcpDiffBadge(listener: () => void): () => void {
+  mcpDiffBadgeListeners.add(listener);
+  return () => {
+    mcpDiffBadgeListeners.delete(listener);
+  };
 }
 
 export function getCachedMcpProbe(name: string, fingerprint: string): McpProbeCacheEntry | null {
