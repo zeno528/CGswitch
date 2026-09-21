@@ -3,40 +3,53 @@
 ## [Unreleased]
 
 ### 新增
-- MCP 差异处理改二级页：列表「处理差异」按钮改为「更新」，进入独立的差异处理页；展示数据库与 config.toml 片段的行级 diff（红行=数据库当前内容，绿行=外部修改），支持单条或批量「同步 / 撤销」，未处理条目保持原样。
-- 行级 diff 操作语义提示：差异处理页右上角内置帮助卡，解释红/绿行含义与同步 / 撤销两种动作的行为与备份策略。
-- Codex 状态按钮动作语义分离：启动用项目统一 LoadingSpinner，重启用 RefreshCw 自旋图标；两种动作用对应图标，不再交替出现。
+- MCP 差异处理改二级页：列表「处理差异」按钮改为「更新」进入独立差异处理页（`McpDiffPage`），行级 diff（LCS）展示红行（数据库旧内容）/ 绿行（config.toml 新内容），支持单条或批量「同步 / 撤销」（`adopt` / `revert`），默认全部展开，右上角帮助卡解释红绿行含义与动作。
+- Codex 启动 vs 重启文案语义分离：状态按钮启动用 `LoadingSpinner`，重启用 `RefreshCw` 自旋图标；重启函数返回 `action`（"start" / "restart"），通知文案跟随（`codexStarted` / `codexRestarted` / `switchStarted` / `switchRestarted`）。
+- 启动里程碑上报：后端新增 `StartupClock`（run 入口 Instant）与 `native_ready` / `setup_end` / `page_load_finished` 三个 Info 日志；新增 `report_startup_mark` command，把前端 `state_ready` / `window_pre_show` / `window_shown` 折算到同一进程起点；rAF 路径（raf / fallback + wait_ms）放在 `show` 之前留痕。
+- 启动后管理页数据预热：AppShell 在 `startupReady` 后 1.5s fire-and-forget 预热 MCP 列表 / Skill / 插件 / 市场四个 loader，失败无感；契约测试锁住预热三要素与直出模式。
+- 侧栏 MCP 差异角标：首屏 `useSyncExternalStore` 同步读 localStorage 缓存直出；启动后 1.5s 或窗口激活时静默查差异；角标文本规则 `count > 9 → "9+"`、`error → "!"`、否则不显示；MCP 页查到即同步写回共享缓存。
+- MCP 批量外科原语：新增 `set_mcp_mirror` / `set_mcp_mirror_entries`（同步：live 片段写入镜像或删除镜像条目）与 `revert_mcp_live` / `revert_mcp_live_entries`（撤销：数据库片段写回 live 或从 live 移除），整批校验通过才落一次盘，只动指定条目不动其他服务器。
 
 ### 修复
-- 额度查询失败横幅点击重试时按钮图标转圈，刷新结束即停，不再只有禁用态。
-- MCP 工具加载期间不再禁用工具按钮，加载指示移到信息胶囊；加载中点击展开直接回到面板，不重复发起探测。
-- MCP 卡片展开后点击空白处可折叠工具面板，点按按钮、开关等操作控件不会误触。
-- 供应商编辑页首帧空壳闪烁：进入编辑页时预载详情，表单字段与编辑器文本同源初始化，首帧即完整内容。
-- CodeMirror 编辑器实例晚一帧：改为同步布局 effect 创建，与页面同帧呈现。
-- 供应商卡片切页 / 重挂载时余额闪动：余额初始化器与挂载 effect 同源读取缓存，避免数字与失败态跳变。
-- 供应商编辑页 Enter 键保存：非编辑控件范围内按 Enter 直接保存，避开输入法与编辑器区域。
-- MCP 差异预览并发请求：列表挂载或窗口激活时差异预览串行化，避免重复请求。
+- MCP 探测与刷新策略收紧：避免无脑全量重连与协议误判（`mcp_probe.rs` 收紧失败链路与并发闸门）。
+- MCP 解析失败只重建 MCP 区域：`write_mcp_section_to_live` 在 live 解析失败时改用 `rebuild_mcp_region_text` 仅重建 MCP 段，区域外逐字节保留；修完必须能解析才落盘，定位不到 MCP 段报错而非整段重写。
+- `mcp_sync_preview` 改 `async + spawn_blocking`：避免窗口激活时与 `restart_codex` 同源持锁数秒把窗口消息泵占死。
+- 系统代理检测从 setup 同步路径移到 `spawn_blocking`：阻塞子进程调用不再阻塞冷启动首帧。
+- MCP 工具加载期间不再禁用工具按钮：加载指示移到信息胶囊；`McpToolsPanel` 在 `pending` 时不下「无工具」结论；加载中点击展开直接回到面板，不重复发起探测。
+- MCP 卡片展开后点击空白处可折叠工具面板，点按按钮 / 开关等操作控件不会误触。
+- 差异预览并发请求串行化（`previewInFlight` ref），避免列表挂载或窗口激活时重复请求。
+- 编辑页 Enter 键保存：非编辑器壳 `.apple-editor-shell` 内按 Enter 直接保存，不再要求 Ctrl；避开输入法与编辑器区域。
+- 供应商卡片切页 / 重挂载时余额闪动：余额初始化器与挂载 effect 同源读取缓存（`restoreCachedBalance()` 函数抽取）；值相同保持原引用跳过重渲染，避免数字与失败态跳变。
 - 供应商页「新增供应商」按钮禁用态：保持完整可见度，仅点击失效，避免误导「按钮被吞掉」。
+- 额度查询失败横幅点击重试时按钮图标转圈，刷新结束即停。
 
 ### 界面与样式
-- 额度查询失败横幅去掉重复的「额度刷新失败」措辞，感叹号图标撑满两行文本高度。
-- 页面进入动画时长由 1 秒收紧到 0.8 秒，收尾更快落定。
-- 共享页头支持按钮换行并统一操作按钮行高。
-- 共享操作按钮右上角数字角标通用化：MCP 待处理差异数与 Skill 可导入数共用同一视觉样式。
-- 移除旧 MCP 同步对话框样式（mcp-sync-confirm / mcp-sync-choice / mcp-sync-diff 整套 CSS 与交互代码），差异处理迁移到独立二级页。
+- 插件来源胶囊：`.origin-chip--official`（accent tint）与 `.origin-chip--third-party`（warning tint）独立配色，配色与 `marketDetail.thirdPartyNotice` 立场一致。
+- 全局数字角标 `.apple-count-badge`（替换 `.skill-update-badge`）：Skill 可导入数 / MCP 待处理差异数共用同一视觉样式；侧栏变体 `.apple-sidebar-nav-button .apple-count-badge` 按 18px 图标宿主等比缩小。
+- 分组列表共用 `.apple-list-card`：行间一条发丝线，行本身不带卡片外观（底色 / 圆角 / 描边 / 横向内边距归容器）；MCP / 插件 / Skill / 插件市场一级列表与设置页 `SettingsSections` 同源；嵌入 `.apple-panel-section` 时不要叠加 `padding-inline`。
+- MCP 差异页样式：`.mcp-diff-block` 代码区域容器背景 / 描边对齐 `.app-input`；`.mcp-diff-line--del` / `--add` 变更行只做红 / 绿背景高亮，行内文字保持正文同色；暗色底 15% 混合单独提浓度到 32% 保证红绿可辨。
+- 移除旧 MCP 同步对话框样式：`.mcp-sync-confirm / __scope / __changes / __list`、`.mcp-sync-choice / hover`、`.mcp-sync-diff / __detail / .apple-disclosure / summary hover` 整套删除；差异处理迁移到独立二级页。
 - 编辑页高级配置（长上下文 / 系统代理 / 上下文管理）从主组件拆出为独立控件与 hook，编辑页主体更紧凑。
+- 共享页头支持按钮换行并统一操作按钮行高（共享页头契约）。
+- 页面进入动画时长由 1 秒收紧到 0.8 秒，收尾更快落定。
+- `prefers-reduced-motion` 关停 `animate-spin`（侧栏 MCP 图标 / Codex 状态按钮等旋转动画）。
 
 ### 性能优化
-- 启动埋点并将代理检测移出同步 setup，首屏绘制不再被代理探测阻塞。
-- 供应商卡片余额刷新延后到首绘之后（激活卡 900ms / 非激活卡 1200ms），冷启动期间请求不挤占主线程。
-- 启动后空闲期预热管理页 lazy chunk，减少切页骨架。
-- 注：管理页 / 配置编辑器按需加载的页面懒加载已回退（切页即时性 > 包体细分），本次不引入新的切页延迟。
+- 启动埋点并将代理检测移出同步 setup，首屏绘制不再被代理探测阻塞（`setup` 块 `spawn_blocking` 包装）。
+- 供应商卡片余额刷新延后到首绘之后（激活卡 900ms / 非激活卡 1200ms），冷启动期间请求不挤占主线程；窗口已经起来之后，切页 / 聚焦 / 手动刷新都不等（`setTimeout(0)`）。
+- 注：管理页 / 配置编辑器按需加载的页面懒加载已回退（切页即时性 > 包体细分），本次不引入新的切页延迟；启动后空闲期预热管理页 lazy chunk 减少切页骨架。
+- 启动分段埋点补齐前端里程碑：`native_ready` / `setup_end` 升 Info（release 落盘），新增 `report_startup_mark` command 与前端 `page_load_finished` 钩子，把 `state_ready` / `window_pre_show` / `window_shown` 折算到 `StartupClock` 同一进程起点；rAF 路径留痕放在 show 之前，避免探针窗口可见即杀进程丢点。
+- 管理页首帧缓存直出并启动后统一预热数据：市场列表 `useState` 同步吃缓存，首帧即内容不画转圈；AppShell 在 `startupReady` 后 1.5s fire-and-forget 预热 MCP 列表 / Skill / 插件 / 市场四个 loader，失败无感；契约测试锁住预热三要素与直出模式。
+- `get_state` 预发与 React 挂载并行：hooks 模块求值即预发 `get_state`，首个 `refresh` 消费在途结果后置空，激活 / 聚焦后的 `refresh` 照常发新请求；失败路径不变（`loadError`）。
 
 ### 重构
-- 后端插件服务（3029 行单体）拆分为 catalog / cli / ops / skills / store 五个聚焦模块。
-- 前端 PluginsView 拆分为 PluginMarketplaceView / MarketplaceDetailView / PluginDetailView / AddPluginView 四个视图与 components 目录（ContainsChips / PluginSearchInput / SourceLink）+ pluginMeta 元数据模块，职责单一。
-- ProfileEdit 编辑器高级配置抽到 `useProfileAdvancedPatches` hook 与 `ProfileAdvancedControls` 控件。
-- McpSyncDialog 删除，McpDiffPage 上位；后端差异处理改为 set_mcp_mirror_entries / revert_mcp_live_entries 批量外科原语（只动指定条目，整批校验通过才落一次盘，不再依赖整段 live 重建）。
+- 后端插件服务（3029 行单体）拆分为 `catalog` / `cli` / `ops` / `skills` / `store` 五个聚焦模块（`src-tauri/src/services/plugins/`），并精确收敛 glob 导入。
+- 前端 `PluginsView` 拆为 `PluginMarketplaceView` / `MarketplaceDetailView` / `PluginDetailView` / `AddPluginView` 四个视图 + `components/ContainsChips` / `PluginSearchInput` / `SourceLink` + `pluginMeta` 元数据模块，职责单一。
+- `ProfileEdit` 编辑器高级配置（长上下文 / 系统代理 / 上下文管理）抽到 `useProfileAdvancedPatches` hook + `ProfileAdvancedControls` 控件；`initialDetail` prop 支持预载详情，首帧即完整内容。
+- `McpSyncDialog` 删除，`McpDiffPage` 上位；后端差异处理改为 `set_mcp_mirror_entries` / `revert_mcp_live_entries` 批量外科原语（只动指定条目，整批校验通过才落一次盘，不再依赖整段 live 重建）。
+- `McpSyncFieldDiff` 字段级对比移除，差异判定改用 `McpServerSpec` 语义等价（`==`）；行级 diff 在前端做，后端只负责收集两侧 TOML。
+- `AppShell` 把 `checkMcpDiff` / `setMcpDiffBadge` / `subscribeMcpDiffBadge` 抽到 `managementDataCache` 模块作用域，状态机独立成 `McpDiffBadge` 类型（`count` + `error`）。
+- 插件 / Skill / MCP 一级列表与插件市场面板共用 `.apple-list-card` 列表卡片化（与界面与样式对应）。
 
 ## [0.19.0] - 2026-09-19
 
