@@ -47,6 +47,9 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
 
 export const api = {
   getState: () => call<AppState>("get_state"),
+  // 启动里程碑：只写日志（Rust 侧折算到进程起点），无返回值语义
+  reportStartupMark: (stage: string, frontendElapsedMs: number, detail?: string) =>
+    call<void>("report_startup_mark", { stage, frontendElapsedMs, detail }),
   getCodexStatus: () => call<CodexAppStatus>("get_codex_status"),
   fetchProviderModels: (baseUrl: string, apiKey: string) =>
     call<string[]>("fetch_provider_models", { baseUrl, apiKey }),

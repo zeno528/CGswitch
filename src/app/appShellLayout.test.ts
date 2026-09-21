@@ -89,6 +89,16 @@ describe("AppShell 布局", () => {
     expect(source.indexOf("setStartupReady(true);")).toBeGreaterThan(source.indexOf("await appWindow?.show();"));
   });
 
+  it("启动里程碑上报：state_ready 在数据就绪时、pre_show 带留痕、window_shown 在出窗后", () => {
+    // 没有这些埋点，冷启动 650ms 拆不出 JS 段耗时，性能回归就只能靠猜
+    expect(source).toContain('api.reportStartupMark("state_ready"');
+    expect(source).toContain('reportStartupMark("window_pre_show"');
+    expect(source).toContain('let rafPath = "fallback";');
+    // rAF 留痕必须在 show() 之前——探针在窗口可见后就杀进程，show 之后再报会被吃掉
+    expect(source.indexOf("reportStartupMark(\"window_pre_show\"")).toBeLessThan(source.indexOf("await appWindow?.show();"));
+    expect(source.indexOf("reportStartupMark(\"window_shown\"")).toBeGreaterThan(source.indexOf("await appWindow?.show();"));
+  });
+
   it("认证快照由全局状态完成后再交给配置编辑页", () => {
     expect(hooksSource).toContain("const [authStatusReady, setAuthStatusReady] = useState(false);");
     expect(hooksSource).toContain("setAuthStatusReady(true);");

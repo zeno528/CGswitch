@@ -1178,6 +1178,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     case "open_path":
       return undefined as T;
+    // 启动里程碑只落桌面端日志；web 调试无日志管道，直接吞掉
+    case "report_startup_mark":
+      return undefined as T;
     case "save_settings":
       webSettings = { ...(args?.settings as Settings) };
       webBackups = webBackups.slice(0, webSettings.database_backup_keep_count);

@@ -65,20 +65,30 @@ export default function AppShell() {
       if (cancelled) return;
       // 语言必须在窗口显示前切好，否则用户会看到一帧系统语言。
       setupI18n(stateRef.current?.settings.language);
+      // 首屏数据就绪里程碑：performance.now() 以文档导航起点为 0，与 native 埋点同一时间线对照
+      if (isTauri) void api.reportStartupMark("state_ready", Math.round(performance.now())).catch(() => undefined);
       if (isTauri && !stateRef.current?.settings.silent_start) {
         // 等首绘（双 rAF ≈ 一帧完成）再显示，窗口出现即完整内容；
         // 更新重启等热启动下加载极快，不等首绘会闪出空白窗口。
         // 隐藏窗口里 rAF 可能被节流，150ms 兜底保证窗口必定显示。
+        // 走了哪条路必须留痕：若冷启动总在吃 150ms 兜底，那是一笔可观的白等。
+        // 上报放在 show 之前——探针在窗口可见后就杀进程，show 之后再报会被吃掉
+        let rafPath = "fallback";
+        const waitStart = performance.now();
         await Promise.race([
-          new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => { rafPath = "raf"; resolve(null); }))),
           new Promise((resolve) => window.setTimeout(resolve, 150)),
         ]);
+        void api
+          .reportStartupMark("window_pre_show", Math.round(performance.now()), `${rafPath} wait_ms=${Math.round(performance.now() - waitStart)}`)
+          .catch(() => undefined);
         try {
           await appWindow?.show();
           await appWindow?.setFocus();
         } catch {
           // 内容初始化不依赖窗口显示成功。
         }
+        void api.reportStartupMark("window_shown", Math.round(performance.now())).catch(() => undefined);
       }
       setStartupReady(true);
       delayedAuth = window.setTimeout(() => {
