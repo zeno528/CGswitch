@@ -98,11 +98,13 @@ function McpDiffRow({ entry, busy, collapsed, onToggle, onResolve }: McpDiffRowP
         <span className={`apple-chip ${entry.kind === "live_only" ? "chip-warn" : "chip-danger"}`}>{kindText(entry, t)}</span>
         <span className="min-w-0 flex-1 truncate font-semibold">{entry.name}</span>
         <div className="flex shrink-0 items-center gap-1.5">
-          <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={busy} title={t("diff.revertAria", { name: entry.name })} aria-label={t("diff.revertAria", { name: entry.name })} onClick={() => onResolve(entry, "revert")}>
+          <button type="button" className="apple-action-button mcp-diff-action-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={busy} title={t("diff.revertAria", { name: entry.name })} aria-label={t("diff.revertAria", { name: entry.name })} onClick={() => onResolve(entry, "revert")}>
             <Undo2 className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            {t("diff.revert")}
           </button>
-          <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={busy} title={t("diff.adoptAria", { name: entry.name })} aria-label={t("diff.adoptAria", { name: entry.name })} onClick={() => onResolve(entry, "adopt")}>
+          <button type="button" className="apple-action-button mcp-diff-action-button app-button--primary enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={busy} title={t("diff.adoptAria", { name: entry.name })} aria-label={t("diff.adoptAria", { name: entry.name })} onClick={() => onResolve(entry, "adopt")}>
             <Check className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            {t("diff.adopt")}
           </button>
         </div>
       </div>
@@ -141,8 +143,8 @@ export default function McpDiffPage({ preview, previewError, resolving, onBack, 
             <CircleQuestionMark className="h-4 w-4 text-(--text-secondary) transition-colors group-hover:text-accent group-focus-within:text-accent" strokeWidth={2} aria-hidden="true" />
             <div className="pointer-events-none invisible absolute left-0 top-full z-50 mt-2 w-80 space-y-1.5 rounded-[var(--radius-control)] border border-(--panel-border) bg-(--panel-bg) p-3 opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
               <div className="field-subtitle">{t("diff.help.title")}</div>
-              <p className="muted meta-xs"><strong className="font-semibold">{t("diff.help.red.keyword")}</strong>{t("diff.help.red.text")}</p>
-              <p className="muted meta-xs"><strong className="font-semibold">{t("diff.help.green.keyword")}</strong>{t("diff.help.green.text")}</p>
+              <p className="muted meta-xs"><strong className="font-semibold text-(--danger)">{t("diff.help.red.keyword")}</strong>{t("diff.help.red.text")}</p>
+              <p className="muted meta-xs"><strong className="font-semibold text-(--success)">{t("diff.help.green.keyword")}</strong>{t("diff.help.green.text")}</p>
               <p className="muted meta-xs"><strong className="font-semibold">{t("diff.help.adopt.keyword")}</strong>{t("diff.help.adopt.text")}</p>
               <p className="muted meta-xs"><strong className="font-semibold">{t("diff.help.revert.keyword")}</strong>{t("diff.help.revert.text")}</p>
             </div>

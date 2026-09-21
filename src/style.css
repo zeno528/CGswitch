@@ -289,7 +289,7 @@ body {
   letter-spacing: 0.01em;
   line-height: 1.4;
   background: transparent;
-  border: 1px solid var(--panel-ring);
+  border: 1px solid color-mix(in srgb, currentColor 15%, transparent);
   color: var(--text-primary);
 }
 
@@ -1198,7 +1198,7 @@ body.drag-active * {
 }
 
 .settings-about__actions > .apple-action-button {
-  border-color: color-mix(in srgb, currentColor 20%, transparent);
+  border-color: color-mix(in srgb, currentColor 15%, transparent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
@@ -1330,6 +1330,13 @@ body.drag-active * {
 .apple-action-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+/* MCP 差异卡片头部动作：复用按钮层级，但匹配卡片行高，不沿用工具栏尺寸。 */
+.mcp-diff-action-button {
+  height: var(--icon-button-size);
+  gap: 0.375rem;
+  padding-inline: 0.625rem;
 }
 
 .apple-list-row {

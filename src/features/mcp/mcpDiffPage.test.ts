@@ -113,10 +113,12 @@ describe("MCP 差异二级页", () => {
     expect(pageSource).not.toContain("changed_fields.map");
   });
 
-  it("动词按钮继承 MCP 行的 icon-button 样式，不用配置编辑页的行内按钮", () => {
+  it("动词按钮使用统一 action-button 样式并显示图标与文本", () => {
     expect(pageSource).toContain('onResolve(entry, "revert")');
     expect(pageSource).toContain('onResolve(entry, "adopt")');
-    expect(pageSource).toContain('className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"');
+    expect(pageSource).toContain('className="apple-action-button mcp-diff-action-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"');
+    expect(pageSource).toContain('{t("diff.revert")}');
+    expect(pageSource).toContain('{t("diff.adopt")}');
     expect(pageSource).not.toContain("apple-inline-btn");
   });
 
@@ -126,8 +128,8 @@ describe("MCP 差异二级页", () => {
 
   it("标题栏提供悬停说明卡片，解释红绿语义与两个动词，关键词加粗", () => {
     expect(pageSource).toContain('t("diff.help.title")');
-    expect(pageSource).toContain('<strong className="font-semibold">{t("diff.help.red.keyword")}</strong>');
-    expect(pageSource).toContain('<strong className="font-semibold">{t("diff.help.green.keyword")}</strong>');
+    expect(pageSource).toContain('<strong className="font-semibold text-(--danger)">{t("diff.help.red.keyword")}</strong>');
+    expect(pageSource).toContain('<strong className="font-semibold text-(--success)">{t("diff.help.green.keyword")}</strong>');
     expect(pageSource).toContain('<strong className="font-semibold">{t("diff.help.adopt.keyword")}</strong>');
     expect(pageSource).toContain('<strong className="font-semibold">{t("diff.help.revert.keyword")}</strong>');
     expect(pageSource).toContain("pointer-events-none");
