@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
-import { getMcpDiffBadge, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { getMcpDiffBadge, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -160,6 +160,21 @@ export default function AppShell() {
     const timer = window.setTimeout(checkMcpDiff, 1500);
     return () => window.clearTimeout(timer);
   }, [startupReady, activationEpoch]);
+
+  // 首屏稳定后预热管理页数据（MCP 列表 / Skill / 插件 / 市场）：与差异检查同一波延迟，
+  // fire-and-forget、失败无感——预热失败时页面进入仍走各页自己的加载路径。
+  // 只在启动后跑一次；进页后的静默刷新由各页自持。各页首帧吃这批缓存直出（缓存在
+  // useState 里同步初始化），启动后立刻点任何管理页都是整页内容，不出现转圈。
+  useEffect(() => {
+    if (!startupReady) return;
+    const timer = window.setTimeout(() => {
+      void loadMcpServers().catch(() => undefined);
+      void loadSkills().catch(() => undefined);
+      void loadPlugins().catch(() => undefined);
+      void loadPluginMarketplaces().catch(() => undefined);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [startupReady]);
 
   useEffect(() => {
     const main = document.querySelector("main");

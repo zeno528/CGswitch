@@ -11,4 +11,11 @@ describe("插件市场卡片", () => {
     expect(source).toContain('t("market.pluginCount"');
     expect(source).toContain('t("market.pluginCountUnavailable"');
   });
+
+  it("市场列表首帧从缓存同步直出，与其他管理页同款", () => {
+    // 首帧就是内容：缓存命中时 useState 初始化直接吃缓存，不画一帧转圈
+    expect(source).toContain("const cachedMarketplaces = getCachedPluginMarketplaces();");
+    expect(source).toContain("useState<PluginMarketplace[]>(cachedMarketplaces ?? [])");
+    expect(source).toContain("useState(cachedMarketplaces !== null)");
+  });
 });

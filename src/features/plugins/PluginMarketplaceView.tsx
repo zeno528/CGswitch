@@ -26,8 +26,10 @@ export default function PluginMarketplaceView({
 }) {
   const feedback = useFeedback();
   const { t } = useTranslation("plugins");
-  const [marketplaces, setMarketplaces] = useState<PluginMarketplace[]>([]);
-  const [marketplacesLoaded, setMarketplacesLoaded] = useState(false);
+  // 与 MCP / Skill / 插件列表同款首帧直出：缓存命中时第一帧就是内容，不画一帧转圈
+  const cachedMarketplaces = getCachedPluginMarketplaces();
+  const [marketplaces, setMarketplaces] = useState<PluginMarketplace[]>(cachedMarketplaces ?? []);
+  const [marketplacesLoaded, setMarketplacesLoaded] = useState(cachedMarketplaces !== null);
   const [marketplacesError, setMarketplacesError] = useState("");
   const [marketplacePluginCounts, setMarketplacePluginCounts] = useState<Record<string, number | null>>({});
   const [adding, setAdding] = useState("");
@@ -53,10 +55,8 @@ export default function PluginMarketplaceView({
   };
 
   useEffect(() => {
-    // 缓存直出市场列表，再静默刷新；无缓存时走正常加载。
-    const cached = getCachedPluginMarketplaces();
-    if (cached) setMarketplaces(cached);
-    void refreshMarketplaces(Boolean(cached));
+    // 缓存已在 useState 里同步吃掉；这里只负责刷新回填——有缓存强制静默刷新，无缓存正常加载。
+    void refreshMarketplaces(Boolean(cachedMarketplaces));
   }, []);
 
   useEffect(() => {

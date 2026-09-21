@@ -57,6 +57,15 @@ describe("AppShell 布局", () => {
     expect(source.split("api.mcpSyncPreview()").length - 1).toBe(1);
   });
 
+  it("首屏稳定后统一预热管理页数据，失败无感", () => {
+    // 冷启动条款：预热必须延迟（首屏之后）+ 异步 fire-and-forget + 失败无感
+    expect(source).toContain("if (!startupReady) return;");
+    expect(source).toContain("window.setTimeout(() => {");
+    for (const loader of ["loadMcpServers()", "loadSkills()", "loadPlugins()", "loadPluginMarketplaces()"]) {
+      expect(source).toContain(`void ${loader}.catch(() => undefined);`);
+    }
+  });
+
   it("只在窗口从非激活状态恢复时刷新", () => {
     expect(hooksSource).toContain("const activeRef = useRef(!document.hidden);");
     expect(hooksSource).toContain("if (activeRef.current) return false;");
