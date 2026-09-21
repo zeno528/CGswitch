@@ -32,7 +32,7 @@ concurrency:
 jobs:
   verify:
     name: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: 禁止从 main 分支发行
         shell: bash
@@ -115,7 +115,7 @@ jobs:
     # 限制会 403，见 cli/cli#9514；git 协议不受限）；release 不带 --target 挂到已有 tag。
     # 用 GITHUB_TOKEN 创建 release/tag 不会再次触发任何工作流（官方防递归机制）。
     needs: [verify, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

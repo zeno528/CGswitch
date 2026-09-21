@@ -43,7 +43,7 @@ jobs:
     # 只跑 guard 三步（分支校验/VERSION 非空/已发布跳过），秒级放行；
     # 完整质量检查由 CI 在同一次 push 上对同一 SHA 执行，不在这里重复挡构建
     name: verify
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       # 版本已公开发布（重复推送不重发）时为 true，下游全部跳过
       skip: ${{ steps.guard.outputs.skip }}
@@ -146,7 +146,7 @@ jobs:
     # tag 由 git push 创建（releases API 的 --target 在 GITHUB_TOKEN 下受 workflow-scope
     # 限制会 403，见 cli/cli#9514；git 协议不受限）；release 不带 --target 挂到已有 tag。
     # 用 GITHUB_TOKEN 创建 release/tag 不会再次触发本工作流（官方防递归机制）。
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
