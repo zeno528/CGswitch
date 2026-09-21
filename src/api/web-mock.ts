@@ -1198,7 +1198,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         ok: true,
         latency_ms: 18,
         status: name === "tavily" ? 200 : null,
-        protocol_version: "2025-03-26",
+        protocol_version: "2025-11-25",
         server_info: { name: `${name} demo`, version: "1.0.0" },
         tools: includeTools ? [
           {

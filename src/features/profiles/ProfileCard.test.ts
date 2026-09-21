@@ -111,8 +111,11 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });
 
-  it("切页后的静默额度刷新延后到页面进入动画（800ms）结束之后", () => {
-    expect(source).toContain("window.setTimeout(() => void fetchBalance(), active ? 900 : 1200);");
+  it("静默额度刷新只在冷启动窗口内延后，其余场景零等待", () => {
+    // 延迟的唯一理由是"别跟首屏抢资源"；窗口已经起来之后，切页和聚焦都不该再等。
+    // 两条路各自独立：冷启动走 900/1200，日常走 0（setTimeout 立即宏任务）
+    expect(source).toContain("window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);");
+    expect(source).not.toContain("deferBalanceRef");
     expect(source).not.toContain("lastSeenEpoch");
   });
 });

@@ -20,6 +20,16 @@ const appWindow = isTauri ? getCurrentWindow() : null;
 // macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
 const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 
+/// 差异检查：读 config.toml 跟数据库镜像比，把结果写进侧栏角标。
+/// 启动后延迟一次、窗口激活时一次，两处共用这一条规则——放在模块作用域是为了
+/// 引用稳定，激活那条 effect 不需要把它挂进依赖数组。
+/// 失败不静默：写回 error 态，让"config.toml 坏了"在切回窗口那一刻就可见，
+/// 而不是等用户点进 MCP 页才发现。
+const checkMcpDiff = () =>
+  api.mcpSyncPreview()
+    .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
+    .catch(() => setMcpDiffBadge({ count: 0, error: true }));
+
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
   const [profilesReset, setProfilesReset] = useState(0);
@@ -90,6 +100,9 @@ export default function AppShell() {
       if (!activate()) return;
       void refresh();
       void refreshAuthStatus();
+      // 与 get_state 同源的顺带一步：读的是同一份 config.toml，只是比的对象换成 MCP 镜像。
+      // 不在 MCP 页时也必须跑——侧栏角标就是为"不点进去也能发现"而存在的。
+      checkMcpDiff();
       startPolling();
     };
     const onInactive = () => {
@@ -129,17 +142,14 @@ export default function AppShell() {
   }, [activate, refresh, refreshAuthStatus, startPolling, stopPolling]);
 
   // 首屏稳定后再静默查一次 MCP 差异（实测单次 0.5ms 级，但绝不与首帧抢资源）。
-  // 失败不静默：写回 error 态让侧栏角标亮起——config.toml 解析失败是"不点进 MCP 页
-  // 就发现不了"的状况，正是这个角标存在的意义（MCP 页自己也会看到同一条状态）。
+  // 非静默启动时 onActive 已经在窗口聚焦那一刻查过了，这条定时器只补静默启动
+  // （窗口不 show、拿不到焦点事件）那条路——不重复查第二遍。
   useEffect(() => {
     if (!startupReady) return;
-    const timer = window.setTimeout(() => {
-      void api.mcpSyncPreview()
-        .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
-        .catch(() => setMcpDiffBadge({ count: 0, error: true }));
-    }, 1500);
+    if (activationEpoch > 0) return;
+    const timer = window.setTimeout(checkMcpDiff, 1500);
     return () => window.clearTimeout(timer);
-  }, [startupReady]);
+  }, [startupReady, activationEpoch]);
 
   useEffect(() => {
     const main = document.querySelector("main");
@@ -275,7 +285,7 @@ export default function AppShell() {
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
               ) : view === "profiles" ? (
-                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
+                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
               ) : view === "mcp" ? (
                 <McpView key={mcpReset} activationEpoch={activationEpoch} />
               ) : view === "plugins" ? (

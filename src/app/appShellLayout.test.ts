@@ -26,7 +26,9 @@ describe("AppShell 布局", () => {
     expect(source).toContain('{mcpBadge ? <span className="apple-count-badge"');
     // 查询：必须被 startupReady 门控 + 固定延迟，禁止直接进首屏/冷启动关键路径
     expect(source).toContain("if (!startupReady) return;");
-    expect(source).toContain("}, 1500);");
+    expect(source).toContain("window.setTimeout(checkMcpDiff, 1500);");
+    // 不重复查：非静默启动时 onActive 已经查过，定时器只补静默启动那条路
+    expect(source).toContain("if (activationEpoch > 0) return;");
   });
 
   it("MCP 页查到差异后写回共享缓存，侧栏与页面同源", () => {
@@ -46,6 +48,15 @@ describe("AppShell 布局", () => {
     expect(mcpViewSource).toContain("mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) })");
   });
 
+  it("窗口激活时顺带查一次 MCP 差异，与启动后那次共用同一条规则", () => {
+    // 激活那几件套：刷新 state / 账号状态 / MCP 差异 / 恢复轮询
+    const onActive = source.slice(source.indexOf("const onActive = ()"), source.indexOf("const onInactive = ()"));
+    expect(onActive).toContain("checkMcpDiff()");
+    expect(onActive).toContain("void refresh()");
+    // 整个 AppShell 里只发这一个请求：复制一份出来就等于两处规则会分家
+    expect(source.split("api.mcpSyncPreview()").length - 1).toBe(1);
+  });
+
   it("只在窗口从非激活状态恢复时刷新", () => {
     expect(hooksSource).toContain("const activeRef = useRef(!document.hidden);");
     expect(hooksSource).toContain("if (activeRef.current) return false;");
@@ -61,6 +72,14 @@ describe("AppShell 布局", () => {
     expect(source).toContain('data-active={view === "accounts" ? "true" : undefined}');
     expect(source.indexOf('data-active={view === "accounts" ? "true" : undefined}')).toBeLessThan(source.indexOf('data-active={view === "settings" ? "true" : undefined}'));
     expect(source).toContain('onManageChatgptAccounts={goAccounts}');
+  });
+
+  it("冷启动窗口一路透传到供应商卡：余额刷新只在进程启动期间延后", () => {
+    const profilesViewSource = readFileSync(new URL("../features/profiles/ProfilesView.tsx", import.meta.url), "utf8");
+    const profileCardSource = readFileSync(new URL("../features/profiles/ProfileCard.tsx", import.meta.url), "utf8");
+    expect(source).toContain("coldStart={!startupReady}");
+    expect(profilesViewSource).toContain("coldStart={coldStart}");
+    expect(profileCardSource).toContain("coldStart: boolean;");
   });
 
   it("首屏完成后才启动自动更新检查", () => {

@@ -36,6 +36,8 @@ interface ProfileCardProps {
   dragHover?: boolean;
   busy: boolean;
   activationEpoch: number;
+  /// 本次进程启动还没走完（首屏尚未出窗）——只有这时才值得把余额刷新往后放
+  coldStart: boolean;
   balanceCache?: Record<string, ProfileBalanceInfo>;
   onApply: () => void;
   onRename: () => void;
@@ -135,6 +137,7 @@ export default function ProfileCard({
   dragHover = false,
   busy,
   activationEpoch,
+  coldStart,
   balanceCache,
   onApply,
   onRename,
@@ -216,12 +219,13 @@ export default function ProfileCard({
     // 值相同则保持原引用跳过重渲染：切页重挂载时卡片不闪
     setBalanceInfos((current) => (current.length === (info ? 1 : 0) && (info ? current[0] === info : true)) ? current : info ? [info] : []);
     setBalanceError(error);
-    // 网络刷新延后到首绘出窗之后：缓存数字先行显示，避免挂载即发的请求挤占冷启动尾部；
-    // 手动刷新按钮仍立即执行，窗口激活时由 activationEpoch 重新调度。
-    // 激活卡用 900ms 而非 500ms：供应商页内容区的进入动画是 800ms（style.css 页面切换动画区块），
-    // 动画结束前返回会在中段改动卡片内容造成闪动；
-    // 非激活卡的 1200ms 本就在动画之后。
-    const timer = window.setTimeout(() => void fetchBalance(), active ? 900 : 1200);
+    // 网络刷新延后到首绘出窗之后：缓存数字先行显示（上面那两行），避免挂载即发的请求
+    // 挤占冷启动尾部。两条路各自独立，互不影响：
+    // - 冷启动窗口内：激活卡 900ms（等供应商页 800ms 进入动画结束再改内容，避免闪动）、
+    //   非激活卡 1200ms——只有这时请求才会拖慢首屏出窗；
+    // - 日常（窗口已起来）：0，setTimeout(0) 即下一个宏任务立刻发，切页、聚焦、激活
+    //   都是普通刷新，不等。手动刷新按钮同样立即执行。
+    const timer = window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);
     return () => window.clearTimeout(timer);
     // The root owns the single activation listener; cards only react to its epoch.
     // eslint-disable-next-line react-hooks/exhaustive-deps

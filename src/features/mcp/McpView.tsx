@@ -68,7 +68,7 @@ export function compareMcpServers(left: McpServerSpec, right: McpServerSpec): nu
 function transportIcon(server: McpServerSpec) { const current = transportOf(server); return current === "http" ? Globe : current === "stdio" ? Terminal : CircleDashed; }
 function metaOf(server: McpServerSpec) { return server.command ? [server.command, ...server.args.slice(0, 2)].join(" ") : server.url ?? ""; }
 
-function McpToolsPanel({ result }: { result: McpProbeResult }) {
+function McpToolsPanel({ result, pending }: { result: McpProbeResult; pending: boolean }) {
   const { t } = useTranslation("mcp");
 
   return (
@@ -77,7 +77,9 @@ function McpToolsPanel({ result }: { result: McpProbeResult }) {
         {result.tools.map((tool) => (
           <code key={tool.name} className="apple-chip mono">{tool.name}</code>
         ))}
-        {!result.tools.length ? <p className="muted meta-xs">{t("list.noTools")}</p> : null}
+        {/* 工具清单还在路上（或压根没取过）时不下结论：此刻的 result 是连通探测留下的，
+            空列表只说明"还没取"，不说明"服务端没有工具" */}
+        {!result.tools.length && !pending ? <p className="muted meta-xs">{t("list.noTools")}</p> : null}
       </div>
     </div>
   );
@@ -167,7 +169,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
         <div className={`apple-disclosure mcp-tools-disclosure ${detailsVisible ? "apple-disclosure--open" : ""}`}>
           <div className="apple-disclosure__content" aria-hidden={!detailsVisible} inert={!detailsVisible}>
             <div className="apple-disclosure__body">
-              <McpToolsPanel result={result} />
+              <McpToolsPanel result={result} pending={toolsBusy || !toolsLoaded} />
             </div>
           </div>
         </div>
@@ -216,7 +218,14 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
     }
     finally { previewInFlight.current = false; }
   };
-  const refresh = async (force = false, skipProbeName?: string) => {
+  /// 重新读列表 + 查差异，顺带决定要不要重连 MCP。
+  /// 规则只有一条：**只有配置真的被改过的那几台才值得重连**——重连意味着把本机
+  /// stdio 服务真的拉起来再发网络请求，不能因为"数据变了"就无脑全量重探。
+  /// probe 不传 = 全连（挂载、整段重建这类配置整体变了的场景）；
+  /// `[]` = 一台都不连；`[name]` = 只连这几台。
+  /// 调用方若还要单独处理某一台（比如刚保存的要验一次连通），传 `[]`
+  /// 再自己调 probeServer——不要用"跳过它"来绕，那会把其余几台也全探一遍。
+  const refresh = async (force = false, only?: string[]) => {
     let next: McpServerSpec[] | null = null;
     try {
       next = await loadMcpServers(force);
@@ -229,7 +238,10 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
       setLoadError("");
     } catch (error) { setLoadError(String(error)); }
     finally { setLoaded(true); }
-    if (next) void Promise.all(next.filter((server) => server.name !== skipProbeName).map((server) => probeServer(server, false, false)));
+    if (next) {
+      const targets = only ? next.filter((server) => only.includes(server.name)) : next;
+      if (targets.length) void Promise.all(targets.map((server) => probeServer(server, false, false)));
+    }
     await loadPreview();
     return next;
   };
@@ -346,7 +358,14 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
-    try { await api.deleteMcpServer(server.name); deleteCachedMcpProbe(server.name); setEditingServer(null); feedback.success(t("feedback.deleted")); await refresh(true); }
+    try {
+      await api.deleteMcpServer(server.name);
+      deleteCachedMcpProbe(server.name);
+      setEditingServer(null);
+      feedback.success(t("feedback.deleted"));
+      // 删掉的那台已经不存在了，其余几台的配置一个字没动 → 一台都不用重连
+      await refresh(true, []);
+    }
     catch (error) { feedback.error(String(error)); }
   };
 
@@ -363,7 +382,9 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
     try {
       await applyDiffAction(action);
       feedback.success(t(verb === "adopt" ? "diff.adoptedToast" : "diff.revertedToast", { name: entry.name }));
-      await refresh(true);
+      // 同步只写数据库镜像，配置文件没被碰过 → 一台都不用重连；
+      // 撤回写回了 live，只有这一台的内容变了 → 只重连它
+      await refresh(true, verb === "revert" ? [entry.name] : []);
     } catch (error) { feedback.error(String(error)); }
     finally { setResolving(false); }
   };
@@ -391,7 +412,8 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
         ? await api.setMcpMirrorEntries(actions)
         : await api.revertMcpLiveEntries(actions);
       feedback.success(t("diff.resolvedAllToast", { count }));
-      await refresh(true);
+      // 同 resolveEntry：同步不碰配置文件，撤回只动被处理的那几台
+      await refresh(true, verb === "revert" ? actions.map((action) => action.name) : []);
     } catch (error) { feedback.error(String(error)); }
     finally { setResolving(false); }
   };
@@ -435,11 +457,13 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
           setEditingServer(null);
           setCreatingServer(false);
           void (async () => {
-            const next = await refresh(true, savedServer?.name);
-            if (savedServer) {
-              const saved = next?.find((server) => server.name === savedServer.name);
-              if (saved) await probeTools(saved, false, false);
-            }
+            // 保存后必须单独验一次这台的连通性——保存的最终结论就是"它还能不能用"。
+            // 只探这一台：其余几台的配置一个字没动，没有理由重连。
+            // 顺序不能反：refresh 结尾会拿缓存整体重铺一遍探测结果，而刚改过的这台
+            // 指纹已变、缓存里没有它，先探会被刷掉，灯反而灭。所以先等列表对齐再探，
+            // 且用表单保存下来的 spec 直接探，不依赖 refresh 的返回值（它可能为 null）。
+            try { await refresh(true, []); } catch { /* 列表刷新失败不拖累连通性验证 */ }
+            if (savedServer) await probeServer(savedServer, false, false);
           })();
         }}
         onDelete={editingServer ? () => removeServer(editingServer) : undefined}

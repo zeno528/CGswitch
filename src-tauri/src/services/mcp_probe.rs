@@ -11,7 +11,10 @@ use serde_json::{json, Value};
 use super::{app_err, AppContext, AppResult};
 use crate::models::{McpProbeResult, McpServerInfo, McpServerSpec, McpTool};
 
-const MCP_PROTOCOL_VERSION: &str = "2025-03-26";
+/// 我们声明支持的最高协议版本。2026-07-28 那版把 initialize 握手取消了，改成每个请求
+/// 自带版本号，所以能声明的最高版就是最后一个握手式 revision。报低会被服务端降级迁就
+/// （明明会说新话却只能说老话），报高等于撒谎，只有这个值是对的。
+const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 const PROBE_TIMEOUT: Duration = Duration::from_secs(12);
 const MAX_TOOLS: usize = 500;
 const MAX_DETAIL_CHARS: usize = 240;
@@ -94,6 +97,27 @@ fn push_sse_value(data: &mut String, values: &mut Vec<Value>) {
     data.clear();
 }
 
+/// 协议版本协商失败的错误码：服务端不接受我们报的版本，并在 data.supported 里列出它支持的。
+/// 这不是"连不上"——服务端活着、说的也是 MCP，只是不接受我们报的版本号，所以单独给它一句
+/// 能读懂的话："不支持"三个字同时被日志的 failure_kind 判定复用（见 log_probe_outcome）。
+const UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
+
+fn version_unsupported_message(error: &Value) -> String {
+    let supported: Vec<&str> = error
+        .get("data")
+        .and_then(|data| data.get("supported"))
+        .and_then(Value::as_array)
+        .map(|versions| versions.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    if supported.is_empty() {
+        return format!("服务端不支持协议版本 {MCP_PROTOCOL_VERSION}");
+    }
+    format!(
+        "服务端不支持协议版本 {MCP_PROTOCOL_VERSION}，它支持：{}",
+        supported.join("、")
+    )
+}
+
 fn rpc_result(values: Vec<Value>, id: u64, secrets: &[String]) -> Result<Value, String> {
     for value in values {
         if value.get("id").and_then(Value::as_u64) != Some(id) {
@@ -101,6 +125,9 @@ fn rpc_result(values: Vec<Value>, id: u64, secrets: &[String]) -> Result<Value, 
         }
         if let Some(error) = value.get("error") {
             let code = error.get("code").and_then(Value::as_i64).unwrap_or(-1);
+            if code == UNSUPPORTED_PROTOCOL_VERSION {
+                return Err(clean_detail(&version_unsupported_message(error), secrets));
+            }
             let message = error
                 .get("message")
                 .and_then(Value::as_str)
@@ -794,11 +821,16 @@ fn log_probe_outcome(
     if !result.ok {
         // 静默探测失败也记：状态点错过仍可在日志溯源
         let error = result.error.as_deref().unwrap_or("未知错误");
-        let failure_kind = match result.status {
-            Some(401 | 403) => "auth_error",
-            Some(_) => "http_error",
-            None if error.contains("环境变量未设置") => "validation_error",
-            None => "network_error",
+        // 版本协商失败优先判：它走 HTTP 时 status 是 200，会被兜底成 http_error——那是谎报军情
+        let failure_kind = if error.contains("不支持协议版本") {
+            "protocol_error"
+        } else {
+            match result.status {
+                Some(401 | 403) => "auth_error",
+                Some(_) => "http_error",
+                None if error.contains("环境变量未设置") => "validation_error",
+                None => "network_error",
+            }
         };
         let status = result
             .status
@@ -838,7 +870,8 @@ fn log_probe_outcome(
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_tools, parse_rpc_values, parse_tools_page, ProbeFailure, ToolsFetch, MAX_TOOLS,
+        collect_tools, parse_rpc_values, parse_tools_page, rpc_result, ProbeFailure, ToolsFetch,
+        MAX_TOOLS,
     };
     use crate::models::McpTool;
     use serde_json::{json, Value};
@@ -1016,5 +1049,42 @@ mod tests {
         assert_eq!(tools[0].name, "search");
         assert_eq!(tools[0].input_schema, json!({ "type": "object" }));
         assert_eq!(cursor.as_deref(), Some("next"));
+    }
+
+    #[test]
+    fn version_negotiation_error_names_the_versions_the_server_accepts() {
+        let message = rpc_result(
+            vec![json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": {
+                    "code": -32022,
+                    "message": "Unsupported protocol version",
+                    "data": { "supported": ["2026-07-28", "2025-11-25"], "requested": "1900-01-01" },
+                },
+            })],
+            1,
+            &[],
+        )
+        .unwrap_err();
+        // 说人话：不是"连不上"，是版本对不上，并给出对方认的版本
+        assert!(message.contains("不支持协议版本"));
+        assert!(message.contains("2026-07-28"));
+        assert!(!message.contains("-32022"));
+    }
+
+    #[test]
+    fn other_rpc_errors_keep_the_raw_code() {
+        let message = rpc_result(
+            vec![json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": { "code": -32601, "message": "Method not found" },
+            })],
+            1,
+            &[],
+        )
+        .unwrap_err();
+        assert_eq!(message, "MCP 错误 -32601: Method not found");
     }
 }
