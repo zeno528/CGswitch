@@ -21,6 +21,10 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).not.toContain("{codexAction ? <LoadingSpinner");
   });
 
+  it("成功通知区分启动与重启，不写死「已重启」", () => {
+    expect(source).toContain('t(action === "restart" ? "feedback.codexRestarted" : "feedback.codexStarted")');
+  });
+
   it("无更新提示时保留左侧占位，使右侧操作组不回流", () => {
     expect(source).toContain('<div className="min-w-0"><UpdateNotice /></div>');
     expect(source).toContain('apple-page-bar flex-wrap justify-between gap-4');
@@ -61,7 +65,7 @@ describe("ProfilesView 拖拽预览", () => {
     expect(refreshIndex).toBeGreaterThan(-1);
     expect(restartIndex).toBeGreaterThan(refreshIndex);
     expect(applySource).toContain('feedback.success(t("feedback.switchSuccess"))');
-    expect(applySource).toContain('feedback.success(t("feedback.switchRestarted"))');
+    expect(applySource).toContain('t(action === "restart" ? "feedback.switchRestarted" : "feedback.switchStarted")');
     expect(applySource).not.toContain('feedback.success(t("feedback.switchSuccess"));\n      if (state.settings.auto_restart)');
   });
 

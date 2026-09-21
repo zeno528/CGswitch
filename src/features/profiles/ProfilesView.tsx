@@ -160,18 +160,21 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
     finally { setBusy(false); }
   };
 
+  // 返回本次实际执行的动作，调用方（切换后的自动重启）据此选文案，不再各自推一遍状态
   const restart = async (force = false, notifySuccess = true) => {
-    if (busy && !force) return false;
+    if (busy && !force) return null;
     setBusy(true);
-    setCodexAction(codexActionFor(state.codex.running));
+    // 这次调用到底是"启动"还是"重启"由点击时的 Codex 状态决定，通知文案跟随它，不写死"已重启"
+    const action = codexActionFor(state.codex.running);
+    setCodexAction(action);
     try {
       await api.restartCodex();
-      if (notifySuccess) feedback.success(t("feedback.codexRestarted"));
+      if (notifySuccess) feedback.success(t(action === "restart" ? "feedback.codexRestarted" : "feedback.codexStarted"));
       await onRefresh();
-      return true;
+      return action;
     } catch (error) {
       feedback.error(String(error));
-      return false;
+      return null;
     } finally {
       setCodexAction(null);
       setBusy(false);
@@ -185,7 +188,8 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
       await api.applyProfile(profile.id);
       await onRefresh();
       if (state.settings.auto_restart) {
-        if (await restart(true, false)) feedback.success(t("feedback.switchRestarted"));
+        const action = await restart(true, false);
+        if (action) feedback.success(t(action === "restart" ? "feedback.switchRestarted" : "feedback.switchStarted"));
       } else {
         feedback.success(t("feedback.switchSuccess"));
       }

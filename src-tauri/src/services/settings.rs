@@ -100,6 +100,13 @@ impl AppContext {
             .map_err(|_| app_err!("操作锁已损坏"))?;
         self.sync_active_profile_from_live_locked()?;
         let process_ids = codex_process::find_process_ids(None);
+        // 本次动作由 Codex 是否在跑决定：在跑＝先停后启的重启，没跑＝纯启动。两者共用本函数，
+        // 收尾日志必须自己区分，否则纯启动也会记成“已重新启动”。
+        let action = if process_ids.is_empty() {
+            "start"
+        } else {
+            "restart"
+        };
         // 强杀会绕过 Electron 的优雅退出落盘，先抓下实时窗口矩形，强杀后写回状态
         // 文件（Windows）；Codex 未运行时无窗口可抓，返回 None，回写自然跳过
         let window_bounds = codex_window_state::capture_main_window_bounds(&process_ids);
@@ -166,10 +173,12 @@ impl AppContext {
         )?;
         match &result {
             Ok(()) => tauri_plugin_log::log::info!(
-                "[settings.restart] outcome=success msg=\"Codex 已重新启动\""
+                "[settings.restart] action={action} outcome=success msg=\"{}\"",
+                if action == "start" { "Codex 已启动" } else { "Codex 已重新启动" }
             ),
             Err(error) => tauri_plugin_log::log::warn!(
-                "[settings.restart] outcome=failure failure_kind=internal error={error:?} msg=\"Codex 重启失败\""
+                "[settings.restart] action={action} outcome=failure failure_kind=internal error={error:?} msg=\"{}\"",
+                if action == "start" { "Codex 启动失败" } else { "Codex 重启失败" }
             ),
         }
         result

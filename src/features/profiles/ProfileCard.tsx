@@ -114,13 +114,14 @@ interface ProfileCardActionsProps {
 export function ProfileCardActions({ active, busy, profile, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
   const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;
-  const connectionTitle = !profile.provider
-    ? t("connection.testSubscription")
+  // 订阅与普通供应商共用同一套悬停文案：缺什么报什么，其余一律“测试连通性”
+  const connectionTitle = !profile.provider || (profile.has_base_url && profile.has_key)
+    ? t("connection.test")
     : !profile.has_base_url ? t("connection.missingApiEndpointWarning")
-      : !profile.has_key ? t("connection.missingApiKeyWarning") : t("connection.test");
+      : t("connection.missingApiKeyWarning");
   return (
     <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
-      <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />{t("actions.inUse")}</> : t("actions.switch")}</button>
+      <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />{t("actions.inUse")}</> : t("actions.switch")}</button>
       <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
       <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:bg-(--profile-chip-bg) enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || busy || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
       <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
