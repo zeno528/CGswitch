@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider } from "./Feedback";
-import { getMcpDiffBadge, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { getMcpDiffBadge, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -41,8 +41,8 @@ export default function AppShell() {
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
   const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
-  // 有可逐条处理的差异显示数字；配置解析不了显示 "!"（与 MCP 页头按钮同款语义）
-  const mcpBadge = mcpDiffBadge?.count ? (mcpDiffBadge.count > 9 ? "9+" : String(mcpDiffBadge.count)) : mcpDiffBadge?.error ? "!" : null;
+  // 角标文本与 MCP 页头同源：规则住在 managementDataCache，不在两处各写一遍
+  const mcpBadge = mcpDiffBadgeText(mcpDiffBadge);
   const mcpBadgeTitle = mcpDiffBadge?.count
     ? tMcp("list.updateDiffAria", { count: mcpDiffBadge.count })
     : mcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;

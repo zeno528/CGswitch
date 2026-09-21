@@ -173,7 +173,7 @@ let webPlugins: PluginSummary[] = [
     name: "ponytail",
     version: "4.9.0",
     display_name: "Ponytail",
-    description: "用户自装的外部市场插件（经 codex CLI 卸载）",
+    description: "用户自装的第三方市场插件（经 codex CLI 卸载）",
     category: null,
     capabilities: [],
     contains: ["skills"],
@@ -217,7 +217,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "third-party",
     source_url: "https://github.com/DietrichGebert/ponytail.git",
     display_name: "Ponytail",
-    description: "外部插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流。",
+    description: "第三方插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流。",
   },
   {
     name: "youmind",
@@ -225,7 +225,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "third-party",
     source_url: "https://github.com/YouMind-OpenLab/plugin-marketplace.git",
     display_name: "YouMind",
-    description: "YouMind 外部插件市场，收录创作、设计和内容工作流插件。",
+    description: "YouMind 第三方插件市场，收录创作、设计和内容工作流插件。",
   },
 ];
 
@@ -259,7 +259,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_USE",
       source: "https://github.com/xiaolai/grill-for-claude.git",
       display_name: "Grill",
-      description: "用于代码工作流与开发辅助的外部插件。",
+      description: "用于代码工作流与开发辅助的第三方插件。",
       category: "Development",
       capabilities: ["Instructions"],
       contains: ["skills"],
@@ -272,7 +272,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_USE",
       source: "https://github.com/xiaolai/xros.git",
       display_name: "XROS",
-      description: "面向终端工作流的外部插件。",
+      description: "面向终端工作流的第三方插件。",
       category: "Productivity",
       capabilities: ["Instructions"],
       contains: ["skills"],
@@ -1028,8 +1028,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         source_url: source,
         display_name: name === "xiaolai" ? "xiaolai (Codex)" : name,
         description: name === "xiaolai"
-          ? "外部 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件。"
-          : "外部 Codex 插件市场。",
+          ? "第三方 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件。"
+          : "第三方 Codex 插件市场。",
       };
       webMarketplaces = [...webMarketplaces.filter((item) => item.name !== name), marketplace];
       webMarketplacePlugins[name] ??= (webRecommendedMarketplacePlugins[name] ?? []).map((plugin) => ({ ...plugin }));
@@ -1077,7 +1077,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const update = webPluginUpdates.find((item) => item.name === name && item.marketplace === marketplace);
       const target = webPlugins.find((item) => item.name === name && item.marketplace === marketplace);
       if (!update || !target || webMarketplaces.find((item) => item.name === marketplace)?.kind !== "third-party") {
-        throw new Error("只能升级外部插件市场中的插件");
+        throw new Error("只能升级第三方插件市场中的插件");
       }
       target.version = update.version;
       (webMarketplacePlugins[marketplace] ?? []).forEach((plugin) => {

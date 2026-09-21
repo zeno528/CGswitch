@@ -218,12 +218,12 @@ export default function PluginMarketplaceView({
                   </span>
                 )}
               >
-                <div className="mt-2 space-y-2">
+                <div className="apple-list-card mt-2">
                   {recommendedMarketplaces.map((recommended) => {
                     const configured = findConfiguredMarketplace(recommended, marketplaces);
                     return (
-                      <div key={recommended.name} className="rounded-[var(--radius-control)] px-2.5 py-2 shadow-[0_0_0_1px_var(--panel-ring)]">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div key={recommended.name} className="apple-list-row">
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-semibold">{recommended.displayName}</span>
@@ -255,15 +255,12 @@ export default function PluginMarketplaceView({
               </div>
               {marketplacesError ? <p className="muted mt-2 text-sm">{marketplacesError}</p> : null}
               {marketplaces.length ? (
-                <div className="mt-3 space-y-2">
+                <div className="apple-list-card mt-3">
                   {marketplaces.map((marketplace) => {
                     const pluginCount = marketplacePluginCounts[marketplace.name];
                     return (
-                      <div
-                        key={marketplace.name}
-                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[var(--radius-control)] px-3 py-2.5 shadow-[0_0_0_1px_var(--panel-ring)]"
-                      >
-                        <div className="min-w-0">
+                      <div key={marketplace.name} className="apple-list-row">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-semibold">{marketplace.display_name ?? marketplace.name}</span>
                             <span className="apple-chip">{t(marketplaceKindLabels[marketplace.kind])}</span>

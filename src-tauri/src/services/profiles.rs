@@ -154,14 +154,14 @@ impl AppContext {
         })
     }
 
+    /// 读不了就当没有：调用方不需要区分"文件不存在"和"解析失败"。
     pub(super) fn live_document(&self) -> Option<toml_edit::DocumentMut> {
-        let text = std::fs::read_to_string(self.paths.codex_config()).ok()?;
-        codex_config::parse_document(&text).ok()
+        self.live_document_checked().ok().flatten()
     }
 
-    /// 与 `live_document` 同一次读取、同一次解析，但把解析错误交出来而不是吞成 `None`。
+    /// `live_document` 的保留错误版：同一次读取、同一次解析，但把错误交出来。
     /// 拉起 Codex 前用它：这份文件读不了，Codex 也起不来，日志必须留痕。
-    /// 文件不存在仍返回 `None`（首次运行），与 `live_document` 保持一致。
+    /// 文件不存在返回 `None`（首次运行）。
     pub(super) fn live_document_checked(&self) -> AppResult<Option<toml_edit::DocumentMut>> {
         let path = self.paths.codex_config();
         let text = match std::fs::read_to_string(&path) {

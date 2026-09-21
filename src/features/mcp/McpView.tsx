@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, setCachedMcpProbe, setMcpDiffBadge, setMcpServersCache } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setMcpDiffBadge, setMcpServersCache } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
@@ -106,7 +106,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
   const Icon = transportIcon(server);
 
   return (
-    <div className="apple-group" onClick={(event) => {
+    <div onClick={(event) => {
       if (!detailsVisible || !(event.target instanceof HTMLElement) || event.target.closest('button, input, code, [role="switch"]')) return;
       onToggleTools(server);
     }}>
@@ -410,6 +410,8 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
 
   const orderedServers = [...servers].sort(compareMcpServers);
   const diffCount = syncPreview?.entries.length ?? 0;
+  // 角标文本与侧栏同源：这条规则只住在 managementDataCache，不在这里再写一遍
+  const badgeText = mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) });
 
   if (diffOpen) {
     return (
@@ -457,11 +459,11 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
           </div>
         </div>
         <div className="flex w-full max-w-md items-center justify-end gap-2">
-          {diffCount || previewError ? (
+          {badgeText ? (
             <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
               <GitCompare className="h-4 w-4" strokeWidth={2} />
               {t("list.resolveDiff")}
-              <span className="apple-count-badge" aria-hidden="true">{diffCount ? (diffCount > 9 ? "9+" : diffCount) : "!"}</span>
+              <span className="apple-count-badge" aria-hidden="true">{badgeText}</span>
             </button>
           ) : null}
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
@@ -483,7 +485,7 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
               <p className="muted">{t("empty.description")}</p>
             </EmptyStateCard>
           ) : servers.length ? (
-            <div className="space-y-2">
+            <div className="apple-group apple-list-card">
               {orderedServers.map((server) => (
                 <McpServerRow
                   key={server.name}

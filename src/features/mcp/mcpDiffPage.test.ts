@@ -84,7 +84,8 @@ describe("MCP 差异行级对比", () => {
 
 describe("MCP 差异二级页", () => {
   it("差异入口仅在存在差异或解析失败时出现，徽章显示待处理数量", () => {
-    expect(viewSource).toContain("{diffCount || previewError ? (");
+    // 入口条件与角标文本都走共享规则（见 managementDataCache），页面不再自己判一遍
+    expect(viewSource).toContain("{badgeText ? (");
     expect(viewSource).toContain('className="apple-count-badge"');
     expect(viewSource).not.toContain("list.diffChip");
     expect(viewSource).not.toContain("McpSyncDialog");

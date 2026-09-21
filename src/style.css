@@ -262,6 +262,21 @@ body {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* 插件来源胶囊：官方与第三方各用一个着重色区分（形状沿用版本胶囊的圆角矩形，
+   只有配色不同）。第三方走警告色不是随手挑的——marketDetail.thirdPartyNotice
+   本来就在提示第三方插件可能加载失败，配色与既有立场一致。
+   底色是半透明 tint，两种主题共用一档：它直接落在卡片上（不像 .apple-chip--accent
+   底下垫着实心 --chip-bg），深浅差异由卡片自身底色承担。 */
+.origin-chip--official {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.origin-chip--third-party {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
 /* 订阅套餐徽标（配置卡片/账号列表）：直接透出所在卡片底色，只以细边缘勾勒。 */
 .plan-badge {
   display: inline-flex;
@@ -1327,16 +1342,42 @@ body.drag-active * {
   padding: 0.625rem 0.75rem;
 }
 
-/* MCP 列表卡片：apple-group 内的首行去掉独立行底色，与下方工具面板合成一张卡 */
+/* MCP 差异卡片的头行：与下方展开体合成一张卡（差异页的行仍直接嵌在 apple-group 里） */
 .apple-group > .mcp-expanded-card__header {
   background: transparent;
   border-radius: 0;
   box-shadow: none;
 }
 
-/* 独立成卡的列表行：覆盖 .apple-list-row 的 control 圆角改用整卡圆角（插件行 / Skill 行共用） */
-.plugin-list-row,
-.skill-list-row { border-radius: var(--radius-card); }
+/* 分组列表：行与行之间一条发丝线，行本身不带卡片外观（底色/圆角/描边/横向内边距
+   都归容器）。MCP / 插件 / Skill 一级列表与插件市场面板内的列表共用这一套定义，
+   页面只写 className，不各自复制结构。设置页有同源结构（SettingsSections 的
+   apple-group + divide-y），这里是它的固化版本。 */
+.apple-list-card {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 独立成卡时才自己补整卡横向内边距；嵌在 .apple-panel-section 里不要用这条
+   （面板已经有一层 --gap-card-inline，再加就是双重缩进）。 */
+.apple-group.apple-list-card {
+  padding: 0 var(--gap-card-inline);
+}
+
+.apple-list-card > * + * {
+  border-top: 1px solid var(--panel-divider);
+}
+
+/* box-shadow 必须一起去掉：.apple-list-row 自带 --card-edge-shadow（style.css 顶部），
+   留着的话每行都会在分割线之上再画一圈 0.5px 卡片描边，叠成毛边。
+   同源处理见上面的 .apple-group > .mcp-expanded-card__header。
+   行高与设置页对齐（py-4）：行间距不再由独立卡片的间隙提供，只靠这层纵向内边距。 */
+.apple-list-card .apple-list-row {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 1rem 0;
+}
 
 /* MCP 卡片展开体（工具面板/差异详情共用）：去掉 body 顶部内边距，内容紧贴卡片头 */
 .mcp-tools-disclosure.apple-disclosure--open .apple-disclosure__body { padding-top: 0; }

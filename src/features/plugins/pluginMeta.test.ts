@@ -14,7 +14,7 @@ describe("插件搜索", () => {
 });
 
 describe("插件列表排序", () => {
-  it("外部市场 → 内置 runtime 市场 → 官方 curated 市场，组内按名称", () => {
+  it("第三方市场 → 内置 runtime 市场 → 官方 curated 市场，组内按名称", () => {
     const plugin = (name: string, origin: string, marketplace: string) =>
       ({ name, origin, marketplace }) as Parameters<typeof comparePlugins>[0];
     const ordered = [

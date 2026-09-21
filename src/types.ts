@@ -285,7 +285,7 @@ export interface PluginSummary {
   capabilities: string[];
   contains: string[];
   enabled: boolean;
-  /** official=官方市场；codex=外部市场。 */
+  /** official=官方市场；codex=第三方市场。 */
   origin: "official" | "codex";
   marketplace: string | null;
   store_path: string;

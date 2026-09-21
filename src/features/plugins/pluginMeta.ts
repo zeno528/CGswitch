@@ -44,7 +44,7 @@ export const recommendedMarketplaces = [
   },
 ] as const;
 
-/// 插件排序分层：外部市场（用户添加）→ 内置 runtime 市场 → 官方 curated 市场。组内按名称。
+/// 插件排序分层：第三方市场（用户添加）→ 内置 runtime 市场 → 官方 curated 市场。组内按名称。
 function pluginTier(plugin: PluginSummary): number {
   if (plugin.origin !== "official") return 0;
   return plugin.marketplace?.includes("curated") ? 2 : 1;

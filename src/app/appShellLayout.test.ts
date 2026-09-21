@@ -40,8 +40,10 @@ describe("AppShell 布局", () => {
     expect(mcpViewSource).toContain("setMcpDiffBadge({ count: 0, error: true })");
     // 启动后的静默刷新同理：失败不能被吞掉
     expect(source).toContain("setMcpDiffBadge({ count: 0, error: true })");
-    // 角标内容：有差异显示数字，解析失败显示 "!"（与 MCP 页头按钮同款语义）
-    expect(source).toContain('mcpDiffBadge?.error ? "!" : null');
+    // 角标文本规则只住在 managementDataCache：侧栏与 MCP 页头必须调同一个函数，
+    // 分家就会出现"一边 9+ 一边 128"或"一边 ! 一边数字"
+    expect(source).toContain("const mcpBadge = mcpDiffBadgeText(mcpDiffBadge)");
+    expect(mcpViewSource).toContain("mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) })");
   });
 
   it("只在窗口从非激活状态恢复时刷新", () => {

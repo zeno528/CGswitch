@@ -206,6 +206,15 @@ export function getMcpDiffBadge(): McpDiffBadge | null {
   return mcpDiffBadge;
 }
 
+/// 角标文本：有差异显示数量（>9 折成 9+），差异算不出来显示 `!`，都没有则不显示。
+/// 侧栏与 MCP 页头共用这一条规则——同一个状态在两处必须长一样，分家就会一边 9+
+/// 一边 128，或者一边 `!` 一边数字。
+export function mcpDiffBadgeText(badge: McpDiffBadge | null): string | null {
+  if (!badge) return null;
+  if (badge.count > 0) return badge.count > 9 ? "9+" : String(badge.count);
+  return badge.error ? "!" : null;
+}
+
 export function setMcpDiffBadge(next: McpDiffBadge): void {
   if (mcpDiffBadge && mcpDiffBadge.count === next.count && mcpDiffBadge.error === next.error) return;
   mcpDiffBadge = next;

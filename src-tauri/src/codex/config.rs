@@ -750,7 +750,12 @@ pub fn replace_mcp_section_from_fragments(
 /// 定位不到 MCP 区域、或镜像片段一条都不可用时返回 `None`：那时只能走备份恢复，
 /// 整份重写会连带丢掉区域外的全部配置，代价远高于收益。
 pub fn rebuild_mcp_region_text(live_text: &str, fragments: &[(String, String)]) -> Option<String> {
-    let replacement = render_mcp_fragments(fragments);
+    // 镜像片段渲染成可直接拼接的文本，解析不了的跳过——一条坏片段不该让整次修复失败
+    let replacement: Vec<String> = fragments
+        .iter()
+        .filter(|(name, fragment)| !is_managed_mcp_name(name) && parse_document(fragment).is_ok())
+        .map(|(_, fragment)| format!("{}\n\n", fragment.trim()))
+        .collect();
     if replacement.is_empty() {
         return None;
     }
@@ -788,10 +793,7 @@ pub fn rebuild_mcp_region_text(live_text: &str, fragments: &[(String, String)]) 
         rebuilt.extend(replacement);
     }
 
-    let mut text = lines[..start].concat();
-    text.extend(rebuilt);
-    text.push_str(&lines[end..].concat());
-    Some(text)
+    Some(lines[..start].concat() + &rebuilt.concat() + &lines[end..].concat())
 }
 
 /// 行首表头里 `mcp_servers` 之后的名字（`[mcp_servers]` 自身返回空串）；
@@ -815,15 +817,6 @@ fn mcp_region_name(line: &str) -> Option<&str> {
 
 fn is_table_header(line: &str) -> bool {
     line.trim_start().starts_with('[')
-}
-
-/// 镜像片段渲染成可直接拼接的文本，跳过解析不了的那些。
-fn render_mcp_fragments(fragments: &[(String, String)]) -> Vec<String> {
-    fragments
-        .iter()
-        .filter(|(name, fragment)| !is_managed_mcp_name(name) && parse_document(fragment).is_ok())
-        .map(|(_, fragment)| format!("{}\n\n", fragment.trim()))
-        .collect()
 }
 
 /// 把表单建模字段写进单服务器片段文本（编辑页"表单 → 编辑器"实时同步用）。

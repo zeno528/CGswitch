@@ -117,9 +117,9 @@ export default function PluginsView({ state }: { state: AppState }) {
             <p className="muted">{t("list.empty")}</p>
           </EmptyStateCard>
         ) : plugins.length ? (
-          <div className="space-y-2">
+          <div className="apple-group apple-list-card">
             {visiblePlugins.map((plugin) => (
-              <div key={plugin.name} className="apple-list-row plugin-list-row">
+              <div key={plugin.name} className="apple-list-row">
                 <div
                   className="group min-w-0 flex-1 cursor-pointer text-left"
                   role="button"
@@ -140,17 +140,15 @@ export default function PluginsView({ state }: { state: AppState }) {
                     {plugin.version ? (
                       <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">v{plugin.version}</span>
                     ) : null}
-                    {originLabels[plugin.origin] ? (
-                      <span className="shrink-0 rounded-md bg-black/5 px-1.5 py-px font-medium tracking-wide muted meta-xs dark:bg-white/10">{t(originLabels[plugin.origin]!)}</span>
-                    ) : null}
+                    <ContainsChips items={plugin.contains} />
                     {plugin.enabled ? null : <span className="apple-chip chip-warn shrink-0">{t("detail.disabled")}</span>}
+                    {originLabels[plugin.origin] ? (
+                      <span className={`shrink-0 rounded-md px-1.5 py-px font-medium tracking-wide meta-xs ${plugin.origin === "official" ? "origin-chip--official" : "origin-chip--third-party"}`}>{t(originLabels[plugin.origin]!)}</span>
+                    ) : null}
                     {plugin.source_url ? <SourceLink source={plugin.source_url} /> : null}
                   </div>
                   <div className="muted meta-xs truncate">
                     {plugin.description ?? plugin.name}
-                  </div>
-                  <div className="mt-1 flex items-center gap-2">
-                    <ContainsChips items={plugin.contains} />
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
