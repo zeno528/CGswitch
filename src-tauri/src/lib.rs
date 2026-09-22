@@ -276,7 +276,9 @@ pub fn run() {
                     Default::default()
                 }
             };
-            if settings.autostart_enabled {
+            // dev 构建与安装版共用 identifier，自启注册表值名同为 productName，
+            // dev 若照常同步会把开机自启改写成 target/debug 下的二进制
+            if settings.autostart_enabled && !tauri::is_dev() {
                 match app.autolaunch().enable() {
                     Ok(()) => {
                         log::debug!("[autostart.sync] outcome=success msg=\"开机自启已启用\"")

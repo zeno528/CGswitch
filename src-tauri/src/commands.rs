@@ -965,6 +965,10 @@ pub async fn save_settings(
 
 fn sync_autostart(app: &AppHandle, settings: &Settings) -> AppResult<()> {
     use tauri_plugin_autostart::ManagerExt;
+    // 同上：dev 构建不得写入指向 target/debug 的开机自启
+    if tauri::is_dev() {
+        return Ok(());
+    }
     if settings.autostart_enabled {
         app.autolaunch()
             .enable()

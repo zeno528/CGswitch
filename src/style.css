@@ -582,7 +582,9 @@ main:has(.apple-edit-page) {
   background: var(--main-surface-bg);
 }
 
-/* 页面切换动画：仅标题栏下方内容区纯位移上浮，不淡入淡出（无黑场），标题栏永不参与 */
+/* 页面切换动画：仅标题栏下方内容区纯位移上浮，不淡入淡出（无黑场），标题栏永不参与。
+   时长停在位移真正结束的点上：缓动尾段只走亚像素却仍在逐帧移动，位移期间的轻微发虚会被它放大。
+   换成 top 逐帧重画能让字更稳，但绘制回到主线程，尾段反而暴露掉帧。 */
 @keyframes apple-page-enter {
   from { transform: translateY(6px); }
   to { transform: translateY(0); }
@@ -596,7 +598,7 @@ main:has(.apple-edit-page) {
 }
 
 .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
-  animation: apple-page-enter 800ms cubic-bezier(0.16, 1, 0.35, 1) both;
+  animation: apple-page-enter 700ms cubic-bezier(0.16, 1, 0.35, 1);
 }
 
 :root.dark .apple-main-card {
