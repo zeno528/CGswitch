@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### 修复
+- dev 构建（`pnpm dev:tauri`）不再同步开机自启：dev 与安装版共用标识符，此前 dev 启动会把开机自启改写成 `target/debug` 下的二进制，重启后应用只连本地开发服务器并显示「无法访问此页面」。
+
+### 界面与样式
+- 页面切换动画时长由 800ms 收紧到 700ms，并去掉 `both` 填充模式：位移结束即停，缓动尾段的亚像素移动不再被放大。
+- 供应商列表移除常驻 `will-change-transform`。
+
+## [0.19.7] - 2026-09-22
+
 ### 新增
 - MCP 差异处理改二级页：列表「处理差异」按钮改为「更新」进入独立差异处理页（`McpDiffPage`），行级 diff（LCS）展示红行（数据库旧内容）/ 绿行（config.toml 新内容），支持单条或批量「同步 / 撤销」（`adopt` / `revert`），默认全部展开，右上角帮助卡解释红绿行含义与动作。
 - Codex 启动 vs 重启文案语义分离：状态按钮启动用 `LoadingSpinner`，重启用 `RefreshCw` 自旋图标；重启函数返回 `action`（"start" / "restart"），通知文案跟随（`codexStarted` / `codexRestarted` / `switchStarted` / `switchRestarted`）。
