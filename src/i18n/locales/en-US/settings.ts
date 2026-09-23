@@ -2,7 +2,7 @@
 export default {
   appearance: {
     title: "Appearance",
-    description: "Change the app color scheme. Applies immediately.",
+    description: "Choose the app display appearance.",
   },
   theme: {
     system: "System",
@@ -11,7 +11,7 @@ export default {
   },
   language: {
     title: "Language",
-    description: "Choose the interface language. Applies immediately.",
+    description: "Choose the app display language.",
     system: "Auto-detect",
     zh: "简体中文",
     en: "English",
@@ -79,7 +79,7 @@ export default {
     resetCreditsTitle: "Manual reset count",
     resetCredits: "{{count}} times",
     resetCreditTitle: "Reset card",
-    resetCreditFullTitle: "Full reset (Weekly + 5 hr)",
+    resetCreditFullTitle: "Full reset",
     resetCreditExpiry: "Expires: {{time}}",
     resetCreditDaysRemaining: "in {{count}} days",
     resetCreditExpiryUnknown: "No expiration provided",

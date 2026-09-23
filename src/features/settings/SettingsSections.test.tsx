@@ -200,7 +200,7 @@ describe("SettingsSections", () => {
     const zhHtml = render();
     expect(zhHtml).toContain("界面语言");
     expect(zhHtml).toContain("外观主题");
-    expect(zhHtml.indexOf("界面语言")).toBeLessThan(zhHtml.indexOf("外观主题"));
+    expect(zhHtml.indexOf("外观主题")).toBeLessThan(zhHtml.indexOf("界面语言"));
     expect(zhHtml).toContain("自动检测");
 
     setupI18n("en-US");
@@ -314,7 +314,7 @@ describe("SettingsSections", () => {
     expect(accountsViewSource).toContain('timeZoneName: "short"');
     expect(html.indexOf("跟随 Codex登录")).toBeLessThan(html.indexOf(">Plus</span>"));
     expect(html).toContain("2 次");
-    expect(html).toContain("完全重置（每周 + 5 小时）");
+    expect(html).toContain("完全重置");
     expect(html).toContain("到期：");
     expect(html).toContain("3h12m 后");
     expect(accountsViewSource).toContain('month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"');

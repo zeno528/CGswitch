@@ -2,7 +2,7 @@
 export default {
   appearance: {
     title: "外观主题",
-    description: "更改应用界面的配色，切换立即生效",
+    description: "选择应用的显示外观",
   },
   theme: {
     system: "跟随系统",
@@ -11,7 +11,7 @@ export default {
   },
   language: {
     title: "界面语言",
-    description: "选择界面显示语言，点击后立即生效",
+    description: "选择应用的显示语言",
     system: "自动检测",
     zh: "简体中文",
     en: "English",
@@ -32,7 +32,7 @@ export default {
     title: "设置",
     backHome: "返回首页",
     sectionsLabel: "设置分区",
-    tabGeneral: "通用",
+    tabGeneral: "常规",
     tabApp: "应用",
     tabAdvanced: "高级",
     tabAbout: "关于",
@@ -79,7 +79,7 @@ export default {
     resetCreditsTitle: "主动重置次数",
     resetCredits: "{{count}} 次",
     resetCreditTitle: "重置卡",
-    resetCreditFullTitle: "完全重置（每周 + 5 小时）",
+    resetCreditFullTitle: "完全重置",
     resetCreditExpiry: "到期：{{time}}",
     resetCreditDaysRemaining: "{{count}} 天后",
     resetCreditExpiryUnknown: "未提供到期时间",

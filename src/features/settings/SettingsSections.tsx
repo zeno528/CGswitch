@@ -67,24 +67,6 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
             <div className="flex items-center justify-between gap-4 py-4">
               <div className="flex min-w-0 items-start gap-3">
                 <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
-                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <div className="setting-title">{t("language.title")}</div>
-                  <div className="setting-description mt-0.5">{t("language.description")}</div>
-                </div>
-              </div>
-              <div className="w-72 shrink-0">
-                <AppSelect
-                  value={form.language}
-                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
-                  onChange={(value) => onPatch({ language: value })}
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-4 py-4">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
                   <Palette className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
@@ -106,6 +88,24 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                     {t(option.labelKey)}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-4 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                  <Languages className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="setting-title">{t("language.title")}</div>
+                  <div className="setting-description mt-0.5">{t("language.description")}</div>
+                </div>
+              </div>
+              <div className="w-72 shrink-0">
+                <AppSelect
+                  value={form.language}
+                  options={languageOptions.map((option) => ({ label: t(option.labelKey), value: option.value }))}
+                  onChange={(value) => onPatch({ language: value })}
+                />
               </div>
             </div>
           </div>

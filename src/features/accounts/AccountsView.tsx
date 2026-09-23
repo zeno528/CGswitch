@@ -228,12 +228,23 @@ function ResetCredits({ availableCount, credits }: { availableCount: number; cre
   return <section className="mt-3 border-t border-[var(--panel-divider)] pt-3">
     <div className="flex items-center gap-3">
       <CreditCard className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
-      <div className="flex min-w-0 items-baseline gap-2"><div className="setting-title">{t("account.resetCreditsTitle")}</div><div className="setting-description">{t("account.resetCredits", { count: availableCount })}</div></div>
+      <div className="flex min-w-0 items-baseline gap-2"><div className="setting-title">{t("account.resetCreditsTitle")}</div><span className="apple-chip muted shrink-0">{t("account.resetCredits", { count: availableCount })}</span></div>
     </div>
-    {credits?.length ? <div className="mt-3 divide-y divide-[var(--panel-divider)]">
+    {/* 复用额度失败卡的同款内嵌卡片容器，一张次数一张卡 */}
+    {credits?.length ? <div className="mt-3 space-y-2">
       {credits.map((credit) => {
         const days = daysRemaining(credit.expires_at);
-        return <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2.5 first:pt-0 last:pb-0"><div className="field-label min-w-0">{resetTitle(credit.reset_type)}</div><div className="whitespace-nowrap text-xs">{t("account.resetCreditExpiry", { time: formatExpiry(credit.expires_at) })}{days == null ? null : <span className="muted"> · {t("account.resetCreditDaysRemaining", { count: days })}</span>}</div></div>;
+        // 剩余天数临期变色：≤3 天危险、≤7 天警告，平时次要色
+        const daysClass = days == null ? "muted" : days <= 3 ? "text-(--danger)" : days <= 7 ? "text-(--warning)" : "muted";
+        return (
+          <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-(--panel-border) bg-(--profile-chip-bg) px-3 py-2.5">
+            <div className="min-w-0 text-xs">{resetTitle(credit.reset_type)}</div>
+            <div className="whitespace-nowrap text-xs">
+              {t("account.resetCreditExpiry", { time: formatExpiry(credit.expires_at) })}
+              {days == null ? null : <span className={daysClass}> · {t("account.resetCreditDaysRemaining", { count: days })}</span>}
+            </div>
+          </div>
+        );
       })}
     </div> : null}
   </section>;
