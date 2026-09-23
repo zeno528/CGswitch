@@ -53,7 +53,7 @@ export default {
     loginTimeout: "登录等待超时，请重试",
     waitingAuth: "等待授权中...",
     cancelLogin: "取消登录",
-    followCodex: "跟随 Codex登录",
+    followCodex: "Codex 桌面端",
     oauthDeviceLogin: "OAuth 登录",
     remove: "移除",
     addAnother: "添加账号",

@@ -41,7 +41,7 @@ export default {
     providerDuplicated: "供应商已复制",
   },
   card: {
-    authDesktop: "跟随 Codex登录",
+    authDesktop: "Codex 桌面端",
     authOAuth: "OAuth登录",
     usageRemaining: "{{label}}: 剩",
     notSet: "未设置",

@@ -53,7 +53,7 @@ export default {
     loginTimeout: "Sign-in timed out. Please try again.",
     waitingAuth: "Waiting for authorization...",
     cancelLogin: "Cancel sign-in",
-    followCodex: "Sign in with Codex",
+    followCodex: "Codex desktop",
     oauthDeviceLogin: "OAuth sign-in",
     remove: "Remove",
     addAnother: "Add account",

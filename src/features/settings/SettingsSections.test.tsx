@@ -304,7 +304,7 @@ describe("SettingsSections", () => {
     };
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={status} balanceCache={{ "auth:desktop:desktop": balance }} /></FeedbackProvider>);
-    expect(html.indexOf("desktop@example.com")).toBeLessThan(html.indexOf("跟随 Codex登录"));
+    expect(html.indexOf("desktop@example.com")).toBeLessThan(html.indexOf("Codex 桌面端"));
     expect(html.indexOf("oauth@example.com")).toBeLessThan(html.indexOf("OAuth 登录"));
     // 套餐徽标：官方原词首字母大写，pro 走强调色 chip
     expect(html).toContain(">Plus</span>");
@@ -312,7 +312,7 @@ describe("SettingsSections", () => {
     expect(html.match(/套餐续期日（[^）]+）：/g)).toHaveLength(2);
     expect(html).toContain("天后");
     expect(accountsViewSource).toContain('timeZoneName: "short"');
-    expect(html.indexOf("跟随 Codex登录")).toBeLessThan(html.indexOf(">Plus</span>"));
+    expect(html.indexOf("Codex 桌面端")).toBeLessThan(html.indexOf(">Plus</span>"));
     expect(html).toContain("2 次");
     expect(html).toContain("完全重置");
     expect(html).toContain("到期：");

@@ -41,7 +41,7 @@ export default {
     providerDuplicated: "Provider duplicated",
   },
   card: {
-    authDesktop: "Sign in with Codex",
+    authDesktop: "Codex desktop",
     authOAuth: "OAuth sign-in",
     usageRemaining: "{{label}} remaining: ",
     notSet: "Not set",
