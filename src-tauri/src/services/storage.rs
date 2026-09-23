@@ -10,10 +10,12 @@ fn now_seconds() -> u64 {
         .unwrap_or_default()
 }
 
-fn database_backup_name() -> String {
+// 手动备份带 manual- 标记，自动备份保持纯时间戳：前端靠文件名区分记录行的"手动/自动"前缀
+fn database_backup_name(manual: bool) -> String {
     let now = chrono::Local::now();
+    let marker = if manual { "manual-" } else { "" };
     format!(
-        "{}{}-{:03}.db",
+        "{}{marker}{}-{:03}.db",
         DATABASE_BACKUP_PREFIX,
         now.format("%Y%m%d-%H%M%S"),
         now.timestamp_subsec_millis()
@@ -41,7 +43,7 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        let target = self.export_database_unlocked()?;
+        let target = self.export_database_unlocked(true)?;
         tauri_plugin_log::log::info!(
             "[backup.export] target={:?} outcome=success msg=\"已创建数据库备份\"",
             target
@@ -61,7 +63,7 @@ impl AppContext {
         if !directory.is_dir() {
             return Err(app_err!("导出目录不存在"));
         }
-        let target = directory.join(database_backup_name());
+        let target = directory.join(database_backup_name(false));
         self.database.export_database(&target)?;
         tauri_plugin_log::log::info!(
             "[backup.export] target={:?} outcome=success msg=\"已导出数据库备份\"",
@@ -73,11 +75,11 @@ impl AppContext {
         Ok(target)
     }
 
-    pub(super) fn export_database_unlocked(&self) -> AppResult<PathBuf> {
+    pub(super) fn export_database_unlocked(&self, manual: bool) -> AppResult<PathBuf> {
         let directory = &self.paths.database_backup;
         std::fs::create_dir_all(directory)
             .map_err(|error| app_err!("无法创建备份目录: {error}"))?;
-        let name = database_backup_name();
+        let name = database_backup_name(manual);
         let target = directory.join(&name);
         self.database.export_database(&target)?;
         let keep = backup_keep_count(self.settings()?.database_backup_keep_count);
@@ -114,7 +116,7 @@ impl AppContext {
             return Ok(false);
         }
 
-        self.export_database_unlocked()?;
+        self.export_database_unlocked(false)?;
         // 自动备份是静默发生的（无 UI 反馈），文件日志留一行便于事后确认它真的跑过
         if let Some(latest) = self.list_database_backups()?.first() {
             tauri_plugin_log::log::info!(
@@ -270,5 +272,18 @@ impl AppContext {
             return Err(app_err!("无效的备份文件名"));
         }
         Ok(self.paths.database_backup.join(name))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::database_backup_name;
+
+    #[test]
+    fn backup_name_carries_source_marker() {
+        let auto = database_backup_name(false);
+        assert!(auto.starts_with("cg-backup-"));
+        assert!(!auto.contains("manual-"));
+        assert!(database_backup_name(true).starts_with("cg-backup-manual-"));
     }
 }

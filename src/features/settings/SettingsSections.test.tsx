@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FeedbackProvider } from "../../app/Feedback";
 import { AppUpdateProvider } from "../updates/AppUpdateProvider";
-import { SettingsAbout, SettingsGeneral, backupTitle, formatSize, formatTimestamp } from "./SettingsSections";
+import { SettingsAbout, SettingsAdvanced, SettingsGeneral, backupTitle, formatSize, formatShortTimestamp, formatTimestamp, isAutoBackupName, isManualBackupName } from "./SettingsSections";
 import AccountsView from "../accounts/AccountsView";
 import { setupI18n } from "../../i18n";
 import { webInvoke } from "../../api/web-mock";
@@ -29,6 +29,69 @@ describe("SettingsSections", () => {
 
   it("formats backup timestamps", () => {
     expect(formatTimestamp(0)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  });
+
+  it("识别自动备份的时间戳文件名", () => {
+    expect(isAutoBackupName("cg-backup-20260822-120000-000.db")).toBe(true);
+    expect(isAutoBackupName("cgswitch-export-demo.db")).toBe(false);
+    // 手动「立即备份」带 manual- 标记，自动备份没有
+    expect(isManualBackupName("cg-backup-manual-20260923-120000-000.db")).toBe(true);
+    expect(isManualBackupName("cg-backup-20260822-120000-000.db")).toBe(false);
+  });
+
+  it("formats short timestamps for auto backup row titles", () => {
+    expect(formatShortTimestamp(0)).toMatch(/^\d{2}-\d{2} \d{2}:\d{2}$/);
+  });
+
+  it("备份管理为外围大卡嵌三张小卡：操作、自动备份、备份记录", () => {
+    setupI18n("zh-CN");
+    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+    const html = renderToStaticMarkup(
+      <FeedbackProvider><SettingsAdvanced form={form} onPatch={() => undefined} paths={[]} backupsEpoch={0} onOpenPath={() => undefined} onRefresh={() => Promise.resolve()} /></FeedbackProvider>,
+    );
+    expect(html).toContain("数据备份");
+    expect(html).toContain("备份记录");
+    // 首帧无缓存时不渲染空态文案：切分页重挂载靠缓存直出，不闪"还没有备份记录"
+    expect(html).not.toContain("还没有备份记录。");
+    // 外围一张大卡分节，内嵌卡片只给备份频率/最多保留选项与每条备份记录，备份记录不再折叠
+    expect(html.match(/role="switch"/g)).toHaveLength(1);
+    expect(settingsSectionsSource).toContain("onCheckedChange={(on) => onPatch({ auto_backup_interval_hours: on ? 6 : 0 })}");
+    expect(settingsSectionsSource).not.toContain('t("backup.off")');
+    expect(html).toContain("备份频率");
+    expect(html).toContain("按备份频率自动创建");
+    // 开关同时控制备份频率与最多保留两个下拉，关掉都禁用
+    expect(settingsSectionsSource.match(/disabled=\{form.auto_backup_interval_hours === 0\}/g)).toHaveLength(2);
+    expect(html).toContain("disabled");
+    // 操作按钮在数据备份小卡内整排等宽铺开
+    expect(settingsSectionsSource.match(/apple-action-button flex-1/g)).toHaveLength(3);
+    // 记录行独立成卡（apple-list-row 脱离 list-card 自带底色描边），来源用高亮药丸标记；
+    // 药丸等宽居中，英文 Auto/Manual 长短不一也不把标题列推歪
+    expect(settingsSectionsSource).toContain("apple-chip--accent");
+    expect(settingsSectionsSource).toContain("apple-chip--success");
+    expect(settingsSectionsSource).toContain('apple-chip apple-chip--roomy shrink-0');
+    expect(settingsSectionsSource).toContain('className="apple-list-row"');
+    expect(settingsSectionsSource).not.toContain('"apple-list-card"');
+    expect(settingsSectionsSource).not.toContain('className="space-y-2"');
+    expect(settingsSectionsSource).not.toContain("apple-nested-card");
+    expect(styles).toContain(".apple-chip--success {");
+    // 备份记录摘要行可点折叠：复用 AppDisclosure，不另写展开收缩；
+    // 折叠状态用模块级变量做会话内记忆（切分页不重置，重启回默认展开）
+    expect(settingsSectionsSource).toContain("<AppDisclosure");
+    expect(settingsSectionsSource).toContain("setRecordsOpen");
+    expect(settingsSectionsSource).toContain('className="backup-records-disclosure py-4"');
+    expect(settingsSectionsSource).toContain("let recordsOpenSession = false");
+    expect(settingsSectionsSource).toContain("recordsOpenSession = open");
+    // 大卡内部用分割线分节；频率/保留两块选项走内嵌小卡（描边圆角 p-3）
+    expect(settingsSectionsSource).toContain('className="flex flex-col divide-y divide-[var(--panel-divider)]"');
+    expect(settingsSectionsSource.match(/rounded-xl border border-\[var\(--panel-border\)\] p-3/g)).toHaveLength(2);
+    expect(settingsSectionsSource).not.toContain("apple-panel-section");
+    // 立即备份是唯一的实心主按钮，导入/导出/文件夹保持次级药丸
+    expect(html.match(/app-button--primary/g)).toHaveLength(1);
+    // 操作区常显不折叠（无 backupOpen 状态）
+    expect(settingsSectionsSource).not.toContain("backupOpen");
+    expect(settingsSectionsSource).toContain("apple-inline-btn--quiet");
+    expect(settingsSectionsSource).toContain('aria-haspopup="menu"');
+    expect(settingsSectionsSource).toContain('role="menuitem"');
   });
 
   it("keeps the active theme option at normal weight", () => {

@@ -1,15 +1,17 @@
-import { Database, DatabaseBackup, Download, ExternalLink, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, Palette, PanelBottomClose, Pencil, Power, RefreshCw, Save, Sun, Upload } from "lucide-react";
+import { Clock, Database, Download, ExternalLink, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { type ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api, isTauri } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { getCachedDatabaseBackups, loadDatabaseBackups } from "../../app/managementDataCache";
 import { AppDialog } from "../../components/AppDialog";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
-import { TrashIcon } from "../../components/TrashIcon";
+import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
 import { updateFailureMessage } from "../updates/updateText";
 import { useAppUpdate, releaseNotesUrl } from "../updates/AppUpdateProvider";
 import { UpdateNotesDialog } from "../updates/UpdateNotesDialog";
@@ -27,9 +29,19 @@ const BACKUP_DIR_LABEL = "about.paths.backups"; // i18n-exempt: 数据标签比�
 const pathLabel = (t: (key: "about.paths.appData") => string, label: string): string =>
   label.startsWith("about.paths.") ? t(label as "about.paths.appData") : label;
 
+const pad2 = (value: number) => String(value).padStart(2, "0");
 export const backupTitle = (name: string) => name.replace(/^(?:cg-backup-|cgswitch-export-)/, "").replace(/\.db$/, "");
+// 自动备份文件名剥前缀后是纯时间戳（20260822-120000-000），手动「立即备份」带 manual- 标记，
+// 重命名过的是自由文本；行标题的"自动/手动"前缀据此区分
+export const isAutoBackupName = (name: string) => /^\d{8}-\d{6}-\d{3}$/.test(backupTitle(name));
+export const isManualBackupName = (name: string) => /^manual-\d{8}-\d{6}-\d{3}$/.test(backupTitle(name));
 export const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-export const formatTimestamp = (seconds: number) => { const date = new Date(seconds * 1000); const pad = (value: number) => String(value).padStart(2, "0"); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`; };
+// 备份记录折叠状态的会话内记忆：切分页重挂载不丢，重启回到默认折叠（不持久化）。
+// 默认折叠：记录列表随自动备份只增不减，展开态会把设置页越顶越长
+let recordsOpenSession = false;
+export const formatTimestamp = (seconds: number) => { const date = new Date(seconds * 1000); return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`; };
+// 自动备份行标题里的短时间（MM-DD HH:mm）：完整时间在行的 meta 里，标题只做扫读锚点
+export const formatShortTimestamp = (seconds: number) => { const date = new Date(seconds * 1000); return `${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`; };
 
 // 设置页各分区统一的左上角标题包装：标题 id 与 aria-labelledby 成对生成
 export function SettingsPanelSection({ id, label, children }: { id: string; label: string; children: ReactNode }) {
@@ -135,18 +147,21 @@ interface SettingsAdvancedProps { form: Settings; onPatch: (patch: Partial<Setti
 export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPath, onRefresh }: SettingsAdvancedProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("settings");
-  const autoBackupOptions = [{ label: t("backup.off"), value: 0 }, { label: t("backup.interval6h"), value: 6 }, { label: t("backup.interval12h"), value: 12 }, { label: t("backup.interval24h"), value: 24 }, { label: t("backup.interval48h"), value: 48 }, { label: t("backup.interval7d"), value: 168 }];
+  // 开关负责自动备份的启停（关 = interval 0），下拉只管间隔，不再提供"关闭"档
+  const autoBackupOptions = [{ label: t("backup.interval6h"), value: 6 }, { label: t("backup.interval12h"), value: 12 }, { label: t("backup.interval24h"), value: 24 }, { label: t("backup.interval48h"), value: 48 }, { label: t("backup.interval7d"), value: 168 }];
   const keepOptions = [3, 5, 10, 15, 20, 30].map((value) => ({ label: t("backup.keepCount", { count: value }), value }));
-  const [backups, setBackups] = useState<DatabaseBackupInfo[]>([]);
+  // null = 尚未加载过：首帧无缓存时不渲染"还没有备份记录"空态，防切分页闪现
+  const [backups, setBackups] = useState<DatabaseBackupInfo[] | null>(getCachedDatabaseBackups);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DatabaseBackupInfo | null>(null);
   const [renameText, setRenameText] = useState("");
   const [renaming, setRenaming] = useState(false);
-  const [backupOpen, setBackupOpen] = useState(true);
+  const [recordsOpen, setRecordsOpen] = useState(recordsOpenSession);
 
-  const loadBackups = async () => { try { setBackups(await api.listDatabaseBackups()); } catch { setBackups([]); } };
-  useEffect(() => { void loadBackups(); }, [backupsEpoch]);
+  // 进页先缓存直出再静默刷新（CLAUDE.md 管理页数据约定）；本地增删改/epoch 变更走 force
+  const loadBackups = async (force = false) => { try { setBackups(await loadDatabaseBackups(force)); } catch { setBackups(null); } };
+  useEffect(() => { void loadBackups(true); }, [backupsEpoch]);
 
   const exportBackupToFile = async () => {
     if (exporting) return;
@@ -157,103 +172,158 @@ export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPat
   };
   const importBackupFromFile = async () => {
     if (importing) return;
-    try { let picked: string | null = null; if (isTauri) { const result = await openDialog({ title: t("backup.pickImportFile"), multiple: false, filters: [{ name: t("backup.sqliteFilter"), extensions: ["db"] }] }); picked = typeof result === "string" ? result : null; if (!picked) return; } setImporting(true); await api.importDatabase(picked ?? "mock-backup.db"); feedback.success(t("backup.toastImported")); await onRefresh(); await loadBackups(); }
+    try { let picked: string | null = null; if (isTauri) { const result = await openDialog({ title: t("backup.pickImportFile"), multiple: false, filters: [{ name: t("backup.sqliteFilter"), extensions: ["db"] }] }); picked = typeof result === "string" ? result : null; if (!picked) return; } setImporting(true); await api.importDatabase(picked ?? "mock-backup.db"); feedback.success(t("backup.toastImported")); await onRefresh(); await loadBackups(true); }
     catch (error) { feedback.error(String(error)); }
     finally { setImporting(false); }
   };
-  const createImmediateBackup = async () => { if (exporting) return; setExporting(true); try { await api.exportDatabase(); feedback.success(t("backup.toastCreated")); await loadBackups(); } catch (error) { feedback.error(String(error)); } finally { setExporting(false); } };
+  const createImmediateBackup = async () => { if (exporting) return; setExporting(true); try { await api.exportDatabase(); feedback.success(t("backup.toastCreated")); await loadBackups(true); } catch (error) { feedback.error(String(error)); } finally { setExporting(false); } };
   const openRename = (backup: DatabaseBackupInfo) => { setRenameTarget(backup); setRenameText(backupTitle(backup.name)); };
-  const submitRename = async () => { const target = renameTarget; const text = renameText.trim(); if (!target || renaming || !text || text === backupTitle(target.name)) { setRenameTarget(null); return; } setRenaming(true); try { await api.renameDatabaseBackup(target.name, text); feedback.success(t("backup.toastRenamed")); await loadBackups(); setRenameTarget(null); } catch (error) { feedback.error(String(error)); } finally { setRenaming(false); } };
-  const restoreBackup = async (backup: DatabaseBackupInfo) => { if (!await feedback.confirm({ title: t("backup.restoreConfirmTitle"), description: t("backup.restoreConfirm", { name: backup.name }), confirmText: t("backup.restore"), destructive: true })) return; try { await api.restoreDatabase(backup.name); feedback.success(t("backup.toastRestored")); await onRefresh(); await loadBackups(); } catch (error) { feedback.error(String(error)); } };
-  const deleteBackup = async (backup: DatabaseBackupInfo) => { if (!await feedback.confirm({ title: t("backup.deleteConfirmTitle"), description: <Trans ns="settings" i18nKey="backup.deleteConfirm" values={{ name: backup.name }} components={{ strong: <strong /> }} />, confirmText: t("backup.delete"), destructive: true })) return; try { await api.deleteDatabaseBackup(backup.name); feedback.success(t("backup.toastDeleted")); await loadBackups(); } catch (error) { feedback.error(String(error)); } };
+  const submitRename = async () => { const target = renameTarget; const text = renameText.trim(); if (!target || renaming || !text || text === backupTitle(target.name)) { setRenameTarget(null); return; } setRenaming(true); try { await api.renameDatabaseBackup(target.name, text); feedback.success(t("backup.toastRenamed")); await loadBackups(true); setRenameTarget(null); } catch (error) { feedback.error(String(error)); } finally { setRenaming(false); } };
+  const restoreBackup = async (backup: DatabaseBackupInfo) => { if (!await feedback.confirm({ title: t("backup.restoreConfirmTitle"), description: t("backup.restoreConfirm", { name: backup.name }), confirmText: t("backup.restore"), destructive: true })) return; try { await api.restoreDatabase(backup.name); feedback.success(t("backup.toastRestored")); await onRefresh(); await loadBackups(true); } catch (error) { feedback.error(String(error)); } };
+  const deleteBackup = async (backup: DatabaseBackupInfo) => { if (!await feedback.confirm({ title: t("backup.deleteConfirmTitle"), description: <Trans ns="settings" i18nKey="backup.deleteConfirm" values={{ name: backup.name }} components={{ strong: <strong /> }} />, confirmText: t("backup.delete"), destructive: true })) return; try { await api.deleteDatabaseBackup(backup.name); feedback.success(t("backup.toastDeleted")); await loadBackups(true); } catch (error) { feedback.error(String(error)); } };
+
+  // ⋯ 菜单：apple-group 是 overflow:hidden，行内 absolute 弹层会被裁掉，
+  // 走 portal + fixed 定位，向下/向上自适应翻转复用 AppSelect 的共享逻辑；
+  // 外点 / 滚动即收起
+  const [menuTarget, setMenuTarget] = useState<{ backup: DatabaseBackupInfo; trigger: HTMLElement } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useFixedMenuPosition(menuTarget !== null, menuTarget?.trigger ?? null, menuRef, "end");
+  const openMenu = (backup: DatabaseBackupInfo, trigger: HTMLElement) => {
+    setMenuTarget({ backup, trigger });
+  };
+  useEffect(() => {
+    if (!menuTarget) return;
+    const close = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest("[data-row-menu], [data-row-menu-trigger]")) return;
+      setMenuTarget(null);
+    };
+    document.addEventListener("pointerdown", close);
+    window.addEventListener("scroll", close, true);
+    return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("scroll", close, true); };
+  }, [menuTarget]);
+  const rowMenu = menuTarget ? createPortal(
+    <div ref={menuRef} className="app-select-menu" data-open="true" data-row-menu role="menu" aria-label={t("backup.moreTooltip")} style={{ ...menuStyle, minWidth: "10rem" }} onKeyDown={(event) => { if (event.key === "Escape") setMenuTarget(null); }}>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state" onClick={() => { const target = menuTarget.backup; setMenuTarget(null); openRename(target); }}>
+        <span className="flex items-center gap-2"><Pencil className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("backup.renameAction")}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state app-select-option--danger" onClick={() => { const target = menuTarget.backup; setMenuTarget(null); void deleteBackup(target); }}>
+        <span className="flex items-center gap-2"><Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("backup.deleteAction")}</span>
+      </button>
+    </div>,
+    document.body,
+  ) : null;
+  const recordsSummary = backups !== null && backups.length > 0 ? t("backup.recordSummary", { count: backups.length, size: formatSize(backups.reduce((total, backup) => total + backup.size_bytes, 0)) }) : "";
 
   return (
-    <div className="apple-group">
-      <section className="apple-panel-section">
+    <div className="apple-group px-[var(--gap-card-inline)]">
+      <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
+        {/* 数据备份：标题 + 整排操作按钮 */}
+        <div className="flex flex-col gap-4 py-4">
+          <div className="flex items-start gap-3">
+            <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+              <Database className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <div className="setting-title">{t("backup.title")}</div>
+              <div className="setting-description mt-0.5">{t("backup.description")}</div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="apple-action-button app-button--primary flex-1" disabled={exporting} onClick={() => void createImmediateBackup()}>
+              <Save className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("backup.createNow")}
+            </button>
+            <button type="button" className="apple-action-button flex-1" disabled={importing} onClick={() => void importBackupFromFile()}>
+              <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("backup.import")}
+            </button>
+            <button type="button" className="apple-action-button flex-1" disabled={exporting} onClick={() => void exportBackupToFile()}>
+              <Upload className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("backup.export")}
+            </button>
+            <button type="button" className="apple-action-button flex-1" onClick={() => { const item = paths.find((path) => path.label === BACKUP_DIR_LABEL); if (item) onOpenPath(item); else feedback.warning(t("backup.toastFolderMissing")); }}>
+              <FolderOpen className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("backup.folder")}
+            </button>
+          </div>
+        </div>
+        {/* 自动备份：开关在右侧控制启停，关掉时频率/保留两个下拉都不可用 */}
+        <div className="flex flex-col gap-4 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <div className="setting-title">{t("backup.autoLabel")}</div>
+              <div className="setting-description mt-0.5">{t("backup.autoDescription")}</div>
+            </div>
+            <AppSwitch checked={form.auto_backup_interval_hours > 0} onCheckedChange={(on) => onPatch({ auto_backup_interval_hours: on ? 6 : 0 })} label={t("backup.autoLabel")} />
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-[var(--panel-border)] p-3">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
+                <span className="field-label muted">{t("backup.frequencyLabel")}</span>
+              </div>
+              {/* 关闭时展示即将启用的默认间隔（与开关打开写入的 6 一致），避免显示裸 0 */}
+              <AppSelect value={form.auto_backup_interval_hours || 6} options={autoBackupOptions} disabled={form.auto_backup_interval_hours === 0} onChange={(value) => onPatch({ auto_backup_interval_hours: value })} />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-[var(--panel-border)] p-3">
+              <div className="flex items-center gap-2">
+                <Database className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
+                <span className="field-label muted">{t("backup.keepLabel")}</span>
+              </div>
+              <AppSelect value={form.database_backup_keep_count} options={keepOptions} disabled={form.auto_backup_interval_hours === 0} onChange={(value) => onPatch({ database_backup_keep_count: value })} />
+            </div>
+          </div>
+        </div>
+        {/* 备份记录：摘要行可点折叠（复用 AppDisclosure）；行独立成卡，来源用高亮药丸标记 */}
         <AppDisclosure
-          open={backupOpen}
-          onOpenChange={setBackupOpen}
+          className="backup-records-disclosure py-4"
+          open={recordsOpen}
+          onOpenChange={(open) => { recordsOpenSession = open; setRecordsOpen(open); }}
           summary={(
             <>
               <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
-                <Database className="h-[18px] w-[18px]" strokeWidth={2} />
+                <History className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
               </span>
               <span className="min-w-0">
-                <span className="setting-title block">{t("backup.title")}</span>
-                <span className="setting-description mt-0.5 block">{t("backup.description")}</span>
+                <span className="setting-title block">{t("backup.recordsTitle")}</span>
+                <span className="setting-description mt-0.5 block">{recordsSummary}</span>
               </span>
             </>
           )}
         >
-          <div className="border-t border-[var(--panel-divider)] pt-4">
-                <div className="title-sm">{t("backup.actionsTitle")}</div>
-                <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
-                  <button type="button" className="apple-action-button" disabled={exporting} onClick={() => void createImmediateBackup()}>
-                    <Save className="h-4 w-4 text-accent" strokeWidth={2} />
-                    {t("backup.createNow")}
-                  </button>
-                  <button type="button" className="apple-action-button" onClick={() => { const item = paths.find((path) => path.label === BACKUP_DIR_LABEL); if (item) onOpenPath(item); else feedback.warning(t("backup.toastFolderMissing")); }}>
-                    <FolderOpen className="h-4 w-4 text-[var(--warning)]" strokeWidth={2} />
-                    {t("backup.folder")}
-                  </button>
-                  <button type="button" className="apple-action-button" disabled={importing} onClick={() => void importBackupFromFile()}>
-                    <Download className="h-4 w-4 text-accent" strokeWidth={2} />
-                    {t("backup.import")}
-                  </button>
-                  <button type="button" className="apple-action-button" disabled={exporting} onClick={() => void exportBackupToFile()}>
-                    <Upload className="h-4 w-4 text-success" strokeWidth={2} />
-                    {t("backup.export")}
-                  </button>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="field-label muted mb-1.5">{t("backup.autoLabel")}</div>
-                    <AppSelect value={form.auto_backup_interval_hours} options={autoBackupOptions} onChange={(value) => onPatch({ auto_backup_interval_hours: value })} />
-                  </div>
-                  <div>
-                    <div className="field-label muted mb-1.5">{t("backup.keepLabel")}</div>
-                    <AppSelect value={form.database_backup_keep_count} options={keepOptions} onChange={(value) => onPatch({ database_backup_keep_count: value })} />
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4 border-t border-[var(--panel-divider)] pt-4">
-                <div className="setting-title">{t("backup.recordsTitle")}</div>
-                {backups.length ? (
-                  <div className="mt-2 space-y-2">
-                    {backups.map((backup) => (
-                      <div key={backup.name} className="apple-list-row">
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          <span className="settings-icon-tile grid h-8 w-8 shrink-0 place-items-center rounded-lg">
-                            <Database className="h-4 w-4" strokeWidth={2} />
-                          </span>
-                          <div className="min-w-0">
-                            <div className="mono truncate text-xs font-medium">{backup.name}</div>
-                            <div className="muted meta-xs">{formatTimestamp(backup.created_at)} · {formatSize(backup.size_bytes)}</div>
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 gap-1.5">
-                          <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" title={t("backup.renameTooltip")} onClick={() => openRename(backup)}>
-                            <Pencil className="h-4 w-4" strokeWidth={2} />
-                          </button>
-                          <button type="button" className="apple-icon-button text-accent" title={t("backup.restoreTooltip")} onClick={() => void restoreBackup(backup)}>
-                            <DatabaseBackup className="h-4 w-4" strokeWidth={2} />
-                          </button>
-                          <button type="button" className="apple-icon-button text-[var(--danger)]/70" title={t("backup.deleteTooltip")} onClick={() => void deleteBackup(backup)}>
-                            <TrashIcon />
-                          </button>
-                        </div>
+          {backups !== null && backups.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {backups.map((backup) => {
+                const menuOpen = menuTarget?.backup.name === backup.name;
+                const auto = isAutoBackupName(backup.name);
+                return (
+                  <div key={backup.name} className="apple-list-row">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className={`apple-chip apple-chip--roomy shrink-0 ${auto ? "apple-chip--accent" : "apple-chip--success"}`}>{auto ? t("backup.badgeAuto") : t("backup.badgeManual")}</span>
+                      <div className="min-w-0">
+                        <div className="field-label truncate">{auto || isManualBackupName(backup.name) ? formatShortTimestamp(backup.created_at) : backupTitle(backup.name)}</div>
+                        <div className="muted meta-xs mt-0.5 truncate">{formatTimestamp(backup.created_at)} · {formatSize(backup.size_bytes)}</div>
                       </div>
-                    ))}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button type="button" className="apple-inline-btn apple-inline-btn--quiet" onClick={() => void restoreBackup(backup)}><RotateCcw className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("backup.restore")}</button>
+                      <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" data-row-menu-trigger aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t("backup.moreTooltip")} onClick={(event) => (menuOpen ? setMenuTarget(null) : openMenu(backup, event.currentTarget))} onKeyDown={(event) => { if (event.key === "Escape") setMenuTarget(null); }}>
+                        <MoreHorizontal className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="setting-description mt-2 flex items-center gap-2">
-                    <Database className="h-4 w-4" />
-                    {t("backup.empty")}
-                  </div>
-                )}
-              </div>
+                );
+              })}
+            </div>
+          ) : backups !== null ? (
+            <div className="setting-description flex items-center gap-2">
+              <Database className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("backup.empty")}
+            </div>
+          ) : null}
         </AppDisclosure>
-      </section>
+      </div>
+      {rowMenu}
       <AppDialog open={renameTarget !== null} onOpenChange={(open) => { if (!open) setRenameTarget(null); }} title={t("backup.renameDialogTitle")} footer={<><button type="button" className="apple-action-button" onClick={() => setRenameTarget(null)}>{t("backup.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={renaming || !renameText.trim()} onClick={() => void submitRename()}>{t("backup.save")}</button></>}><input className="app-input" maxLength={80} placeholder={t("backup.renamePlaceholder")} value={renameText} onChange={(event) => setRenameText(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submitRename(); }} /></AppDialog>
     </div>
   );

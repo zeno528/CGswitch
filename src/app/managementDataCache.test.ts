@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listMcpServers, listMarketplacePlugins, listPlugins } = vi.hoisted(() => ({
+const { listMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
   listMcpServers: vi.fn(),
   listMarketplacePlugins: vi.fn(),
   listPlugins: vi.fn(),
+  listDatabaseBackups: vi.fn(),
 }));
 const persistedStorage = new Map<string, string>();
 const localStorageMock = {
@@ -11,12 +12,13 @@ const localStorageMock = {
   setItem: (key: string, value: string) => persistedStorage.set(key, value),
 };
 
-vi.mock("../api", () => ({ api: { listMcpServers, listMarketplacePlugins, listPlugins } }));
+vi.mock("../api", () => ({ api: { listMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
 
 describe("managementDataCache", () => {
   beforeEach(() => {
     vi.resetModules();
     listMcpServers.mockReset();
+    listDatabaseBackups.mockReset();
     persistedStorage.clear();
     vi.stubGlobal("localStorage", localStorageMock);
   });
@@ -34,6 +36,19 @@ describe("managementDataCache", () => {
 
     expect(cache.getCachedMcpServers()).toEqual(servers);
     expect(listMcpServers).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the cached backup list when the settings page remounts", async () => {
+    const backups = [{ name: "cg-backup-20260923-120000-000.db", size_bytes: 400, created_at: 0 }];
+    listDatabaseBackups.mockResolvedValue(backups);
+    const cache = await import("./managementDataCache");
+
+    expect(cache.getCachedDatabaseBackups()).toBeNull();
+    await cache.loadDatabaseBackups();
+    await cache.loadDatabaseBackups();
+
+    expect(cache.getCachedDatabaseBackups()).toEqual(backups);
+    expect(listDatabaseBackups).toHaveBeenCalledTimes(1);
   });
 
   it("shares MCP probe and tool results only for the same configuration", async () => {

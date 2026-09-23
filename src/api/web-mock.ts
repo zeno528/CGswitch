@@ -561,7 +561,7 @@ const webAuthStatus = {
 
 function databaseBackupName(date = new Date()): string {
   const pad = (value: number, length = 2) => String(value).padStart(length, "0");
-  return `cg-backup-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}.db`;
+  return `cg-backup-manual-${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}.db`;
 }
 
 function webState(): AppState {

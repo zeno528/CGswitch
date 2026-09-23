@@ -2,10 +2,8 @@ import { Check, ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
-
-/** 菜单展示高度封顶（20rem），须与 style.css 里 .app-select-menu 的 max-height 保持一致。 */
-const MENU_MAX_HEIGHT = 320;
+import type { ReactNode } from "react";
+import { useFixedMenuPosition } from "./useFixedMenuPosition";
 
 interface SelectOption<T extends string | number = string> {
   label: string;
@@ -35,9 +33,10 @@ export function AppSelect<T extends string | number>({
   const selected = options.find((option) => String(option.value) === String(value));
   const hasOptions = options.length > 0;
   const [open, setOpen] = useState(false);
-  const [menuStyle, setMenuStyle] = useState<CSSProperties>();
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  // 定位（向下/向上自适应翻转）与行内 ⋯ 菜单共用同一套逻辑
+  const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, "match");
 
   useEffect(() => {
     if (!open) return;
@@ -48,34 +47,6 @@ export function AppSelect<T extends string | number>({
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
   }, [open]);
-
-  useLayoutEffect(() => {
-    if (!open) return;
-    const updatePosition = () => {
-      const root = rootRef.current;
-      const menu = menuRef.current;
-      if (!root || !menu) return;
-      const rect = root.getBoundingClientRect();
-      const gap = 6;
-      const menuHeight = menu.scrollHeight;
-      const below = window.innerHeight - rect.bottom - gap;
-      const above = rect.top - gap;
-      // 翻转判定用实际会展示的高度（CSS max-height 封顶后的值），而不是内容
-      // 完整高度 scrollHeight：后者会高估需求，导致下方空间明明够却向上翻转
-      const effectiveHeight = Math.min(menuHeight, MENU_MAX_HEIGHT);
-      const nextPlacement = below < effectiveHeight && above > below ? "top" : "bottom";
-      setMenuStyle({
-        left: `${rect.left}px`,
-        width: `${rect.width}px`,
-        ...(nextPlacement === "top" ? { top: "auto", bottom: `${window.innerHeight - rect.top + gap}px` } : { top: `${rect.bottom + gap}px`, bottom: "auto" }),
-      });
-    };
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-    };
-  }, [open, options.length]);
 
   // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
   // 菜单是 fixed 定位，offsetTop 即相对菜单的偏移；把选中项滚到可视区中部，越界时 scrollTop 自动收敛

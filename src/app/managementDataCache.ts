@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { MarketplacePlugin, McpProbeResult, McpServerSpec, PluginMarketplace, PluginSummary, SkillSummary } from "../types";
+import type { DatabaseBackupInfo, MarketplacePlugin, McpProbeResult, McpServerSpec, PluginMarketplace, PluginSummary, SkillSummary } from "../types";
 
 export type McpProbeCacheEntry = {
   fingerprint: string;
@@ -103,6 +103,9 @@ const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPl
   key: "cgswitch.plugin-marketplaces-cache-v1",
   restore: restoreNamedList<PluginMarketplace>,
 });
+// 备份记录列表：只在内存缓存（不落 localStorage）——设置页切分页重挂载时直出，
+// 避免先闪"还没有备份记录"空态；跨重启的首开由进页静默刷新立刻补齐。
+const databaseBackups = createManagementCache<DatabaseBackupInfo[]>(api.listDatabaseBackups);
 const mcpProbes = new Map<string, McpProbeCacheEntry>();
 let mcpProbeStorageLoaded = false;
 
@@ -177,6 +180,14 @@ export function getCachedMcpServers(): McpServerSpec[] | null {
 
 export function setMcpServersCache(items: McpServerSpec[]): void {
   mcpServers.set(items);
+}
+
+export function loadDatabaseBackups(force = false): Promise<DatabaseBackupInfo[]> {
+  return databaseBackups.load(force);
+}
+
+export function getCachedDatabaseBackups(): DatabaseBackupInfo[] | null {
+  return databaseBackups.get();
 }
 
 // ==================== MCP 差异角标（侧栏 + MCP 页） ====================
