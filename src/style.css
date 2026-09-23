@@ -607,7 +607,7 @@ main:has(.apple-edit-page) {
    时长停在位移真正结束的点上：缓动尾段只走亚像素却仍在逐帧移动，位移期间的轻微发虚会被它放大。
    换成 top 逐帧重画能让字更稳，但绘制回到主线程，尾段反而暴露掉帧。 */
 @keyframes apple-page-enter {
-  from { transform: translateY(6px); }
+  from { transform: translateY(8px); }
   to { transform: translateY(0); }
 }
 
@@ -618,13 +618,7 @@ main:has(.apple-edit-page) {
   flex-direction: column;
 }
 
-.apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
-  animation: apple-page-enter 700ms cubic-bezier(0.16, 1, 0.35, 1);
-}
-
-/* 设置页 tab 切换：上浮只作用于各分区标题之外的卡片内容，左上角分区标题原位不参与。
-   设置内容区里只有 SettingsPanelSection 用 <section> 标签，无嵌套，不会叠加动画。 */
-.apple-page-enter > .settings-page > .apple-edit-content :is(section) > :not(h2) {
+.apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {
   animation: apple-page-enter 700ms cubic-bezier(0.16, 1, 0.35, 1);
 }
 
@@ -1591,11 +1585,7 @@ button:focus-visible {
   transition-duration: 1ms !important;
   }
 
-  .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {
-    animation: none;
-  }
-
-  .apple-page-enter > .settings-page > .apple-edit-content :is(section) > :not(h2) {
+  .apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {
     animation: none;
   }
 

@@ -250,10 +250,9 @@ describe("AppShell 布局", () => {
   });
 
   it("编辑页在详情完成后再一次性揭示，保留页面进入动画", () => {
-    expect(styles).toContain("@keyframes apple-page-enter {\n  from { transform: translateY(6px); }");
+    expect(styles).toContain("@keyframes apple-page-enter {\n  from { transform: translateY(8px); }");
     expect(styles).toContain(".apple-page-enter {\n  display: flex;");
-    expect(styles).toContain(".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content {\n  animation: apple-page-enter");
-    expect(styles).toContain(".apple-page-enter > .settings-page > .apple-edit-content :is(section) > :not(h2) {\n  animation: apple-page-enter");
+    expect(styles).toContain(".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {\n  animation: apple-page-enter");
     expect(profileEditSource).toContain("if (((!create && !detail) || authStatusPending) && !loadError) return null;");
   });
 
