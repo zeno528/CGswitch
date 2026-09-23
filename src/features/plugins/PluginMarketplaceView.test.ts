@@ -18,4 +18,11 @@ describe("插件市场卡片", () => {
     expect(source).toContain("useState<PluginMarketplace[]>(cachedMarketplaces ?? [])");
     expect(source).toContain("useState(cachedMarketplaces !== null)");
   });
+
+  it("页面分官方/第三方两卡：分组直出、未配置推荐渲染安装行，推荐折叠区不再存在", () => {
+    expect(source).toContain("splitMarketplaceCards(marketplaces)");
+    expect(source).toContain('t("action.install")');
+    expect(source).not.toContain("AppDisclosure");
+    expect(source).not.toContain("recommendedTitle");
+  });
 });

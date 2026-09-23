@@ -27,8 +27,9 @@ export default function MarketplaceDetailView({
 }) {
   const feedback = useFeedback();
   const { t } = useTranslation("plugins");
-  const [plugins, setPlugins] = useState<MarketplacePlugin[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // 缓存直出到首帧：初始 state 直接取同步缓存，避免「未加载骨架屏先画一帧」的白条闪烁
+  const [plugins, setPlugins] = useState<MarketplacePlugin[]>(() => getCachedMarketplacePlugins(marketplace.name) ?? []);
+  const [loaded, setLoaded] = useState(() => getCachedMarketplacePlugins(marketplace.name) !== null);
   const [error, setError] = useState("");
   const [installing, setInstalling] = useState("");
   const [uninstalling, setUninstalling] = useState("");

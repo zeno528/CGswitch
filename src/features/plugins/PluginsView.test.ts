@@ -28,10 +28,11 @@ describe("一级列表共用定义", () => {
     expect(styles).not.toContain("skill-list-row");
   });
 
-  it("插件市场面板内的列表共用同一个容器类，不再各自套行外壳", () => {
-    // 面板已有 --gap-card-inline，所以这里只叠 .apple-list-card，不叠 .apple-group（否则双重缩进）
-    expect(marketplaceSource).toContain('className="apple-list-card mt-2"');
-    expect(marketplaceSource).toContain('className="apple-list-card mt-3"');
+  it("插件市场两卡与一级列表同构：行直接进 apple-group apple-list-card，不再套面板外壳", () => {
+    // 官方/第三方两卡都由 renderMarketplaceCard 渲染，容器类只剩一处定义；
+    // 不再用 apple-panel-section 包一层（面板内边距叠上行内边距，首尾留白不等）
+    expect(marketplaceSource.split('className="apple-group apple-list-card"').length - 1).toBe(1);
+    expect(marketplaceSource).not.toContain("apple-panel-section");
     expect(marketplaceSource).not.toContain("shadow-[0_0_0_1px_var(--panel-ring)]");
   });
 

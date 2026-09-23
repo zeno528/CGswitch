@@ -96,7 +96,7 @@ export default function AddPluginView({
                 ]}
                 onChange={(value) => { setMethod(value); setPreview(null); }}
               />
-              <div className="title-md mt-4">{method === "marketplace" ? t("add.marketSourceTitle") : t("add.repoTitle")}</div>
+              <div className="field-label mt-4">{method === "marketplace" ? t("add.marketSourceTitle") : t("add.repoTitle")}</div>
               <p className="muted mt-2 text-sm">{method === "marketplace" ? t("add.marketSourceHint") : t("add.repoHint")}</p>
               <div className="mt-4 flex w-full flex-wrap items-center gap-2">
                 <input

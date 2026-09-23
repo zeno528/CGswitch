@@ -29,6 +29,7 @@ export const marketplaceKindLabels: Record<PluginMarketplace["kind"], "origin.of
 export const recommendedMarketplaces = [
   {
     name: "openai-curated",
+    kind: "official",
     // Codex 桌面端在不同渠道下会把官方精选市场物化为 openai-api-curated（~/.codex/.tmp/plugins）
     aliases: ["openai-api-curated"],
     displayName: "OpenAI Plugins",
@@ -37,6 +38,7 @@ export const recommendedMarketplaces = [
   },
   {
     name: "ponytail",
+    kind: "third-party",
     aliases: [],
     displayName: "Ponytail",
     source: "DietrichGebert/ponytail",
@@ -62,6 +64,17 @@ export function findConfiguredMarketplace(
   return marketplaces.find(
     (marketplace) => marketplace.name === recommended.name || recommended.aliases.includes(marketplace.name),
   );
+}
+
+/// 市场页两卡分组：已配置市场按 kind 归卡；未配置的推荐进对应卡，兜底渲染为安装行。
+export function splitMarketplaceCards(marketplaces: PluginMarketplace[]) {
+  const card = (kind: PluginMarketplace["kind"]) => ({
+    marketplaces: marketplaces.filter((marketplace) => marketplace.kind === kind),
+    pending: recommendedMarketplaces.filter(
+      (recommended) => recommended.kind === kind && !findConfiguredMarketplace(recommended, marketplaces),
+    ),
+  });
+  return { official: card("official"), thirdParty: card("third-party") };
 }
 
 /// 别名市场纠正：Codex 给同一目录挂镜像/远程双身份，安装记录只落在其中一个；
