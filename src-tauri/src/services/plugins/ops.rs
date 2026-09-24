@@ -578,53 +578,52 @@ pub(super) fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec
     let sources = marketplace_sources(home);
     let mut summaries: Vec<PluginSummary> = Vec::new();
 
-    // 1) `codex plugin list`（主源）：覆盖运行时、捆绑和外部市场，含启停状态
+    // 1) `codex plugin list`（主源）：覆盖运行时、捆绑和外部市场，含启停状态。
+    //    CLI 在但 list 失败（超时/报错）时把错误交给上层，让前端保住上一份真实缓存；
+    //    禁止回退缓存扫描——plugins/cache 是全量市场目录（含未装条目、桌面内置、
+    //    镜像重复、origin 全错），静默顶替会把它伪装成"已安装列表"。
     if find_codex_cli(home).is_some() {
-        if let Ok(output) = run_codex_plugin(home, &["list"]) {
-            for (name, marketplace, enabled, version, path) in parse_plugin_list_output(&output) {
-                if is_desktop_builtin(&name) {
-                    continue;
-                }
-                let origin = if marketplace.starts_with("openai") {
-                    "official"
-                } else {
-                    "codex"
-                };
-                let plugin_path =
-                    plugin_store_path(codex_home, &marketplace, &name, version.as_deref(), &path);
-                let manifest = read_manifest(&plugin_path);
-                summaries.push(PluginSummary {
-                    version: version.or(manifest.as_ref().and_then(|item| item.version.clone())),
-                    display_name: manifest
-                        .as_ref()
-                        .and_then(|item| item.interface.as_ref())
-                        .and_then(|item| item.display_name.clone()),
-                    description: manifest.as_ref().and_then(manifest_description),
-                    category: manifest
-                        .as_ref()
-                        .and_then(|item| item.interface.as_ref())
-                        .and_then(|item| item.category.clone()),
-                    capabilities: manifest
-                        .as_ref()
-                        .and_then(|item| item.interface.as_ref())
-                        .map(|item| item.capabilities.clone())
-                        .unwrap_or_default(),
-                    contains: if plugin_path.is_dir() {
-                        store_contains(&plugin_path)
-                    } else {
-                        Vec::new()
-                    },
-                    enabled,
-                    origin: origin.to_string(),
-                    marketplace: Some(marketplace),
-                    store_path: plugin_path.display().to_string(),
-                    source_url: None,
-                    name,
-                });
+        let output = run_codex_plugin(home, &["list"])?;
+        for (name, marketplace, enabled, version, path) in parse_plugin_list_output(&output) {
+            if is_desktop_builtin(&name) {
+                continue;
             }
-        } else {
-            // CLI 在但 list 失败：回退缓存扫描
-            summaries.extend(scan_codex_plugin_cache(codex_home));
+            let origin = if marketplace.starts_with("openai") {
+                "official"
+            } else {
+                "codex"
+            };
+            let plugin_path =
+                plugin_store_path(codex_home, &marketplace, &name, version.as_deref(), &path);
+            let manifest = read_manifest(&plugin_path);
+            summaries.push(PluginSummary {
+                version: version.or(manifest.as_ref().and_then(|item| item.version.clone())),
+                display_name: manifest
+                    .as_ref()
+                    .and_then(|item| item.interface.as_ref())
+                    .and_then(|item| item.display_name.clone()),
+                description: manifest.as_ref().and_then(manifest_description),
+                category: manifest
+                    .as_ref()
+                    .and_then(|item| item.interface.as_ref())
+                    .and_then(|item| item.category.clone()),
+                capabilities: manifest
+                    .as_ref()
+                    .and_then(|item| item.interface.as_ref())
+                    .map(|item| item.capabilities.clone())
+                    .unwrap_or_default(),
+                contains: if plugin_path.is_dir() {
+                    store_contains(&plugin_path)
+                } else {
+                    Vec::new()
+                },
+                enabled,
+                origin: origin.to_string(),
+                marketplace: Some(marketplace),
+                store_path: plugin_path.display().to_string(),
+                source_url: None,
+                name,
+            });
         }
     } else {
         summaries.extend(scan_codex_plugin_cache(codex_home));
@@ -637,7 +636,37 @@ pub(super) fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::plugins::cli::codex_cli_file_name;
     use crate::services::plugins::test_context;
+
+    /// CLI 在而 list 失败时必须报错，不能回退缓存扫描：plugins/cache 是全量市场目录
+    /// （含未装条目、桌面内置、镜像重复、origin 全错），静默顶替会把它伪装成已安装列表。
+    #[test]
+    fn cli_list_failure_surfaces_error_not_cache_scan() {
+        let home = tempfile::tempdir().unwrap();
+        // 探测链首位（~/.codex/bin）放一个"存在但不可执行"的假 CLI：find 命中、
+        // spawn/执行必败，让分支稳定落在"CLI 在但 list 失败"，与本机真实 CLI 解耦
+        let bin = home.path().join(".codex").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join(codex_cli_file_name()), "not an executable").unwrap();
+        // 缓存里放可扫条目：若错误被缓存扫描吞掉，这里会被冒充成已安装列表返回
+        let manifest_dir = home
+            .path()
+            .join(".codex/plugins/cache/sample-marketplace/sample-plugin/v1.0.0/.codex-plugin");
+        std::fs::create_dir_all(&manifest_dir).unwrap();
+        std::fs::write(
+            manifest_dir.join("plugin.json"),
+            r#"{"name":"sample-plugin"}"#,
+        )
+        .unwrap();
+
+        let result = list_plugins_sync(home.path(), &home.path().join(".codex"));
+        assert!(
+            result.is_err(),
+            "CLI 在而 list 失败应报错，不能拿缓存目录冒充已安装列表：{:?}",
+            result
+        );
+    }
 
     #[test]
     fn desktop_builtin_plugins_are_identified() {
