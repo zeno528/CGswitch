@@ -9,6 +9,7 @@ import { getCachedDatabaseBackups, loadDatabaseBackups } from "../../app/managem
 import { AppDialog } from "../../components/AppDialog";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
+import { HeroDoodles } from "../../components/HeroDoodles";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
 import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
@@ -353,7 +354,8 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   return (
     <div className="apple-group px-[var(--gap-card-inline)] py-[var(--gap-card)]">
       <div className="settings-about__hero brand-gradient-surface">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <HeroDoodles patternId="cg-about-hero-doodles" />
+        <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
             <div>

@@ -46,6 +46,10 @@ describe("AppUpdateProvider", () => {
     expect(dialogSource).toContain('src="/logo.svg"');
     expect(styles).toContain(".app-dialog-content--hero .app-dialog-title {\n  font-size: 21px;\n  font-weight: 550;\n  letter-spacing: -0.2px;\n  line-height: 1;\n  color: var(--text-primary);");
     expect(styles).toContain(".app-dialog-hero .app-logo {\n  filter: invert(1);\n}\n\n:root.dark .app-dialog-hero .app-logo {\n  filter: none;");
+    // 头部装饰涂鸦平铺：hero 内含白描边图案层（纯装饰，aria-hidden），logo/标题抬升其上
+    expect(dialogSource).toContain("<HeroDoodles");
+    expect(styles).toContain(".hero-doodles {");
+    expect(styles).toContain(".app-dialog-hero .app-logo,\n.app-dialog-content--hero .app-dialog-title {\n  position: relative;");
     expect(dialogSource).toContain('t("notice.noNotes")');
     expect(dialogSource).toContain("void install()");
     expect(dialogSource).toContain('t("notice.updateNow")');

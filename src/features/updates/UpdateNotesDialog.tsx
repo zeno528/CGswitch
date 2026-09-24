@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { LoaderCircle } from "lucide-react";
 import { AppDialog } from "../../components/AppDialog";
+import { HeroDoodles } from "../../components/HeroDoodles";
 import { useAppUpdate } from "./AppUpdateProvider";
 
 // 与 SkillsView 一致：markdown 渲染懒加载，不进主 bundle
@@ -28,7 +29,12 @@ export function UpdateNotesDialog({ open, onOpenChange }: UpdateNotesDialogProps
       open={open}
       onOpenChange={onOpenChange}
       title={t("notice.title", { version: update.version })}
-      hero={<img src="/logo.svg" alt="" className="app-logo h-14 w-14 shrink-0" aria-hidden="true" />}
+      hero={
+        <>
+          <HeroDoodles patternId="cg-update-hero-doodles" />
+          <img src="/logo.svg" alt="" className="app-logo h-14 w-14 shrink-0" aria-hidden="true" />
+        </>
+      }
       footer={
         <>
           <button type="button" className="apple-action-button" onClick={() => onOpenChange(false)}>

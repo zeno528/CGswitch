@@ -116,6 +116,12 @@ describe("SettingsSections", () => {
     expect(html).not.toContain("检查 GitHub 正式发布版本");
   });
 
+  it("关于页头部复用涂鸦平铺装饰层：hero 内含 HeroDoodles，样式为低透明度共享类", () => {
+    expect(settingsSectionsSource).toContain('<HeroDoodles patternId="cg-about-hero-doodles" />');
+    expect(styles).toContain(".hero-doodles {");
+    expect(styles).toContain(".settings-about__hero {\n  position: relative;");
+  });
+
   it("does not show the backup directory in the about paths", () => {
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(

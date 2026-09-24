@@ -1210,6 +1210,7 @@ body.drag-active * {
 }
 
 .settings-about__hero {
+  position: relative;
   margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card-inline)) 0;
   padding: var(--gap-card) var(--gap-card-inline) 0;
   border-radius: var(--radius-card) var(--radius-card) 0 0;
@@ -1695,6 +1696,7 @@ button:focus-visible {
 }
 
 .app-dialog-hero {
+  position: relative;
   display: flex;
   flex-shrink: 0;
   height: 32%;
@@ -1703,6 +1705,45 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 9px;
+}
+
+/* 头部装饰涂鸦平铺（关于页头部、升级弹窗头部）：白描边手绘图案铺满宿主，opacity 低速纹理，
+   单色白在深浅主题的渐变底上都作装饰；demo 源：归档/update-hero-doodle-demo.html */
+.hero-doodles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.hero-doodles .di {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hero-doodles .db,
+.hero-doodles .dp,
+.hero-doodles .dnf {
+  fill: #fff;
+  stroke: none;
+}
+
+.hero-doodles .dn {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+/* 涂鸦层为定位元素会盖住静态兄弟，logo 与标题抬升到其上（关闭按钮本身 absolute 且在 DOM 靠后）。 */
+.app-dialog-hero .app-logo,
+.app-dialog-content--hero .app-dialog-title {
+  position: relative;
 }
 
 /* hero 标题使用主题纯色文字，避免渐变与投影影响版本信息可读性。 */
