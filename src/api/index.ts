@@ -179,7 +179,8 @@ export const api = {
   revertMcpLiveEntries: (actions: McpDiffEntryAction[]) => call<number>("revert_mcp_live_entries", { actions }),
   restartCodex: () => call<void>("restart_codex"),
   setWindowTheme: (dark: boolean) => call<void>("set_window_theme", { dark }),
-  setAppLanguage: (language: string) => call<void>("set_app_language", { language }),
+  setTrayMenu: (language: string, profiles: Pick<ProfileSummary, "id" | "name">[], activeProfileId: string | null) =>
+    call<void>("set_tray_menu", { language, profiles, activeProfileId }),
   authStartBrowserLogin: () => call<BrowserLoginStart>("auth_start_browser_login"),
   authPollBrowserLogin: () => call<ManagedAccount | null>("auth_poll_browser_login"),
   authCancelBrowserLogin: () => call<void>("auth_cancel_browser_login"),

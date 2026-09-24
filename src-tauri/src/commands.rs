@@ -1,4 +1,5 @@
-use tauri::{AppHandle, State};
+use std::sync::atomic::Ordering;
+use tauri::{AppHandle, Manager, State};
 
 use crate::auth::codex_oauth::{
     parse_external_auth_json, AuthStatus, BrowserLoginStart, CodexOAuthManager, CodexOAuthState,
@@ -9,7 +10,7 @@ use crate::codex::config as codex_config;
 use crate::error::{app_err, AppResult};
 use crate::models::{
     AppState, AuthSource, CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview,
-    ProfileBalanceInfo, ProfileDetail, ProfileSummary, Settings,
+    ProfileBalanceInfo, ProfileDetail, ProfileSummary, Settings, TrayClickAction,
 };
 use crate::services::{
     AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
@@ -689,15 +690,19 @@ pub fn parse_mcp_fragment(toml: String) -> AppResult<McpServerSpec> {
     codex_config::parse_mcp_fragment(&toml)
 }
 
-/// 更新托盘菜单文案。语言由前端解析后传入（"zh-CN" / "en-US"）。
+/// 前端已加载的应用状态直接更新托盘；不在原生启动路径额外读取供应商。
 #[tauri::command]
-pub fn set_app_language(language: String, tray: State<'_, crate::TrayMenuItems>) -> AppResult<()> {
-    let (show, quit) = crate::tray_labels(&language);
-    tray.show
-        .set_text(show)
+pub fn set_tray_menu(
+    app: AppHandle,
+    language: String,
+    profiles: Vec<crate::TrayProfile>,
+    active_profile_id: Option<String>,
+) -> AppResult<()> {
+    let menu = crate::tray_menu(&app, &language, &profiles, active_profile_id.as_deref())
         .map_err(|error| app_err!("更新托盘菜单失败: {error}"))?;
-    tray.quit
-        .set_text(quit)
+    app.tray_by_id("main")
+        .ok_or_else(|| app_err!("找不到系统托盘"))?
+        .set_menu(Some(menu))
         .map_err(|error| app_err!("更新托盘菜单失败: {error}"))?;
     Ok(())
 }
@@ -955,10 +960,20 @@ pub async fn save_settings(
     ) {
         return Err(app_err!("不支持的备份保留数量"));
     }
+    let show_menu = settings.tray_click_action == TrayClickAction::ShowMenu;
     let state = state.inner().clone();
     let saved = tauri::async_runtime::spawn_blocking(move || state.save_settings(&settings))
         .await
         .map_err(|error| app_err!("设置保存任务失败: {error}"))??;
+    // 存库成功后才应用托盘点击模式，保存失败即保持原状，无需回滚。
+    let tray_mode = app.state::<crate::TrayClickMode>();
+    if show_menu != tray_mode.0.load(Ordering::Relaxed) {
+        app.tray_by_id("main")
+            .ok_or_else(|| app_err!("找不到系统托盘"))?
+            .set_show_menu_on_left_click(show_menu)
+            .map_err(|error| app_err!("更新托盘点击行为失败: {error}"))?;
+        tray_mode.0.store(show_menu, Ordering::Relaxed);
+    }
     sync_autostart(&app, &saved)?;
     Ok(saved)
 }

@@ -4,6 +4,7 @@ import {
   ArrowUpCircle,
   Info,
   Cog,
+  MousePointerClick,
   RotateCw,
   Wrench,
 } from "lucide-react";
@@ -12,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { AppSwitch } from "../../components/AppSwitch";
+import { AppSelect } from "../../components/AppSelect";
 import type { AppState, PathInfo, Settings } from "../../types";
 import { SettingsAbout, SettingsAdvanced, SettingsGeneral, SettingsPanelSection } from "./SettingsSections";
 
@@ -54,6 +56,27 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
       <SettingsPanelSection id="codex" label={t("codex.sectionTitle")}>
         <div className="apple-group px-[var(--gap-card-inline)]">
         <div className="flex flex-col divide-y divide-[var(--panel-divider)]">
+          <div className="flex items-center justify-between gap-4 py-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                <MousePointerClick className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <div className="setting-title">{t("codex.trayClickTitle")}</div>
+                <div className="setting-description mt-0.5">{t("codex.trayClickDescription")}</div>
+              </div>
+            </div>
+            <div className="w-72 shrink-0">
+              <AppSelect
+                value={form.tray_click_action}
+                options={[
+                  { label: t("codex.trayClickShowWindow"), value: "show_window" as const },
+                  { label: t("codex.trayClickShowMenu"), value: "show_menu" as const },
+                ]}
+                onChange={(value) => void saveGeneral({ tray_click_action: value })}
+              />
+            </div>
+          </div>
           <div className="flex items-center justify-between gap-4 py-4">
             <div className="flex items-start gap-3">
               <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">

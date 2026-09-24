@@ -1,10 +1,12 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
-import { FeedbackProvider } from "./Feedback";
+import { FeedbackProvider, useFeedback } from "./Feedback";
+import { authQuotaErrorKind } from "./authQuotaCache";
 import { getMcpDiffBadge, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
@@ -15,6 +17,8 @@ import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
 import { setupI18n } from "../i18n";
+import type { AppState } from "../types";
+import { switchProfileFromTray } from "./traySwitch";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
 // macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
@@ -30,6 +34,63 @@ const checkMcpDiff = () =>
     .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
     .catch(() => setMcpDiffBadge({ count: 0, error: true }));
 
+function TrayActions({ stateRef, refresh, openSettings }: {
+  stateRef: MutableRefObject<AppState | null>;
+  refresh: () => Promise<void>;
+  openSettings: () => void;
+}) {
+  const feedback = useFeedback();
+  const { t } = useTranslation("profiles");
+  const latest = useRef({ feedback, t, refresh, openSettings });
+  latest.current = { feedback, t, refresh, openSettings };
+  const busy = useRef(false);
+
+  useEffect(() => {
+    if (!isTauri) return;
+    let disposed = false;
+    const showError = async (message: string) => {
+      try {
+        await appWindow?.show();
+        await appWindow?.unminimize();
+        await appWindow?.setFocus();
+      } catch {
+        // 窗口恢复失败时仍保留前端错误提示。
+      }
+      latest.current.feedback.error(message);
+    };
+    void Promise.allSettled([
+      listen("tray-open-settings", () => latest.current.openSettings()),
+      listen<string>("tray-switch-profile", async ({ payload: id }) => {
+        const state = stateRef.current;
+        if (busy.current) return;
+        if (!state?.profiles.some((profile) => profile.id === id) || state.active_profile_id === id) {
+          await latest.current.refresh();
+          return;
+        }
+        busy.current = true;
+        const { feedback, t, refresh } = latest.current;
+        try {
+          const result = await switchProfileFromTray(id, state, refresh);
+          feedback.success(t(`feedback.${result}`));
+        } catch (error) {
+          const message = String(error);
+          await refresh();
+          await showError(authQuotaErrorKind(message) === "auth_expired" ? t("balance.authInvalidToast") : message);
+        } finally {
+          busy.current = false;
+        }
+      }),
+    ]).then((results) => {
+      const unlisten = results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
+      if (disposed) unlisten.forEach((dispose) => dispose());
+      else cleanup = () => unlisten.forEach((dispose) => dispose());
+    });
+    let cleanup = () => {};
+    return () => { disposed = true; cleanup(); };
+  }, [stateRef]);
+  return null;
+}
+
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
   const [profilesReset, setProfilesReset] = useState(0);
@@ -40,11 +101,13 @@ export default function AppShell() {
   const { t: tMcp } = useTranslation("mcp");
   const { state, stateRef, loadError, authStatusReady, refresh, refreshAuthStatus, updateAuthStatus, updateCodex, updateSettings, previewTheme } = useAppState();
   useThemeMode(state?.settings.theme);
-  // 设置保存后（例如换了界面语言）即时切换，无需重启；托盘菜单文案一并同步。
+  // 设置保存后即时切换语言；托盘沿用已加载的状态，不增加原生冷启动读取。
   useEffect(() => {
     const language = setupI18n(state?.settings.language);
-    if (isTauri) void api.setAppLanguage(language).catch(() => undefined);
-  }, [state?.settings.language]);
+    if (isTauri && state) {
+      void api.setTrayMenu(language, state.profiles.map(({ id, name }) => ({ id, name })), state.active_profile_id).catch(() => undefined);
+    }
+  }, [state?.settings.language, state?.profiles, state?.active_profile_id]);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
@@ -221,6 +284,7 @@ export default function AppShell() {
 
   return (
     <FeedbackProvider>
+      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={goSettings} />
       {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
       <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>

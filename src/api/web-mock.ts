@@ -479,6 +479,7 @@ let webSettings: Settings = {
   autostart_enabled: false,
   silent_start: false,
   minimize_to_tray: false,
+  tray_click_action: "show_window",
   auto_check_update: true,
   auto_backup_interval_hours: 0,
   database_backup_keep_count: 5,
@@ -1150,7 +1151,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "set_window_theme":
       return undefined as T;
     // 浏览器调试无系统托盘，仅接受调用不产生副作用
-    case "set_app_language":
+    case "set_tray_menu":
       return undefined as T;
     case "auth_get_status":
       return webAuthStatus as T;

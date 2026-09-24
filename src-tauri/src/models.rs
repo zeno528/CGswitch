@@ -288,6 +288,14 @@ pub struct ProfileDetail {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TrayClickAction {
+    #[default]
+    ShowWindow,
+    ShowMenu,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default = "default_theme")]
@@ -302,6 +310,8 @@ pub struct Settings {
     pub silent_start: bool,
     #[serde(default)]
     pub minimize_to_tray: bool,
+    #[serde(default)]
+    pub tray_click_action: TrayClickAction,
     #[serde(default = "default_auto_check_update")]
     pub auto_check_update: bool,
     #[serde(default)]
@@ -336,10 +346,26 @@ impl Default for Settings {
             autostart_enabled: false,
             silent_start: false,
             minimize_to_tray: false,
+            tray_click_action: TrayClickAction::ShowWindow,
             auto_check_update: default_auto_check_update(),
             auto_backup_interval_hours: 0,
             database_backup_keep_count: default_database_backup_keep_count(),
         }
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::{Settings, TrayClickAction};
+
+    #[test]
+    fn tray_click_action_defaults_for_existing_settings_and_accepts_only_two_modes() {
+        let legacy: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.tray_click_action, TrayClickAction::ShowWindow);
+
+        let menu: Settings = serde_json::from_str(r#"{"tray_click_action":"show_menu"}"#).unwrap();
+        assert_eq!(menu.tray_click_action, TrayClickAction::ShowMenu);
+        assert!(serde_json::from_str::<Settings>(r#"{"tray_click_action":"invalid"}"#).is_err());
     }
 }
 

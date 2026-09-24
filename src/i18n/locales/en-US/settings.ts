@@ -39,6 +39,10 @@ export default {
   },
   codex: {
     sectionTitle: "Application & updates",
+    trayClickTitle: "Click tray icon",
+    trayClickDescription: "Choose what a click on the tray icon does.",
+    trayClickShowWindow: "Show main window",
+    trayClickShowMenu: "Show tray menu",
     autoRestartTitle: "Restart Codex automatically after switching",
     autoRestartDescription: "When on, switching configurations automatically restarts Codex; when off, restart Codex manually for the change to take effect.",
     autoCheckTitle: "Check for updates automatically",

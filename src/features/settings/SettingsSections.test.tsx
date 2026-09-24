@@ -14,6 +14,8 @@ const settingsSectionsSource = readFileSync(new URL("./SettingsSections.tsx", im
 const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.meta.url), "utf8");
 const accountsViewSource = readFileSync(new URL("../accounts/AccountsView.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
+// 各用例只读不写，共用同一份通用设置表单，新增字段只改这一行。
+const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
 
 describe("SettingsSections", () => {
   it("formats backup titles", () => {
@@ -45,7 +47,6 @@ describe("SettingsSections", () => {
 
   it("备份管理为外围大卡嵌三张小卡：操作、自动备份、备份记录", () => {
     setupI18n("zh-CN");
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsAdvanced form={form} onPatch={() => undefined} paths={[]} backupsEpoch={0} onOpenPath={() => undefined} onRefresh={() => Promise.resolve()} /></FeedbackProvider>,
     );
@@ -95,7 +96,6 @@ describe("SettingsSections", () => {
   });
 
   it("keeps the active theme option at normal weight", () => {
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
@@ -188,7 +188,6 @@ describe("SettingsSections", () => {
     const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.meta.url), "utf8");
     expect(settingsViewSource).toContain('checked={form.auto_check_update}');
     expect(settingsViewSource).toContain('t("codex.autoCheckDescription")');
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
@@ -196,7 +195,6 @@ describe("SettingsSections", () => {
   });
 
   it("语言选择控件按当前界面语言渲染，切换语言后文案随之变化", () => {
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     const render = () =>
       renderToStaticMarkup(
         <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
@@ -218,7 +216,6 @@ describe("SettingsSections", () => {
   });
 
   it("语言设置使用左右分布的下拉选择框", () => {
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
@@ -260,7 +257,6 @@ describe("SettingsSections", () => {
   });
 
   it("显示偏好与启动开关统一使用左右设置行", () => {
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
@@ -271,7 +267,6 @@ describe("SettingsSections", () => {
   });
 
   it("通用设置按语义拆分为外观语言和启动行为分组", () => {
-    const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,

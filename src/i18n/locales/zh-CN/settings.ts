@@ -39,6 +39,10 @@ export default {
   },
   codex: {
     sectionTitle: "应用与更新",
+    trayClickTitle: "单击托盘图标",
+    trayClickDescription: "选择单击托盘图标时的操作",
+    trayClickShowWindow: "显示主界面",
+    trayClickShowMenu: "显示托盘菜单",
     autoRestartTitle: "切换配置后自动重启 Codex",
     autoRestartDescription: "开启后，切换配置会自动重启 Codex；关闭后需手动重启 Codex 才能生效。",
     autoCheckTitle: "自动检查更新",

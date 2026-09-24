@@ -9,38 +9,122 @@ pub mod models;
 pub mod paths;
 pub mod services;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use tauri::menu::{Menu, MenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_log::{
     log, FileOpenStrategy, RotationStrategy, Target, TargetKind, TimezoneStrategy,
 };
 use tauri_plugin_window_state::{Builder as WindowStateBuilder, StateFlags};
 
-use crate::services::AppContext;
+use crate::{models::TrayClickAction, services::AppContext};
 
 #[cfg(target_os = "macos")]
 fn should_restore_main_window_on_reopen(has_visible_windows: bool) -> bool {
     !has_visible_windows
 }
 
-/// 托盘菜单项，供 `set_app_language` 在界面语言变化时更新文案。
-pub struct TrayMenuItems {
-    pub show: MenuItem<tauri::Wry>,
-    pub quit: MenuItem<tauri::Wry>,
+#[derive(serde::Deserialize)]
+pub struct TrayProfile {
+    pub id: String,
+    pub name: String,
 }
 
 /// 启动时钟：run() 入口的 Instant 交给命令层，前端里程碑折算到同一进程起点。
 pub struct StartupClock(std::time::Instant);
 
+pub struct TrayClickMode(pub AtomicBool);
+
 /// 托盘菜单文案。语言由前端解析后传入（Rust 侧无法得知 "system" 对应哪种系统语言）。
-fn tray_labels(language: &str) -> (&'static str, &'static str) {
+fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str, &'static str) {
     if language == "en-US" {
-        ("Show main window", "Quit CGswitch")
+        ("Open main window", "Switch provider", "Settings...", "Quit")
     } else {
-        ("显示主窗口", "退出 CGswitch")
+        ("打开主界面", "切换供应商", "设置…", "退出")
+    }
+}
+
+pub fn tray_menu(
+    app: &tauri::AppHandle,
+    language: &str,
+    profiles: &[TrayProfile],
+    active_profile_id: Option<&str>,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    let (show, switch, settings, quit) = tray_labels(language);
+    let show_item = MenuItem::with_id(app, "show", show, true, None::<&str>)?;
+    let active = profiles
+        .iter()
+        .find(|profile| Some(profile.id.as_str()) == active_profile_id);
+    let switch_title = active
+        .map(|profile| profile.name.replace('&', "&&"))
+        .unwrap_or_else(|| switch.to_string());
+    #[cfg(target_os = "macos")]
+    let switch_menu = Submenu::with_id_and_native_icon(
+        app,
+        "switch",
+        switch_title,
+        !profiles.is_empty(),
+        active.map(|_| tauri::menu::NativeIcon::MenuOnState),
+    )?;
+    #[cfg(not(target_os = "macos"))]
+    let switch_menu = Submenu::with_id(app, "switch", switch_title, !profiles.is_empty())?;
+    for profile in profiles {
+        let selected = Some(profile.id.as_str()) == active_profile_id;
+        switch_menu.append(&CheckMenuItem::with_id(
+            app,
+            format!("profile:{}", profile.id),
+            profile.name.replace('&', "&&"),
+            true,
+            selected,
+            None::<&str>,
+        )?)?;
+    }
+    let separator_one = PredefinedMenuItem::separator(app)?;
+    let separator_two = PredefinedMenuItem::separator(app)?;
+    let settings_item = MenuItem::with_id(app, "settings", settings, true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", quit, true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &show_item,
+            &separator_one,
+            &switch_menu,
+            &separator_two,
+            &settings_item,
+            &quit_item,
+        ],
+    )?;
+    #[cfg(windows)]
+    if active.is_some() {
+        use tauri::menu::ContextMenu;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CheckMenuItem, HMENU, MF_BYPOSITION, MF_CHECKED,
+        };
+
+        // Tauri 的 Submenu 没有 checked 属性；直接设置原生菜单的勾选栏，保留文字缩进和子菜单箭头。
+        let result = unsafe {
+            CheckMenuItem(
+                HMENU(menu.hpopupmenu()? as _),
+                2,
+                MF_BYPOSITION.0 | MF_CHECKED.0,
+            )
+        };
+        if result == u32::MAX {
+            return Err(std::io::Error::last_os_error().into());
+        }
+    }
+    Ok(menu)
+}
+
+/// 唤出并聚焦主窗口，托盘左键与菜单多个入口共用。
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
     }
 }
 
@@ -190,7 +274,7 @@ pub fn run() {
             commands::parse_mcp_fragment,
             commands::restart_codex,
             commands::set_window_theme,
-            commands::set_app_language,
+            commands::set_tray_menu,
             commands::auth_start_browser_login,
             commands::auth_poll_browser_login,
             commands::auth_cancel_browser_login,
@@ -276,6 +360,8 @@ pub fn run() {
                     Default::default()
                 }
             };
+            let show_tray_menu_on_left_click = settings.tray_click_action == TrayClickAction::ShowMenu;
+            app.manage(TrayClickMode(AtomicBool::new(show_tray_menu_on_left_click)));
             // dev 构建与安装版共用 identifier，自启注册表值名同为 productName，
             // dev 若照常同步会把开机自启改写成 target/debug 下的二进制
             if settings.autostart_enabled && !tauri::is_dev() {
@@ -302,46 +388,39 @@ pub fn run() {
                 }
             });
 
-            let (show_text, quit_text) = tray_labels(&settings.language);
-            let show_item = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
-            let quit_item = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
-            // 交命令层持有，供前端切换语言时更新文案。
-            app.manage(TrayMenuItems {
-                show: show_item.clone(),
-                quit: quit_item.clone(),
-            });
             // 启动时钟交给命令层：前端里程碑（state_ready / window_shown）折算到进程起点
             app.manage(StartupClock(startup_started));
-            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-            TrayIconBuilder::new()
+            let menu = tray_menu(app.handle(), &settings.language, &[], None)?;
+            TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().expect("缺少应用图标").clone())
                 .menu(&menu)
-                .show_menu_on_left_click(false)
+                .show_menu_on_left_click(show_tray_menu_on_left_click)
                 .on_tray_icon_event(|tray, event| {
-                    // 左键单击托盘图标：直接显示主窗口；右键才弹出菜单
+                    // 左键行为由设置控制；菜单模式下不再同时唤出主窗口。
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
                     } = event
                     {
-                        if let Some(window) = tray.app_handle().get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
+                        if tray.app_handle().state::<TrayClickMode>().0.load(Ordering::Relaxed) {
+                            return;
                         }
+                        show_main_window(tray.app_handle());
                     }
                 })
                 .on_menu_event(|app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.unminimize();
-                            let _ = window.set_focus();
-                        }
+                    "show" => show_main_window(app),
+                    "settings" => {
+                        show_main_window(app);
+                        let _ = app.emit("tray-open-settings", ());
                     }
                     "quit" => app.exit(0),
-                    _ => {}
+                    id => {
+                        if let Some(profile_id) = id.strip_prefix("profile:") {
+                            let _ = app.emit("tray-switch-profile", profile_id);
+                        }
+                    }
                 })
                 .build(app)?;
 
