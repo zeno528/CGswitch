@@ -28,11 +28,11 @@
   --panel-divider: rgba(60, 60, 67, 0.1);
   --brand-gradient-start: #263b63;
   --brand-gradient-middle: #3f72b8;
-  --brand-gradient-start-mix: 34%;
-  --brand-gradient-middle-mix: 17%;
+  --brand-gradient-start-mix: 42%;
+  --brand-gradient-middle-mix: 21%;
   --brand-gradient-blend: color-mix(in srgb, var(--brand-gradient-start) 55%, var(--brand-gradient-middle));
-  --brand-gradient-blend-mix: 25%;
-  --brand-gradient-fade-mix: 9%;
+  --brand-gradient-blend-mix: 31%;
+  --brand-gradient-fade-mix: 11%;
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
   --sidebar-bg: var(--panel-bg);
