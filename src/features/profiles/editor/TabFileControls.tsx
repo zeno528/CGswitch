@@ -1,5 +1,6 @@
 import { Eraser } from "lucide-react";
 import type { ReactNode } from "react";
+import { AuthSourceIcon } from "../../../components/AuthSourceIcon";
 import { useTranslation } from "react-i18next";
 import { useFeedback } from "../../../app/Feedback";
 
@@ -32,7 +33,10 @@ export default function TabFileControls({ kind, editable, disabled, onClear, chi
   return (
     <>
       {kind === "auth" ? (
-        <span className="whitespace-nowrap px-2 muted">{editable ? t("edit.authPillEditable") : t("edit.authPillReadonly")}</span>
+        <span className="flex items-center gap-1.5 whitespace-nowrap px-2 muted">
+          <AuthSourceIcon source={editable ? "desktop" : "oauth"} className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          {editable ? t("edit.authPillEditable") : t("edit.authPillReadonly")}
+        </span>
       ) : null}
       {children}
       {editable ? (
