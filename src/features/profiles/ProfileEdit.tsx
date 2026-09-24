@@ -19,6 +19,7 @@ import {
 } from "../../presets";
 import { patchModelValue, patchProviderFields, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
 import ProfileAdvancedControls from "./editor/ProfileAdvancedControls";
+import TabFileControls from "./editor/TabFileControls";
 import { useProfileAdvancedPatches } from "./editor/useProfileAdvancedPatches";
 import type { AuthStatus, EditorDiagnosticSummary, ProfileDetail, ProfileSummary } from "../../types";
 import ProfileIconEdit from "./ProfileIconEdit";
@@ -131,6 +132,13 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     if (!baseFragment) return "";
     return withMcpSection(patchProviderFields(baseFragment, baseUrl, apiKey), mcpSection);
   }, [apiKey, baseFragment, baseUrl, mcpSection]);
+  // 附属条右侧的格式化入口：config 直接放行尾，models/auth 经 TabFileControls 夹在状态文字与清空之间，清空恒收最右。
+  const formatButton = (
+    <button type="button" className="editor-ghost ml-auto" disabled={saving || (activeTab === "auth" && authPreviewOnly)} title={formatTarget.title} onClick={() => void formatCurrentDocument()}>
+      <FormatIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+      <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
+    </button>
+  );
   const canSave = (!create || (isCustom ? Boolean(configText.trim()) : Boolean(selectedPreset))) && (!isOfficial || !authPreviewOnly || authPreviewReady);
   const accountOptions = [
     { label: t("card.authDesktop"), value: "" },
@@ -443,7 +451,8 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
         const hasProvider = Boolean(detail?.provider);
         await api.updateProfile(profile!.id, name, hasProvider ? baseUrl : undefined, hasProvider ? apiKey : undefined, adminUrl.trim() || undefined);
         const authTextToSave = isOfficial && authSource === "desktop" && authDirty ? authText : null;
-        await api.updateProfileConfig(profile!.id, configText, liveCatalogPath && catalogDirty ? catalogText || null : null, authTextToSave);
+        // 清空目录要传空串（后端归一为解除托管）；`|| null` 会把清空吞成"不动目录"
+        await api.updateProfileConfig(profile!.id, configText, liveCatalogPath && catalogDirty ? catalogText : null, authTextToSave);
         if (isOfficial && authSource === "oauth") {
           if (!boundAccountId) throw new Error(t("edit.oauthAccountRequired"));
           await api.setProfileAccount(profile!.id, boundAccountId);
@@ -532,22 +541,35 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
               {supportsBalance ? <div className="mt-4 flex min-h-[var(--input-min-height)] items-center justify-between gap-4"><div className="min-w-0"><div className="setting-title">{t("edit.balanceUsage")}</div><div className="setting-description mt-0.5">{t("edit.balanceAutoRefresh")}</div></div><AppSwitch checked={showBalance} disabled={saving || savingBalance} label={t("edit.balanceUsage")} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>
             <div className="apple-panel-section flex flex-col">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex gap-1">
-                  {tabs.map((tab) => <button key={tab.id} type="button" className={`relative flex h-8 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors ${activeTab === tab.id ? "bg-(--selection-bg) text-accent" : "muted hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={activeTab === tab.id} title={tab.title} onClick={() => { setActiveTab(tab.id); setEditorDiagnostics({ count: 0, firstLine: null }); }}>{tab.id === "config" ? <Settings className="h-3.5 w-3.5" strokeWidth={2} /> : <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />}<span>{tab.label}</span>{((tab.id === "config" && configDirty) || (tab.id === "models" && catalogDirty) || (tab.id === "auth" && authDirty)) ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}</button>)}
-                </div>
-                {/* flex-wrap：标签用 whitespace-nowrap，英文文案比中文长约 30–50%，装不下时折行而不是被右边缘裁掉 */}
-                {activeTab === "config" ? (
-                  <div className="flex select-none flex-wrap items-center justify-end gap-2">
-                    <ProfileAdvancedControls advanced={advanced} saving={saving} />
-                  </div>
-                ) : null}
+              <div className="flex gap-1">
+                {tabs.map((tab) => <button key={tab.id} type="button" className={`relative flex h-8 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors ${activeTab === tab.id ? "bg-(--selection-bg) text-accent" : "muted hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={activeTab === tab.id} title={tab.title} onClick={() => { setActiveTab(tab.id); setEditorDiagnostics({ count: 0, firstLine: null }); }}>{tab.id === "config" ? <Settings className="h-3.5 w-3.5" strokeWidth={2} /> : <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />}<span>{tab.label}</span>{((tab.id === "config" && configDirty) || (tab.id === "models" && catalogDirty) || (tab.id === "auth" && authDirty)) ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}</button>)}
               </div>
-              <div className="mt-4 flex flex-col">{activeTab === "config" ? <ConfigTextEditor ref={editorRef} value={configText} language="toml" minLines={editorMinLines} placeholder={create ? t("edit.configPlaceholderCreate") : t("edit.configPlaceholderEdit")} onChange={(value) => setConfigText(value)} onDiagnostics={setEditorDiagnostics} /> : activeTab === "auth" ? <ConfigTextEditor ref={editorRef} value={authText} language="json" minLines={editorMinLines} readOnly={authPreviewOnly} placeholder={t("edit.authPlaceholder")} onChange={setAuthText} onDiagnostics={setEditorDiagnostics} /> : <ConfigTextEditor ref={editorRef} value={catalogText} language="json" minLines={editorMinLines} placeholder={t("edit.catalogPlaceholder")} onChange={(value) => setCatalogText(value)} onDiagnostics={setEditorDiagnostics} />}</div>
+              {/* 附属条嵌进编辑器托盘顶部（editor chrome），随 tab 切换：config 快捷设置、models/auth 文件操作。
+                  flex-wrap：标签 whitespace-nowrap，英文文案比中文长约 30–50%，装不下时折行而不是被裁掉 */}
+              <div className="editor-attach-group mt-2">
+                <div className="editor-attach-bar">
+                  {activeTab === "config" ? (
+                    <>
+                      <ProfileAdvancedControls advanced={advanced} saving={saving} />
+                      {formatButton}
+                    </>
+                  ) : (
+                    <TabFileControls
+                      kind={activeTab === "models" ? "models" : "auth"}
+                      editable={activeTab === "models" || !authPreviewOnly}
+                      disabled={saving}
+                      onClear={() => (activeTab === "models" ? setCatalogText("") : setAuthText(""))}
+                    >
+                      {formatButton}
+                    </TabFileControls>
+                  )}
+                </div>
+              <div className="flex flex-col">{activeTab === "config" ? <ConfigTextEditor ref={editorRef} value={configText} language="toml" minLines={editorMinLines} placeholder={create ? t("edit.configPlaceholderCreate") : t("edit.configPlaceholderEdit")} onChange={(value) => setConfigText(value)} onDiagnostics={setEditorDiagnostics} /> : activeTab === "auth" ? <ConfigTextEditor ref={editorRef} value={authText} language="json" minLines={editorMinLines} readOnly={authPreviewOnly} placeholder={t("edit.authPlaceholder")} onChange={setAuthText} onDiagnostics={setEditorDiagnostics} /> : <ConfigTextEditor ref={editorRef} value={catalogText} language="json" minLines={editorMinLines} placeholder={t("edit.catalogPlaceholder")} onChange={(value) => setCatalogText(value)} onDiagnostics={setEditorDiagnostics} />}</div>
+              </div>
             </div>
         </div>
       </div>
-      <div className="apple-edit-toolbar apple-edit-toolbar--footer">{editorDiagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 rounded-full bg-(--danger)" />{t("edit.diagnosticsErrors", { count: editorDiagnostics.count })}{editorDiagnostics.firstLine !== null ? t("edit.diagnosticsLine", { line: editorDiagnostics.firstLine }) : ""}</button> : null}<button type="button" className="apple-action-button" disabled={saving || (activeTab === "auth" && authPreviewOnly)} title={formatTarget.title} onClick={() => void formatCurrentDocument()}><FormatIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("edit.format")}</button><button type="button" className="apple-action-button" onClick={onBack}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={saving || !canSave} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("dialog.save")}</button></div>
+      <div className="apple-edit-toolbar apple-edit-toolbar--footer">{editorDiagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 rounded-full bg-(--danger)" />{t("edit.diagnosticsErrors", { count: editorDiagnostics.count })}{editorDiagnostics.firstLine !== null ? t("edit.diagnosticsLine", { line: editorDiagnostics.firstLine }) : ""}</button> : null}<button type="button" className="apple-action-button" onClick={onBack}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={saving || !canSave} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("dialog.save")}</button></div>
     </section>
   );
 }

@@ -87,6 +87,29 @@ describe("ProfileEdit 用量查询", () => {
   });
 });
 
+describe("编辑器工具栏两行布局", () => {
+  it("tab 独占一行，附属条嵌进编辑器托盘顶部并按 tab 切换：config 快捷设置、models/auth 文件操作", () => {
+    expect(source).toContain('<div className="flex gap-1">');
+    expect(source).toContain('<div className="editor-attach-group mt-2">');
+    expect(source).toContain('<div className="editor-attach-bar">');
+    expect(source).toContain("<TabFileControls");
+    expect(source).toContain('kind={activeTab === "models" ? "models" : "auth"}');
+    expect(source).toContain('editable={activeTab === "models" || !authPreviewOnly}');
+    expect(source).toContain('onClear={() => (activeTab === "models" ? setCatalogText("") : setAuthText(""))}');
+  });
+
+  it("格式化入口在附属条最右侧（ghost 权重），底部工具栏不再重复", () => {
+    expect(source).toContain('className="editor-ghost ml-auto"');
+    expect(source.match(/formatCurrentDocument\(\)/g)).toHaveLength(1);
+    expect(source).not.toContain('{t("edit.format")}</button><button type="button" className="apple-action-button" onClick={onBack}>');
+  });
+
+  it("清空草稿保存时把空目录原文交给后端归一，而不是被 || null 吞成不动", () => {
+    expect(source).toContain("liveCatalogPath && catalogDirty ? catalogText : null");
+    expect(source).not.toContain("liveCatalogPath && catalogDirty ? catalogText || null : null");
+  });
+});
+
 describe("编辑页回车保存", () => {
   it("只在编辑器外响应回车，且不再要求 Ctrl", () => {
     expect(source).toContain('event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))');

@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Minus, Plus, Save } from "lucide-react";
+import { ArrowLeft, ChevronRight, Minus, Plus, Save, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -234,14 +234,21 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
               {t("edit.tomlSource")}
               {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label={t("edit.unsavedChanges")} title={t("edit.unsavedChanges")} /> : null}
             </div>
-            <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder={t("edit.tomlPlaceholder")} onChange={setTomlText} onDiagnostics={setDiagnostics} />
+            <div className="editor-attach-group">
+              <div className="editor-attach-bar">
+                <button type="button" className="editor-ghost ml-auto" disabled={formatting || saving} onClick={() => void formatToml()}>
+                  <Settings className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                  <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
+                </button>
+              </div>
+              <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder={t("edit.tomlPlaceholder")} onChange={setTomlText} onDiagnostics={setDiagnostics} />
+            </div>
           </div>
         </div>
       </div>
 
       <div className="apple-edit-toolbar apple-edit-toolbar--footer">
         {diagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" title={t("edit.jumpToError")} aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-(--danger)" aria-hidden="true" /><span className="truncate">{t("edit.errorCount", { count: diagnostics.count })}{diagnostics.firstLine !== null ? t("edit.errorLine", { line: diagnostics.firstLine }) : ""}</span></button> : null}
-        <button type="button" className="apple-action-button" disabled={formatting || saving} onClick={() => void formatToml()}>{t("edit.format")}</button>
         <button type="button" className="apple-action-button" onClick={() => onBack()}>{t("edit.cancel")}</button>
         <button type="button" className="apple-action-button app-button--primary" disabled={saving} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("edit.save")}</button>
       </div>

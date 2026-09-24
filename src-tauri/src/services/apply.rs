@@ -229,6 +229,24 @@ impl AppContext {
         Ok(())
     }
 
+    /// 清除自定义目录后立即恢复：内置档回写模板自带的 models.json；普通档保留 live 文件、仅解除托管。
+    pub(super) fn restore_builtin_catalog(&self, payload: &ProfilePayload) -> AppResult<()> {
+        let Some(kind) = payload.builtin.as_deref() else {
+            return Ok(());
+        };
+        let Some((target, bytes)) = crate::builtin::template(kind)?.catalog else {
+            return Ok(());
+        };
+        let destination = self.paths.codex_home.join(target);
+        let stem = Path::new(target)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("codex-file");
+        backup_file(&destination, &self.paths.codex_files_backup, stem)?;
+        atomic_write(&destination, bytes)?;
+        Ok(())
+    }
+
     /// 应用第三方配置时，同一 ChatGPT 账号的 live 认证优先于旧快照，避免覆盖外部刷新令牌。
     /// "同一账号"按 (workspace, 用户 sub) 双重判定：同 workspace 多账号时不能只比 workspace。
     pub(super) fn restore_profile_auth(&self, payload: &ProfilePayload) -> AppResult<()> {

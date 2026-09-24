@@ -2985,6 +2985,44 @@ experimental_bearer_token = "new-key"
 }
 
 #[test]
+fn clearing_catalog_text_untracks_custom_catalog_and_restores_builtin_models_json() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    let context = AppContext::new(paths).unwrap();
+    let profile = context
+        .add_builtin_profile(
+            crate::builtin::KIND_DEEPSEEK,
+            None,
+            Some("sk-test"),
+            None,
+            None,
+        )
+        .unwrap();
+    std::fs::write(context.paths.codex_config(), "model = \"other\"\n").unwrap();
+    context.apply_profile(&profile.id).unwrap();
+
+    let catalog_path = context.paths.codex_home.join("models.json");
+    assert!(catalog_path.exists());
+    std::fs::write(&catalog_path, b"{\"models\": []}").unwrap();
+
+    let config_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    let detail = context
+        .update_profile_config(&profile.id, &config_text, Some(""), None)
+        .unwrap();
+
+    // live 文件立即回写内置资产而不是留着用户改过的内容；激活档 get_profile 再把
+    // live 回写进快照，所以编辑器看到的是内置目录原文
+    let live = std::fs::read_to_string(&catalog_path).unwrap();
+    assert_eq!(live.as_bytes(), crate::builtin::DEEPSEEK_MODELS);
+    assert_eq!(
+        detail.raw_catalog.as_deref().map(str::as_bytes),
+        Some(crate::builtin::DEEPSEEK_MODELS)
+    );
+}
+
+#[test]
 fn updating_active_profile_config_preserves_computer_use_server() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();

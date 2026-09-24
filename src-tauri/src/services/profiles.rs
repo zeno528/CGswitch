@@ -612,7 +612,9 @@ impl AppContext {
             .map(str::trim)
             .and_then(|text| normalize_auth_override(Some(text)));
         let document = codex_config::parse_document(config_text)?;
-        if let Some(text) = catalog_text {
+        // 空目录文本 = 清除自定义目录：raw_catalog 归 None（内置档回退内置资产），跳过 JSON 校验
+        let catalog_cleared = catalog_text.is_some_and(|text| text.trim().is_empty());
+        if let Some(text) = catalog_text.filter(|text| !text.trim().is_empty()) {
             serde_json::from_str::<serde_json::Value>(text)
                 .map_err(|error| app_err!("models.json 不是有效 JSON: {error}"))?;
         }
@@ -632,7 +634,9 @@ impl AppContext {
         payload.model_values = parsed.model_values;
         payload.provider_body = parsed.provider_body;
         payload.raw_config = Some(codex_config::without_managed_mcp_servers(config_text)?);
-        if catalog_text.is_some() {
+        if catalog_cleared {
+            payload.raw_catalog = None;
+        } else if catalog_text.is_some() {
             payload.raw_catalog = catalog_text.map(str::to_string);
         }
         if auth_text.is_some() {
@@ -659,7 +663,9 @@ impl AppContext {
                 .unwrap_or_else(|| codex_config::normalize_global_section_order(config_text));
             backup_file(&config_path, &self.paths.config_backup, "config")?;
             atomic_write(&config_path, updated.as_bytes())?;
-            if catalog_text.is_some() {
+            if catalog_cleared {
+                self.restore_builtin_catalog(&payload)?;
+            } else if catalog_text.is_some() {
                 self.write_raw_catalog(&payload)?;
             }
             if auth_text.is_some() {

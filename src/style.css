@@ -1498,6 +1498,79 @@ body.drag-active * {
   background: rgb(255 255 255 / 0.06);
 }
 
+/* 编辑器附属条（editor chrome）：文件级操作条嵌进代码托盘顶部，与 apple-editor-surface
+   共享同一浅底、以分隔线分界；视觉权重低于 tab 行（breadcrumb 行模式） */
+.editor-attach-group {
+  border-radius: var(--radius-control-sm);
+  overflow: hidden;
+}
+
+/* CodeMirror 官方样式模式：圆角等容器外观由外层统管，surface 只在顶部直角贴合附属条。
+   底部圆角保留在 surface 自己身上：短文件时 surface 高度悬在 shell（min-height 撑起的
+   最长文件占位）中间，容器底缘的圆角裁不到它，底边必须是自己的圆角 */
+.editor-attach-group .apple-editor-surface {
+  border-radius: 0 0 var(--radius-control-sm) var(--radius-control-sm);
+  box-shadow: none;
+}
+
+.editor-attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  /* 最小高度锁住 28px 控件 + 上下 padding：只读 auth 只有纯文字，内容塌了会带得编辑器跳动 */
+  min-height: 38px;
+  padding: 5px 10px;
+  background: rgb(0 0 0 / 0.04);
+  border-bottom: 1px solid var(--panel-divider);
+}
+
+:root.dark .editor-attach-bar {
+  background: rgb(255 255 255 / 0.06);
+}
+
+/* 附属条内 ghost 控件：无描边、hover 才显底、选中转 accent，保持比 tab 低一档的权重 */
+.editor-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: background-color 0.15s, color 0.15s;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.editor-ghost:not(:disabled):hover {
+  background: rgb(0 0 0 / 0.05);
+}
+
+:root.dark .editor-ghost:not(:disabled):hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.editor-ghost.on {
+  color: var(--accent);
+}
+
+.editor-ghost:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* 危险动作变体：文字常显危险色，hover 只补一层浅红底 */
+.editor-ghost--danger {
+  color: var(--danger);
+}
+
+.editor-ghost--danger:not(:disabled):hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
 /* 统一大面板：外层用 apple-group，内部区块用 apple-panel-section；
    区块之间以分隔线连接，不再各自成卡（编辑供应商/新建供应商等整页表单用） */
 .apple-panel-section {
@@ -2311,6 +2384,19 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
    （.主题类 .cm-lineNumbers .cm-gutterElement 的 padding: 0 3px 0 5px 特异性更高，
    否则 border-box 下内容区只剩 16px，三位行号溢出被裁） */
 .cm-editor .cm-gutters .cm-lineNumbers .cm-gutterElement { width: auto; min-width: 1.5rem; padding: 0; }
+/* 行号栏必须不透明：CM gutter 是 sticky 层（z-index 200），横向滚动时代码从其下穿过。
+   颜色取卡片底（--panel-bg）混入 4% 黑 / 深色混入 6% 白的不透明合成色，与 surface
+   浅底叠卡片的视觉效果一致；右边线统一为无，靠留白分隔（深色 oneDark 本就无线）。
+   注意不能用 rgb(... / 4%) 当第一个参数——那是 alpha 语义，会混出半透明底导致穿模。
+   !important 压过运行时注入的主题背景与浅色默认边线 */
+.cm-editor .cm-gutters {
+  background-color: color-mix(in srgb, black 4%, var(--panel-bg)) !important;
+  border-right: 0 !important;
+}
+
+:root.dark .cm-editor .cm-gutters {
+  background-color: color-mix(in srgb, white 6%, var(--panel-bg)) !important;
+}
 .cm-activeLine,
 .cm-activeLineGutter { background-color: var(--selection-bg) !important; }
 .cm-editor .cm-diagnostic-error-line { background-color: color-mix(in srgb, var(--danger) 10%, transparent) !important; }

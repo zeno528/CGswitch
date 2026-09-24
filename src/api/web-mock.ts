@@ -972,7 +972,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const detail = webDetails[profile.id];
       if (detail) {
         if (typeof args?.configText === "string") detail.raw_config = args.configText;
-        if (typeof args?.catalogText === "string") detail.raw_catalog = args.catalogText;
+        if (typeof args?.catalogText === "string") detail.raw_catalog = args.catalogText.trim() ? args.catalogText : null;
         if (typeof args?.authText === "string") detail.raw_auth = args.authText.trim() ? args.authText : null;
       }
       return webProfileDetail(profile.id) as T;
