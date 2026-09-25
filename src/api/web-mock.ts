@@ -458,7 +458,20 @@ function webProfileDetail(id: string): ProfileDetail {
     config_fragment: detail?.config_fragment ?? "",
     raw_config: detail?.raw_config ?? null,
     catalog_content: detail?.model_values.model_catalog_json
-      ? '{\n  "models": [\n    { "id": "glm-5.3", "name": "GLM 5.3" }\n  ]\n}'
+      ? String.raw`{
+    "models": [
+        {
+            "slug": "glm-5.3",
+            "input_modalities": [
+			"text",
+  "image"
+            ],
+            "truncation_policy": {
+                "mode": "bytes"
+            }
+        }
+    ]
+}`
       : null,
     raw_catalog: detail?.raw_catalog ?? null,
     raw_auth: detail?.raw_auth ?? null,

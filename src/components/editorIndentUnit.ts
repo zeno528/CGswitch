@@ -18,7 +18,47 @@ export function detectIndentUnit(doc: string): string {
   return " ".repeat(Number.isFinite(minSpaces) ? minSpaces : 2);
 }
 
-/** 参考线网格平移量（ch）：包锚点在 (k-1)*单位+0.5ch，平移后参考线落在第 k 级文字列上。 */
-export function indentGuideShiftCh(unit: string, tabSize = 4): number {
-  return (unit.includes("\t") ? tabSize : unit.length) - 0.5;
+export interface IndentGuideLayout {
+  markEnds: number[];
+  fillSegments: number[];
+}
+
+export function visualIndentColumns(text: string, tabSize = 4): number {
+  let columns = 0;
+  for (const char of text) columns += char === "\t" ? tabSize - (columns % tabSize) : 1;
+  return columns;
+}
+
+/** Find indentation guide positions on whitespace spans instead of a repeating CSS gradient. */
+export function indentGuideLayout(line: string, unit: string, tabSize = 4, inheritedGuideCount?: number): IndentGuideLayout {
+  const prefix = /^[ \t]*/.exec(line)?.[0] ?? "";
+  const unitColumns = visualIndentColumns(unit, tabSize);
+  if (!unitColumns) return { markEnds: [], fillSegments: [] };
+
+  const indentColumns = visualIndentColumns(prefix, tabSize);
+  const guideCount = inheritedGuideCount ?? Math.max(0, Math.ceil(indentColumns / unitColumns) - 1);
+  const markEnds: number[] = [];
+  let column = 0;
+  let nextGuide = 1;
+  for (let index = 0; index < prefix.length; index += 1) {
+    const char = prefix[index];
+    column += char === "\t" ? tabSize - (column % tabSize) : 1;
+    while (nextGuide <= guideCount && nextGuide * unitColumns <= column) {
+      const boundary = nextGuide * unitColumns;
+      if (boundary < indentColumns || (inheritedGuideCount !== undefined && boundary <= indentColumns)) {
+        markEnds.push(index + 1);
+      }
+      nextGuide += 1;
+    }
+  }
+
+  const fillSegments: number[] = [];
+  column = indentColumns;
+  while (nextGuide <= guideCount) {
+    const boundary = nextGuide * unitColumns;
+    fillSegments.push(boundary - column);
+    column = boundary;
+    nextGuide += 1;
+  }
+  return { markEnds, fillSegments };
 }

@@ -1,20 +1,103 @@
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-import { indentationMarkers } from "@replit/codemirror-indentation-markers";
 import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, indentOnInput, indentUnit as indentUnitFacet, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { forEachDiagnostic, lintKeymap, linter, setDiagnosticsEffect, type Diagnostic } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState, RangeSet, StateField } from "@codemirror/state";
-import { crosshairCursor, Decoration, drawSelection, EditorView, gutterLineClass, GutterMarker, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as editorPlaceholder, rectangularSelection, dropCursor, type ViewUpdate } from "@codemirror/view";
+import { Compartment, EditorState, RangeSet, RangeSetBuilder, StateField } from "@codemirror/state";
+import { crosshairCursor, Decoration, drawSelection, EditorView, gutterLineClass, GutterMarker, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as editorPlaceholder, rectangularSelection, dropCursor, ViewPlugin, WidgetType, type ViewUpdate } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
-import { detectIndentUnit, indentGuideShiftCh } from "./editorIndentUnit";
+import { detectIndentUnit, indentGuideLayout, visualIndentColumns } from "./editorIndentUnit";
 import i18next from "i18next";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import type { EditorDiagnosticSummary, TomlDiagnostic } from "../types";
+
+class IndentGuideFill extends WidgetType {
+  constructor(readonly segments: readonly number[]) { super(); }
+
+  toDOM() {
+    const fill = document.createElement("span");
+    fill.className = "cm-indent-guide-fill";
+    for (const spaces of this.segments) {
+      const segment = fill.appendChild(document.createElement("span"));
+      segment.className = "cm-indent-guide";
+      segment.textContent = " ".repeat(spaces);
+    }
+    return fill;
+  }
+
+  eq(other: WidgetType) {
+    return other instanceof IndentGuideFill && this.segments.length === other.segments.length && this.segments.every((spaces, index) => spaces === other.segments[index]);
+  }
+
+  ignoreEvent() { return true; }
+}
+
+const indentGuideMark = Decoration.mark({ class: "cm-indent-guide" });
+
+function nearestIndentLevel(doc: EditorState["doc"], lineNumber: number, direction: -1 | 1, unitColumns: number, tabSize: number) {
+  for (let number = lineNumber; number >= 1 && number <= doc.lines; number += direction) {
+    const line = doc.line(number);
+    if (line.text.trim()) {
+      const prefix = /^[ \t]*/.exec(line.text)?.[0] ?? "";
+      return { number, level: Math.floor(visualIndentColumns(prefix, tabSize) / unitColumns) };
+    }
+  }
+  return null;
+}
+
+function inheritedBlankLineLevel(doc: EditorState["doc"], lineNumber: number, unitColumns: number, tabSize: number) {
+  if (lineNumber === 1) return 0;
+  const previous = nearestIndentLevel(doc, lineNumber - 1, -1, unitColumns, tabSize);
+  if (!previous) return 0;
+  if (lineNumber === doc.lines) return previous.level;
+  const next = nearestIndentLevel(doc, lineNumber + 1, 1, unitColumns, tabSize);
+  if (!next || previous.level >= next.level) return previous.level;
+  return Math.min(next.level, previous.level + lineNumber - previous.number);
+}
+
+const indentationGuidePlugin = ViewPlugin.fromClass(class {
+  decorations: RangeSet<Decoration>;
+  private indentUnit: string;
+
+  constructor(view: EditorView) {
+    this.indentUnit = view.state.facet(indentUnitFacet);
+    this.decorations = this.build(view);
+  }
+
+  update(update: ViewUpdate) {
+    const nextIndentUnit = update.state.facet(indentUnitFacet);
+    if (!update.docChanged && nextIndentUnit === this.indentUnit) return;
+    this.indentUnit = nextIndentUnit;
+    this.decorations = this.build(update.view);
+  }
+
+  private build(view: EditorView) {
+    const builder = new RangeSetBuilder<Decoration>();
+    const { state } = view;
+    const tabSize = state.tabSize;
+    const unitColumns = visualIndentColumns(this.indentUnit, tabSize);
+    if (!unitColumns) return builder.finish();
+    for (let number = 1; number <= state.doc.lines; number += 1) {
+      const line = state.doc.line(number);
+      const empty = !line.text.trim();
+      const guideCount = empty
+        ? Math.max(0, inheritedBlankLineLevel(state.doc, line.number, unitColumns, tabSize) - 1)
+        : undefined;
+      const layout = indentGuideLayout(line.text, this.indentUnit, tabSize, guideCount);
+      for (const markEnd of layout.markEnds) {
+        builder.add(line.from + markEnd - 1, line.from + markEnd, indentGuideMark);
+      }
+      if (layout.fillSegments.length) {
+        builder.add(line.to, line.to, Decoration.widget({ widget: new IndentGuideFill(layout.fillSegments), side: 1 }));
+      }
+    }
+    return builder.finish();
+  }
+}, { decorations: (plugin) => plugin.decorations });
 
 const basicSetup = [
   lineNumbers(),
@@ -29,9 +112,7 @@ const basicSetup = [
   EditorState.allowMultipleSelections.of(true),
   indentOnInput(),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-  // hideFirstIndent：深度 N 的行只画 N-1 根参考线（对齐 VSCode），最深一根与文字空出一个缩进位；
-  // highlightActiveBlock: false：关闭光标跟随重算，参考线固定显示，不随选中/光标漂移
-  indentationMarkers({ hideFirstIndent: true, highlightActiveBlock: false }),
+  indentationGuidePlugin,
   bracketMatching(),
   closeBrackets(),
   autocompletion(),
@@ -220,11 +301,10 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     });
 
     let editor: EditorView;
-    // 缩进单位按当前文档内容探测，供参考线网格与文档实际缩进对齐；
+    // 缩进单位按当前文档内容探测，供参考线按实际空白字符生成；
     // 编辑器可能先于异步详情挂载，value 到达/变化时由下方 [value] 效应重探并热重配
     const docIndentUnit = detectIndentUnit(valueRef.current);
     appliedIndentUnitRef.current = docIndentUnit;
-    parent.style.setProperty("--indent-guide-shift", `${indentGuideShiftCh(docIndentUnit)}ch`);
     let syncingScroll = false;
     let syncFrame = 0;
     const syncHorizontalScrollbar = () => {
@@ -326,14 +406,13 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   useEffect(() => {
     const editor = viewRef.current;
     if (!editor) return;
-    // 外部灌入的内容可能换了缩进风格（如异步详情晚于编辑器挂载），重探并热重配参考线网格
+    // 外部灌入的内容可能换了缩进风格（如异步详情晚于编辑器挂载），重探并热重配参考线
     const nextIndentUnit = detectIndentUnit(value);
     if (nextIndentUnit !== appliedIndentUnitRef.current) {
       appliedIndentUnitRef.current = nextIndentUnit;
       editor.dispatch({
         effects: indentUnitCompartment.current.reconfigure(indentUnitFacet.of(nextIndentUnit)),
       });
-      editor.dom.parentElement?.style.setProperty("--indent-guide-shift", `${indentGuideShiftCh(nextIndentUnit)}ch`);
     }
     if (editor.state.doc.toString() === value) return;
     const previousScrollTop = editor.scrollDOM.scrollTop;

@@ -2366,17 +2366,28 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   height: auto;
   max-height: min(34rem, 60vh);
   background: transparent;
-  /* 缩进参考线（indentation-markers）：复用分隔线 token 保持低对比，光标行不做二次高亮 */
+  /* 缩进参考线复用分隔线 token，标记随行首空白绘制且不跟随光标变化 */
   --indent-marker-bg-color: var(--panel-divider);
-  --indent-marker-active-bg-color: var(--panel-divider);
 }
 
-/* 包默认把第 k 级参考线画在 (k-1)*缩进宽+0.5ch；hideFirstIndent + 平移后，深度 N 的行画 N-1 根线，
-   对齐各级祖先的文字列，最深一根与行文字空出一个缩进位（对齐 VSCode）。
-   总位置 = 0.5ch（包锚点）+（缩进单位-0.5ch）（--indent-guide-shift，按文档探测内联）+ 2px
-   （文字起点 6px - 包假设的 2px = 4px，再回撤 2px：光标作用域的边界线正好压在行首字符上，回撤留出干净间隙） */
-.cm-editor .cm-line.cm-indent-markers::before {
-  background-position: calc(var(--indent-guide-shift, 1.5ch) + 0.5ch + 2px) 0;
+/* 参考线贴在缩进空白字符的列边界，避免 repeating-linear-gradient 在缩放时的像素取整差异。 */
+.cm-editor .cm-indent-guide {
+  position: relative;
+  display: inline-block;
+}
+
+.cm-editor .cm-indent-guide::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  border-right: 1px solid var(--indent-marker-bg-color);
+  content: "";
+  pointer-events: none;
+}
+
+.cm-editor .cm-indent-guide-fill {
+  white-space: pre;
 }
 
 .cm-editor.cm-focused { outline: none; }

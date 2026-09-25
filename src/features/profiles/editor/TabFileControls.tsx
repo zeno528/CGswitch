@@ -19,10 +19,14 @@ export default function TabFileControls({ kind, editable, disabled, onClear, chi
   const { t } = useTranslation("profiles");
   const feedback = useFeedback();
   const clear = () => {
+    if (kind === "models") {
+      onClear();
+      return;
+    }
     void feedback
       .confirm({
-        title: t(kind === "models" ? "edit.clearCatalogTitle" : "edit.clearAuthTitle"),
-        description: t(kind === "models" ? "edit.clearCatalogDescription" : "edit.clearAuthDescription"),
+        title: t("edit.clearAuthTitle"),
+        description: t("edit.clearAuthDescription"),
         confirmText: t("edit.clearFile"),
         destructive: true,
       })

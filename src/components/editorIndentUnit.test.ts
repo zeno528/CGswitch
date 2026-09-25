@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectIndentUnit, indentGuideShiftCh } from "./editorIndentUnit";
+import { detectIndentUnit, indentGuideLayout } from "./editorIndentUnit";
 
 describe("detectIndentUnit", () => {
   it("detects 2-space indentation", () => {
@@ -24,10 +24,19 @@ describe("detectIndentUnit", () => {
   });
 });
 
-describe("indentGuideShiftCh", () => {
-  it("shifts the package grid so guides land on text columns", () => {
-    expect(indentGuideShiftCh("  ")).toBe(1.5);
-    expect(indentGuideShiftCh("    ")).toBe(3.5);
-    expect(indentGuideShiftCh("\t")).toBe(3.5);
+describe("indentGuideLayout", () => {
+  it("places one marker at each ancestor boundary for complete and partial indentation", () => {
+    expect(indentGuideLayout('        "nested": 1', "    ").markEnds).toEqual([4]);
+    expect(indentGuideLayout('              "partial": 1', "    ").markEnds).toEqual([4, 8, 12]);
+  });
+
+  it("does not draw the first indent level or guides beyond the text", () => {
+    expect(indentGuideLayout('    "value": 1', "    ").markEnds).toEqual([]);
+    expect(indentGuideLayout('  "value": 1', "    ").markEnds).toEqual([]);
+  });
+
+  it("counts tab stops and fills inherited guides on blank lines", () => {
+    expect(indentGuideLayout('\t\t"value": 1', "\t").markEnds).toEqual([1]);
+    expect(indentGuideLayout("  ", "    ", 4, 2)).toEqual({ markEnds: [], fillSegments: [2, 4] });
   });
 });
