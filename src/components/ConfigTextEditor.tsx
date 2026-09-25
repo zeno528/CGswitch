@@ -1,6 +1,7 @@
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, indentOnInput, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { indentationMarkers } from "@replit/codemirror-indentation-markers";
+import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, indentOnInput, indentUnit as indentUnitFacet, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { forEachDiagnostic, lintKeymap, linter, setDiagnosticsEffect, type Diagnostic } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -8,6 +9,7 @@ import { Compartment, EditorState, RangeSet, StateField } from "@codemirror/stat
 import { crosshairCursor, Decoration, drawSelection, EditorView, gutterLineClass, GutterMarker, highlightActiveLine, highlightActiveLineGutter, highlightSpecialChars, keymap, lineNumbers, placeholder as editorPlaceholder, rectangularSelection, dropCursor, type ViewUpdate } from "@codemirror/view";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { detectIndentUnit, indentGuideShiftCh } from "./editorIndentUnit";
 import i18next from "i18next";
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -27,6 +29,9 @@ const basicSetup = [
   EditorState.allowMultipleSelections.of(true),
   indentOnInput(),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  // hideFirstIndent：深度 N 的行只画 N-1 根参考线（对齐 VSCode），最深一根与文字空出一个缩进位；
+  // highlightActiveBlock: false：关闭光标跟随重算，参考线固定显示，不随选中/光标漂移
+  indentationMarkers({ hideFirstIndent: true, highlightActiveBlock: false }),
   bracketMatching(),
   closeBrackets(),
   autocompletion(),
@@ -148,6 +153,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const lastSummary = useRef<EditorDiagnosticSummary | null>(null);
   const syncingValueRef = useRef(false);
   const editingCompartment = useRef(new Compartment());
+  const indentUnitCompartment = useRef(new Compartment());
+  const appliedIndentUnitRef = useRef<string | null>(null);
   const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, min(34rem, 60vh))`;
 
   valueRef.current = value;
@@ -213,6 +220,11 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     });
 
     let editor: EditorView;
+    // 缩进单位按当前文档内容探测，供参考线网格与文档实际缩进对齐；
+    // 编辑器可能先于异步详情挂载，value 到达/变化时由下方 [value] 效应重探并热重配
+    const docIndentUnit = detectIndentUnit(valueRef.current);
+    appliedIndentUnitRef.current = docIndentUnit;
+    parent.style.setProperty("--indent-guide-shift", `${indentGuideShiftCh(docIndentUnit)}ch`);
     let syncingScroll = false;
     let syncFrame = 0;
     const syncHorizontalScrollbar = () => {
@@ -261,6 +273,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
         doc: valueRef.current,
         extensions: [
           basicSetup,
+          indentUnitCompartment.current.of(indentUnitFacet.of(docIndentUnit)),
           editingCompartment.current.of([
             EditorState.readOnly.of(readOnly),
             EditorView.editable.of(!readOnly),
@@ -312,7 +325,17 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
 
   useEffect(() => {
     const editor = viewRef.current;
-    if (!editor || editor.state.doc.toString() === value) return;
+    if (!editor) return;
+    // 外部灌入的内容可能换了缩进风格（如异步详情晚于编辑器挂载），重探并热重配参考线网格
+    const nextIndentUnit = detectIndentUnit(value);
+    if (nextIndentUnit !== appliedIndentUnitRef.current) {
+      appliedIndentUnitRef.current = nextIndentUnit;
+      editor.dispatch({
+        effects: indentUnitCompartment.current.reconfigure(indentUnitFacet.of(nextIndentUnit)),
+      });
+      editor.dom.parentElement?.style.setProperty("--indent-guide-shift", `${indentGuideShiftCh(nextIndentUnit)}ch`);
+    }
+    if (editor.state.doc.toString() === value) return;
     const previousScrollTop = editor.scrollDOM.scrollTop;
     const previousScrollLeft = editor.scrollDOM.scrollLeft;
     let restoreFrame = 0;

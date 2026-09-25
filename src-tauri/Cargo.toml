@@ -20,21 +20,21 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
-tauri = { version = "2.11.5", features = ["tray-icon", "image-png"] }
+tauri = { version = "2.11.6", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-dialog = "2.7.3"
-tauri-plugin-log = "2.9.1"
+tauri-plugin-log = "2.9.2"
 tauri-plugin-window-state = "2.4.1"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
-toml_edit = "0.25.13"
+toml_edit = "0.25.15"
 sysinfo = "0.39.6"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 tempfile = "3.27.0"
 directories = "6.0.0"
-reqwest = { version = "0.13.4", features = ["form", "json", "system-proxy"] }
+reqwest = { version = "0.13.5", features = ["form", "json", "system-proxy"] }
 tokio = { version = "1.53.1", features = ["sync", "time", "macros", "rt"] }
 base64 = "0.23.1"
 chrono = "0.4"
@@ -56,8 +56,8 @@ windows = { version = "0.62.2", features = [
 ] }
 
 [target.'cfg(any(target_os = "macos", windows))'.dependencies]
-tauri-plugin-single-instance = "2.4.4"
-tauri-plugin-updater = "2.11.0"
+tauri-plugin-single-instance = "2.4.5"
+tauri-plugin-updater = "2.12.0"
 tauri-plugin-process = "2"
 
 [profile.release]
