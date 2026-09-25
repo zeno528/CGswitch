@@ -54,6 +54,14 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain("editor.scrollDOM.scrollTop = previousScrollTop");
   });
 
+  it("按整个文档的最长行在首屏计算横向滚动条", () => {
+    expect(editorSource).toContain('document.createElement("canvas").getContext("2d")');
+    expect(editorSource).toContain("editor.state.doc.lines; number += 1");
+    expect(editorSource).toContain("editor.contentDOM.style.minWidth = `${documentWidth}px`");
+    expect(editorSource).toContain("const hasOverflow = contentWidth > viewportWidth;");
+    expect(editorSource).toContain("syncHorizontalScrollbar();");
+  });
+
   it("用错误行高亮和红色粗体行号替代独立错误 gutter", () => {
     expect(editorSource).not.toContain("lintGutter()");
     expect(editorSource).toContain("setDiagnosticsEffect");

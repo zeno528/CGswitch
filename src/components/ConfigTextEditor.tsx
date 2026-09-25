@@ -305,6 +305,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     // 编辑器可能先于异步详情挂载，value 到达/变化时由下方 [value] 效应重探并热重配
     const docIndentUnit = detectIndentUnit(valueRef.current);
     appliedIndentUnitRef.current = docIndentUnit;
+    const measureContext = document.createElement("canvas").getContext("2d");
     let syncingScroll = false;
     let syncFrame = 0;
     const syncHorizontalScrollbar = () => {
@@ -312,8 +313,31 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       const gutters = scroller.querySelector<HTMLElement>(".cm-gutters-before");
       const gutterWidth = gutters?.getBoundingClientRect().width ?? 0;
       const viewportWidth = Math.max(0, scroller.getBoundingClientRect().width - gutterWidth);
-      const contentWidth = Math.max(viewportWidth, scroller.scrollWidth - gutterWidth);
-      const hasOverflow = scroller.scrollWidth > scroller.clientWidth;
+      let documentWidth = scroller.scrollWidth - gutterWidth;
+      if (measureContext) {
+        const style = getComputedStyle(editor.contentDOM);
+        measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
+        documentWidth = 0;
+        for (let number = 1; number <= editor.state.doc.lines; number += 1) {
+          const parts = editor.state.doc.line(number).text.split("\t");
+          let lineWidth = 0;
+          for (let index = 0; index < parts.length; index += 1) {
+            lineWidth += measureContext.measureText(parts[index]!).width;
+            if (index < parts.length - 1 && tabWidth > 0) {
+              const remainder = lineWidth % tabWidth;
+              lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
+            }
+          }
+          documentWidth = Math.max(documentWidth, lineWidth);
+        }
+        documentWidth = Math.ceil(documentWidth);
+      }
+      // 长文档按视口虚拟化，预设全文宽度才能让首屏横向滚动生效。
+      editor.contentDOM.style.minWidth = `${documentWidth}px`;
+      documentWidth = Math.max(documentWidth, scroller.scrollWidth - gutterWidth);
+      const contentWidth = Math.max(viewportWidth, documentWidth);
+      const hasOverflow = contentWidth > viewportWidth;
       const maxScrollLeft = hasOverflow ? Math.max(0, contentWidth - viewportWidth) : 0;
       scrollbarGutter.style.width = `${gutterWidth}px`;
       scrollbarGutter.style.backgroundColor = gutters ? getComputedStyle(gutters).backgroundColor : "transparent";
@@ -378,7 +402,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     scrollbar.addEventListener("scroll", onScrollbarScroll);
     const resizeObserver = new ResizeObserver(scheduleScrollbarSync);
     resizeObserver.observe(editor.dom);
-    scheduleScrollbarSync();
+    syncHorizontalScrollbar();
     reportDiagnostics(editor);
 
     return () => {
