@@ -108,7 +108,6 @@ export default {
     modelsAvailable: "{{count}} available",
     selectModel: "Select a model",
     fetchModelsFirst: "Fetch the model list first",
-    opencodePromo: "Use this link to subscribe to OpenCode Go, only $5 for the first month, plus an extra $5 of credits!",
     authMethodLabel: "Sign-in method",
     addChatgptAccount: "+ Add or manage ChatGPT accounts",
     selectOauthAccount: "Select an OAuth account",

@@ -1,4 +1,4 @@
-import { ArrowLeft, CodeXml, Download, Eye, EyeOff, ExternalLink, FileBraces, Info, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
+import { ArrowLeft, CodeXml, Download, Eye, EyeOff, ExternalLink, FileBraces, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -532,7 +532,6 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                     <AppSelect value={fetchedModels.includes(modelValue) ? modelValue : null} options={fetchedModels.map((id) => ({ label: id, value: id }))} onChange={(value) => setModelValue(value)} placeholder={fetchedModels.length ? t("edit.selectModel") : t("edit.fetchModelsFirst")} />
                   </div>
                 </div>
-                {isOpenCode && create ? <p className="muted mt-2 flex items-start gap-1.5 text-xs"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />{t("edit.opencodePromo")}</p> : null}
               </>
             ) : null}
             {isOfficial ? <div className="mt-4"><div className="field-label mb-1.5">{t("edit.authMethodLabel")}</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder={t("card.authDesktop")} renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder={t("edit.selectOauthAccount")} renderLabel={renderAccountLabel} /> : <div className="app-input flex min-w-0 items-center gap-2"><AuthSourceIcon source="desktop" className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{t("card.authDesktop")}</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}

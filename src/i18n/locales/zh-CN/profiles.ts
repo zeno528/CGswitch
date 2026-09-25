@@ -108,7 +108,6 @@ export default {
     modelsAvailable: "{{count}} 个可用",
     selectModel: "选择模型",
     fetchModelsFirst: "请先获取模型列表",
-    opencodePromo: "使用此链接订阅 OpenCode Go，首月只需 $5，并可获得额外的 $5 额度！",
     authMethodLabel: "登录方式",
     addChatgptAccount: "+ 添加或管理ChatGPT 账号",
     selectOauthAccount: "选择 OAuth 登录账号",
