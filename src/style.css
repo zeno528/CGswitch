@@ -68,6 +68,8 @@
   --gap-main: 1.5rem;
   /* 操作按钮（药丸）之间的统一间距：弹窗底部与编辑页操作栏共用 */
   --gap-actions: 0.75rem;
+  /* 弹窗内容/操作区到弹窗底边的统一留白（标准弹窗、hero 弹窗操作区、oauth 弹窗共用） */
+  --dialog-pad-bottom: 1.5rem;
   /* 全局控件与窗口几何：页面、编辑页和侧边栏只从这里取尺寸 */
   --font-size-base: 0.875rem;
   --sidebar-width-expanded: 8rem;
@@ -1759,7 +1761,7 @@ button:focus-visible {
   border-radius: var(--radius-card);
   background: var(--panel-bg);
   box-shadow: 0 22px 70px rgb(0 0 0 / 0.22), 0 0 0 1px var(--panel-ring);
-  padding: var(--gap-card) var(--gap-card-inline);
+  padding: var(--gap-card) var(--gap-card-inline) var(--dialog-pad-bottom);
   display: flex;
   flex-direction: column;
   gap: var(--gap-section);
@@ -1914,7 +1916,7 @@ button:focus-visible {
 .app-dialog-content--hero .app-dialog-actions {
   flex-shrink: 0;
   justify-content: center;
-  padding: 1rem var(--gap-card-inline) 1.25rem;
+  padding: 1rem var(--gap-card-inline) var(--dialog-pad-bottom);
 }
 
 /* ChatGPT 添加账号弹窗（卡片式 OAuth 登录，视觉源：归档/demo1.html 一比一复刻）。
@@ -1949,7 +1951,6 @@ button:focus-visible {
   --oauth-feature-icon: #dedee3;
 }
 
-/* 关闭叉由伪元素绘制，悬浮放大是 demo 的既定交互 */
 .oauth-modal-close {
   position: absolute;
   top: 18px;
@@ -1961,29 +1962,12 @@ button:focus-visible {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.42);
   cursor: pointer;
-  transition: 0.18s ease;
+  transition: background-color 150ms ease-out;
 }
 
 .oauth-modal-close:hover {
   background: rgba(255, 255, 255, 0.78);
-  transform: scale(1.04);
 }
-
-.oauth-modal-close::before,
-.oauth-modal-close::after {
-  content: "";
-  position: absolute;
-  top: 17px;
-  left: 10px;
-  width: 16px;
-  height: 1.8px;
-  border-radius: 999px;
-  background: #667085;
-}
-
-.oauth-modal-close::before { transform: rotate(45deg); }
-
-.oauth-modal-close::after { transform: rotate(-45deg); }
 
 /* hero：蓝色渐变 banner，logo 居中；光斑与波纹是纯装饰层 */
 .oauth-hero {
@@ -2073,7 +2057,7 @@ button:focus-visible {
 
 .oauth-content {
   background: var(--main-surface-bg);
-  padding: 24px 34px 20px;
+  padding: 24px 34px var(--dialog-pad-bottom);
 }
 
 .oauth-content-title {
@@ -2134,8 +2118,7 @@ button:focus-visible {
 }
 
 .oauth-auth-btn,
-.oauth-reopen-btn,
-.oauth-cancel-btn {
+.oauth-reopen-btn {
   appearance: none;
   height: 38px;
   padding: 0 16px;
@@ -2161,12 +2144,20 @@ button:focus-visible {
 .oauth-auth-btn:hover,
 .oauth-reopen-btn:hover { background: var(--primary-button-hover-bg); }
 
+/* 取消登录：文字链接式次行动，不与主药丸并列争夺层级；hover 变主题色给足可点暗示 */
 .oauth-cancel-btn {
-  background: var(--secondary-button-bg);
-  color: var(--text-primary);
+  appearance: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: color 150ms ease-out;
 }
 
-.oauth-cancel-btn:hover { background: var(--secondary-button-hover-bg); }
+.oauth-cancel-btn:hover { color: var(--accent); }
 
 .oauth-pending {
   min-height: 300px;
@@ -2208,17 +2199,13 @@ button:focus-visible {
   line-height: 1.55;
 }
 
+/* 等待视图的操作按钮纵排：主行动（重新打开）在上、取消在下，宽度按内容自适应，与介绍视图 CTA 列同构 */
 .oauth-pending-actions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
   margin-top: 26px;
-}
-
-.oauth-pending-actions button {
-  width: 224px;
-  flex: 0 0 auto;
 }
 
 @media (max-width: 700px) {

@@ -285,7 +285,7 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
           // 重新授权成功：旧失败态缓存即刻作废，卡片重挂载后按无错误路径自动刷新出成功态
           clearAuthQuotaError(authQuotaCacheKey("oauth", account.id));
           await refreshStatus();
-          feedback.success(t("account.addedToast"));
+          feedback.success(t("account.addedToast", { login: account.login }));
           return;
         }
         await new Promise((resolve) => window.setTimeout(resolve, 1000));

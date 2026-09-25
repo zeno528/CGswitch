@@ -1,4 +1,4 @@
-import { ExternalLink, FileKey, ShieldCheck, UsersRound } from "lucide-react";
+import { ExternalLink, HardDrive, ShieldCheck, UsersRound } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AppModal } from "../../components/AppModal";
 import { chatgptLogo } from "../../icons";
@@ -20,7 +20,7 @@ export function AddAccountDialog({ open, onOpenChange, busy, browserLogin, onSta
   const { t } = useTranslation("settings");
   const features = [
     { icon: ShieldCheck, title: t("account.officialSignIn"), description: t("account.officialSignInDescription") },
-    { icon: FileKey, title: t("account.localCredentials"), description: t("account.localCredentialsDescription") },
+    { icon: HardDrive, title: t("account.localCredentials"), description: t("account.localCredentialsDescription") },
     { icon: UsersRound, title: t("account.accountManagement"), description: t("account.accountManagementDescription") },
   ];
 
@@ -31,7 +31,7 @@ export function AddAccountDialog({ open, onOpenChange, busy, browserLogin, onSta
       label={t("account.addAccountTitle")}
       dismissible={false}
       className="oauth-modal"
-      closeClassName="oauth-modal-close"
+      closeClassName="app-dialog-close oauth-modal-close"
     >
       <section className="oauth-hero" aria-hidden="true">
         <div className="oauth-glow oauth-glow-left" />

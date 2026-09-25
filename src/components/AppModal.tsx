@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import { type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -29,7 +30,9 @@ export function AppModal({ open, onOpenChange, label, dismissible = true, classN
           onEscapeKeyDown={dismissible ? undefined : blockDismiss}
         >
           {children}
-          <Dialog.Close aria-label={t("window.close")} className={closeClassName} />
+          <Dialog.Close aria-label={t("window.close")} className={closeClassName}>
+            <X className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          </Dialog.Close>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

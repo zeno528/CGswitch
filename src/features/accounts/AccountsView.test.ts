@@ -35,7 +35,7 @@ describe("Add account dialog wiring", () => {
     const dialogSource = readFileSync(new URL("./AddAccountDialog.tsx", import.meta.url), "utf8");
     expect(dialogSource).toContain('className="oauth-intro"');
     expect(dialogSource).toContain('className="oauth-pending"');
-    expect(dialogSource).toContain('closeClassName="oauth-modal-close"');
+    expect(dialogSource).toContain('closeClassName="app-dialog-close oauth-modal-close"');
     expect(dialogSource).toContain("dismissible={false}");
   });
 });
