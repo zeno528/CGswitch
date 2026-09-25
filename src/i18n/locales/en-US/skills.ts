@@ -34,4 +34,7 @@ export default {
   deletedToast: "Skill deleted",
   duplicateName: "\"{{name}}\" comes from multiple different sources. Select only one.",
   importedToast: "Imported {{count}} Skills",
+  importFromFolder: "Import from folder...",
+  importFolderDialogTitle: "Choose a Skill folder to import",
+  importedIdenticalToast: "Identical to the installed Skill - import skipped",
 } as const;

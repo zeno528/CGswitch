@@ -52,9 +52,9 @@ describe("Skill 标题栏", () => {
 });
 
 describe("availableCount 刷新时机", () => {
-  it("导入与删除成功后立即重扫候选，角标不等窗口重新聚焦", () => {
-    // 导入和删除都会改变候选集；两处 refresh(true) 后必须跟 scanForUpdates()（同行或换行注释均可）
+  it("导入、删除与文件夹导入成功后立即重扫候选，角标不等窗口重新聚焦", () => {
+    // 批量导入、删除、文件夹导入都会改变候选集；三处 refresh(true) 后必须跟 scanForUpdates()（同行或换行注释均可）
     const callSites = viewSource.match(/await refresh\(true\);\s*(?:\/\/[^\n]*\n\s*)?void scanForUpdates\(\);/g) ?? [];
-    expect(callSites).toHaveLength(2);
+    expect(callSites).toHaveLength(3);
   });
 });

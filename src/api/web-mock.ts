@@ -1017,6 +1017,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "scan_unmanaged_skills":
       return [{ name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理", store_path: "C:\\Users\\<user>\\.agents\\skills\\local-skill", source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate] as T;
     case "import_skill":
+      return true as T;
     case "enable_skill":
     case "disable_skill":
     case "delete_skill":

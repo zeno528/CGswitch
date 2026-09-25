@@ -361,7 +361,8 @@ impl AppContext {
         .map_err(|error| app_err!("Skill 扫描任务失败: {error}"))?
     }
 
-    pub async fn import_skill(&self, source_path: &str) -> AppResult<()> {
+    /// 导入任意本地目录中的 Skill：返回 true=已导入，false=内容与仓库正本一致跳过。
+    pub async fn import_skill(&self, source_path: &str) -> AppResult<bool> {
         let repository = skill_repository(&self.paths.root);
         let source = PathBuf::from(source_path);
         tauri::async_runtime::spawn_blocking(move || {
@@ -370,16 +371,21 @@ impl AppContext {
                 .and_then(|item| item.to_str())
                 .ok_or_else(|| app_err!("无法识别 Skill 名称"))?;
             validate_plugin_name(name)?;
+            // 信任边界：选中的目录必须是 Skill；提前到 backup_skill 之前，避免无效副作用
+            if !source.join("SKILL.md").is_file() {
+                return Err(app_err!("所选目录不是 Skill：缺少 SKILL.md"));
+            }
             let target = repository.join(name);
-            if source == target {
-                return Err(app_err!("该 Skill 已在管理目录中"));
+            // 去重：与仓库正本逐字节一致即跳过（同一路径自然命中），零副作用
+            if directories_equal(&target, &source) {
+                return Ok(false);
             }
             backup_skill(&repository, name)?;
             replace_skill(&source, &target)?;
             let mut sources = read_skill_sources(&repository);
             sources.insert(name.to_string(), source.display().to_string());
             write_skill_sources(&repository, &sources)?;
-            Ok(())
+            Ok(true)
         })
         .await
         .map_err(|error| app_err!("Skill 导入任务失败: {error}"))?
@@ -594,10 +600,10 @@ mod tests {
         std::fs::create_dir_all(&source).unwrap();
         std::fs::write(source.join("SKILL.md"), "---\ndescription: 初始版本\n---\n").unwrap();
 
-        context
+        assert!(context
             .import_skill(&source.display().to_string())
             .await
-            .unwrap();
+            .unwrap());
         let initial = context.list_skills().await.unwrap();
         assert_eq!(
             initial
@@ -637,10 +643,10 @@ mod tests {
                 .unwrap()
                 .update_available
         );
-        context
+        assert!(context
             .import_skill(&source.display().to_string())
             .await
-            .unwrap();
+            .unwrap());
         assert_eq!(
             context
                 .list_skills()
@@ -653,5 +659,44 @@ mod tests {
                 .as_deref(),
             Some("更新版本")
         );
+    }
+
+    #[tokio::test]
+    async fn import_skill_rejects_directory_without_skill_md() {
+        let (home, context) = test_context();
+        let source = home.path().join("Downloads/not-a-skill");
+        std::fs::create_dir_all(&source).unwrap();
+
+        let error = context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("SKILL.md"));
+    }
+
+    #[tokio::test]
+    async fn import_skill_skips_identical_content() {
+        let (home, context) = test_context();
+        let repository = skill_repository(&context.paths.root);
+        let source = home.path().join("Downloads/same-skill");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "---\ndescription: 相同内容\n---\n").unwrap();
+
+        assert!(context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap());
+        let sources = read_skill_sources(&repository);
+
+        // 同一路径二次导入：内容一致返回 false，且登记表与备份目录零改动
+        assert!(!context
+            .import_skill(&source.display().to_string())
+            .await
+            .unwrap());
+        assert_eq!(read_skill_sources(&repository), sources);
+        assert!(!repository
+            .join(SKILL_BACKUP_DIRECTORY)
+            .join("same-skill")
+            .exists());
     }
 }

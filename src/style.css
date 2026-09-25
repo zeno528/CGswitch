@@ -1742,6 +1742,9 @@ button:focus-visible {
   background: rgb(0 0 0 / 0.1);
   -webkit-backdrop-filter: blur(6px) saturate(100%);
   backdrop-filter: blur(6px) saturate(100%);
+  /* 强制 GPU 合成层（社区标准解法，SO 57736567 等）：否则窗口 resize 连续重排时
+     backdrop-filter 逐帧重采样整窗模糊、快照滞后于实时布局，下层内容/字体会剧烈抖动 */
+  transform: translateZ(0);
   animation: app-dialog-overlay-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1770,6 +1773,11 @@ button:focus-visible {
 
 .app-dialog-content--confirm {
   width: min(460px, calc(100vw - 2rem));
+}
+
+/* 内容预览弹窗（Skill 的 SKILL.md 等 Markdown 正文）：比标准弹窗宽一档，长行代码少折行 */
+.app-dialog-content--wide {
+  width: min(600px, calc(100vw - 2rem));
 }
 
 .app-dialog-content--confirm .app-dialog-description {
@@ -1933,7 +1941,8 @@ button:focus-visible {
   width: min(620px, calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
-  transform: translate(-50%, -50%);
+  /* translateZ(0) 合成层提升，理由同 .app-dialog-overlay：消除 resize 期间第二层模糊的重采样抖动 */
+  transform: translate(-50%, -50%) translateZ(0);
   border-radius: 30px;
   background: var(--oauth-modal-surface);
   border: 1px solid var(--oauth-modal-border);

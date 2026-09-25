@@ -34,4 +34,7 @@ export default {
   deletedToast: "Skill 已删除",
   duplicateName: "「{{name}}」存在多个不同来源版本，请只选择一个",
   importedToast: "已导入 {{count}} 个 Skill",
+  importFromFolder: "从文件夹导入…",
+  importFolderDialogTitle: "选择要导入的 Skill 文件夹",
+  importedIdenticalToast: "内容与已安装的 Skill 一致，已跳过导入",
 } as const;
