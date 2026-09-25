@@ -212,7 +212,6 @@ pnpm test:unit
 pnpm check
 pnpm build
 pnpm build:debug
-pnpm preview
 ```
 
 `pnpm check` 会运行前端和 Rust 质量检查。`pnpm build` 生成 Web 构建产物；`pnpm build:debug` 生成 Tauri 调试包。需要在本地打包发行安装程序时运行：
@@ -237,15 +236,22 @@ CGswitch 使用轻量的本地桌面技术栈：
 
 ```text
 src/
-├── api/       类型化 IPC 方法和浏览器 mock
-├── app/       应用壳层、导航、状态和轮询
-└── features/  profiles、mcp、plugins、skills、settings、updates
+├── api/        类型化 IPC 方法和浏览器 mock
+├── app/        应用壳层、导航、状态、轮询和管理数据缓存
+├── assets/     打包的供应商图标与静态资源
+├── components/ 共享 UI 组件（AppDialog、AppSelect、ConfigTextEditor 等）
+├── features/   profiles、mcp、plugins、skills、settings、updates
+└── i18n/       英文与简体中文文案
 
 src-tauri/src/
-├── commands.rs
-├── services/
-├── database.rs
-└── paths.rs
+├── commands.rs   Tauri command 边界
+├── services/     AppContext 与用例（profiles、mcp、plugins、accounts 等）
+├── codex/        Codex 配置文件与进程管理
+├── auth/         OAuth 与账号认证
+├── database.rs   SQLite 连接、schema 与迁移
+├── models.rs     Rust 领域模型与 command DTO
+├── builtin.rs    内置供应商资源与模板
+└── paths.rs      文件系统路径工具
 ```
 
 ## 参与贡献
@@ -257,4 +263,4 @@ src-tauri/src/
 
 ## 许可证
 
-CGswitch 使用 [MIT License](LICENSE) 发布。供应商图标来自 [thesvg.org](https://thesvg.org)，对应 SVG 文件中保留了来源声明。
+CGswitch 使用 [MIT License](LICENSE) 发布。部分供应商图标（`ChatGPT`、`DeepSeek`、`MiniMax CN`、`OpenCode`、`Zhipu CN`）来自 [thesvg.org](https://thesvg.org)，其余为自制或另行取得；每个 SVG 文件顶部都保留了来源声明。

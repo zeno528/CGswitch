@@ -212,7 +212,6 @@ pnpm test:unit
 pnpm check
 pnpm build
 pnpm build:debug
-pnpm preview
 ```
 
 `pnpm check` runs the frontend and Rust quality checks. `pnpm build` creates the web build; `pnpm build:debug` creates a debug Tauri bundle. To package release installers locally:
@@ -237,15 +236,22 @@ The main source areas are organized as follows:
 
 ```text
 src/
-├── api/       typed IPC methods and browser mock
-├── app/       shell, navigation, state, and polling
-└── features/  profiles, mcp, plugins, skills, settings, updates
+├── api/        typed IPC methods and browser mock
+├── app/        shell, navigation, state, polling, and management data cache
+├── assets/     bundled provider icons and resources
+├── components/ shared UI components (AppDialog, AppSelect, ConfigTextEditor, …)
+├── features/   profiles, mcp, plugins, skills, settings, updates
+└── i18n/       English and Simplified Chinese messages
 
 src-tauri/src/
-├── commands.rs
-├── services/
-├── database.rs
-└── paths.rs
+├── commands.rs   Tauri command boundary
+├── services/     AppContext and use cases (profiles, mcp, plugins, accounts, …)
+├── codex/        Codex config files and process management
+├── auth/         OAuth and account authentication
+├── database.rs   SQLite connection, schema, and migrations
+├── models.rs     Rust domain models and command DTOs
+├── builtin.rs    built-in provider assets and templates
+└── paths.rs      filesystem path helpers
 ```
 
 ## Contributing
@@ -257,4 +263,4 @@ Bug reports, feature ideas, documentation improvements, and pull requests are we
 
 ## License
 
-CGswitch is released under the [MIT License](LICENSE). Provider icons are sourced from [thesvg.org](https://thesvg.org); the corresponding SVG files retain their source notices.
+CGswitch is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax CN`, `OpenCode`, `Zhipu CN`) are sourced from [thesvg.org](https://thesvg.org); the rest are in-house or sourced separately. Each SVG keeps its own source notice.

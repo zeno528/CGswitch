@@ -237,7 +237,7 @@ function ResetCredits({ availableCount, credits }: { availableCount: number; cre
         // 剩余天数临期变色：≤3 天危险、≤7 天警告，平时次要色
         const daysClass = days == null ? "muted" : days <= 3 ? "text-(--danger)" : days <= 7 ? "text-(--warning)" : "muted";
         return (
-          <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-(--panel-border) bg-(--profile-chip-bg) px-3 py-2.5">
+          <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-(--panel-border) bg-(--main-surface-bg) px-3 py-2.5">
             <div className="min-w-0 text-xs">{resetTitle(credit.reset_type)}</div>
             <div className="whitespace-nowrap text-xs">
               {t("account.resetCreditExpiry", { time: formatExpiry(credit.expires_at) })}

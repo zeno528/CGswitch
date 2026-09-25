@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Eye, EyeOff, ExternalLink, FileBraces, Info, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
+import { ArrowLeft, CodeXml, Download, Eye, EyeOff, ExternalLink, FileBraces, Info, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -112,11 +112,10 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   }, [configText]);
   const catalogFileName = liveCatalogPath.split(/[\\/]/).pop() || "models.json";
   const formatTarget = activeTab === "config"
-    ? { icon: Settings, label: "config.toml", title: t("edit.formatTitle", { label: "config.toml", format: "TOML" }) }
+    ? { label: "config.toml", title: t("edit.formatTitle", { label: "config.toml", format: "TOML" }) }
     : activeTab === "auth"
-      ? { icon: FileBraces, label: "auth.json", title: t("edit.formatTitle", { label: "auth.json", format: "JSON" }) }
-      : { icon: FileBraces, label: catalogFileName, title: t("edit.formatTitle", { label: catalogFileName, format: "JSON" }) };
-  const FormatIcon = formatTarget.icon;
+      ? { label: "auth.json", title: t("edit.formatTitle", { label: "auth.json", format: "JSON" }) }
+      : { label: catalogFileName, title: t("edit.formatTitle", { label: catalogFileName, format: "JSON" }) };
   // auth.json 仅官方档有认证语义；第三方档只有携带历史 raw_auth 快照时才显示（防御旧数据）。
   const showAuthTab = create
     ? isCustom || (isOfficial && authSource === "desktop")
@@ -135,7 +134,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   // 附属条右侧的格式化入口：config 直接放行尾，models/auth 经 TabFileControls 夹在状态文字与清空之间，清空恒收最右。
   const formatButton = (
     <button type="button" className="editor-ghost ml-auto" disabled={saving || (activeTab === "auth" && authPreviewOnly)} title={formatTarget.title} onClick={() => void formatCurrentDocument()}>
-      <FormatIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+      <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
       <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
     </button>
   );

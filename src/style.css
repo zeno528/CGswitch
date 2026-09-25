@@ -1520,7 +1520,7 @@ body.drag-active * {
   gap: 4px;
   /* 最小高度锁住 28px 控件 + 上下 padding：只读 auth 只有纯文字，内容塌了会带得编辑器跳动 */
   min-height: 38px;
-  padding: 5px 10px;
+  padding: 5px 4px;
   background: rgb(0 0 0 / 0.04);
   border-bottom: 1px solid var(--panel-divider);
 }
@@ -1551,6 +1551,41 @@ body.drag-active * {
 
 :root.dark .editor-ghost:not(:disabled):hover {
   background: rgb(255 255 255 / 0.08);
+}
+
+.editor-ghost-group {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  transition: background-color 0.15s;
+}
+
+.editor-ghost-group > .editor-ghost {
+  padding-inline: 6px;
+}
+
+.editor-ghost-group__separator {
+  flex: 0 0 1px;
+  height: 14px;
+  margin-inline: 2px;
+  background: var(--panel-divider);
+}
+
+.editor-ghost-group:hover {
+  background: rgb(0 0 0 / 0.05);
+}
+
+:root.dark .editor-ghost-group:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+/* 组内子控件不单独刷底色，hover 只亮整组一层 */
+.editor-ghost-group > .editor-ghost:hover {
+  background: transparent;
+}
+
+:root.dark .editor-ghost-group > .editor-ghost:hover {
+  background: transparent;
 }
 
 .editor-ghost.on {

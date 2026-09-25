@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Minus, Plus, Save, Settings } from "lucide-react";
+import { ArrowLeft, ChevronRight, CodeXml, Minus, Plus, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -237,7 +237,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
             <div className="editor-attach-group">
               <div className="editor-attach-bar">
                 <button type="button" className="editor-ghost ml-auto" disabled={formatting || saving} onClick={() => void formatToml()}>
-                  <Settings className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                  <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                   <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
                 </button>
               </div>

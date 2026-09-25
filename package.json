@@ -22,7 +22,6 @@
     "check:i18n": "node scripts/check-i18n-leaks.mjs",
     "check": "pnpm typecheck && pnpm test:unit && pnpm check:style && pnpm check:i18n && pnpm check:rust",
     "check:rust": "cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --all-targets --manifest-path src-tauri/Cargo.toml -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml",
-    "preview": "vite preview",
     "tauri": "pnpm sync-version && tauri"
   },
   "dependencies": {
