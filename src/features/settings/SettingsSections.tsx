@@ -353,7 +353,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
 
   return (
     <div className="apple-group px-[var(--gap-card-inline)] py-[var(--gap-card)]">
-      <div className="settings-about__hero brand-gradient-surface">
+      <div className="settings-about__hero">
         <HeroDoodles patternId="cg-about-hero-doodles" />
         <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
           <div className="flex items-center gap-3">

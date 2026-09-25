@@ -33,6 +33,14 @@
   --brand-gradient-blend: color-mix(in srgb, var(--brand-gradient-start) 55%, var(--brand-gradient-middle));
   --brand-gradient-blend-mix: 31%;
   --brand-gradient-fade-mix: 11%;
+  /* 关于页头部与升级弹窗头部共用的品牌渐变（一套背景独立成定义）：
+     与激活卡共用同一组色彩 token，但整条不透明、右侧按品牌渐变填满不淡出；深浅主题随 mix token 自动适配 */
+  --brand-hero-gradient: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), var(--panel-bg)) 0%,
+    color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), var(--panel-bg)) 40%,
+    color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), var(--panel-bg)) 100%
+  );
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
   --sidebar-bg: var(--panel-bg);
@@ -585,15 +593,37 @@ main:has(.apple-edit-page) {
   -webkit-user-select: none;
 }
 
+/* 标题栏是透明交互层，固定悬浮在窗口顶端（Tauri 自定义标题栏的标准做法）：
+   工作区内容垫到它背后，正常态透过它看到的是同一片 sidebar 底色；弹窗遮罩（z 50）压暗+模糊的
+   也是这片真实内容，因此标题栏在弹窗开/关两态都与全窗无缝衔接，无需任何手绘补色。
+   交互不受影响：z 51 + pointer-events auto（Radix 弹窗打开会给 body 禁指针事件，需显式恢复），
+   拖动与窗口按钮在弹窗期间照常可用；弹窗内容层（z 52）在其上，小窗口重叠时弹窗优先。 */
 .apple-window-chrome {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 51;
   height: var(--window-chrome-height);
-  flex-shrink: 0;
+  background: transparent;
+  pointer-events: auto;
+}
+
+/* VS Code 式工作区：主视图为一张圆角卡片浮在窗口底色上。
+   padding-top 把内容让给悬浮标题栏，背后那圈正是标题栏透出的底色。 */
+.apple-workspace {
+  padding-top: var(--window-chrome-height);
   background: var(--sidebar-bg);
 }
 
-/* VS Code 式工作区：主视图为一张圆角卡片浮在窗口底色上 */
-.apple-workspace {
-  background: var(--sidebar-bg);
+/* 弹窗打开时窗口按钮被遮罩同色压暗：黑色 α 叠加在数值上恰等于 brightness 乘法
+   （浅色 0.1 → 0.9，深色 0.34 → 0.66），与遮罩下内容的真实压暗逐像素一致 */
+body:has(.app-dialog-overlay) .window-control-button {
+  filter: brightness(0.9);
+}
+
+:root.dark body:has(.app-dialog-overlay) .window-control-button {
+  filter: brightness(0.66);
 }
 
 .apple-main-card {
@@ -1214,9 +1244,10 @@ body.drag-active * {
   margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card-inline)) 0;
   padding: var(--gap-card) var(--gap-card-inline) 0;
   border-radius: var(--radius-card) var(--radius-card) 0 0;
+  background-image: var(--brand-hero-gradient);
 }
 
-/* 应用品牌渐变：配置卡激活态、升级弹窗和关于卡片统一复用。 */
+/* 配置卡激活态专用：半透明品牌渐变，可叠加在卡片底色上；关于页/升级弹窗头部已独立为 --brand-hero-gradient。 */
 .brand-gradient-surface {
   background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
@@ -1720,7 +1751,7 @@ button:focus-visible {
   position: fixed;
   left: 50%;
   top: 50%;
-  z-index: 51;
+  z-index: 52;
   width: min(520px, calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);
   overflow-y: auto;
@@ -1813,6 +1844,7 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 9px;
+  background-image: var(--brand-hero-gradient);
 }
 
 /* 头部装饰涂鸦平铺（关于页头部、升级弹窗头部）：白描边手绘图案铺满宿主，opacity 低速纹理，
@@ -1883,6 +1915,335 @@ button:focus-visible {
   flex-shrink: 0;
   justify-content: center;
   padding: 1rem var(--gap-card-inline) 1.25rem;
+}
+
+/* ChatGPT 添加账号弹窗（卡片式 OAuth 登录，视觉源：归档/demo1.html 一比一复刻）。
+   按钮与文字色直接复用全局 token（demo 与主题同源）；弹窗专属的表面/描边/阴影/图标色按浅深两套定义在自身作用域。 */
+.oauth-modal {
+  --oauth-modal-surface: rgba(255, 255, 255, 0.82);
+  --oauth-modal-border: rgba(255, 255, 255, 0.72);
+  --oauth-modal-shadow: 0 24px 80px rgba(19, 36, 67, 0.16);
+  --oauth-feature-icon: #343438;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 52;
+  width: min(620px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  border-radius: 30px;
+  background: var(--oauth-modal-surface);
+  border: 1px solid var(--oauth-modal-border);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--oauth-modal-shadow);
+  /* 与全局弹窗同一进场动画（keyframes 内置位移与本弹窗的居中方式一致） */
+  animation: app-dialog-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root.dark .oauth-modal {
+  --oauth-modal-surface: rgba(30, 30, 30, 0.96);
+  --oauth-modal-border: rgba(255, 255, 255, 0.1);
+  --oauth-modal-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+  --oauth-feature-icon: #dedee3;
+}
+
+/* 关闭叉由伪元素绘制，悬浮放大是 demo 的既定交互 */
+.oauth-modal-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.oauth-modal-close:hover {
+  background: rgba(255, 255, 255, 0.78);
+  transform: scale(1.04);
+}
+
+.oauth-modal-close::before,
+.oauth-modal-close::after {
+  content: "";
+  position: absolute;
+  top: 17px;
+  left: 10px;
+  width: 16px;
+  height: 1.8px;
+  border-radius: 999px;
+  background: #667085;
+}
+
+.oauth-modal-close::before { transform: rotate(45deg); }
+
+.oauth-modal-close::after { transform: rotate(-45deg); }
+
+/* hero：蓝色渐变 banner，logo 居中；光斑与波纹是纯装饰层 */
+.oauth-hero {
+  position: relative;
+  height: 176px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(255, 255, 255, 0.4), transparent 30%),
+    radial-gradient(circle at 82% 78%, rgba(206, 223, 255, 0.3), transparent 36%),
+    linear-gradient(135deg, #a8d9ff 0%, #87bfff 28%, #829eff 60%, #9bc9ff 100%);
+}
+
+.oauth-glow {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+  filter: blur(24px);
+}
+
+.oauth-glow-left {
+  width: 360px;
+  height: 210px;
+  left: -90px;
+  top: -75px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.oauth-glow-right {
+  width: 380px;
+  height: 240px;
+  right: -110px;
+  bottom: -120px;
+  background: rgba(182, 183, 255, 0.26);
+}
+
+.oauth-wave {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.oauth-wave::before,
+.oauth-wave::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(8px);
+  opacity: 0.42;
+}
+
+.oauth-wave::before {
+  width: 520px;
+  height: 200px;
+  left: -80px;
+  bottom: 28px;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.08) 64%, transparent 74%);
+  transform: rotate(-14deg);
+}
+
+.oauth-wave::after {
+  width: 500px;
+  height: 210px;
+  right: -40px;
+  top: -8px;
+  background: radial-gradient(ellipse at center, rgba(223, 229, 255, 0.34), rgba(223, 229, 255, 0.08) 60%, transparent 76%);
+  transform: rotate(18deg);
+}
+
+.oauth-hero-visual {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.oauth-hero-logo {
+  width: 64px;
+  height: 64px;
+  display: block;
+}
+
+.oauth-content {
+  background: var(--main-surface-bg);
+  padding: 24px 34px 20px;
+}
+
+.oauth-content-title {
+  margin: 0 auto 16px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.oauth-intro .oauth-content-title { font-size: 22px; }
+
+.oauth-feature-list {
+  display: grid;
+  max-width: 480px;
+  gap: 16px;
+  margin: 0 auto 14px;
+}
+
+.oauth-feature {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-height: 54px;
+  padding: 4px 12px;
+}
+
+.oauth-feature-icon {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--oauth-feature-icon);
+}
+
+.oauth-feature-copy h4 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.oauth-feature-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.oauth-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.oauth-auth-btn,
+.oauth-reopen-btn,
+.oauth-cancel-btn {
+  appearance: none;
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 150ms ease-out;
+}
+
+.oauth-auth-btn,
+.oauth-reopen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-button-bg);
+  color: var(--primary-button-text);
+  line-height: 1.4;
+}
+
+.oauth-auth-btn:hover,
+.oauth-reopen-btn:hover { background: var(--primary-button-hover-bg); }
+
+.oauth-cancel-btn {
+  background: var(--secondary-button-bg);
+  color: var(--text-primary);
+}
+
+.oauth-cancel-btn:hover { background: var(--secondary-button-hover-bg); }
+
+.oauth-pending {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.oauth-pending .oauth-content-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+
+.oauth-pending-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  animation: oauth-pending-spinner-rotate 1s linear infinite;
+}
+
+@keyframes oauth-pending-spinner-rotate { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .oauth-pending-spinner { animation: none; }
+}
+
+.oauth-pending > p {
+  max-width: 430px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.oauth-pending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.oauth-pending-actions button {
+  width: 224px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 700px) {
+  .oauth-modal { border-radius: 24px; }
+
+  .oauth-hero { height: 148px; }
+
+  .oauth-hero-logo {
+    width: 52px;
+    height: 52px;
+  }
+
+  .oauth-content { padding: 22px 18px 18px; }
+
+  .oauth-feature {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 12px;
+    padding-inline: 4px;
+  }
+
+  .oauth-feature-copy p { font-size: 12px; }
+
+  .oauth-intro .oauth-content-title { font-size: 20px; }
+
+  .oauth-pending { min-height: 260px; }
 }
 
 .app-button--primary {

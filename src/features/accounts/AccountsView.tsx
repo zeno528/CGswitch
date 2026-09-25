@@ -1,4 +1,4 @@
-import { CircleAlert, CreditCard, ExternalLink, LogIn, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { CircleAlert, CreditCard, LogIn, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -6,14 +6,12 @@ import { authQuotaCacheKey, authQuotaErrorKind, clearAuthQuotaError, getAuthQuot
 import { useFeedback } from "../../app/Feedback";
 import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { PlanBadge } from "../../components/PlanBadge";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { TrashIcon } from "../../components/TrashIcon";
-import { providerIconUrl } from "../../icons";
+import { chatgptLogo } from "../../icons";
 import { balanceChipClass } from "../../presets";
 import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
 import type { AuthStatus, BrowserLoginStart, ChatgptResetCredit, ProfileBalanceInfo } from "../../types";
-
-const chatgptLogo = providerIconUrl("openai-chatgpt");
+import { AddAccountDialog } from "./AddAccountDialog";
 
 export function isOAuthLoginExpiredError(message: string) {
   return authQuotaErrorKind(message) === "auth_expired";
@@ -264,6 +262,7 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
   const [status, setStatus] = useState(initialStatus);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [browserLogin, setBrowserLogin] = useState<BrowserLoginStart | null>(null);
   const disposed = useRef(false);
   const pollCancelled = useRef(false);
@@ -282,6 +281,7 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
         const account = await api.authPollBrowserLogin();
         if (account) {
           setBrowserLogin(null);
+          setAddOpen(false);
           // 重新授权成功：旧失败态缓存即刻作废，卡片重挂载后按无错误路径自动刷新出成功态
           clearAuthQuotaError(authQuotaCacheKey("oauth", account.id));
           await refreshStatus();
@@ -299,7 +299,14 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
   const startLogin = async () => {
     if (busy) return;
     setBusy(true); setBrowserLogin(null); pollCancelled.current = false;
-    try { const next = await api.authStartBrowserLogin(); setBrowserLogin(next); await api.openUrl(next.authorize_url); void pollBrowser(next); }
+    try {
+      const next = await api.authStartBrowserLogin();
+      // 弹窗在启动期间被关闭：取消态已建立，不进入等待视图
+      if (pollCancelled.current) { setBusy(false); return; }
+      setBrowserLogin(next);
+      await api.openUrl(next.authorize_url);
+      void pollBrowser(next);
+    }
     catch (error) { const text = String(error); feedback.error(text.includes("unsupported_country_region_territory") ? t("account.regionBlocked") : text); setBusy(false); }
   };
 
@@ -325,37 +332,23 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
           </span>
           <span className="apple-title">{t("account.sectionTitle")}</span>
         </div>
-        {!browserLogin ? <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => void startLogin()}><Plus className="h-4 w-4" strokeWidth={2} />{t("account.addAnother")}</button> : null}
+        <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => setAddOpen(true)}><Plus className="h-4 w-4" strokeWidth={2} />{t("account.addAnother")}</button>
       </header>
       <div className="apple-edit-content">{content}</div>
+      <AddAccountDialog
+        open={addOpen}
+        onOpenChange={(next) => {
+          setAddOpen(next);
+          // 等待授权期间关闭弹窗 = 取消登录，避免留下无人认领的轮询
+          if (!next && (browserLogin || busy)) cancelBrowserLogin();
+        }}
+        busy={busy}
+        browserLogin={browserLogin}
+        onStartLogin={() => void startLogin()}
+        onReopen={() => { if (browserLogin) void api.openUrl(browserLogin.authorize_url); }}
+        onCancel={cancelBrowserLogin}
+      />
     </section>
-  );
-
-  if (browserLogin) return page(
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent"><ShieldCheck className="h-[18px] w-[18px]" strokeWidth={2} /></span>
-          <div><div className="setting-title">{t("account.browserLoginTitle")}</div><p className="setting-description mt-0.5">{t("account.browserLoginDescription")}</p></div>
-        </div>
-      </div>
-      <div className="apple-group p-6 md:p-8">
-        <div className="mx-auto flex max-w-lg flex-col items-center text-center">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-accent/10 text-accent" aria-hidden="true">
-            <AuthSourceIcon source="oauth" className="h-6 w-6" strokeWidth={2} />
-          </span>
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-            <span className="apple-chip muted">{t("account.oauthDeviceLogin")}</span>
-            <span className="apple-chip chip-warn" role="status"><LoadingSpinner />{t("account.waitingAuth")}</span>
-          </div>
-          <p className="setting-description mt-2 max-w-md">{t("account.browserLoginPendingHint")}</p>
-          <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <button type="button" className="apple-action-button app-button--primary w-56 shrink-0" onClick={() => void api.openUrl(browserLogin.authorize_url)}><ExternalLink className="h-4 w-4" strokeWidth={2} />{t("account.reopenBrowser")}</button>
-            <button type="button" className="apple-action-button w-56 shrink-0" onClick={cancelBrowserLogin}>{t("account.cancelLogin")}</button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 
   if (status.authenticated) return page(
@@ -383,7 +376,7 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
           <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id, account.login)}><TrashIcon /></button>
         </div>
         <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRelogin={() => void startLogin()} reloginDisabled={busy} />
+        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />
       </div>)}
     </div>
   );

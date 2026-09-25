@@ -35,7 +35,7 @@ export function AppDialog({ open, onOpenChange, title, hero, description, childr
           }}
         >
           {hero ? (
-            <div className="app-dialog-hero brand-gradient-surface">
+            <div className="app-dialog-hero">
               {hero}
               <Dialog.Title className="app-dialog-title">{title}</Dialog.Title>
             </div>

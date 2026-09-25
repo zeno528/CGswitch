@@ -19,3 +19,23 @@ describe("OAuth account quota recovery", () => {
     expect(source).toContain("onAuthStatusChange?.(next);");
   });
 });
+
+describe("Add account dialog wiring", () => {
+  it("添加账号走卡片弹窗：页头按钮只打开弹窗，不再整页替换为等待视图", () => {
+    expect(source).toContain("setAddOpen(true)");
+    expect(source).toContain("<AddAccountDialog");
+    expect(source).not.toContain("browserLogin) return page");
+  });
+
+  it("等待授权期间关闭弹窗会取消浏览器登录，避免无人认领的轮询", () => {
+    expect(source).toContain("if (!next && (browserLogin || busy)) cancelBrowserLogin();");
+  });
+
+  it("弹窗内含介绍与等待两种视图，且不允许误触关闭（只能走关闭按钮）", () => {
+    const dialogSource = readFileSync(new URL("./AddAccountDialog.tsx", import.meta.url), "utf8");
+    expect(dialogSource).toContain('className="oauth-intro"');
+    expect(dialogSource).toContain('className="oauth-pending"');
+    expect(dialogSource).toContain('closeClassName="oauth-modal-close"');
+    expect(dialogSource).toContain("dismissible={false}");
+  });
+});

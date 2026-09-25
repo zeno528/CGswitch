@@ -49,6 +49,9 @@ export function providerIconUrl(id: string | null | undefined): string | null {
   return id ? (files[`./assets/providers/${id}.svg`] ?? null) : null;
 }
 
+/** ChatGPT 品牌 logo，账号页头与添加账号弹窗共用。 */
+export const chatgptLogo = providerIconUrl("openai-chatgpt");
+
 export function providerIconThemeClass(id: string | null | undefined): string {
   return id && THEME_INVERTED_IDS.has(id) ? "dark:invert" : "";
 }
