@@ -92,6 +92,11 @@ describe("AppShell 布局", () => {
     expect(source).toContain('onManageChatgptAccounts={goAccounts}');
   });
 
+  it("托盘账号项恢复窗口后打开账号页", () => {
+    expect(source).toContain('listen("tray-open-accounts", () => latest.current.openAccounts())');
+    expect(source).toContain("openAccounts={goAccounts}");
+  });
+
   it("冷启动窗口一路透传到供应商卡：余额刷新只在进程启动期间延后", () => {
     const profilesViewSource = readFileSync(new URL("../features/profiles/ProfilesView.tsx", import.meta.url), "utf8");
     const profileCardSource = readFileSync(new URL("../features/profiles/ProfileCard.tsx", import.meta.url), "utf8");

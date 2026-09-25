@@ -39,11 +39,25 @@ pub struct StartupClock(std::time::Instant);
 pub struct TrayClickMode(pub AtomicBool);
 
 /// 托盘菜单文案。语言由前端解析后传入（Rust 侧无法得知 "system" 对应哪种系统语言）。
-fn tray_labels(language: &str) -> (&'static str, &'static str, &'static str, &'static str) {
+fn tray_labels(
+    language: &str,
+) -> (
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+) {
     if language == "en-US" {
-        ("Open main window", "Switch provider", "Settings...", "Quit")
+        (
+            "Open main window",
+            "Switch provider",
+            "Accounts",
+            "Settings...",
+            "Quit",
+        )
     } else {
-        ("打开主界面", "切换供应商", "设置…", "退出")
+        ("打开主界面", "切换供应商", "账号", "设置…", "退出")
     }
 }
 
@@ -53,7 +67,7 @@ pub fn tray_menu(
     profiles: &[TrayProfile],
     active_profile_id: Option<&str>,
 ) -> tauri::Result<Menu<tauri::Wry>> {
-    let (show, switch, settings, quit) = tray_labels(language);
+    let (show, switch, accounts, settings, quit) = tray_labels(language);
     let show_item = MenuItem::with_id(app, "show", show, true, None::<&str>)?;
     let active = profiles
         .iter()
@@ -84,6 +98,7 @@ pub fn tray_menu(
     }
     let separator_one = PredefinedMenuItem::separator(app)?;
     let separator_two = PredefinedMenuItem::separator(app)?;
+    let accounts_item = MenuItem::with_id(app, "accounts", accounts, true, None::<&str>)?;
     let settings_item = MenuItem::with_id(app, "settings", settings, true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", quit, true, None::<&str>)?;
     let menu = Menu::with_items(
@@ -93,6 +108,7 @@ pub fn tray_menu(
             &separator_one,
             &switch_menu,
             &separator_two,
+            &accounts_item,
             &settings_item,
             &quit_item,
         ],
@@ -415,6 +431,10 @@ pub fn run() {
                         show_main_window(app);
                         let _ = app.emit("tray-open-settings", ());
                     }
+                    "accounts" => {
+                        show_main_window(app);
+                        let _ = app.emit("tray-open-accounts", ());
+                    }
                     "quit" => app.exit(0),
                     id => {
                         if let Some(profile_id) = id.strip_prefix("profile:") {
@@ -473,6 +493,12 @@ pub fn run() {
 mod tests {
     use super::*;
     use crate::error::AppResult;
+
+    #[test]
+    fn tray_labels_include_accounts_in_both_languages() {
+        assert_eq!(tray_labels("en-US").2, "Accounts");
+        assert_eq!(tray_labels("zh-CN").2, "账号");
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

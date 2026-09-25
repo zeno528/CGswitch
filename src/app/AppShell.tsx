@@ -34,15 +34,16 @@ const checkMcpDiff = () =>
     .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
     .catch(() => setMcpDiffBadge({ count: 0, error: true }));
 
-function TrayActions({ stateRef, refresh, openSettings }: {
+function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
   stateRef: MutableRefObject<AppState | null>;
   refresh: () => Promise<void>;
   openSettings: () => void;
+  openAccounts: () => void;
 }) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
-  const latest = useRef({ feedback, t, refresh, openSettings });
-  latest.current = { feedback, t, refresh, openSettings };
+  const latest = useRef({ feedback, t, refresh, openSettings, openAccounts });
+  latest.current = { feedback, t, refresh, openSettings, openAccounts };
   const busy = useRef(false);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ function TrayActions({ stateRef, refresh, openSettings }: {
     };
     void Promise.allSettled([
       listen("tray-open-settings", () => latest.current.openSettings()),
+      listen("tray-open-accounts", () => latest.current.openAccounts()),
       listen<string>("tray-switch-profile", async ({ payload: id }) => {
         const state = stateRef.current;
         if (busy.current) return;
@@ -284,7 +286,7 @@ export default function AppShell() {
 
   return (
     <FeedbackProvider>
-      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={goSettings} />
+      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={goSettings} openAccounts={goAccounts} />
       {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
       <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
