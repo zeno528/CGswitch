@@ -129,7 +129,7 @@ export default {
     clearCatalogTitle: "清空模型目录？",
     clearCatalogDescription: "将清除该供应商保存的 models.json 草稿；保存后内置供应商回退到内置目录。",
     clearAuthTitle: "清空 auth.json？",
-    clearAuthDescription: "将清除该供应商保存的认证快照草稿；保存后恢复为账号自动凭据。",
+    clearAuthDescription: "移除该供应商保存的认证文件；若当前正在使用此配置，保存时也会备份并删除 live 认证文件。",
     authPillEditable: "可编辑",
     authPillReadonly: "只读",
     configPlaceholderCreate: "选择供应商后显示配置预览",

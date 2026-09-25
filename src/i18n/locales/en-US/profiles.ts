@@ -129,7 +129,7 @@ export default {
     clearCatalogTitle: "Clear the models catalog?",
     clearCatalogDescription: "Discards the saved models.json draft; built-in providers fall back to the bundled catalog after saving.",
     clearAuthTitle: "Clear auth.json?",
-    clearAuthDescription: "Discards the saved auth snapshot draft; saving restores automatic account credentials.",
+    clearAuthDescription: "Removes the authentication file saved for this provider. If this configuration is active, saving also backs up and deletes the live authentication file.",
     authPillEditable: "Editable",
     authPillReadonly: "Read-only",
     configPlaceholderCreate: "Select a provider to see the config preview",
