@@ -83,6 +83,9 @@ const SHARED_HEADER_CONTRACTS = [
 const STRUCTURAL_CHECKS = [
   {
     name: "使用 apple-edit-content 的文件必须同时包含 apple-page-bar",
+    // app/AppShell.tsx 只在 DOM 查询里引用该类名（页面进场动画的挂载点选择器），
+    // 自身不渲染任何页面布局骨架，页头由各 feature 页自备。
+    exempt: (rel) => rel === "app/AppShell.tsx",
     holds: (content) => content.includes("apple-page-bar"),
   },
 ];
@@ -113,6 +116,7 @@ for (const filePath of files) {
   }
   if (content.includes("apple-edit-content")) {
     for (const check of STRUCTURAL_CHECKS) {
+      if (check.exempt?.(rel)) continue;
       if (!check.holds(content)) violations.push({ rel, rule: check.name, klass: "apple-edit-content" });
     }
   }

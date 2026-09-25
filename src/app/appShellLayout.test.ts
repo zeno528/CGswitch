@@ -257,9 +257,11 @@ describe("AppShell 布局", () => {
   });
 
   it("编辑页在详情完成后再一次性揭示，保留页面进入动画", () => {
-    expect(styles).toContain("@keyframes apple-page-enter {\n  from { transform: translateY(8px); }");
+    // 动画改由 AppShell 的 WAAPI 步进驱动（整设备像素，避免缓动尾段亚像素发虚），CSS 只留布局类
     expect(styles).toContain(".apple-page-enter {\n  display: flex;");
-    expect(styles).toContain(".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content {\n  animation: apple-page-enter");
+    expect(styles).not.toContain("@keyframes apple-page-enter");
+    expect(source).toContain("function animatePageEnter");
+    expect(source).toContain('matchMedia("(prefers-reduced-motion: reduce)")');
     expect(profileEditSource).toContain("if (((!create && !detail) || authStatusPending) && !loadError) return null;");
   });
 

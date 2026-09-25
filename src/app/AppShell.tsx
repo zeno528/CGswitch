@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -33,6 +33,69 @@ const checkMcpDiff = () =>
   api.mcpSyncPreview()
     .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
     .catch(() => setMcpDiffBadge({ count: 0, error: true }));
+
+// 进场动画的作用范围沿用原 CSS 动画的选择器：任何新挂载的页内容元素都整段上浮。
+const PAGE_ENTER_TARGET =
+  ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
+
+/// 页面进场动画：沿原 cubic-bezier(0.16,1,0.35,1) 曲线做 8px 上浮，但位移逐帧量化到整设备像素。
+/// Chromium 渲染合成变换时本就按整设备像素取样：曲线尾段的亚像素爬行不会产生更细腻的运动，
+/// 只会让文字在减速段反复发虚（DPR 1.5 的 4K 屏最明显），归零瞬间还会留一次亚像素跳变。
+/// 这里按曲线穿过每个整设备像素边界的时刻生成步进关键帧：每帧文字都锐利，末段整像素自然
+/// 减速落零、最后一步与其他步等大，且动画随之结束——原 700ms 里可见运动本就止于 ~330ms。
+function animatePageEnter(el: Element) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const dpr = window.devicePixelRatio || 1;
+  // cubic-bezier(0.16,1,0.35,1)：两控制点纵坐标均为 1，故 y(t)=3t(1-t)+t³；x(t) 按横坐标控制点求值
+  const yAt = (t: number) => 3 * t * (1 - t) + t * t * t;
+  const xAt = (t: number) => 3 * (1 - t) * (1 - t) * t * 0.16 + 3 * (1 - t) * t * t * 0.35 + t * t * t;
+  const tForY = (y: number) => {
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 32; i++) {
+      const mid = (lo + hi) / 2;
+      if (yAt(mid) < y) lo = mid;
+      else hi = mid;
+    }
+    return (lo + hi) / 2;
+  };
+  const steps = Math.max(1, Math.round(8 * dpr));
+  // times[i] = 渲染偏移从 (steps-i) 跌到 (steps-i-1) 个设备像素的时刻
+  const times: number[] = [];
+  for (let k = steps; k >= 1; k--) {
+    times.push(xAt(tForY(1 - (k - 0.5) / (8 * dpr))) * 700);
+  }
+  const total = times[times.length - 1];
+  const frames = times.map((_, i) => ({
+    transform: `translateY(${(steps - i) / dpr}px)`,
+    offset: i === 0 ? 0 : times[i - 1] / total,
+    easing: "steps(1, end)",
+  }));
+  frames.push({ transform: "translateY(0px)", offset: 1, easing: "linear" });
+  el.animate(frames, { duration: Math.round(total) });
+}
+
+/// 与原 CSS 动画语义一致：切页、设置分节切换、各页内部重挂载出现的新页内容都播放一次，
+/// 同一元素不重复播放。首扫用 useLayoutEffect 保证首帧就停在 8px 起点，之后交给
+/// MutationObserver 在微任务里（绘制前）接住后续挂载。
+function usePageEnterAnimation(mainRef: { current: HTMLElement | null }) {
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const played = new WeakSet<Element>();
+    const scan = () => {
+      for (const el of main.querySelectorAll(PAGE_ENTER_TARGET)) {
+        if (played.has(el)) continue;
+        played.add(el);
+        animatePageEnter(el);
+      }
+    };
+    scan();
+    const observer = new MutationObserver(scan);
+    observer.observe(main, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [mainRef]);
+}
 
 function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
   stateRef: MutableRefObject<AppState | null>;
@@ -113,6 +176,9 @@ export default function AppShell() {
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
+  // 页面进场动画：挂在 <main> 上监听页内容挂载（见 usePageEnterAnimation）
+  const mainRef = useRef<HTMLElement>(null);
+  usePageEnterAnimation(mainRef);
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
   const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
@@ -364,7 +430,7 @@ export default function AppShell() {
             </div>
           </aside>
 
-          <main className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
+          <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
             <div key={state ? view : "loading"} className="apple-page-enter">
               {!state ? (
                 <div className="startup-skeleton" aria-busy="true">
