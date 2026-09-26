@@ -2,32 +2,13 @@
 # （## [Unreleased] 段落，不含版本号与日期）；本工作流承担确定性动作——校验、三平台
 # 构建、创建发行页（版本标题行由这里生成）、上传产物。工作流不回写 main，
 # CHANGELOG 的版本标题归档由 /release skill 在下次起草时完成（见 SKILL.md Step 3）。
-# 触发方式（三条路径，发行模式互不混淆）：
-# 1. push 到 main 且 VERSION / CHANGELOG.md 有变更（默认，无干预）：构建完建草稿、传资产，
-#    停在草稿等人工发布（用 GITHUB_TOKEN 创建 release/tag）；
-# 2. push 严格 semver tag（干预 = 发行决策）：vX.Y.Z 构建完自动正式发行并通知关注者，
-#    vX.Y.Z-rc.N 自动预发行（不占 latest 指针）——资产就绪后才公开，不停在草稿；
-# 3. 手动触发（workflow_dispatch）可传 release_mode：draft（默认）停在草稿，不通知关注者；
-#    prerelease 构建完自动以预发行公开（不占 latest 指针）；latest 构建完自动正式发布并通知关注者。
-# tag push 时 paths 过滤不参与判定（官方语义），tag 即发行决策；非 semver tag（历史分支
-# 测试 tag 等）不触发，verify 阶段再按正则拒绝一次。
+# 触发方式：仅手动（workflow_dispatch），发版是显式决策，push main / push tag 都不触发。
+# release_mode 三选一：draft（默认）构建完停在草稿、不通知关注者，等 /release skill 人工发布；
+# prerelease 构建完自动以预发行公开（不占 latest 指针）；latest 构建完自动正式发布并通知关注者。
 name: Release
 
 on:
-  # 自动触发：push 到 main 且 VERSION 或 CHANGELOG 有变更；VERSION 递增即发版（CHANGELOG 可选），
-  # 已公开发布的版本再推送则在 verify 阶段绿色跳过（见 guard 步骤）。
-  # tag push 走 tags 过滤（paths 对 tag push 不生效，官方文档明示），即发行决策。
-  push:
-    branches:
-      - main
-    paths:
-      - VERSION
-      - CHANGELOG.md
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
-      - '!v*-codex*'
-  # 手动触发（Actions UI → Run workflow），版本提交后从 main 分支执行；
+  # 手动触发（Actions UI → Run workflow 或 gh workflow run），版本提交后从 main 分支执行；
   # CLI 传参：gh workflow run release.yml --ref main -f release_mode=<draft|prerelease|latest>
   workflow_dispatch:
     inputs:
@@ -54,47 +35,30 @@ jobs:
     name: verify
     runs-on: ubuntu-24.04
     outputs:
-      # 版本已公开发布（重复推送不重发）时为 true，下游全部跳过
+      # 版本已公开发布（重复 dispatch 不重发）时为 true，下游全部跳过
       skip: ${{ steps.guard.outputs.skip }}
     steps:
-      - name: 仅允许从 main 分支或正规发行 tag 触发
+      - name: 仅允许从 main 分支手动触发
         shell: bash
         env:
           RELEASE_REF: ${{ github.ref }}
         run: |
-          case "$RELEASE_REF" in
-            refs/heads/main) : ;;
-            refs/tags/v*) : ;;
-            *)
-              echo "::error::发行工作流只能从 main 分支或 v* 发行 tag 触发（当前：$RELEASE_REF）"
-              exit 1
-              ;;
-          esac
+          if [ "$RELEASE_REF" != "refs/heads/main" ]; then
+            echo "::error::发行工作流只能从 main 分支手动触发（当前：$RELEASE_REF）"
+            exit 1
+          fi
       - uses: actions/checkout@v7
       # 第 0 秒拦截：VERSION 非空即视为发版（CHANGELOG 的 Unreleased 段落可选，
       # 没写则发行页只带工作流生成的版本标题行与安装指南）。
-      # 仅当该版本已公开发布时绿色跳过，避免重复推送重复构建。
-      # tag 触发时额外校验：tag 必须是 vX.Y.Z / vX.Y.Z-rc.N 形式且与 VERSION 一致
+      # 仅当该版本已公开发布时绿色跳过，避免重复 dispatch 重复构建。
       - id: guard
         name: 校验 VERSION
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_REF: ${{ github.ref }}
         run: |
           VERSION="$(cat VERSION)"
           [ -n "$VERSION" ] || { echo "::error::VERSION 文件为空"; exit 1; }
-          if [[ "$RELEASE_REF" == refs/tags/v* ]]; then
-            TAG_VER="${RELEASE_REF#refs/tags/v}"
-            [[ "$TAG_VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || {
-              echo "::error::非正规发行 tag（只接受 vX.Y.Z 或 vX.Y.Z-rc.N）：v$TAG_VER"
-              exit 1
-            }
-            [ "$TAG_VER" = "$VERSION" ] || {
-              echo "::error::tag 版本（v$TAG_VER）与 VERSION（$VERSION）不一致"
-              exit 1
-            }
-          fi
           # 版本已公开发布：改 CHANGELOG 也不会重发（release job 本就拒绝修改已公开内容），跳过省一轮构建
           if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
             IS_DRAFT="$(gh release view "v$VERSION" --json isDraft -q .isDraft 2>/dev/null || true)"
@@ -168,10 +132,10 @@ jobs:
     # needs 显式列出 verify 以便读取其 skip 输出（仅间接依赖时 needs 上下文拿不到）
     needs: [verify, build]
     if: needs.verify.outputs.skip != 'true'
-    # 手动触发执行：构建完直接把资产收进草稿。
+    # 手动触发执行：draft 模式构建完把资产收进草稿；prerelease/latest 收完立即公开。
     # tag 由 git push 创建（releases API 的 --target 在 GITHUB_TOKEN 下受 workflow-scope
     # 限制会 403，见 cli/cli#9514；git 协议不受限）；release 不带 --target 挂到已有 tag。
-    # 用 GITHUB_TOKEN 创建 release/tag 不会再次触发本工作流（官方防递归机制）。
+    # 用 GITHUB_TOKEN 创建 release/tag 不会再次触发本工作流（官方防递归机制；本工作流已无自动触发器）。
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -185,26 +149,19 @@ jobs:
           echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
           # 发行日期按维护者时区取当天，即实际发行日（AI 起草日志时无法预知）
           echo "date=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
-      # 发行模式三分支：tag push 即发行决策（vX.Y.Z=latest / vX.Y.Z-rc.N=prerelease）；
-      # branch push 恒为 draft（默认无干预路径）；手动 dispatch 按 inputs，可覆盖为任意模式
+      # 发行模式由手动触发入参决定（默认 draft 停在草稿）
       - id: mode
         run: |
-          case "$GITHUB_REF" in
-            refs/tags/v*-*) MODE=prerelease ;;
-            refs/tags/v*) MODE=latest ;;
-            *) MODE="${INPUT_MODE:-draft}" ;;
-          esac
-          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "mode=${INPUT_MODE:-draft}" >> "$GITHUB_OUTPUT"
         shell: bash
         env:
-          GITHUB_REF: ${{ github.ref }}
           INPUT_MODE: ${{ github.event.inputs.release_mode }}
       # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ CHANGELOG.md 的 Unreleased
       # 段落内容（可选，/release skill 写）+ 安装指南兜底（必带，没写更新日志时用户也能知道
       # 下载哪个包）+ GitHub 原生生成的 PR 清单 / 贡献者 / Full Changelog。已存在草稿（重跑
       # 场景）则更新，已公开则拒绝改动。CHANGELOG.md 不回写 main，Unreleased 保持原样
       - id: create
-        name: 创建发行页（draft 模式建草稿；tag/dispatch 公开模式先建草稿收资产，run 内立即转正，不停草稿）
+        name: 创建发行页（draft 模式建草稿；prerelease/latest 先建草稿收资产，run 内立即转正，不停草稿）
         run: |
           TAG="v$VERSION"
           NOTES="$(mktemp)"
@@ -257,11 +214,8 @@ jobs:
             gh release create "$TAG" --draft --title "$TAG" --notes-file "$NOTES"
           elif [ "$STATE" = true ]; then
             gh release edit "$TAG" --title "$TAG" --notes-file "$NOTES"
-          elif [ "$MODE" = "draft" ]; then
-            # branch push（无干预）撞上 tag run 已发行的同版本：跳过全部后续步骤，不报错
-            echo "::notice::v$VERSION 已由 tag 触发发行，本 run 跳过草稿与资产步骤"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
           else
+            # 正常情况 verify 的 guard 步已绿色跳过；走到这里是构建期间被并发公开的竞态
             echo "::error::发行 $TAG 已经公开，拒绝修改已发布内容；请先递增 VERSION。"
             exit 1
           fi
@@ -269,7 +223,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           DATE: ${{ steps.version.outputs.date }}
           GH_TOKEN: ${{ github.token }}
-          MODE: ${{ steps.mode.outputs.mode }}
       - uses: actions/download-artifact@v8
         if: steps.create.outputs.skip != 'true'
         with:
@@ -317,9 +270,9 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
-      # 草稿（draft，默认无干预路径）到此为止：草稿就绪，等 /release skill 走人工发布（Step 4）。
-      # 干预路径（tag push / dispatch prerelease|latest）资产就绪后在 run 内立即公开：
-      # 永不停在草稿等人转换。预发行不传 --latest，不抢占 latest 指针。
+      # 草稿（draft，默认路径）到此为止：草稿就绪，等 /release skill 走人工发布（Step 4）。
+      # prerelease / latest 模式资产就绪后在 run 内立即公开，永不停在草稿等人转换；
+      # 预发行不传 --latest，不抢占 latest 指针。
       - name: 按模式公开发行
         if: steps.create.outputs.skip != 'true' && steps.mode.outputs.mode != 'draft'
         shell: bash
