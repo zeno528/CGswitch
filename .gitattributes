@@ -4,6 +4,7 @@
 *.toml text eol=lf
 *.json text eol=lf
 *.ts text eol=lf
+*.tsx text eol=lf
 *.vue text eol=lf
 *.css text eol=lf
 *.html text eol=lf
