@@ -114,12 +114,27 @@ describe("SettingsSections", () => {
     );
     expect(html).toContain("检查更新");
     expect(html).not.toContain("检查 GitHub 正式发布版本");
+    expect(html.indexOf("更新日志</button>")).toBeLessThan(html.indexOf("检查更新</button>"));
+    expect(styles).toContain(".settings-about__actions > .apple-action-button");
   });
 
-  it("关于页头部复用涂鸦平铺装饰层：hero 内含 HeroDoodles，样式为低透明度共享类", () => {
-    expect(settingsSectionsSource).toContain('<HeroDoodles patternId="cg-about-hero-doodles" />');
-    expect(styles).toContain(".hero-doodles {");
-    expect(styles).toContain(".settings-about__hero {\n  position: relative;");
+  it("应用信息和数据路径分别成卡，版本 token 与更新日志在首行", () => {
+    setupI18n("zh-CN");
+    const html = renderToStaticMarkup(
+      <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout paths={[]} onOpenPath={() => undefined} openingPath={null} /></AppUpdateProvider></FeedbackProvider>,
+    );
+    expect(html.match(/class="apple-group /g)).toHaveLength(2);
+    expect(html).toContain("app-version");
+    expect(html).toContain("版本 v");
+    expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
+    expect(html).not.toContain("当前版本");
+    expect(html).toContain("版本更新");
+    expect(html).toContain("settings-about__update-row");
+    expect(html).toContain("settings-about__update-description");
+    expect(html).toContain("hero-doodles");
+    expect(settingsSectionsSource).toContain('patternId="cg-about-card-doodles"');
+    expect(styles).toContain(".settings-about__app-card {");
+    expect(html).toContain("给我们点个 Star");
   });
 
   it("does not show the backup directory in the about paths", () => {
@@ -143,6 +158,8 @@ describe("SettingsSections", () => {
     expect(html).toContain("应用数据目录");
     expect(html).toContain("日志目录");
     expect(html).not.toContain("备份目录");
+    expect(html.match(/aria-label="打开[^\"]+"/g)).toHaveLength(3);
+    expect(html.match(/class="apple-icon-button /g)).toHaveLength(3);
   });
 
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
@@ -150,7 +167,9 @@ describe("SettingsSections", () => {
     expect(settingsSectionsSource).not.toContain('t("about.updateNow")');
     expect(settingsSectionsSource).toContain('t("about.changelog")');
     expect(settingsSectionsSource).toContain("releaseNotesUrl(update?.version ?? version.trim())");
-    expect(settingsSectionsSource).toContain('if (!found) feedback.success(t("about.upToDate"))');
+    expect(settingsSectionsSource).toContain("if (found) {");
+    expect(settingsSectionsSource).toContain("setConfirming(true);");
+    expect(settingsSectionsSource).toContain('feedback.success(t("about.upToDate"))');
     expect(settingsSectionsSource).toMatch(/t\("about\.upgradeTo"\)\}\s+v\{update\.version\}/);
     expect(settingsSectionsSource).not.toContain('className="app-version" title={t("about.updateAvailable"');
     expect(settingsSectionsSource).not.toContain("update-available-card");
@@ -166,7 +185,9 @@ describe("SettingsSections", () => {
   });
 
   it("设置顶部标签栏底线复用全局分割线", () => {
-    expect(settingsViewSource).toContain("border-b border-[var(--panel-divider)]");
+    expect(settingsViewSource).toContain("settings-tab-bar");
+    expect(styles).toContain(".settings-tab-bar {");
+    expect(settingsViewSource).not.toContain("border-b border-[var(--panel-divider)]");
     expect(settingsViewSource).not.toContain("border-b border-[var(--panel-border)]");
   });
 
@@ -175,6 +196,7 @@ describe("SettingsSections", () => {
     const appShellSource = readFileSync(appShellPath, "utf8");
     // 完整 JSX 串由 appShellLayout.test.ts 独家断言；这里只验证开关由设置项驱动。
     expect(appShellSource).toContain("enabled={Boolean(state?.settings.auto_check_update)");
+    expect(settingsSectionsSource).toContain("if (found) {\n        setConfirming(true);");
     expect(settingsSectionsSource).not.toContain("useEffect(() => { void checkUpdate(); }, []);");
   });
 
@@ -280,7 +302,7 @@ describe("SettingsSections", () => {
     expect(settingsViewSource).not.toContain('account.sectionTitle');
     expect(settingsViewSource).toContain('label={t("codex.sectionTitle")}');
     expect(settingsViewSource).toContain('label={t("backup.sectionTitle")}');
-    expect(settingsViewSource).toContain('label={t("about.sectionTitle")}');
+    expect(settingsViewSource).toContain('<SettingsPanelSection id="about" label={t("about.sectionTitle")}>');
   });
 
   it("设置项图标统一复用深浅主题的主按钮颜色", () => {

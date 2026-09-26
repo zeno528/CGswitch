@@ -152,7 +152,10 @@ export default {
   about: {
     sectionTitle: "应用信息",
     upToDate: "已是最新版本",
-    version: "版本 {{version}}",
+    versionLabel: "版本",
+    updateTitle: "版本更新",
+    updateAvailable: "发现新版本",
+    updateDescription: "检查是否有可用的新版本。",
     openRepo: "打开 GitHub 项目仓库",
     changelog: "更新日志",
     viewReleases: "在 GitHub 查看最新发行版",
@@ -160,6 +163,7 @@ export default {
     installing: "正在下载安装…",
     upgradeTo: "升级至",
     dataAndPaths: "数据与路径",
+    starInvitation: "喜欢 CGswitch？欢迎在 <github>GitHub</github> 给我们点个 Star ⭐",
     paths: {
       appData: "应用数据目录",
       backups: "备份目录",

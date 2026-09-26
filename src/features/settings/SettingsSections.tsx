@@ -1,4 +1,4 @@
-import { Clock, Database, Download, ExternalLink, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
+import { Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { createPortal } from "react-dom";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -345,59 +345,82 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   const checkUpdate = async () => {
     try {
       const found = await check();
-      if (!found) feedback.success(t("about.upToDate"));
+      if (found) {
+        setConfirming(true);
+      } else {
+        feedback.success(t("about.upToDate"));
+      }
     } catch (error) {
       feedback.error(updateFailureMessage(error, tUpdate));
     }
   };
 
   return (
-    <div className="apple-group px-[var(--gap-card-inline)] py-[var(--gap-card)]">
-      <div className="settings-about__hero">
-        <HeroDoodles patternId="cg-about-hero-doodles" />
-        <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+    <div className="flex flex-col gap-[var(--gap-section)]">
+      <div className="apple-group settings-about__app-card px-[var(--gap-card-inline)]">
+        <HeroDoodles patternId="cg-about-card-doodles" />
+        <div className="relative flex flex-wrap items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
-            <div>
-              <div className="apple-wordmark">CGswitch</div>
-              <div className="app-version mt-1.5">{t("about.version", { version: version.trim() })}</div>
-            </div>
+            <span className="apple-wordmark">CGswitch</span>
+            <span className="app-version">{t("about.versionLabel")} v{version.trim()}</span>
           </div>
-          <div className="settings-about__actions flex flex-wrap gap-2">
-          <button type="button" className="apple-action-button" title={t("about.openRepo")} onClick={openRepository}>
-            <GithubMark className="h-4 w-4" />
-            GitHub
-            <ExternalLink className="h-3.5 w-3.5 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
-          </button>
-          <button type="button" className="apple-action-button" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
-            <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-            {t("about.changelog")}
-          </button>
-          {update ? (
-            <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
-              {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
-              {installing ? t("about.installing") : t("about.upgradeTo")} v{update.version}
+          <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
+            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.openRepo")} onClick={openRepository}>
+              <GithubMark className="h-4 w-4" />
+              GitHub
             </button>
-          ) : (
-            <button type="button" className="apple-action-button" disabled={checking} onClick={() => void checkUpdate()}>
-              <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
-              {t("about.checkUpdate")}
+            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
+              <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("about.changelog")}
             </button>
-          )}
           </div>
         </div>
-        <hr className="my-4 border-0 border-t border-t-transparent" />
+        <div className="settings-about__update-row relative flex flex-wrap items-center justify-end gap-4 py-4">
+          <div className="mr-auto flex min-w-0 flex-col gap-0.5">
+            <span className="setting-title">{t("about.updateTitle")}</span>
+            {update ? (
+              <span className="settings-about__update-description setting-description flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />{t("about.updateAvailable")}</span>
+            ) : (
+              <span className="settings-about__update-description setting-description">{t("about.updateDescription")}</span>
+            )}
+          </div>
+          <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
+            {update ? (
+              <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
+                {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
+                {installing ? t("about.installing") : t("about.upgradeTo")} v{update.version}
+              </button>
+            ) : (
+              <button type="button" className="apple-action-button app-button--primary" disabled={checking} onClick={() => void checkUpdate()}>
+                <RefreshCw className={`h-4 w-4 ${checking ? "animate-spin" : ""}`} strokeWidth={2} />
+                {t("about.checkUpdate")}
+              </button>
+            )}
+          </div>
+        </div>
       </div>
-      <h2 className="setting-title">{t("about.dataAndPaths")}</h2>
-      <div className="mt-2 divide-y divide-[var(--panel-divider)] overflow-hidden rounded-[var(--radius-control)] border border-[var(--panel-ring)]">
-        {paths.filter((item) => item.label !== BACKUP_DIR_LABEL).map((item) => (
-          <button key={item.label} type="button" className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-black/5 disabled:opacity-40 dark:hover:bg-white/8" disabled={Boolean(openingPath)} title={t("about.openPath", { label: pathLabel(t, item.label) })} onClick={() => onOpenPath(item)}>
-            <span className="shrink-0 text-sm font-medium">{pathLabel(t, item.label)}</span>
-            <span className="mono muted meta-xs min-w-0 flex-1 truncate" title={item.path}>{item.path.replace(/^\/(Users|home)\/[^/]+/, "~")}</span>
-            {openingPath === item.path ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-accent" strokeWidth={2} /> : <FolderOpen className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} />}
-          </button>
-        ))}
+      <div className="flex flex-col gap-2">
+        <h3 className="title-sm px-1">{t("about.dataAndPaths")}</h3>
+        <div className="apple-group divide-y divide-[var(--panel-divider)] px-[var(--gap-card-inline)]">
+          {paths.filter((item) => item.label !== BACKUP_DIR_LABEL).map((item) => {
+            const Icon = item.label === "about.paths.codexConfig" ? FileCog : item.label === "about.paths.logs" ? FileText : Database;
+            return (
+              <div key={item.label} className="flex min-w-0 items-center gap-3 py-4">
+                <Icon className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
+                <span className="field-label muted w-32 shrink-0">{pathLabel(t, item.label)}</span>
+                <span className="mono min-w-0 flex-1 truncate text-sm" title={item.path}>{item.path.replace(/^\/(Users|home)\/[^/]+/, "~")}</span>
+                <button type="button" className="apple-icon-button shrink-0 text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={Boolean(openingPath)} title={t("about.openPath", { label: pathLabel(t, item.label) })} aria-label={t("about.openPath", { label: pathLabel(t, item.label) })} onClick={() => onOpenPath(item)}>
+                  {openingPath === item.path ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <FolderOpen className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
+      <p className="setting-description text-center">
+        <Trans ns="settings" i18nKey="about.starInvitation" components={{ github: <button type="button" className="underline underline-offset-2 hover:text-accent focus-visible:text-accent" onClick={openRepository} /> }} />
+      </p>
       <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>
   );

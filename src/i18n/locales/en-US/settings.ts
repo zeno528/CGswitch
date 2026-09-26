@@ -152,7 +152,10 @@ export default {
   about: {
     sectionTitle: "Application info",
     upToDate: "You're on the latest version",
-    version: "Version {{version}}",
+    versionLabel: "Version",
+    updateTitle: "Version updates",
+    updateAvailable: "New version available",
+    updateDescription: "Check for available updates.",
     openRepo: "Open the GitHub repository",
     changelog: "Changelog",
     viewReleases: "View the latest release on GitHub",
@@ -160,6 +163,7 @@ export default {
     installing: "Downloading and installing...",
     upgradeTo: "Update to",
     dataAndPaths: "Data and paths",
+    starInvitation: "Enjoying CGswitch? Give us a Star on <github>GitHub</github> ⭐",
     paths: {
       appData: "App data",
       backups: "Backups",

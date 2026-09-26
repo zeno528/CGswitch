@@ -33,7 +33,7 @@
   --brand-gradient-blend: color-mix(in srgb, var(--brand-gradient-start) 55%, var(--brand-gradient-middle));
   --brand-gradient-blend-mix: 31%;
   --brand-gradient-fade-mix: 11%;
-  /* 关于页头部与升级弹窗头部共用的品牌渐变（一套背景独立成定义）：
+  /* 升级弹窗头部的品牌渐变（一套背景独立成定义）：
      与激活卡共用同一组色彩 token，但整条不透明、右侧按品牌渐变填满不淡出；深浅主题随 mix token 自动适配 */
   --brand-hero-gradient: linear-gradient(
     90deg,
@@ -465,6 +465,11 @@ body {
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.35;
+}
+
+/* 设置页标签栏的基线使用全局分割线语义，但降低线宽与对比度，避免压过标签内容。 */
+.settings-tab-bar {
+  border-bottom: 0.5px solid color-mix(in srgb, var(--panel-divider) 72%, transparent);
 }
 
 /* 最小元信息（卡片时间戳、备份记录摘要）：第五级字号，不属于正文层级。
@@ -1232,22 +1237,42 @@ body.drag-active * {
   background: var(--panel-bg);
 }
 
-.settings-about__hero {
-  position: relative;
-  margin: calc(-1 * var(--gap-card)) calc(-1 * var(--gap-card-inline)) 0;
-  padding: var(--gap-card) var(--gap-card-inline) 0;
-  border-radius: var(--radius-card) var(--radius-card) 0 0;
-  background-image: var(--brand-hero-gradient);
-}
-
-/* 配置卡激活态专用：半透明品牌渐变，可叠加在卡片底色上；关于页/升级弹窗头部已独立为 --brand-hero-gradient。 */
+/* 配置卡激活态专用：半透明品牌渐变，可叠加在卡片底色上；升级弹窗头部已独立为 --brand-hero-gradient。 */
 .brand-gradient-surface {
   background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
 
 .settings-about__actions > .apple-action-button {
-  border-color: color-mix(in srgb, currentColor 15%, transparent);
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+/* 关于页应用信息卡片复用升级弹窗头部的品牌渐变，涂鸦由 HeroDoodles 铺设。 */
+.settings-about__app-card {
+  position: relative;
+  background-image: var(--brand-hero-gradient);
+}
+
+.settings-about__app-card .hero-doodles {
+  opacity: 0.24;
+  filter: blur(0.6px);
+}
+
+.settings-about__update-row {
+  border-top: 0.5px solid color-mix(in srgb, var(--panel-divider) 56%, transparent);
+}
+
+.settings-about__update-description {
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+:root.dark .settings-about__app-card .settings-about__link {
+  color: var(--text-primary);
+}
+
+:root.dark .settings-about__app-card .settings-about__link:hover,
+:root.dark .settings-about__app-card .settings-about__link:focus-visible {
+  color: var(--accent);
 }
 
 .profile-list > .apple-group,
@@ -1958,7 +1983,7 @@ button:focus-visible {
   height: 36px;
   border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.42);
+  background: transparent;
   cursor: pointer;
   transition: background-color 150ms ease-out;
 }
