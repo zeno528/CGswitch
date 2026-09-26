@@ -93,6 +93,8 @@ export const builtinPresets: BuiltinPreset[] = [
   { kind: "qwen", get name() { return i18next.t("preset.qwen"); }, provider: "Model_Studio_Token_Plan_Personal", icon: "qwen", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://bailian.console.aliyun.com", model: "qwen3.8-max" },
   { kind: "hunyuan", get name() { return i18next.t("preset.hunyuan"); }, provider: "hy3-tokenhub", icon: "hunyuan", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey", model: "hy3" },
   { kind: "doubao", get name() { return i18next.t("preset.doubao"); }, provider: "volcengine-coding-plan", icon: "volcengine", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey", model: "ark-code-latest" },
+  { kind: "qianfan", get name() { return i18next.t("preset.qianfan"); }, provider: "qianfan", icon: "baiducloud", base_url: "https://qianfan.baidubce.com/v2", admin_url: "https://console.bce.baidu.com/qianfan/", model: "glm-5.1" },
+  { kind: "xai", get name() { return i18next.t("preset.xai"); }, provider: "xai", icon: "xai", base_url: "https://api.x.ai/v1", admin_url: "https://console.x.ai/team/default/api-keys", model: "grok-4.7" },
 ];
 
 export function builtinPresetByKind(kind: string): BuiltinPreset | undefined {

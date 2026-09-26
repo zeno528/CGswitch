@@ -5,5 +5,5 @@ model_context_window = 1000000
 [model_providers.minimax]
 name = "MiniMax"
 base_url = "https://api.minimaxi.com/v1"
-experimental_bearer_token = "<MINIMAX_API_KEY>"
+experimental_bearer_token = "<YOUR_API_KEY>"
 wire_api = "responses"

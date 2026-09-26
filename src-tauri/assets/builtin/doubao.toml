@@ -5,5 +5,5 @@ model_supports_reasoning_summaries = true
 [model_providers.volcengine-coding-plan]
 name = "volcengine-coding-plan"
 base_url = "https://ark.cn-beijing.volces.com/api/coding/v3"
-experimental_bearer_token = "<你的火山方舟 API Key>"
+experimental_bearer_token = "<YOUR_API_KEY>"
 wire_api = "responses"

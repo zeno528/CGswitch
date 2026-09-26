@@ -7,4 +7,4 @@ disable_response_storage = true
 name = "OpenRouter"
 base_url = "https://openrouter.ai/api/v1"
 wire_api = "responses"
-experimental_bearer_token = "<你的 OpenRouter API Key>"
+experimental_bearer_token = "<YOUR_API_KEY>"

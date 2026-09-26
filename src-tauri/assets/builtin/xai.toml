@@ -1,0 +1,8 @@
+model = "grok-4.7"
+model_provider = "xai"
+
+[model_providers.xai]
+name = "xAI"
+base_url = "https://api.x.ai/v1"
+experimental_bearer_token = "<YOUR_API_KEY>"
+wire_api = "responses"

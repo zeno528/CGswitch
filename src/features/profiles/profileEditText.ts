@@ -60,11 +60,23 @@ export function readProviderFields(text: string): ProviderFields {
       continue;
     }
     if (!inProvider) continue;
-    const match =
-      /^(base_url|experimental_bearer_token)\s*=\s*(?:(['"])(.*?)\2|([^\s]+))/.exec(trimmed);
-    if (!match) continue;
-    const field = match[1] as "base_url" | "experimental_bearer_token";
-    const value = match[3] ?? match[4] ?? "";
+    const assignment = /^(base_url|experimental_bearer_token)\s*=/.exec(trimmed);
+    if (!assignment) continue;
+    const quoted = /^("(?:\\.|[^"\\])*"|'[^']*')\s*(?:#.*)?$/.exec(
+      trimmed.slice(assignment[0].length).trim(),
+    )?.[1];
+    if (!quoted) {
+      values.found = false;
+      return values;
+    }
+    let value: string;
+    try {
+      value = quoted.startsWith('"') ? JSON.parse(quoted) : quoted.slice(1, -1);
+    } catch {
+      values.found = false;
+      return values;
+    }
+    const field = assignment[1] as "base_url" | "experimental_bearer_token";
     values[field] = value;
     if (field === "experimental_bearer_token") values.tokenMasked = /^[•*]+$/.test(value);
   }
@@ -73,8 +85,6 @@ export function readProviderFields(text: string): ProviderFields {
 
 // 把表单里的地址/密钥写回编辑器 provider 段；缺失的行在段尾补上。
 export function patchProviderFields(text: string, baseUrl: string, apiKey: string): string {
-  const escape = (value: string, quote: string) =>
-    value.replace(/\\/g, "\\\\").replace(new RegExp(quote, "g"), "\\" + quote);
   const base = baseUrl.trim();
   const key = apiKey.trim();
   const lines = text.split("\n");
@@ -93,9 +103,9 @@ export function patchProviderFields(text: string, baseUrl: string, apiKey: strin
   const out: string[] = [];
   const flushMissing = () => {
     if (!inProvider) return;
-    if (base && !replacedBase) out.push(`base_url = "${escape(base, '"')}"`);
+    if (base && !replacedBase) out.push(`base_url = ${JSON.stringify(base)}`);
     if (key && !replacedKey) {
-      out.push(`experimental_bearer_token = "${escape(key, '"')}"`);
+      out.push(`experimental_bearer_token = ${JSON.stringify(key)}`);
     }
     inProvider = false;
   };
@@ -119,23 +129,29 @@ export function patchProviderFields(text: string, baseUrl: string, apiKey: strin
       out.push(line);
       continue;
     }
-    const match = /^(base_url|experimental_bearer_token)\s*=\s*(['"]?)(.*?)\2\s*$/.exec(
-      trimmed,
-    );
+    const match = /^(base_url|experimental_bearer_token)\s*=/.exec(trimmed);
     if (!match) {
       out.push(line);
       continue;
     }
     const field = match[1];
-    const quote = match[2] || '"';
     const value = field === "base_url" ? base : key;
     const indent = line.slice(0, line.length - line.trimStart().length);
     if (field === "base_url") replacedBase = true;
     else replacedKey = true;
-    out.push(`${indent}${field} = ${quote}${escape(value, quote)}${quote}`);
+    const singleQuoted = trimmed.slice(match[0].length).trimStart().startsWith("'")
+      && !value.includes("'") && !/[\r\n]/.test(value);
+    out.push(`${indent}${field} = ${singleQuoted ? `'${value}'` : JSON.stringify(value)}`);
   }
   flushMissing();
   return out.join("\n");
+}
+
+export function withoutApiKeyPlaceholder(text: string): string {
+  const fields = readProviderFields(text);
+  return fields.found && /^<.*>$/.test(fields.experimental_bearer_token)
+    ? patchProviderFields(text, fields.base_url, "")
+    : text;
 }
 
 export function withMcpSection(base: string, mcpSection: string): string {

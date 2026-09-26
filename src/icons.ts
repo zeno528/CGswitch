@@ -19,11 +19,13 @@ const LABELS: Record<string, string> = {
   openrouter: "OpenRouter",
   kimi: "Kimi",
   qwen: "Qwen",
+  baiducloud: "Baidu Qianfan",
+  xai: "xAI",
   get hunyuan() { return i18next.t("providerName.hunyuan"); },
   get volcengine() { return i18next.t("providerName.volcengine"); },
 };
 
-const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter"]);
+const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter", "custom", "qwen", "xai"]);
 
 export interface ProviderIcon {
   id: string;

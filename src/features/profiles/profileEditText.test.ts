@@ -123,6 +123,33 @@ describe("profileEditText", () => {
     });
   });
 
+  it("reads an escaped key without doubling it when the form writes back", () => {
+    const text = [
+      'model_provider = "custom"',
+      "[model_providers.custom]",
+      'base_url = "https://example.com"',
+      'experimental_bearer_token = "\\\\"',
+    ].join("\n");
+
+    const fields = readProviderFields(text);
+    expect(fields.experimental_bearer_token).toBe("\\");
+    expect(patchProviderFields(text, fields.base_url, fields.experimental_bearer_token)).toBe(text);
+  });
+
+  it("keeps a broken key line editable and repairs that line from the form", () => {
+    const text = [
+      'model_provider = "custom"',
+      "[model_providers.custom]",
+      'base_url = "https://example.com"',
+      'experimental_bearer_token = "broken',
+    ].join("\n");
+
+    expect(readProviderFields(text).found).toBe(false);
+    expect(patchProviderFields(text, "https://example.com", "new-key")).toBe(
+      text.replace('experimental_bearer_token = "broken', 'experimental_bearer_token = "new-key"'),
+    );
+  });
+
   it("patches modeled fields while preserving unmodeled lines", () => {
     const text = [
       'model_provider = "target"',

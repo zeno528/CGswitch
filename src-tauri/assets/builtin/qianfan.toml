@@ -1,0 +1,8 @@
+model = "glm-5.1"
+model_provider = "qianfan"
+
+[model_providers.qianfan]
+name = "百度千帆"
+base_url = "https://qianfan.baidubce.com/v2"
+experimental_bearer_token = "<YOUR_API_KEY>"
+wire_api = "responses"

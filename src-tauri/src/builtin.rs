@@ -25,11 +25,15 @@ pub const KIND_KIMI: &str = "kimi";
 pub const KIND_QWEN: &str = "qwen";
 pub const KIND_HUNYUAN: &str = "hunyuan";
 pub const KIND_DOUBAO: &str = "doubao";
+pub const KIND_QIANFAN: &str = "qianfan";
+pub const KIND_XAI: &str = "xai";
 
 pub const KIMI_CONFIG: &[u8] = include_bytes!("../assets/builtin/kimi.toml");
 pub const QWEN_CONFIG: &[u8] = include_bytes!("../assets/builtin/qwen.toml");
 pub const HUNYUAN_CONFIG: &[u8] = include_bytes!("../assets/builtin/hunyuan.toml");
 pub const DOUBAO_CONFIG: &[u8] = include_bytes!("../assets/builtin/doubao.toml");
+pub const QIANFAN_CONFIG: &[u8] = include_bytes!("../assets/builtin/qianfan.toml");
+pub const XAI_CONFIG: &[u8] = include_bytes!("../assets/builtin/xai.toml");
 
 pub struct BuiltinTemplate {
     pub kind: &'static str,
@@ -45,13 +49,13 @@ pub struct BuiltinTemplate {
     pub insert_catalog_line: bool,
 }
 
-pub const BUILTINS: [BuiltinTemplate; 11] = [
+pub const BUILTINS: [BuiltinTemplate; 13] = [
     BuiltinTemplate {
         kind: KIND_DEEPSEEK,
         name: "DeepSeek",
         icon: "deepseek",
         config: DEEPSEEK_CONFIG,
-        placeholder: Some("<你的 DeepSeek API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: Some(("models.json", DEEPSEEK_MODELS)),
         insert_catalog_line: false,
     },
@@ -60,7 +64,7 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "MiniMax",
         icon: "minimax",
         config: MINIMAX_CONFIG,
-        placeholder: Some("<MINIMAX_API_KEY>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: Some(("model-catalogs/custom-catalog.json", MINIMAX_CATALOG)),
         insert_catalog_line: true,
     },
@@ -69,7 +73,7 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "智谱",
         icon: "zhipu",
         config: ZHIPU_CONFIG,
-        placeholder: Some("<Your API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: Some(("models.json", ZHIPU_MODELS)),
         insert_catalog_line: false,
     },
@@ -91,7 +95,7 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "OpenCode",
         icon: "opencode",
         config: OPENCODE_CONFIG,
-        placeholder: Some("<你的 OpenCode API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: Some(("models.json", OPENCODE_MODELS)),
         insert_catalog_line: false,
     },
@@ -104,7 +108,7 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "OpenRouter",
         icon: "openrouter",
         config: OPENROUTER_CONFIG,
-        placeholder: Some("<你的 OpenRouter API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: None,
         insert_catalog_line: false,
     },
@@ -117,7 +121,7 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "小米 MiMo",
         icon: "xiaomi-mimo",
         config: MIMO_CONFIG,
-        placeholder: Some("<你的 MiMo API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: Some(("models.json", MIMO_MODELS)),
         insert_catalog_line: false,
     },
@@ -128,18 +132,17 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "Kimi",
         icon: "kimi",
         config: KIMI_CONFIG,
-        placeholder: Some("<你的 Kimi API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: None,
         insert_catalog_line: false,
     },
-    // 通义千问：仅百炼 Token Plan（个人）通道原生 Responses，base 固定；
-    // Coding Plan/按量只走 chat 或需 workspaceId，不作通用预设。
+    // 通义千问：百炼 Token Plan（个人）通道。
     BuiltinTemplate {
         kind: KIND_QWEN,
         name: "通义千问",
         icon: "qwen",
         config: QWEN_CONFIG,
-        placeholder: Some("<你的百炼 Token Plan API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: None,
         insert_catalog_line: false,
     },
@@ -150,7 +153,7 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "腾讯混元",
         icon: "hunyuan",
         config: HUNYUAN_CONFIG,
-        placeholder: Some("<你的腾讯混元 API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: None,
         insert_catalog_line: false,
     },
@@ -161,18 +164,44 @@ pub const BUILTINS: [BuiltinTemplate; 11] = [
         name: "火山方舟豆包",
         icon: "volcengine",
         config: DOUBAO_CONFIG,
-        placeholder: Some("<你的火山方舟 API Key>".as_bytes()),
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
+        catalog: None,
+        insert_catalog_line: false,
+    },
+    BuiltinTemplate {
+        kind: KIND_QIANFAN,
+        name: "百度千帆",
+        icon: "baiducloud",
+        config: QIANFAN_CONFIG,
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
+        catalog: None,
+        insert_catalog_line: false,
+    },
+    BuiltinTemplate {
+        kind: KIND_XAI,
+        name: "xAI",
+        icon: "xai",
+        config: XAI_CONFIG,
+        placeholder: Some("<YOUR_API_KEY>".as_bytes()),
         catalog: None,
         insert_catalog_line: false,
     },
 ];
 
 impl BuiltinTemplate {
+    /// 判断值是否为该模板的密钥占位符（即用户尚未填写真实密钥）。
+    pub fn is_placeholder(&self, value: &[u8]) -> bool {
+        self.placeholder == Some(value)
+    }
+
     /// 在已渲染/已编辑的 config 文本中替换密钥占位符（未填或占位符不存在则原样返回）。
     pub fn substitute_key(&self, bytes: Vec<u8>, api_key: Option<&str>) -> AppResult<Vec<u8>> {
         let Some(key) = api_key.filter(|key| !key.trim().is_empty()) else {
             return Ok(bytes);
         };
+        if self.is_placeholder(key.as_bytes()) {
+            return Ok(bytes);
+        }
         let Some(placeholder) = self.placeholder else {
             return Ok(bytes);
         };
@@ -225,15 +254,15 @@ mod tests {
     fn embedded_configs_match_official_templates_byte_for_byte() {
         assert_eq!(
             DEEPSEEK_CONFIG,
-            b"model = \"deepseek-flash\"\nmodel_provider = \"deepseek\"\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\nmodel_reasoning_effort = \"high\"\nweb_search = \"disabled\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.deepseek]\nname = \"deepseek\"\nbase_url = \"https://api.deepseek.com/\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<\xE4\xBD\xA0\xE7\x9A\x84 DeepSeek API Key>\""
+            b"model = \"deepseek-flash\"\nmodel_provider = \"deepseek\"\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\nmodel_reasoning_effort = \"high\"\nweb_search = \"disabled\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.deepseek]\nname = \"deepseek\"\nbase_url = \"https://api.deepseek.com/\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
         );
         assert_eq!(
             MINIMAX_CONFIG,
-            b"model = \"MiniMax-M3\"\nmodel_provider = \"minimax\"\nmodel_context_window = 1000000\n\n[model_providers.minimax]\nname = \"MiniMax\"\nbase_url = \"https://api.minimaxi.com/v1\"\nexperimental_bearer_token = \"<MINIMAX_API_KEY>\"\nwire_api = \"responses\""
+            b"model = \"MiniMax-M3\"\nmodel_provider = \"minimax\"\nmodel_context_window = 1000000\n\n[model_providers.minimax]\nname = \"MiniMax\"\nbase_url = \"https://api.minimaxi.com/v1\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\"\nwire_api = \"responses\""
         );
         assert_eq!(
             ZHIPU_CONFIG,
-            b"model_provider = \"ZAI\"\nmodel = \"glm-5.3\"\nmodel_reasoning_effort = \"max\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://open.bigmodel.cn/api/v1\"\nexperimental_bearer_token = \"<Your API Key>\"\nwire_api = \"responses\""
+            b"model_provider = \"ZAI\"\nmodel = \"glm-5.3\"\nmodel_reasoning_effort = \"max\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://open.bigmodel.cn/api/v1\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\"\nwire_api = \"responses\""
         );
         assert_eq!(
             CHATGPT_CONFIG,
@@ -241,15 +270,15 @@ mod tests {
         );
         assert_eq!(
             OPENCODE_CONFIG,
-            b"model = \"glm-5.2\"\nmodel_provider = \"opencode-go\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.opencode-go]\nname = \"OpenCode Go\"\nbase_url = \"https://opencode.ai/zen/go/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<\xE4\xBD\xA0\xE7\x9A\x84 OpenCode API Key>\""
+            b"model = \"glm-5.2\"\nmodel_provider = \"opencode-go\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.opencode-go]\nname = \"OpenCode Go\"\nbase_url = \"https://opencode.ai/zen/go/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
         );
         assert_eq!(
             OPENROUTER_CONFIG,
-            b"model = \"openai/gpt-5.6-sol\"\nmodel_provider = \"openrouter\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.openrouter]\nname = \"OpenRouter\"\nbase_url = \"https://openrouter.ai/api/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<\xE4\xBD\xA0\xE7\x9A\x84 OpenRouter API Key>\""
+            b"model = \"openai/gpt-5.6-sol\"\nmodel_provider = \"openrouter\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.openrouter]\nname = \"OpenRouter\"\nbase_url = \"https://openrouter.ai/api/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
         );
         assert_eq!(
             MIMO_CONFIG,
-            b"model = \"mimo-v2.5-pro\"\nmodel_provider = \"mimo\"\nmodel_reasoning_effort = \"high\"\nmodel_supports_reasoning_summaries = true\nmodel_reasoning_summary = \"none\"\nmodel_context_window = 1048576\nweb_search = \"disabled\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.mimo]\nname = \"mimo\"\nbase_url = \"https://api.xiaomimimo.com/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<\xE4\xBD\xA0\xE7\x9A\x84 MiMo API Key>\""
+            b"model = \"mimo-v2.5-pro\"\nmodel_provider = \"mimo\"\nmodel_reasoning_effort = \"high\"\nmodel_supports_reasoning_summaries = true\nmodel_reasoning_summary = \"none\"\nmodel_context_window = 1048576\nweb_search = \"disabled\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.mimo]\nname = \"mimo\"\nbase_url = \"https://api.xiaomimimo.com/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
         );
     }
 
@@ -418,8 +447,8 @@ mod tests {
         let rendered = deepseek.render_config(Some("sk-real")).unwrap();
         assert!(rendered.windows(b"sk-real".len()).any(|w| w == b"sk-real"));
         assert!(!rendered
-            .windows("<你的 DeepSeek API Key>".len())
-            .any(|w| w == "<你的 DeepSeek API Key>".as_bytes()));
+            .windows("<YOUR_API_KEY>".len())
+            .any(|w| w == "<YOUR_API_KEY>".as_bytes()));
         let kept = deepseek.render_config(None).unwrap();
         assert_eq!(kept, DEEPSEEK_CONFIG);
 

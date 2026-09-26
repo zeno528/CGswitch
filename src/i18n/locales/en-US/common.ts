@@ -46,6 +46,8 @@ export default {
     hunyuan: "Tencent Hunyuan",
     doubao: "Volcengine Doubao",
     mimo: "Xiaomi MiMo",
+    qianfan: "Baidu Qianfan",
+    xai: "xAI (Grok)",
   },
   providerName: {
     hunyuan: "Tencent Hunyuan",

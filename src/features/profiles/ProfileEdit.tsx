@@ -17,7 +17,15 @@ import {
   customCatalogTemplate,
   customConfigTemplate,
 } from "../../presets";
-import { patchModelValue, patchProviderFields, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
+import {
+  patchModelValue,
+  patchProviderFields,
+  readModelValue,
+  readProviderFields,
+  resolveAuthSource,
+  withMcpSection,
+  withoutApiKeyPlaceholder,
+} from "./profileEditText";
 import ProfileAdvancedControls from "./editor/ProfileAdvancedControls";
 import TabFileControls from "./editor/TabFileControls";
 import { useProfileAdvancedPatches } from "./editor/useProfileAdvancedPatches";
@@ -46,6 +54,10 @@ function normalizeNewlines(text: string) {
 export default function ProfileEdit({ profile, create = false, initialDetail = null, authStatus, authStatusReady, onBack, onChanged, onManageChatgptAccounts }: ProfileEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
+  const initialConfigText = useMemo(
+    () => withoutApiKeyPlaceholder(initialDetail?.raw_config ?? initialDetail?.config_fragment ?? ""),
+    [initialDetail],
+  );
   // 详情由调用方预载（openEdit）：门控与表单/编辑器内容状态全部同源初始化（初始化器与挂载 effect
   // 同一数据源），首帧即完整内容；挂载后 effect 仍会重取最新值，值未变时 React 跳过重渲染。
   const [detail, setDetail] = useState<ProfileDetail | null>(initialDetail);
@@ -58,7 +70,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const [baseUrl, setBaseUrl] = useState(() => initialDetail?.base_url ?? "");
   const [apiKey, setApiKey] = useState(() => initialDetail?.api_key ?? "");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [modelValue, setModelValue] = useState(() => readModelValue(initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "") ?? "");
+  const [modelValue, setModelValue] = useState(() => readModelValue(initialConfigText) ?? "");
   const [fetchedModels, setFetchedModels] = useState<string[]>(() => initialDetail?.fetched_models ?? []);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [adminUrl, setAdminUrl] = useState(() => initialDetail?.admin_url ?? "");
@@ -67,10 +79,10 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const [selectedIcon, setSelectedIcon] = useState<string | null>(profile?.icon ?? null);
   const [presetKind, setPresetKind] = useState(create ? "custom" : "");
   const [activeTab, setActiveTab] = useState<EditTab>("config");
-  const [configText, setConfigText] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");
+  const [configText, setConfigText] = useState(() => initialConfigText);
   const [catalogText, setCatalogText] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");
   const [authText, setAuthText] = useState(() => initialDetail?.raw_auth ?? "");
-  const [configInitial, setConfigInitial] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");
+  const [configInitial, setConfigInitial] = useState(() => initialConfigText);
   const [catalogInitial, setCatalogInitial] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");
   const [authInitial, setAuthInitial] = useState(() => initialDetail?.raw_auth ?? "");
   const [authPreviewOnly, setAuthPreviewOnly] = useState(false);
@@ -198,23 +210,26 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
         try {
           const loaded = await api.getProfile(profile.id);
           if (cancelled) return;
+          const loadedConfigText = withoutApiKeyPlaceholder(
+            loaded.raw_config ?? loaded.config_fragment,
+          );
           setDetail(loaded);
           setName(loaded.name);
-          setConfigText(loaded.raw_config ?? loaded.config_fragment);
+          setConfigText(loadedConfigText);
           setCatalogText(loaded.raw_catalog ?? loaded.catalog_content ?? "");
           setAuthText(loaded.raw_auth ?? "");
-          setConfigInitial(loaded.raw_config ?? loaded.config_fragment);
+          setConfigInitial(loadedConfigText);
           setCatalogInitial(loaded.raw_catalog ?? loaded.catalog_content ?? "");
           setAuthInitial(loaded.raw_auth ?? "");
           setBaseUrl(loaded.base_url ?? "");
           setApiKey(loaded.api_key ?? "");
-          setModelValue(readModelValue(loaded.raw_config ?? loaded.config_fragment) ?? "");
+          setModelValue(readModelValue(loadedConfigText) ?? "");
           setFetchedModels(loaded.fetched_models);
           setAdminUrl(loaded.admin_url ?? "");
           setSelectedIcon(loaded.icon);
           setBoundAccountId(loaded.account_id);
           setShowBalance(loaded.show_balance);
-          advanced.syncFromConfig(loaded.raw_config ?? loaded.config_fragment, loaded.provider === null);
+          advanced.syncFromConfig(loadedConfigText, loaded.provider === null);
           if (loaded.provider === null) {
             const source = resolveAuthSource(loaded);
             if (source === "oauth") {

@@ -45,6 +45,8 @@ export default {
     hunyuan: "腾讯混元",
     doubao: "火山方舟豆包",
     mimo: "小米 MiMo",
+    qianfan: "百度千帆",
+    xai: "xAI（Grok）",
   },
   providerName: {
     hunyuan: "腾讯混元",

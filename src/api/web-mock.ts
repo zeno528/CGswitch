@@ -617,7 +617,7 @@ function renderMcpFragmentWeb(spec: McpServerSpec): string {
 // （正式运行时由后端 builtin 模板给出完整原文）
 function mockBuiltinFragment(preset: BuiltinPreset, apiKey: string): string {
   return preset.provider
-    ? `model = "${preset.model}"\nmodel_provider = "${preset.provider}"\nmodel_reasoning_effort = "high"\n\n[model_providers.${preset.provider}]\nname = "${preset.provider}"\nbase_url = "${preset.base_url}"\nwire_api = "responses"\nexperimental_bearer_token = "${apiKey || "<API Key>"}"`
+    ? `model = "${preset.model}"\nmodel_provider = "${preset.provider}"\nmodel_reasoning_effort = "high"\n\n[model_providers.${preset.provider}]\nname = "${preset.provider}"\nbase_url = "${preset.base_url}"\nwire_api = "responses"\nexperimental_bearer_token = "${apiKey || "<YOUR_API_KEY>"}"`
     : `model = "${preset.model}"\nmodel_reasoning_effort = "high"`;
 }
 

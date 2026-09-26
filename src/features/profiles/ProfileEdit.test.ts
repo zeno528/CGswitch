@@ -72,15 +72,15 @@ describe("ProfileEdit 用量查询", () => {
   });
 
   it("表单与编辑器内容状态以预载详情惰性初始化，首帧不为空壳", () => {
-    expect(source).toContain('const [configText, setConfigText] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");');
+    expect(source).toContain('const [configText, setConfigText] = useState(() => initialConfigText);');
     expect(source).toContain('const [catalogText, setCatalogText] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");');
     expect(source).toContain('const [authText, setAuthText] = useState(() => initialDetail?.raw_auth ?? "");');
-    expect(source).toContain('const [configInitial, setConfigInitial] = useState(() => initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "");');
+    expect(source).toContain('const [configInitial, setConfigInitial] = useState(() => initialConfigText);');
     expect(source).toContain('const [catalogInitial, setCatalogInitial] = useState(() => initialDetail?.raw_catalog ?? initialDetail?.catalog_content ?? "");');
     expect(source).toContain('const [authInitial, setAuthInitial] = useState(() => initialDetail?.raw_auth ?? "");');
     expect(source).toContain('const [baseUrl, setBaseUrl] = useState(() => initialDetail?.base_url ?? "");');
     expect(source).toContain('const [apiKey, setApiKey] = useState(() => initialDetail?.api_key ?? "");');
-    expect(source).toContain('const [modelValue, setModelValue] = useState(() => readModelValue(initialDetail?.raw_config ?? initialDetail?.config_fragment ?? "") ?? "");');
+    expect(source).toContain('const [modelValue, setModelValue] = useState(() => readModelValue(initialConfigText) ?? "");');
     expect(source).toContain("const [fetchedModels, setFetchedModels] = useState<string[]>(() => initialDetail?.fetched_models ?? []);");
     expect(source).toContain('const [adminUrl, setAdminUrl] = useState(() => initialDetail?.admin_url ?? "");');
     expect(source).toContain("const [boundAccountId, setBoundAccountId] = useState<string | null>(() => initialDetail?.account_id ?? null);");

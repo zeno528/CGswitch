@@ -1725,7 +1725,7 @@ fn apply_builtin_profile_writes_exact_config_and_catalog() {
     let expected =
         codex_config::merge_mcp_section(&String::from_utf8_lossy(&rendered), &live).into_bytes();
     assert_eq!(config, expected);
-    assert!(!String::from_utf8_lossy(&config).contains("<你的 DeepSeek API Key>"));
+    assert!(!String::from_utf8_lossy(&config).contains("<YOUR_API_KEY>"));
     // 关联文件按本供应商字节写入，旧文件已备份
     let models = std::fs::read(context.paths.codex_home.join("models.json")).unwrap();
     assert_eq!(models, crate::builtin::DEEPSEEK_MODELS);
@@ -2684,7 +2684,7 @@ fn update_builtin_profile_writes_key_back_when_active() {
     assert!(config.contains("model = \"deepseek-flash\""));
     assert!(config.contains("experimental_bearer_token = \"sk-real\""));
     assert!(!config.contains("sk-old"));
-    assert!(!config.contains("<你的 DeepSeek API Key>"));
+    assert!(!config.contains("<YOUR_API_KEY>"));
 
     let detail = context.get_profile(&profile.id).unwrap();
     assert_eq!(detail.api_key.as_deref(), Some("sk-real"));
@@ -2745,7 +2745,7 @@ fn keyless_builtin_saves_to_db_but_apply_requires_key() {
     assert!(!profile.has_key);
     let detail = context.get_profile(&profile.id).unwrap();
     assert_eq!(detail.api_key.as_deref(), None);
-    assert!(detail.config_fragment.contains("<你的 DeepSeek API Key>"));
+    assert!(detail.config_fragment.contains("<YOUR_API_KEY>"));
 
     let error = context.apply_profile(&profile.id).unwrap_err();
     assert!(error.0.contains("尚未配置 API Key"));
@@ -2790,7 +2790,7 @@ experimental_bearer_token = "sk-in-editor"
         .unwrap();
     let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     assert!(live.contains("sk-in-editor"));
-    assert!(!live.contains("<你的 DeepSeek API Key>"));
+    assert!(!live.contains("<YOUR_API_KEY>"));
 }
 
 #[test]
@@ -2849,7 +2849,7 @@ fn apply_minimax_inserts_catalog_line_and_writes_catalog() {
     assert_eq!(config, expected);
     assert!(String::from_utf8_lossy(&config)
         .contains("model_catalog_json = \"~/.codex/model-catalogs/custom-catalog.json\""));
-    assert!(!String::from_utf8_lossy(&config).contains("<MINIMAX_API_KEY>"));
+    assert!(!String::from_utf8_lossy(&config).contains("<YOUR_API_KEY>"));
 
     let catalog = std::fs::read(
         context
@@ -2898,7 +2898,7 @@ fn builtin_placeholder_key_is_not_exposed_as_api_key() {
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    // 兼容仍带占位符密钥的旧数据：get_profile 不应把占位符当成密钥回显
+    // 占位符密钥不算已填写：get_profile 不应把占位符当成密钥回显
     let payload = ProfilePayload {
         builtin: Some("deepseek".into()),
         model_values: [
@@ -2910,19 +2910,19 @@ fn builtin_placeholder_key_is_not_exposed_as_api_key() {
         .collect(),
         provider_id: Some("deepseek".into()),
         provider_body: Some(
-            "name = \"deepseek\"\nbase_url = \"https://api.deepseek.com/\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<你的 DeepSeek API Key>\""
+            "name = \"deepseek\"\nbase_url = \"https://api.deepseek.com/\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
                 .into(),
         ),
         ..Default::default()
     };
     let summary = context
         .database
-        .insert_profile("DeepSeek 旧数据", &payload, &now_ms().to_string())
+        .insert_profile("DeepSeek 占位符", &payload, &now_ms().to_string())
         .unwrap();
 
     let detail = context.get_profile(&summary.id).unwrap();
     assert_eq!(detail.api_key, None);
-    assert!(detail.config_fragment.contains("<你的 DeepSeek API Key>"));
+    assert!(detail.config_fragment.contains("<YOUR_API_KEY>"));
     let state = context.get_state().unwrap();
     let stored_summary = state
         .profiles

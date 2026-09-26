@@ -891,10 +891,7 @@ fn payload_has_key(payload: &ProfilePayload) -> bool {
     }
     if let Some(kind) = payload.builtin.as_deref() {
         if let Ok(template) = crate::builtin::template(kind) {
-            if template
-                .placeholder
-                .is_some_and(|placeholder| placeholder == key.as_bytes())
-            {
+            if template.is_placeholder(key.as_bytes()) {
                 return false;
             }
         }

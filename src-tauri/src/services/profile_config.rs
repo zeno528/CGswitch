@@ -52,11 +52,7 @@ pub(crate) fn is_builtin_placeholder(payload: &ProfilePayload, key: &str) -> boo
         .builtin
         .as_deref()
         .and_then(|kind| builtin::template(kind).ok())
-        .is_some_and(|template| {
-            template
-                .placeholder
-                .is_some_and(|placeholder| placeholder == key.as_bytes())
-        })
+        .is_some_and(|template| template.is_placeholder(key.as_bytes()))
 }
 
 pub(crate) fn profile_config_fragment(payload: &ProfilePayload) -> String {
