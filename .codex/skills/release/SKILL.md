@@ -1,13 +1,13 @@
 ---
 name: release
-description: CGswitch 发版流水线（**默认仅本地 commit 为止**）：AI 读 CHANGELOG 历史与 git 三态（最新 tag / HEAD VERSION / working tree VERSION），CHANGELOG 草稿以**实际代码 diff**（`git diff <上一tag>..HEAD` 逐文件阅读）为唯一依据、commit 信息不可信，**单次弹窗合并确认** bump 级别 + CHANGELOG 草稿（一次 AskUserQuestion 问完）→ 确认后**一次性执行**：跑 `node scripts/bump-version.mjs <level>`（**禁止手写**）→ 写入 CHANGELOG + 本地 commit。**写入本地 commit 即终止**；AI 不主动询问、不主动执行任何 push / 盯构建 / 发布动作。push 到 main 后 Release 工作流自动触发（构建完停在草稿），公开发布仍须用户确认。当用户说"发版"、"发行"、"release"、"发个新版本"、"发布新版本"时使用。
+description: CGswitch 发版流水线（**默认仅本地 commit 为止**）：AI 读 CHANGELOG 历史与 git 三态（最新 tag / HEAD VERSION / working tree VERSION），CHANGELOG 草稿以**实际代码 diff**（`git diff <上一tag>..HEAD` 逐文件阅读）为唯一依据、commit 信息不可信，**单次弹窗合并确认** bump 级别 + CHANGELOG 草稿（一次 AskUserQuestion 问完）→ 确认后**一次性执行**：跑 `node scripts/bump-version.mjs <level>`（**禁止手写**）→ 写入 CHANGELOG + 本地 commit。**写入本地 commit 即终止**；AI 不主动询问、不主动执行任何 push / 盯构建 / 发布动作。push 到 main 后 Release 工作流自动触发（构建完停在草稿），公开发布仍须用户确认；push 发行 tag（vX.Y.Z=直接正式发行并通知关注者，vX.Y.Z-rc.N=直接预发行）则构建完自动公开、不停草稿。当用户说"发版"、"发行"、"release"、"发个新版本"、"发布新版本"时使用。
 ---
 
 # CGswitch 发版
 
 分工：本 skill 做需要判断的部分——bump 级别建议、CHANGELOG 内容草稿（撰写须由 Agent 完成并经用户合并确认）、本地 commit、跑 bump-version 命令、把上一版 Unreleased 段落归档为版本标题；`.github/workflows/release.yml` 做确定性的部分——校验、三平台构建、创建 tag 与草稿发行页（发行页的版本标题行 `## [版本] - 发行日` 由工作流生成，发行那一刻才确定的事实）、上传资产。**工作流不回写 main**；CHANGELOG.md 的版本归档在下次起草时由本 skill 完成。草稿不会通知关注者；执行发布那一刻 GitHub 才给关注者发通知邮件。
 
-工作流由 push 到 main 自动触发（要求 VERSION 与 CHANGELOG.md 有变更且内容齐备，不满足则绿色跳过），构建完停在**草稿**；也可手动 `workflow_dispatch` 触发并可传 `release_mode` 直接预发行/正式发布。工作流用 `GITHUB_TOKEN` 创建 tag 和草稿，不会递归触发自身。
+工作流触发三条路径：默认 push 到 main（要求 VERSION 与 CHANGELOG.md 有变更且内容齐备，不满足则绿色跳过）构建完停在**草稿**；push 严格 semver 发行 tag（`vX.Y.Z`=构建完直接正式发行并通知关注者，`vX.Y.Z-rc.N`=直接预发行，不占 latest 指针）构建完**自动公开、不停草稿**——tag 就是发行决策；也可手动 `workflow_dispatch` 触发并可传 `release_mode`。branch push 路径由工作流用 `GITHUB_TOKEN` 代建 tag，不会递归触发自身；tag push 时 `paths` 过滤不参与判定（官方文档语义），tag 即发行决策。
 
 ## 默认流程边界
 
@@ -113,33 +113,26 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
    - add 后先 `git status --short` 核对暂存区只含上述 6 个文件；发现多余文件必须 `git restore --staged <文件>` 摘掉后再提交。
 5. **到此停下**：汇报版本号、commit hash、CHANGELOG 段落摘要，**会话停在此处**。**不询问用户是否继续**（避免被读成对扩展动作的暗示），**不主动执行**任何 push / 触发工作流 / 发布操作。Step 2–4 需用户用明确指令单独启动。
 
-### Step 2: 推送（自动触发构建，停在草稿）— 需用户明确启动才执行
+### Step 2: 推送 — 需用户明确启动才执行
 
 > 默认流程到 Step 1 为止。本节起必须用户明确指示（如"继续"、"push"、"推上去"）才执行，不要自行越界。
 
-1. 推送发版提交：`git push origin main`（工作流从仓库读取 VERSION 与发行日志）。push 会**自动触发** Release 工作流，release_mode 为空 → 构建完停在**草稿**，走 Step 4 人工发布；不手动打 tag（tag 由工作流用 GITHUB_TOKEN 自动创建，避免递归触发）。
-2. 仅当用户明确要求**直接预发行 / 正式发布**（不走人工发布）时，先取消 push 触发的 run，再手动 dispatch 对应模式：
-
-   ```bash
-   gh run list --workflow=Release --limit 1 --json databaseId,event,status   # 找 event=push 的 run
-   gh run cancel <run-id>
-   gh workflow run release.yml --ref main -f release_mode=prerelease   # 或 latest
-   ```
-
-   不取消也能工作（同一并发组排队，dispatch 那条最终更新草稿并发布），但会白跑一轮三平台构建。
-
-3. 等 10 秒后取 run：`gh run list --workflow=Release --limit 1 --json databaseId,status,headSha`
-4. 推送前可选本地预检 `pnpm check`（与工作流 verify job 同一条链），失败就地修复并补充提交；⚠️ 项目 node_modules 是 Windows 平台构建的，必须在 **Windows 侧**执行（WSL 里跑会触发 corepack 重建依赖、破坏 Windows 开发环境）；跳过也可，工作流 verify 会兜底。
+1. **默认（无干预）**：`git push origin main` → 自动构建停在草稿，走 Step 4 人工发布（asset 清单 → AskUserQuestion 点选正式/预发行/暂不）。
+2. **干预直接发行**：`git tag v<版本> && git push origin main v<版本>` → tag 触发的 run 构建完**自动公开**（无 `-rc` 后缀 = 正式发行并通知关注者；`-rc.N` 后缀 = 预发行，不占 latest 指针），不停草稿。
+3. **纪律**：永远单推具体 tag（`git push origin v0.24.0`），**禁 `git push --tags`**——会把历史测试 tag（如 `v0.17.5-codex-3-...`）连坐触发误发行（触发器已排除 `*-codex*` 模式，仍守纪律）。
+4. 仅当用户明确要求预发行/正式发行又不方便打 tag 时，才用 dispatch：先取消 branch push 触发的 run（`gh run list` → `gh run cancel <id>`），再 `gh workflow run release.yml --ref main -f release_mode=<mode>`（与 push tag 等效，少用）。
+5. 等 10 秒后取 run：`gh run list --workflow=Release --limit 2 --json databaseId,status,headBranch`——同一次推送可能并行两条 run（branch push 的草稿 run + tag push 的发行 run），**盯 headBranch 为 `v<版本>` 的那条**；草稿 run 撞上已发行版本会绿色自我跳过（设计内，非失败）。
+6. 推送前可选本地预检 `pnpm check`（与工作流 verify job 同一条链），失败就地修复并补充提交；⚠️ 项目 node_modules 是 Windows 平台构建的，必须在 **Windows 侧**执行（WSL 里跑会触发 corepack 重建依赖、破坏 Windows 开发环境）；跳过也可，工作流 verify 会兜底。
 
 ### Step 3: 盯 Release 工作流 — 需用户明确启动才执行
 
-1. `gh run watch <run-id> --exit-status --interval 30` 放后台执行（约 30-40 分钟），完成时会收到通知。
+1. 同一次发版可能并行两条 run（branch push 的草稿 run + tag push 的发行 run，并发组按 ref 隔离），**盯 headBranch 为 `v<版本>` 的发行 run**：`gh run watch <run-id> --exit-status --interval 30` 放后台执行（约 30-40 分钟），完成时会收到通知。
 2. 构建失败：`gh run view <run-id> --log-failed` 提取报错摘要，报告用户并停止（草稿若已创建则留在草稿态，不影响关注者）。
-3. 构建成功后工作流已自动完成：创建 tag、创建发行页（版本标题 + Full Changelog 链接 + 发行日志 + 安装指南）、上传三平台资产。CHANGELOG.md 不被回写（归档在下次起草的 Step 1 完成）。draft 模式停在草稿；prerelease / latest 模式此刻已自动发布，无需 Step 4。
+3. 构建成功后工作流已自动完成：创建 tag（branch 路径）、创建发行页（版本标题 + Full Changelog 链接 + 发行日志 + 安装指南）、上传三平台资产。CHANGELOG.md 不被回写（归档在下次起草的 Step 1 完成）。draft 模式停在草稿等人工发布（Step 4）；tag 触发的 prerelease / latest 模式此刻已自动发布，无 Step 4。
 
 ### Step 4: 确认与发布 — 需用户明确启动才执行
 
-> 本步仅适用于 **draft 模式**（默认）。prerelease / latest 模式下工作流构建完成即自动发布，跳过本步。
+> 本步仅适用于**默认草稿路径**（push main 未打 tag）。tag 触发的 prerelease / latest 模式构建完成即自动公开，跳过本步。
 
 1. 展示给用户（这一步必须等用户明确确认，不得自动发布）：
    - `gh release view v<版本> --json name,isDraft,assets` 的资产清单（文件名 + 大小）
@@ -157,15 +150,23 @@ CHANGELOG 段落模板（分区按实际变更从可用分区里取，有几段�
 1. **Step 0**：AI 看 git 三态（最新 tag `v0.7.1` / HEAD VERSION `0.7.2` / working tree VERSION `0.7.3`，取 max = `0.7.3`） + `git log v0.7.1..HEAD` + `CHANGELOG.md` 最近段落 → 单条消息展示状态框 + "建议 patch（依据：参照 v0.7.1 类似量级，单 `fix:` commit）" + CHANGELOG 草稿 + 进/不进 → **一次 AskUserQuestion 弹窗**（问题 1 版本号级别、问题 2 CHANGELOG 确认）→ 用户两项点选确认
 2. **Step 1**：AI 一次跑完：`node scripts/bump-version.mjs patch` → 写入 `CHANGELOG.md` → `git commit -m "chore(release): v0.7.4"` → 汇报版本号、commit hash、CHANGELOG 段落摘要，**会话终止**。不询问、不执行 push / 触发工作流 / 发布；这些动作必须等用户在下一轮显式启动（例如"推上去"、"继续"）。
 
-**场景 B（扩展流程，需用户明确指示）**：用户在场景 A 之后说"推上去，发布"
+**场景 B（扩展流程 · 干预直接发行，需用户明确指示）**：用户在场景 A 之后说"直接发出去"
+
+1. **Step 2**：`git tag v0.7.4 && git push origin main v0.7.4` → 两条 run 并行（branch 草稿 run + tag 发行 run）
+2. **Step 3**：盯 headBranch 为 `v0.7.4` 的发行 run 至全绿——构建完成即自动正式发行并通知关注者，无 Step 4
+3. 想先出预发行：打 `v0.7.4-rc.1` 即自动预发行，不占 latest 指针
+
+**场景 B2（扩展流程 · 默认草稿路径，需用户明确指示）**：用户说"推上去，先看草稿"
 
 1. **Step 2**：`git push origin main` → Release 工作流自动触发（构建完停在草稿）
-2. **Step 3**：后台 `gh run watch` 盯 Release 工作流至全绿（工作流自动建 tag、草稿并上传 4 个资产）
-3. **Step 4**：展示 4 个资产（Windows setup/msi、macOS x64/arm64 dmg）+ 日志全文 → AskUserQuestion 弹窗点选「正式发布」 → `gh release edit v0.7.4 --draft=false --latest`，报告链接
+2. **Step 3**：后台 `gh run watch` 盯至全绿（工作流自动建 tag、草稿并上传资产）
+3. **Step 4**：展示资产（Windows setup/msi、macOS x64/arm64 dmg）+ 日志全文 → AskUserQuestion 弹窗点选「正式发布」 → `gh release edit v0.7.4 --draft=false --latest`，报告链接
 
 ## Troubleshooting
 
 **工作流未触发**：push 后 `gh run list --workflow=Release` 查看队列；确认改动包含 VERSION 或 CHANGELOG.md（paths 过滤，普通提交不触发）且推的是 main。手动兜底：`gh workflow run release.yml --ref main`。
+
+**tag 推了没触发发行**：tag 必须严格匹配 `vX.Y.Z` / `vX.Y.Z-rc.N`（触发器用严格 semver 模式，历史带后缀测试 tag 不触发）。`paths` 过滤对 tag push 不生效，不存在被它拦截的可能；再确认 tag 拼写与 `git push origin <tag>`（不要 `--tags` 连坐）。
 
 **verify 绿色跳过（push 自动触发，`::notice` 提示）**：属正常——该版本（VERSION 对应 tag）已公开发布，重复推送不重发（改 CHANGELOG 文案不会重出发行页）。
 
