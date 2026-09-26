@@ -12,15 +12,16 @@ const files = import.meta.glob<string>("./assets/providers/*.svg", {
 // 本模块在 setupI18n 之前加载，且语言切换后需取到新值。
 const LABELS: Record<string, string> = {
   "openai-chatgpt": "ChatGPT",
-  zhipu: "Zhipu",
+  get zhipu() { return i18next.t("preset.zhipu"); },
   deepseek: "DeepSeek",
   minimax: "MiniMax",
   opencode: "OpenCode",
   openrouter: "OpenRouter",
   kimi: "Kimi",
   qwen: "Qwen",
-  baiducloud: "Baidu Qianfan",
+  get baiducloud() { return i18next.t("preset.qianfan"); },
   xai: "xAI",
+  get "xiaomi-mimo"() { return i18next.t("preset.mimo"); },
   get hunyuan() { return i18next.t("providerName.hunyuan"); },
   get volcengine() { return i18next.t("providerName.volcengine"); },
 };

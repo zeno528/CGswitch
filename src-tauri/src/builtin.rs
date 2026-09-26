@@ -258,7 +258,7 @@ mod tests {
         );
         assert_eq!(
             MINIMAX_CONFIG,
-            b"model = \"MiniMax-M3\"\nmodel_provider = \"minimax\"\nmodel_context_window = 1000000\n\n[model_providers.minimax]\nname = \"MiniMax\"\nbase_url = \"https://api.minimaxi.com/v1\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\"\nwire_api = \"responses\""
+            b"model = \"MiniMax-M3\"\nmodel_provider = \"minimax\"\nmodel_context_window = 1000000\n\n[model_providers.minimax]\nname = \"MiniMax\"\nbase_url = \"https://api.minimax.cn/v1\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\"\nwire_api = \"responses\""
         );
         assert_eq!(
             ZHIPU_CONFIG,

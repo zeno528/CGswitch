@@ -2,6 +2,14 @@ import i18next from "i18next";
 
 // 展示元数据：网格选择时的展示 / provider id 推断 / "测试连通" 按钮可用性判定。
 // config.toml 原文由后端 builtin 模板单一来源，模型目录同。
+
+/** 官方多区域端点档（cn/全球）；region 只用于下拉展示，写入配置的永远是 URL 本身。 */
+export interface PresetEndpoint {
+  region: "cn" | "global";
+  base_url: string;
+  admin_url: string | null;
+}
+
 export interface BuiltinPreset {
   kind: string;
   name: string;
@@ -10,6 +18,8 @@ export interface BuiltinPreset {
   base_url: string;
   admin_url: string | null;
   model: string;
+  /** 双区域供应商的端点档；首项必须与 base_url/admin_url（默认区域）一致，单区域供应商不带。 */
+  endpoints?: readonly PresetEndpoint[];
 }
 
 /** 支持余额/用量查询的供应商（以 provider_id 键控）；加供应商时在这里加一行即可 */
@@ -84,14 +94,29 @@ export const builtinPresets: BuiltinPreset[] = [
   { kind: "custom", get name() { return i18next.t("preset.custom"); }, provider: null, icon: "custom", base_url: "", admin_url: null, model: "自定义" }, // i18n-exempt: 模型名会写入 config.toml，不能随界面语言变化
   { kind: "chatgpt", name: "ChatGPT", provider: null, icon: "openai-chatgpt", base_url: "", admin_url: "https://openai.com/chatgpt/pricing", model: "gpt-5.6" },
   { kind: "deepseek", name: "DeepSeek", provider: "deepseek", icon: "deepseek", base_url: "https://api.deepseek.com/", admin_url: "https://platform.deepseek.com", model: "deepseek-flash" },
-  { kind: "minimax", name: "MiniMax CN", provider: "minimax", icon: "minimax", base_url: "https://api.minimaxi.com/v1", admin_url: "https://platform.minimaxi.com", model: "MiniMax-M3" },
-  { kind: "zhipu", name: "Zhipu CN", provider: "ZAI", icon: "zhipu", base_url: "https://open.bigmodel.cn/api/v1", admin_url: "https://open.bigmodel.cn", model: "glm-5.3" },
+  { kind: "minimax", name: "MiniMax", provider: "minimax", icon: "minimax", base_url: "https://api.minimax.cn/v1", admin_url: "https://platform.minimax.cn", model: "MiniMax-M3", endpoints: [
+    { region: "cn", base_url: "https://api.minimax.cn/v1", admin_url: "https://platform.minimax.cn" },
+    { region: "global", base_url: "https://api.minimax.io/v1", admin_url: "https://platform.minimax.io" },
+  ] },
+  { kind: "zhipu", get name() { return i18next.t("preset.zhipu"); }, provider: "ZAI", icon: "zhipu", base_url: "https://open.bigmodel.cn/api/v1", admin_url: "https://open.bigmodel.cn", model: "glm-5.3", endpoints: [
+    { region: "cn", base_url: "https://open.bigmodel.cn/api/v1", admin_url: "https://open.bigmodel.cn" },
+    { region: "global", base_url: "https://api.z.ai/api/v1", admin_url: "https://z.ai/model-api" },
+  ] },
   { kind: "opencode", name: "OpenCode", provider: "opencode-go", icon: "opencode", base_url: "https://opencode.ai/zen/go/v1", admin_url: null, model: "glm-5.2" },
   { kind: "openrouter", name: "OpenRouter", provider: "openrouter", icon: "openrouter", base_url: "https://openrouter.ai/api/v1", admin_url: "https://openrouter.ai/settings/keys", model: "openai/gpt-5.6-sol" },
   { kind: "mimo", get name() { return i18next.t("preset.mimo"); }, provider: "mimo", icon: "xiaomi-mimo", base_url: "https://api.xiaomimimo.com/v1", admin_url: "https://platform.xiaomimimo.com/#/console/api-keys", model: "mimo-v2.5-pro" },
-  { kind: "kimi", name: "Kimi", provider: "kimi", icon: "kimi", base_url: "https://api.moonshot.cn/v1", admin_url: "https://platform.kimi.com/console/api-keys", model: "kimi-k3" },
-  { kind: "qwen", get name() { return i18next.t("preset.qwen"); }, provider: "Model_Studio_Token_Plan_Personal", icon: "qwen", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://bailian.console.aliyun.com", model: "qwen3.8-max" },
-  { kind: "hunyuan", get name() { return i18next.t("preset.hunyuan"); }, provider: "hy3-tokenhub", icon: "hunyuan", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey", model: "hy3" },
+  { kind: "kimi", name: "Kimi", provider: "kimi", icon: "kimi", base_url: "https://api.moonshot.cn/v1", admin_url: "https://platform.kimi.com/console/api-keys", model: "kimi-k3", endpoints: [
+    { region: "cn", base_url: "https://api.moonshot.cn/v1", admin_url: "https://platform.kimi.com/console/api-keys" },
+    { region: "global", base_url: "https://api.moonshot.ai/v1", admin_url: "https://platform.kimi.ai/console/api-keys" },
+  ] },
+  { kind: "qwen", get name() { return i18next.t("preset.qwen"); }, provider: "Model_Studio_Token_Plan_Personal", icon: "qwen", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://bailian.console.aliyun.com", model: "qwen3.8-max", endpoints: [
+    { region: "cn", base_url: "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://bailian.console.aliyun.com" },
+    { region: "global", base_url: "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1", admin_url: "https://modelstudio.console.alibabacloud.com/ap-southeast-1" },
+  ] },
+  { kind: "hunyuan", get name() { return i18next.t("preset.hunyuan"); }, provider: "hy3-tokenhub", icon: "hunyuan", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey", model: "hy3", endpoints: [
+    { region: "cn", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey" },
+    { region: "global", base_url: "https://tokenhub-intl.tencentmaas.com/v1", admin_url: null },
+  ] },
   { kind: "doubao", get name() { return i18next.t("preset.doubao"); }, provider: "volcengine-coding-plan", icon: "volcengine", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey", model: "ark-code-latest" },
   { kind: "qianfan", get name() { return i18next.t("preset.qianfan"); }, provider: "qianfan", icon: "baiducloud", base_url: "https://qianfan.baidubce.com/v2", admin_url: "https://console.bce.baidu.com/qianfan/", model: "glm-5.1" },
   { kind: "xai", get name() { return i18next.t("preset.xai"); }, provider: "xai", icon: "xai", base_url: "https://api.x.ai/v1", admin_url: "https://console.x.ai/team/default/api-keys", model: "grok-4.7" },

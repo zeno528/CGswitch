@@ -52,7 +52,7 @@ Codex 的供应商设置、ChatGPT 账号认证和工具扩展共同构成日常
 
 ### 当前支持的供应商模板
 
-当前内置模板包括 `ChatGPT`、`DeepSeek`、`MiniMax CN`、`Zhipu CN`、`OpenCode`、`OpenRouter`、`Xiaomi MiMo`、`Kimi`、`Qwen`、`Tencent Hunyuan`、`Volcengine Doubao` 和 `Custom`。
+当前内置模板包括 `ChatGPT`、`DeepSeek`、`MiniMax`、`Zhipu`、`OpenCode`、`OpenRouter`、`Xiaomi MiMo`、`Kimi`、`Qwen`、`Tencent Hunyuan`、`Volcengine Doubao`、`Baidu Qianfan`、`xAI（Grok）` 和 `Custom`。
 
 自定义供应商可以使用 Codex 支持的 Responses API 兼容配置，并填写自己的接口地址、API Key 和模型目录。
 
@@ -263,4 +263,4 @@ src-tauri/src/
 
 ## 许可证
 
-CGswitch 使用 [MIT License](LICENSE) 发布。部分供应商图标（`ChatGPT`、`DeepSeek`、`MiniMax CN`、`OpenCode`、`Zhipu CN`）来自 [thesvg.org](https://thesvg.org)，其余为自制或另行取得；每个 SVG 文件顶部都保留了来源声明。
+CGswitch 使用 [MIT License](LICENSE) 发布。部分供应商图标（`ChatGPT`、`DeepSeek`、`MiniMax`、`OpenCode`、`Qwen`、`xAI`、`Zhipu`）来自 [thesvg.org](https://thesvg.org)，其余为自制或另行取得；每个 SVG 文件顶部都保留了来源声明。

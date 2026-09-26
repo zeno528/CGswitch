@@ -66,3 +66,21 @@ describe("builtinPresets 新增 responses 供应商", () => {
     }
   });
 });
+
+describe("builtinPresets 双区域端点档", () => {
+  it("仅官方双端点供应商携带 cn+global 档，且首项与默认 base_url/admin_url 一致", () => {
+    const dual = ["hunyuan", "kimi", "minimax", "qwen", "zhipu"];
+    const carried = builtinPresets.filter((p) => p.endpoints).map((p) => p.kind).sort();
+    expect(carried, "只有官方文档确认的双区域供应商才带端点档").toEqual(dual);
+
+    for (const preset of builtinPresets) {
+      const endpoints = preset.endpoints ?? [];
+      const urls = endpoints.map((ep) => ep.base_url);
+      expect(new Set(urls).size, `${preset.kind} 端点档 URL 应互不相同`).toBe(urls.length);
+      if (endpoints.length > 0) {
+        expect(endpoints[0].base_url, `${preset.kind} 首档应为默认区域`).toBe(preset.base_url);
+        expect(endpoints[0].admin_url, `${preset.kind} 首档控制台应为默认控制台`).toBe(preset.admin_url);
+      }
+    }
+  });
+});

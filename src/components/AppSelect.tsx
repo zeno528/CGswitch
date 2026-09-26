@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useFixedMenuPosition } from "./useFixedMenuPosition";
+import { useMenuDismiss } from "./useMenuDismiss";
 
 interface SelectOption<T extends string | number = string> {
   label: string;
@@ -35,18 +36,9 @@ export function AppSelect<T extends string | number>({
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  // 定位（向下/向上自适应翻转）与行内 ⋯ 菜单共用同一套逻辑
+  // 定位（向下/向上自适应翻转）与行内 ⋯ 菜单共用同一套逻辑；收起（外点/滚动/Escape）同样复用全局基建
   const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, "match");
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [open]);
+  useMenuDismiss(open, rootRef, menuRef, () => setOpen(false));
 
   // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
   // 菜单是 fixed 定位，offsetTop 即相对菜单的偏移；把选中项滚到可视区中部，越界时 scrollTop 自动收敛
@@ -58,19 +50,7 @@ export function AppSelect<T extends string | number>({
     menu.scrollTop = Math.max(0, current.offsetTop - (menu.clientHeight - current.offsetHeight) / 2);
   }, [open, options.length]);
 
-  // 展开期间的背景滚动控制：
-  // 1. 菜单外发生滚动（容器滚轮/拖动）→ 直接收起，避免 fixed 菜单跟随触发器跳跑
-  useEffect(() => {
-    if (!open) return;
-    const onBackgroundScroll = (event: Event) => {
-      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    window.addEventListener("scroll", onBackgroundScroll, true);
-    return () => window.removeEventListener("scroll", onBackgroundScroll, true);
-  }, [open]);
-
-  // 2. 菜单自身的滚轮不穿透：内容不满或已滚到边界时拦下，背景纹丝不动
+  // 菜单自身的滚轮不穿透：内容不满或已滚到边界时拦下，背景纹丝不动
   //   （React 的 onWheel 是 passive 的，preventDefault 必须用原生 non-passive 监听）
   useEffect(() => {
     if (!open) return;
@@ -122,7 +102,6 @@ export function AppSelect<T extends string | number>({
         aria-label={placeholder}
         onClick={() => hasOptions && setOpen((current) => !current)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") setOpen(false);
           if (hasOptions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
             event.preventDefault();
             setOpen(true);

@@ -1,6 +1,7 @@
-import { ArrowLeft, CodeXml, Download, Eye, EyeOff, ExternalLink, FileBraces, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, CodeXml, Download, Eye, EyeOff, ExternalLink, FileBraces, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { createPortal } from "react-dom";
 import { api } from "../../api";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
@@ -10,6 +11,8 @@ import { AppSwitch } from "../../components/AppSwitch";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
+import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
+import { useMenuDismiss } from "../../components/useMenuDismiss";
 import {
   balanceQueryProviders,
   builtinHasCatalog,
@@ -101,6 +104,32 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const editorMinLines = Math.max(configText.split(/\r?\n/).length, catalogText.split(/\r?\n/).length, authText.split(/\r?\n/).length);
 
   const selectedPreset = useMemo(() => builtinPresets.find((preset) => preset.kind === presetKind) ?? null, [presetKind]);
+  // 双区域供应商的端点档：创建态取所选预设；编辑态 profile 不携带预设 kind，按 provider id 反查
+  // （5 家双端点供应商的 provider id 互不相同）
+  const presetEndpoints = (create
+    ? selectedPreset?.endpoints
+    : builtinPresets.find((item) => item.provider != null && item.provider === detail?.provider)?.endpoints) ?? null;
+  // 双区域端点是可输入 combobox：地址输入框可自由填写任意 URL，菜单只是档位快捷入口。
+  // 弹层复用全局 app-select-menu 基建（定位翻转走 useFixedMenuPosition、收起走 useMenuDismiss，照 SettingsSections row-menu 先例），
+  // 菜单行带区域标识徽标；选中/手输的值都是 URL 本身，选档时顺带同步控制台地址（有官方全球控制台才覆盖）。
+  const [endpointMenuOpen, setEndpointMenuOpen] = useState(false);
+  const endpointRootRef = useRef<HTMLDivElement>(null);
+  const endpointMenuRef = useRef<HTMLDivElement>(null);
+  const endpointMenuStyle = useFixedMenuPosition(endpointMenuOpen, endpointRootRef.current, endpointMenuRef, "match");
+  useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef, () => setEndpointMenuOpen(false));
+  const renderEndpointMenuItem = (option: { label: string; value: string }) => {
+    const endpoint = presetEndpoints?.find((item) => item.base_url === option.value);
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        {endpoint ? (
+          <span className="meta-xs inline-flex w-13 shrink-0 items-center justify-center rounded-md bg-(--tile-bg) py-0.5 font-medium text-accent">
+            {endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")}
+          </span>
+        ) : null}
+        <span className="min-w-0 truncate">{option.label}</span>
+      </span>
+    );
+  };
   const isCustom = create && presetKind === "custom";
   const isOfficial = create ? presetKind === "chatgpt" : profile?.kind === "official";
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
@@ -510,7 +539,32 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                   <span className="shrink-0 font-medium text-(--text-secondary)">{t("edit.protocolResponses")}</span>
                 </div>
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.requestUrlLabel")}</label>
-                <input className="app-input" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+                {presetEndpoints ? (
+                  <div ref={endpointRootRef}>
+                    <div className="app-input-action">
+                      <input className="app-input app-input--action" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+                      <button type="button" className="app-input-action__button" aria-label={t("edit.requestUrlLabel")} aria-haspopup="listbox" aria-expanded={endpointMenuOpen} onClick={() => setEndpointMenuOpen((open) => !open)}>
+                        <ChevronDown className={endpointMenuOpen ? "h-4 w-4 rotate-180 transition-transform" : "h-4 w-4 transition-transform"} strokeWidth={2} aria-hidden="true" />
+                      </button>
+                    </div>
+                    {createPortal(
+                      <div ref={endpointMenuRef} className="app-select-menu" data-open={endpointMenuOpen} role="listbox" aria-label={t("edit.requestUrlLabel")} style={endpointMenuStyle}>
+                        {presetEndpoints.map((endpoint) => {
+                          const selected = endpoint.base_url === baseUrl;
+                          return (
+                            <button key={endpoint.base_url} type="button" role="option" aria-selected={selected} className="app-select-option app-selection-state" data-active={selected ? "true" : undefined} data-selected={selected} onClick={() => { setBaseUrl(endpoint.base_url); if (endpoint.admin_url) setAdminUrl(endpoint.admin_url); setEndpointMenuOpen(false); }}>
+                              {renderEndpointMenuItem({ label: endpoint.base_url, value: endpoint.base_url })}
+                              {selected ? <Check className="app-select-option__check" size={16} strokeWidth={2.5} aria-hidden="true" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>,
+                      document.body,
+                    )}
+                  </div>
+                ) : (
+                  <input className="app-input" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+                )}
                 <div className="mb-1.5 mt-4 flex items-center gap-2">
                   <span className="field-label">{t("edit.apiKeyLabel")}</span>
                   {isOpenCode && create ? (

@@ -114,26 +114,27 @@ describe("SettingsSections", () => {
     );
     expect(html).toContain("检查更新");
     expect(html).not.toContain("检查 GitHub 正式发布版本");
-    expect(html.indexOf("更新日志</button>")).toBeLessThan(html.indexOf("检查更新</button>"));
+    expect(html.indexOf("检查更新</button>")).toBeLessThan(html.indexOf("更新日志</button>"));
     expect(styles).toContain(".settings-about__actions > .apple-action-button");
   });
 
-  it("应用信息和数据路径分别成卡，版本 token 与更新日志在首行", () => {
+  it("应用信息和数据路径分别成卡，版本号位于应用名下方", () => {
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout paths={[]} onOpenPath={() => undefined} openingPath={null} /></AppUpdateProvider></FeedbackProvider>,
     );
     expect(html.match(/class="apple-group /g)).toHaveLength(2);
     expect(html).toContain("app-version");
-    expect(html).toContain("版本 v");
+    expect(html).toContain('class="apple-wordmark">CGswitch</span><span class="app-version">v');
     expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
     expect(html).not.toContain("当前版本");
-    expect(html).toContain("版本更新");
-    expect(html).toContain("settings-about__update-row");
-    expect(html).toContain("settings-about__update-description");
-    expect(html).toContain("hero-doodles");
-    expect(settingsSectionsSource).toContain('patternId="cg-about-card-doodles"');
-    expect(styles).toContain(".settings-about__app-card {");
+    expect(html).not.toContain("版本更新");
+    expect(html).not.toContain("settings-about__update-row");
+    expect(styles).not.toContain(".settings-about__update-row {");
+    expect(html).not.toContain("发现新版本");
+    expect(html).not.toContain("settings-about__update-description");
+    expect(html).not.toContain("hero-doodles");
+    expect(styles).not.toContain(".settings-about__app-card {");
     expect(html).toContain("给我们点个 Star");
   });
 

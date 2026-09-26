@@ -52,7 +52,7 @@ CGswitch backs up relevant Codex files before applying a provider profile. Provi
 
 ### Supported provider presets
 
-The current built-in presets are `ChatGPT`, `DeepSeek`, `MiniMax CN`, `Zhipu CN`, `OpenCode`, `OpenRouter`, `Xiaomi MiMo`, `Kimi`, `Qwen`, `Tencent Hunyuan`, `Volcengine Doubao`, and `Custom`.
+The current built-in presets are `ChatGPT`, `DeepSeek`, `MiniMax`, `Zhipu`, `OpenCode`, `OpenRouter`, `Xiaomi MiMo`, `Kimi`, `Qwen`, `Tencent Hunyuan`, `Volcengine Doubao`, `Baidu Qianfan`, `xAI (Grok)`, and `Custom`.
 
 Custom providers can use the Responses API-compatible configuration supported by Codex, with their own endpoint, API key, and model catalog.
 
@@ -263,4 +263,4 @@ Bug reports, feature ideas, documentation improvements, and pull requests are we
 
 ## License
 
-CGswitch is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax CN`, `OpenCode`, `Zhipu CN`) are sourced from [thesvg.org](https://thesvg.org); the rest are in-house or sourced separately. Each SVG keeps its own source notice.
+CGswitch is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax`, `OpenCode`, `Qwen`, `xAI`, `Zhipu`) are sourced from [thesvg.org](https://thesvg.org); the rest are in-house or sourced separately. Each SVG keeps its own source notice.

@@ -95,6 +95,8 @@ export default {
     protocolLabel: "接口协议",
     protocolResponses: "Responses（原生）",
     requestUrlLabel: "API 端点",
+    endpointRegionCn: "国内",
+    endpointRegionGlobal: "全球",
     apiKeyLabel: "API Key",
     getApiKey: "获取 API Key",
     testConnection: "测试连通",

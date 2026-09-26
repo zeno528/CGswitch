@@ -95,6 +95,8 @@ export default {
     protocolLabel: "API protocol",
     protocolResponses: "Responses (native)",
     requestUrlLabel: "Base URL",
+    endpointRegionCn: "China",
+    endpointRegionGlobal: "Global",
     apiKeyLabel: "API Key",
     getApiKey: "Get API Key",
     testConnection: "Test connection",

@@ -1247,32 +1247,8 @@ body.drag-active * {
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-/* 关于页应用信息卡片复用升级弹窗头部的品牌渐变，涂鸦由 HeroDoodles 铺设。 */
-.settings-about__app-card {
-  position: relative;
-  background-image: var(--brand-hero-gradient);
-}
-
-.settings-about__app-card .hero-doodles {
-  opacity: 0.24;
-  filter: blur(0.6px);
-}
-
-.settings-about__update-row {
-  border-top: 0.5px solid color-mix(in srgb, var(--panel-divider) 56%, transparent);
-}
-
 .settings-about__update-description {
   color: color-mix(in srgb, var(--text-primary) 72%, transparent);
-}
-
-:root.dark .settings-about__app-card .settings-about__link {
-  color: var(--text-primary);
-}
-
-:root.dark .settings-about__app-card .settings-about__link:hover,
-:root.dark .settings-about__app-card .settings-about__link:focus-visible {
-  color: var(--accent);
 }
 
 .profile-list > .apple-group,
@@ -2497,6 +2473,9 @@ button:focus-visible {
 }
 
 .app-select-option__check { flex: 0 0 auto; color: var(--accent); }
+
+/* 选项文字超宽时单行截断（长 URL/模型名不折行），与触发器 .app-select__label 同一套表现 */
+.app-select-option > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 备份记录行 ⋯ 菜单里的删除项：复用 app-select-option 结构，只把文字换成危险色 */
 .app-select-option--danger { color: var(--danger); }

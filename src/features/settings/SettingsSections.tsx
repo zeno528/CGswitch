@@ -9,7 +9,6 @@ import { getCachedDatabaseBackups, loadDatabaseBackups } from "../../app/managem
 import { AppDialog } from "../../components/AppDialog";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
-import { HeroDoodles } from "../../components/HeroDoodles";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
 import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
@@ -357,35 +356,19 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
 
   return (
     <div className="flex flex-col gap-[var(--gap-section)]">
-      <div className="apple-group settings-about__app-card px-[var(--gap-card-inline)]">
-        <HeroDoodles patternId="cg-about-card-doodles" />
+      <div className="apple-group px-[var(--gap-card-inline)]">
         <div className="relative flex flex-wrap items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
-            <span className="apple-wordmark">CGswitch</span>
-            <span className="app-version">{t("about.versionLabel")} v{version.trim()}</span>
+            <div className="flex flex-col items-start gap-1">
+              <span className="apple-wordmark">CGswitch</span>
+              <span className="app-version">v{version.trim()}</span>
+            </div>
           </div>
           <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
-            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.openRepo")} onClick={openRepository}>
-              <GithubMark className="h-4 w-4" />
-              GitHub
-            </button>
-            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
-              <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-              {t("about.changelog")}
-            </button>
-          </div>
-        </div>
-        <div className="settings-about__update-row relative flex flex-wrap items-center justify-end gap-4 py-4">
-          <div className="mr-auto flex min-w-0 flex-col gap-0.5">
-            <span className="setting-title">{t("about.updateTitle")}</span>
-            {update ? (
+            {update && (
               <span className="settings-about__update-description setting-description flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />{t("about.updateAvailable")}</span>
-            ) : (
-              <span className="settings-about__update-description setting-description">{t("about.updateDescription")}</span>
             )}
-          </div>
-          <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
             {update ? (
               <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
                 {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
@@ -397,6 +380,21 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
                 {t("about.checkUpdate")}
               </button>
             )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-4 py-4">
+          <p className="setting-description mr-auto min-w-0">
+            <Trans ns="settings" i18nKey="about.starInvitation" components={{ github: <button type="button" className="underline underline-offset-2 hover:text-accent focus-visible:text-accent" onClick={openRepository} /> }} />
+          </p>
+          <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
+            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.openRepo")} onClick={openRepository}>
+              <GithubMark className="h-4 w-4" />
+              GitHub
+            </button>
+            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
+              <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+              {t("about.changelog")}
+            </button>
           </div>
         </div>
       </div>
@@ -418,9 +416,6 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
           })}
         </div>
       </div>
-      <p className="setting-description text-center">
-        <Trans ns="settings" i18nKey="about.starInvitation" components={{ github: <button type="button" className="underline underline-offset-2 hover:text-accent focus-visible:text-accent" onClick={openRepository} /> }} />
-      </p>
       <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>
   );

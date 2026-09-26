@@ -42,6 +42,7 @@ export default {
   },
   preset: {
     custom: "Custom",
+    zhipu: "Zhipu",
     qwen: "Qwen",
     hunyuan: "Tencent Hunyuan",
     doubao: "Volcengine Doubao",

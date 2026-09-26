@@ -47,4 +47,10 @@ describe("AppSelect 交互", () => {
     expect(componentSource).toContain(`querySelector<HTMLButtonElement>('[data-selected="true"]')`);
     expect(componentSource).toContain("menu.scrollTop");
   });
+
+  it("收起逻辑统一走 useMenuDismiss，组件内不再自带外点/滚动监听", () => {
+    expect(componentSource).toContain("useMenuDismiss(open, rootRef, menuRef");
+    expect(componentSource).not.toContain("closeOnOutsidePointer");
+    expect(componentSource).not.toContain('addEventListener("scroll"');
+  });
 });
