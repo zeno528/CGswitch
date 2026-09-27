@@ -387,11 +387,11 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             <Trans ns="settings" i18nKey="about.starInvitation" components={{ github: <button type="button" className="underline underline-offset-2 hover:text-accent focus-visible:text-accent" onClick={openRepository} /> }} />
           </p>
           <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
-            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.openRepo")} onClick={openRepository}>
+            <button type="button" className="settings-about__link inline-flex items-center gap-2 px-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.openRepo")} onClick={openRepository}>
               <GithubMark className="h-4 w-4" />
               GitHub
             </button>
-            <button type="button" className="settings-about__link inline-flex items-center gap-2 p-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
+            <button type="button" className="settings-about__link inline-flex items-center gap-2 px-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
               <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
               {t("about.changelog")}
             </button>
