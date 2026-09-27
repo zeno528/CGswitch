@@ -132,7 +132,7 @@ describe("MCP 差异二级页", () => {
     expect(pageSource).toContain('<strong className="font-semibold text-(--success)">{t("diff.help.green.keyword")}</strong>');
     expect(pageSource).toContain('<strong className="font-semibold">{t("diff.help.adopt.keyword")}</strong>');
     expect(pageSource).toContain('<strong className="font-semibold">{t("diff.help.revert.keyword")}</strong>');
-    expect(pageSource).toContain("pointer-events-none");
+    expect(pageSource).toContain('<AppTooltip label={t("diff.help.title")}>');
   });
 
   it("解析失败时先讲后果与重建边界，报错原文默认摊开", () => {

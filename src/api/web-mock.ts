@@ -23,6 +23,7 @@ const webProfiles: ProfileSummary[] = [
   {
     id: "profile-zai-glm-high",
     name: "ZAI GLM 高推理",
+    description: null,
     kind: "third_party",
     account_id: null,
     plan_type: null,
@@ -40,6 +41,7 @@ const webProfiles: ProfileSummary[] = [
   {
     id: "profile-official",
     name: "官方默认",
+    description: null,
     kind: "official",
     account_id: null,
     auth_source: "desktop",
@@ -448,6 +450,7 @@ function webProfileDetail(id: string): ProfileDetail {
   return {
     id: profile.id,
     name: profile.name,
+    description: profile.description,
     account_id: profile.account_id,
     auth_source: profile.auth_source ?? (profile.account_id ? "oauth" : profile.kind === "official" ? "desktop" : null),
     desktop_login: detail?.desktop_login ?? null,
@@ -646,6 +649,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile: ProfileSummary = {
         id: `profile-${Date.now()}`,
         name: String(args?.name ?? "新供应商"),
+        description: null,
         kind: "third_party",
         account_id: null,
     plan_type: null,
@@ -678,6 +682,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile: ProfileSummary = {
         id: `profile-${Date.now()}`,
         name: preset.name,
+        description: typeof args?.description === "string" ? args.description.trim() || null : null,
         kind: preset.provider ? "third_party" : "official",
         account_id: preset.provider ? null : (typeof args?.accountId === "string" ? args.accountId : null),
         plan_type: preset.provider ? null : (typeof args?.accountId === "string" && args.accountId ? "plus" : "free"),
@@ -711,6 +716,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile: ProfileSummary = {
         id: `profile-${Date.now()}`,
         name: String(args?.name ?? "自定义供应商"),
+        description: typeof args?.description === "string" ? args.description.trim() || null : null,
         kind: "third_party",
         account_id: null,
     plan_type: null,
@@ -966,6 +972,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       profile.name = String(args?.name ?? profile.name);
+      if (typeof args?.description === "string") profile.description = args.description.trim() || null;
       const detail = webDetails[profile.id];
       if (detail) {
         if (typeof args?.baseUrl === "string") detail.base_url = args.baseUrl.trim() || null;

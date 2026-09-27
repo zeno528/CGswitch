@@ -70,6 +70,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const [testing, setTesting] = useState(false);
   const [pickingIcon, setPickingIcon] = useState(false);
   const [name, setName] = useState(profile?.name ?? "");
+  const [description, setDescription] = useState(initialDetail?.description ?? "");
   const [baseUrl, setBaseUrl] = useState(() => initialDetail?.base_url ?? "");
   const [apiKey, setApiKey] = useState(() => initialDetail?.api_key ?? "");
   const [showApiKey, setShowApiKey] = useState(false);
@@ -116,7 +117,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const endpointRootRef = useRef<HTMLDivElement>(null);
   const endpointMenuRef = useRef<HTMLDivElement>(null);
   const endpointMenuStyle = useFixedMenuPosition(endpointMenuOpen, endpointRootRef.current, endpointMenuRef, "match");
-  useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef, () => setEndpointMenuOpen(false));
+  useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef, setEndpointMenuOpen);
   // 端点地址输入：双区域档（带下拉按钮）与普通输入共用同一受控输入，只差 class
   const baseUrlField = (className: string) => (
     <input className={className} placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
@@ -219,6 +220,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
         try { initialMcpSection = (await api.getMcpSectionToml()).trim(); setMcpSection(initialMcpSection); } catch { /* backend falls back on save */ }
         setPresetKind("custom");
         setName("");
+        setDescription("");
         setSelectedIcon("custom");
         setConfigText(withMcpSection(customConfigTemplate, initialMcpSection));
         setPresetFragment(customConfigTemplate);
@@ -235,6 +237,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
           );
           setDetail(loaded);
           setName(loaded.name);
+          setDescription(loaded.description ?? "");
           setConfigText(loadedConfigText);
           setCatalogText(loaded.raw_catalog ?? loaded.catalog_content ?? "");
           setAuthText(loaded.raw_auth ?? "");
@@ -353,6 +356,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     setAuthText("");
     setAuthInitial("");
     setName(kind === "custom" ? "" : preset.name);
+    setDescription("");
     setBaseUrl(preset.base_url);
     setApiKey("");
     setModelValue(kind === "custom" ? "" : preset.model);
@@ -467,11 +471,11 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     setSaving(true);
     try {
       if (create && isCustom) {
-        const created = await api.addCustomProfile(name.trim() || t("edit.customProviderName"), configText, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, liveCatalogPath && catalogText.trim() ? catalogText : null, authText.trim() ? authText : null);
+        const created = await api.addCustomProfile(name.trim() || t("edit.customProviderName"), description, configText, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, liveCatalogPath && catalogText.trim() ? catalogText : null, authText.trim() ? authText : null);
         if (fetchedModels.length) await api.setProfileFetchedModels(created.id, fetchedModels);
         notifySaved(t("edit.customProviderAdded"));
       } else if (create) {
-        const created = await api.addBuiltinProfile(presetKind, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
+        const created = await api.addBuiltinProfile(presetKind, description, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
         const customName = name.trim();
         if (customName && customName !== selectedPreset?.name) await api.renameProfile(created.id, customName);
         const authTextToSave = isOfficial && authSource === "desktop" && authDirty ? authText : null;
@@ -483,7 +487,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
         notifySaved(t("edit.builtinProviderAdded"));
       } else {
         const hasProvider = Boolean(detail?.provider);
-        await api.updateProfile(profile!.id, name, hasProvider ? baseUrl : undefined, hasProvider ? apiKey : undefined, adminUrl.trim() || undefined);
+        await api.updateProfile(profile!.id, name, description, hasProvider ? baseUrl : undefined, hasProvider ? apiKey : undefined, adminUrl.trim() || undefined);
         const authTextToSave = isOfficial && authSource === "desktop" && authDirty ? authText : null;
         // 清空目录要传空串（后端归一为解除托管）；`|| null` 会把清空吞成"不动目录"
         await api.updateProfileConfig(profile!.id, configText, liveCatalogPath && catalogDirty ? catalogText : null, authTextToSave);
@@ -521,7 +525,13 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
             {builtinPresets.map((preset) => <button key={preset.kind} type="button" className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${presetKind === preset.kind ? "shadow-[0_0_0_1px_var(--accent)]" : "shadow-[0_0_0_1px_var(--panel-ring)] hover:bg-black/3 dark:hover:bg-white/4"}`} aria-pressed={presetKind === preset.kind} onClick={() => void selectPreset(preset.kind)}><ProfileIconTile name={preset.name} icon={preset.icon} size="xs" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold tracking-tight">{preset.name}</span></span></button>)}
           </div></div> : null}
           <div className="apple-panel-section">
-            <div className="flex items-center gap-4"><button type="button" className="relative grid h-[61px] w-[61px] shrink-0 place-items-center rounded-[16px] transition-opacity hover:opacity-80" title={t("edit.changeIcon")} aria-label={t("edit.changeIconLabel")} onClick={() => setPickingIcon(true)}><ProfileIconTile name={detail?.name ?? name} icon={selectedIcon} size="fill" /><span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white shadow" aria-hidden="true"><Pencil className="h-2.5 w-2.5" strokeWidth={2} /></span></button><div className="min-w-0 flex-1"><div className="field-label mb-1.5">{t("edit.nameLabel")}</div><input className="app-input" maxLength={50} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} /></div></div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              <div className="flex min-w-0 items-center gap-4">
+                <button type="button" className="relative grid h-[61px] w-[61px] shrink-0 place-items-center rounded-[16px] transition-opacity hover:opacity-80" title={t("edit.changeIcon")} aria-label={t("edit.changeIconLabel")} onClick={() => setPickingIcon(true)}><ProfileIconTile name={detail?.name ?? name} icon={selectedIcon} size="fill" /><span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white shadow" aria-hidden="true"><Pencil className="h-2.5 w-2.5" strokeWidth={2} /></span></button>
+                <div className="min-w-0 flex-1"><label className="field-label mb-1.5 block" htmlFor="profile-name">{t("edit.nameLabel")}</label><input id="profile-name" className="app-input" maxLength={50} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} /></div>
+              </div>
+              <div className="min-w-0"><label className="field-label mb-1.5 block" htmlFor="profile-description">{t("edit.descriptionLabel")}</label><input id="profile-description" className="app-input" autoComplete="off" maxLength={200} placeholder={t("edit.descriptionPlaceholder")} value={description} onChange={(event) => setDescription(event.target.value)} /></div>
+            </div>
             {showProviderFields ? (
               <>
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.protocolLabel")}</label>

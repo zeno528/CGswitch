@@ -828,6 +828,7 @@ fn summary(
     ProfileSummary {
         id: id.into(),
         name: name.into(),
+        description: payload.description.clone(),
         kind: if payload.provider_id.is_some() {
             ProfileKind::ThirdParty
         } else {

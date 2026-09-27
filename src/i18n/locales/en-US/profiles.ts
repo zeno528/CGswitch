@@ -41,6 +41,7 @@ export default {
     providerDuplicated: "Provider duplicated",
   },
   card: {
+    descriptionTooltip: "View provider description",
     authDesktop: "Codex desktop",
     authOAuth: "OAuth sign-in",
     usageRemaining: "{{label}} remaining: ",
@@ -92,6 +93,8 @@ export default {
     changeIconLabel: "Change icon",
     nameLabel: "Name",
     namePlaceholder: "Provider name",
+    descriptionLabel: "Description",
+    descriptionPlaceholder: "Briefly describe this provider (optional)",
     protocolLabel: "API protocol",
     protocolResponses: "Responses (native)",
     requestUrlLabel: "Base URL",

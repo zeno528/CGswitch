@@ -1,8 +1,9 @@
-import { ArrowLeft, Check, CircleAlert, CircleQuestionMark, GitCompare, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, CircleAlert, GitCompare, Undo2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
+import { AppTooltip } from "../../components/AppTooltip";
 import type { McpSyncDiffEntry, McpSyncPreview } from "../../types";
 import type { McpDiffVerb } from "./McpView";
 
@@ -139,16 +140,13 @@ export default function McpDiffPage({ preview, previewError, resolving, onBack, 
             <span className="apple-title">{t("diff.title")}</span>
             {!previewError ? <span className="apple-chip">{entries.length}</span> : null}
           </button>
-          <span className="group relative flex cursor-help" tabIndex={0} aria-label={t("diff.help.title")}>
-            <CircleQuestionMark className="h-4 w-4 text-(--text-secondary) transition-colors group-hover:text-accent group-focus-within:text-accent" strokeWidth={2} aria-hidden="true" />
-            <div className="pointer-events-none invisible absolute left-0 top-full z-50 mt-2 w-80 space-y-1.5 rounded-[var(--radius-control)] border border-(--panel-border) bg-(--panel-bg) p-3 opacity-0 shadow-lg transition-opacity group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+          <AppTooltip label={t("diff.help.title")}>
               <div className="field-subtitle">{t("diff.help.title")}</div>
               <p className="muted meta-xs"><strong className="font-semibold text-(--danger)">{t("diff.help.red.keyword")}</strong>{t("diff.help.red.text")}</p>
               <p className="muted meta-xs"><strong className="font-semibold text-(--success)">{t("diff.help.green.keyword")}</strong>{t("diff.help.green.text")}</p>
               <p className="muted meta-xs"><strong className="font-semibold">{t("diff.help.adopt.keyword")}</strong>{t("diff.help.adopt.text")}</p>
               <p className="muted meta-xs"><strong className="font-semibold">{t("diff.help.revert.keyword")}</strong>{t("diff.help.revert.text")}</p>
-            </div>
-          </span>
+          </AppTooltip>
         </div>
       </div>
       <div className="apple-edit-content">

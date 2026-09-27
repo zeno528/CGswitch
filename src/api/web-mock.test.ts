@@ -1,8 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { webInvoke } from "./web-mock";
-import type { MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, SkillSummary } from "../types";
+import type { MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
+  it("keeps a provider description across create, edit and detail reads", async () => {
+    const created = await webInvoke<ProfileSummary>("add_custom_profile", { name: "Demo", description: "  First note  ", configText: 'model = "demo"' });
+    try {
+      expect(created.description).toBe("First note");
+      const updated = await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo", description: "Second note" });
+      expect(updated.description).toBe("Second note");
+      expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("Second note");
+      expect((await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo" })).description).toBe("Second note");
+    } finally {
+      await webInvoke("delete_profile", { id: created.id });
+    }
+  });
+
   it("round-trips MCP env entries", async () => {
     const fragment = await webInvoke<string>("get_mcp_server_toml", { name: "github" });
     const spec = await webInvoke<{ env: Record<string, string> }>("parse_mcp_fragment", { toml: fragment });
