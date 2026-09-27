@@ -195,7 +195,6 @@ pub struct McpSyncPreview {
 pub struct ProfileSummary {
     pub id: String,
     pub name: String,
-    pub description: Option<String>,
     pub kind: ProfileKind,
     /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,

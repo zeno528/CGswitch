@@ -41,7 +41,6 @@ export default {
     providerDuplicated: "Provider duplicated",
   },
   card: {
-    descriptionTooltip: "View provider description",
     authDesktop: "Codex desktop",
     authOAuth: "OAuth sign-in",
     usageRemaining: "{{label}} remaining: ",

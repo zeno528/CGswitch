@@ -6,11 +6,12 @@ describe("web mock", () => {
   it("keeps a provider description across create, edit and detail reads", async () => {
     const created = await webInvoke<ProfileSummary>("add_custom_profile", { name: "Demo", description: "  First note  ", configText: 'model = "demo"' });
     try {
-      expect(created.description).toBe("First note");
-      const updated = await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo", description: "Second note" });
-      expect(updated.description).toBe("Second note");
+      expect(created).not.toHaveProperty("description");
+      expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("First note");
+      await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo", description: "Second note" });
       expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("Second note");
-      expect((await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo" })).description).toBe("Second note");
+      await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo" });
+      expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("Second note");
     } finally {
       await webInvoke("delete_profile", { id: created.id });
     }

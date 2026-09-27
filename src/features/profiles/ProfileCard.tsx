@@ -1,4 +1,4 @@
-import { Check, Copy, Gauge, Globe, GripVertical, Info, Wifi } from "lucide-react";
+import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSortable } from "@dnd-kit/sortable";
@@ -9,7 +9,6 @@ import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "..
 import type { ProfileBalanceInfo, ProfileSummary } from "../../types";
 import { useFeedback } from "../../app/Feedback";
 import { PlanBadge } from "../../components/PlanBadge";
-import { AppTooltip } from "../../components/AppTooltip";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
 import { TrashIcon } from "../../components/TrashIcon";
@@ -88,7 +87,6 @@ export function ProfileCardContent({
           <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title={t("card.clickToRename")} onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
           {isSubscriptionProfile ? <PlanBadge plan={profile.plan_type} /> : null}
           {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
-          {profile.description ? <AppTooltip label={t("card.descriptionTooltip")} icon={Info}><div className="field-subtitle">{t("edit.descriptionLabel")}</div><p className="muted text-sm whitespace-pre-wrap break-words">{profile.description}</p></AppTooltip> : null}
         </div>
         <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           <span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>

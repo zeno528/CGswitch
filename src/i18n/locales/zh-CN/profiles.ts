@@ -41,7 +41,6 @@ export default {
     providerDuplicated: "供应商已复制",
   },
   card: {
-    descriptionTooltip: "查看供应商描述",
     authDesktop: "Codex 桌面端",
     authOAuth: "OAuth登录",
     usageRemaining: "{{label}}: 剩",

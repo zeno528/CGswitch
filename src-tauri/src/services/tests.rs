@@ -3227,33 +3227,38 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
     let profile = context
         .add_builtin_profile("chatgpt", Some("  工作配置  "), None, None, None, None)
         .unwrap();
-    assert_eq!(profile.description.as_deref(), Some("工作配置"));
-
-    context.apply_profile(&profile.id).unwrap();
-    let active = context.get_state().unwrap();
     assert_eq!(
-        active
-            .profiles
-            .iter()
-            .find(|item| item.id == profile.id)
+        context
+            .get_profile(&profile.id)
             .unwrap()
             .description
             .as_deref(),
         Some("工作配置")
     );
 
-    let changed = context
-        .update_profile(&profile.id, &profile.name, Some("新描述"), None, None, None)
+    context.apply_profile(&profile.id).unwrap();
+    let active = context.get_state().unwrap();
+    let active_profile = active
+        .profiles
+        .iter()
+        .find(|item| item.id == profile.id)
         .unwrap();
-    assert_eq!(changed.description.as_deref(), Some("新描述"));
+    assert!(serde_json::to_value(active_profile)
+        .unwrap()
+        .get("description")
+        .is_none());
     assert_eq!(
         context
-            .update_profile(&profile.id, &profile.name, None, None, None, None)
+            .get_profile(&profile.id)
             .unwrap()
             .description
             .as_deref(),
-        Some("新描述")
+        Some("工作配置")
     );
+
+    context
+        .update_profile(&profile.id, &profile.name, Some("新描述"), None, None, None)
+        .unwrap();
     assert_eq!(
         context
             .get_profile(&profile.id)
@@ -3262,10 +3267,21 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
             .as_deref(),
         Some("新描述")
     );
-    let cleared = context
+    context
+        .update_profile(&profile.id, &profile.name, None, None, None, None)
+        .unwrap();
+    assert_eq!(
+        context
+            .get_profile(&profile.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("新描述")
+    );
+    context
         .update_profile(&profile.id, &profile.name, Some("  "), None, None, None)
         .unwrap();
-    assert_eq!(cleared.description, None);
+    assert_eq!(context.get_profile(&profile.id).unwrap().description, None);
     assert!(context
         .update_profile(
             &profile.id,
@@ -3289,7 +3305,14 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
             None,
         )
         .unwrap();
-    assert_eq!(custom.description.as_deref(), Some("备注"));
+    assert_eq!(
+        context
+            .get_profile(&custom.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("备注")
+    );
 }
 
 #[test]
