@@ -378,7 +378,7 @@ async function testOpenCodeConnection(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "deepseek-v4-flash",
+        model: "grok-4.6",
         input: "ping",
         max_output_tokens: 0,
       }),

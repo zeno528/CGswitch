@@ -86,10 +86,11 @@ pub const BUILTINS: [BuiltinTemplate; 13] = [
         catalog: None,
         insert_catalog_line: false,
     },
-    // OpenCode Go（Zen 网关 Go 订阅）无官方 Codex 目录；模型元数据（上下文窗口、
-    // 逐模型推理档位）镜像 cc-switch 的 OpenCode Go 预设（其数据源为 models.dev），
-    // 按 Codex 目录格式（slug + 必填 base_instructions/supports_reasoning_summaries，
-    // 对照 zhipu-models.json）构造。
+    // OpenCode Go（$10/月订阅）官方 endpoints 分三组：/v1/responses（OpenAI Responses）、
+    // /v1/chat/completions（OpenAI 兼容 chat）、/v1/messages（Anthropic Messages）。
+    // Codex wire=responses 只能跑第一组；后两组（GLM/Kimi/DeepSeek/MiMo/MiniMax/Qwen/Hy
+    // 等）走 Chat Completions 或 Anthropic 协议，Codex 新版不支持，留空。
+    // 模型元数据按 Codex 21 字段目录格式构造，与 zhipu-models.json 对齐。
     BuiltinTemplate {
         kind: KIND_OPENCODE,
         name: "OpenCode",
@@ -100,9 +101,8 @@ pub const BUILTINS: [BuiltinTemplate; 13] = [
         insert_catalog_line: false,
     },
     // OpenRouter 官方支持 OpenAI 兼容 Responses API（有官方 Codex CLI 接入教程）。
-    // 其 Responses 为纯无状态，store:true 会被 400 拒绝，因此必须
-    // disable_response_storage。模型 slug 需带厂商前缀；聚合站模型众多，
-    // 不带静态目录，由编辑页"获取模型列表"（/api/v1/models）拉取
+    // 模型 slug 需带厂商前缀；聚合站模型众多，不带静态目录，由编辑页"获取模型列表"
+    // （/api/v1/models）拉取
     BuiltinTemplate {
         kind: KIND_OPENROUTER,
         name: "OpenRouter",
@@ -270,11 +270,11 @@ mod tests {
         );
         assert_eq!(
             OPENCODE_CONFIG,
-            b"model = \"glm-5.2\"\nmodel_provider = \"opencode-go\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.opencode-go]\nname = \"OpenCode Go\"\nbase_url = \"https://opencode.ai/zen/go/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
+            b"model = \"grok-4.6\"\nmodel_provider = \"opencode-go\"\nmodel_reasoning_effort = \"high\"\nmodel_catalog_json = \"~/.codex/models.json\"\n\n[model_providers.opencode-go]\nname = \"OpenCode Go\"\nbase_url = \"https://opencode.ai/zen/go/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
         );
         assert_eq!(
             OPENROUTER_CONFIG,
-            b"model = \"openai/gpt-5.6-sol\"\nmodel_provider = \"openrouter\"\nmodel_reasoning_effort = \"high\"\ndisable_response_storage = true\n\n[model_providers.openrouter]\nname = \"OpenRouter\"\nbase_url = \"https://openrouter.ai/api/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
+            b"model = \"openai/gpt-5.6-sol\"\nmodel_provider = \"openrouter\"\nmodel_reasoning_effort = \"high\"\n\n[model_providers.openrouter]\nname = \"OpenRouter\"\nbase_url = \"https://openrouter.ai/api/v1\"\nwire_api = \"responses\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\""
         );
         assert_eq!(
             MIMO_CONFIG,
@@ -295,7 +295,9 @@ mod tests {
     }
 
     #[test]
-    fn opencode_catalog_mirrors_ccswitch_model_metadata() {
+    fn opencode_catalog_only_lists_responses_protocol_models() {
+        // OpenCode Go 官方 endpoints 分三组（responses / chat / messages）；
+        // Codex wire=responses 只能跑第一组，本目录只放第一组。
         let catalog: serde_json::Value = serde_json::from_slice(OPENCODE_MODELS).unwrap();
         let models = catalog["models"].as_array().unwrap();
         let slugs: Vec<&str> = models
@@ -305,43 +307,13 @@ mod tests {
         assert_eq!(
             slugs,
             [
-                "glm-5.2",
-                "glm-5.1",
-                "kimi-k2.7-code",
-                "deepseek-v4-pro",
-                "deepseek-v4-flash",
-                "mimo-v2.5-pro"
+                "grok-4.6",
+                "grok-4.7",
+                "gpt-5.6-luna",
+                "muse-spark-1.3-contributor",
+                "muse-spark-1.2-contributor",
             ]
         );
-
-        // 逐模型上下文窗口 + 推理档位（数据源：cc-switch 预设镜像的 models.dev）
-        let by_slug = |slug: &str| {
-            models
-                .iter()
-                .find(|model| model["slug"] == slug)
-                .unwrap()
-                .clone()
-        };
-        let glm = by_slug("glm-5.2");
-        assert_eq!(glm["context_window"], 204_800);
-        assert_eq!(glm["default_reasoning_level"], "high");
-        let efforts: Vec<&str> = glm["supported_reasoning_levels"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|level| level["effort"].as_str().unwrap())
-            .collect();
-        assert_eq!(efforts, ["high", "max"]);
-
-        let flash = by_slug("deepseek-v4-flash");
-        assert_eq!(flash["context_window"], 1_048_576);
-        let efforts: Vec<&str> = flash["supported_reasoning_levels"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|level| level["effort"].as_str().unwrap())
-            .collect();
-        assert_eq!(efforts, ["low", "high", "max"]);
 
         // Codex 目录解析器必填字段（缺失会拒载整个文件）
         for model in models {
@@ -374,7 +346,6 @@ mod tests {
             "input_modalities",
         ] {
             if field == "default_reasoning_level" || field == "supported_reasoning_levels" {
-                // 无 effort 档位的模型（glm-5.1 等）合法省略这两个可选字段
                 continue;
             }
             for model in models {

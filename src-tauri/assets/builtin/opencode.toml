@@ -1,7 +1,6 @@
-model = "glm-5.2"
+model = "grok-4.6"
 model_provider = "opencode-go"
 model_reasoning_effort = "high"
-disable_response_storage = true
 model_catalog_json = "~/.codex/models.json"
 
 [model_providers.opencode-go]

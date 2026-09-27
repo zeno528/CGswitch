@@ -117,19 +117,10 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const endpointMenuRef = useRef<HTMLDivElement>(null);
   const endpointMenuStyle = useFixedMenuPosition(endpointMenuOpen, endpointRootRef.current, endpointMenuRef, "match");
   useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef, () => setEndpointMenuOpen(false));
-  const renderEndpointMenuItem = (option: { label: string; value: string }) => {
-    const endpoint = presetEndpoints?.find((item) => item.base_url === option.value);
-    return (
-      <span className="flex min-w-0 items-center gap-2">
-        {endpoint ? (
-          <span className="meta-xs inline-flex w-13 shrink-0 items-center justify-center rounded-md bg-(--tile-bg) py-0.5 font-medium text-accent">
-            {endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")}
-          </span>
-        ) : null}
-        <span className="min-w-0 truncate">{option.label}</span>
-      </span>
-    );
-  };
+  // 端点地址输入：双区域档（带下拉按钮）与普通输入共用同一受控输入，只差 class
+  const baseUrlField = (className: string) => (
+    <input className={className} placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+  );
   const isCustom = create && presetKind === "custom";
   const isOfficial = create ? presetKind === "chatgpt" : profile?.kind === "official";
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
@@ -542,7 +533,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                 {presetEndpoints ? (
                   <div ref={endpointRootRef}>
                     <div className="app-input-action">
-                      <input className="app-input app-input--action" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+                      {baseUrlField("app-input app-input--action")}
                       <button type="button" className="app-input-action__button" aria-label={t("edit.requestUrlLabel")} aria-haspopup="listbox" aria-expanded={endpointMenuOpen} onClick={() => setEndpointMenuOpen((open) => !open)}>
                         <ChevronDown className={endpointMenuOpen ? "h-4 w-4 rotate-180 transition-transform" : "h-4 w-4 transition-transform"} strokeWidth={2} aria-hidden="true" />
                       </button>
@@ -553,7 +544,12 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                           const selected = endpoint.base_url === baseUrl;
                           return (
                             <button key={endpoint.base_url} type="button" role="option" aria-selected={selected} className="app-select-option app-selection-state" data-active={selected ? "true" : undefined} data-selected={selected} onClick={() => { setBaseUrl(endpoint.base_url); if (endpoint.admin_url) setAdminUrl(endpoint.admin_url); setEndpointMenuOpen(false); }}>
-                              {renderEndpointMenuItem({ label: endpoint.base_url, value: endpoint.base_url })}
+                              <span className="flex min-w-0 items-center gap-2">
+                                <span className="meta-xs inline-flex w-13 shrink-0 items-center justify-center rounded-md bg-(--tile-bg) py-0.5 font-medium text-accent">
+                                  {endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")}
+                                </span>
+                                <span className="min-w-0 truncate">{endpoint.base_url}</span>
+                              </span>
                               {selected ? <Check className="app-select-option__check" size={16} strokeWidth={2.5} aria-hidden="true" /> : null}
                             </button>
                           );
@@ -563,7 +559,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                     )}
                   </div>
                 ) : (
-                  <input className="app-input" placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+                  baseUrlField("app-input")
                 )}
                 <div className="mb-1.5 mt-4 flex items-center gap-2">
                   <span className="field-label">{t("edit.apiKeyLabel")}</span>

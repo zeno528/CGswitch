@@ -119,13 +119,14 @@ describe("编辑页回车保存", () => {
 
 describe("端点区域下拉", () => {
   it("双区域端点为可输入 combobox：地址可自由编辑，弹层复用全局 app-select-menu 基建（定位/收起走共享 hook），只有档内两行", () => {
-    expect(source).toContain('<input className="app-input app-input--action" placeholder="https://api.example.com/v1" value={baseUrl}');
+    expect(source).toContain('baseUrlField("app-input app-input--action")');
     expect(source).toContain("useFixedMenuPosition(endpointMenuOpen, endpointRootRef.current, endpointMenuRef");
     expect(source).toContain("useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef");
     expect(source).toContain('className="app-select-menu"');
-    expect(source).toContain("renderEndpointMenuItem({ label: endpoint.base_url, value: endpoint.base_url })");
+    expect(source).toContain('endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")');
     expect(source).not.toContain("options.unshift");
     expect(source).not.toContain("renderEndpointOption");
+    expect(source).not.toContain("renderEndpointMenuItem");
     expect(source).not.toContain("closeOnOutsidePointer");
   });
 });

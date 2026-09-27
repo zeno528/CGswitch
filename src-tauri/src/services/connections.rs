@@ -105,6 +105,25 @@ mod tests {
     }
 
     #[test]
+    fn opencode_probe_model_is_in_responses_catalog() {
+        // 探针打的是 /v1/responses，模型不在 responses 组目录里就会被网关
+        // 按「模型不存在」拒绝，有效 Key 也误报连通失败（目录换血时防回归）。
+        let catalog: serde_json::Value =
+            serde_json::from_slice(crate::builtin::OPENCODE_MODELS).unwrap();
+        let slugs: Vec<&str> = catalog["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| model["slug"].as_str().unwrap())
+            .collect();
+        assert!(
+            slugs.contains(&super::OPENCODE_PROBE_MODEL),
+            "探针模型 {} 不在 OpenCode responses 组目录中",
+            super::OPENCODE_PROBE_MODEL
+        );
+    }
+
+    #[test]
     fn provider_connection_errors_use_actionable_messages() {
         assert_eq!(
             provider_http_error_message(reqwest::StatusCode::UNAUTHORIZED),
@@ -409,6 +428,10 @@ pub(crate) fn connection_error_from_body(value: &serde_json::Value) -> Option<St
     None
 }
 
+/// 探针模型必须是 OpenCode Go responses 组目录（builtin opencode-models.json）里的
+/// slug；组外模型会被网关按「模型不存在」拒绝，有效 Key 也误报连通失败。
+const OPENCODE_PROBE_MODEL: &str = "grok-4.6";
+
 /// OpenCode Go 的 `/models` 不校验密钥，使用无效参数探针触发鉴权后的请求校验。
 async fn test_opencode_connection(
     base_url: &str,
@@ -422,7 +445,7 @@ async fn test_opencode_connection(
         .post(&responses_url)
         .bearer_auth(api_key)
         .json(&serde_json::json!({
-            "model": "deepseek-v4-flash",
+            "model": OPENCODE_PROBE_MODEL,
             "input": "ping",
             "max_output_tokens": 0,
         }))

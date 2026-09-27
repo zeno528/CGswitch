@@ -27,8 +27,6 @@ CGswitch is built for developers who use OpenAI Codex and works with the local C
 
 ## How CGswitch fits into your Codex workflow
 
-Codex provider settings, ChatGPT account authentication, and tool extensions all shape the same workspace, but live in different local files and resource directories. CGswitch brings them into one management interface: save provider settings as named profiles, manage ChatGPT accounts, and maintain MCP servers, plugins, and Skills alongside them.
-
 ```text
 Provider preset or existing Codex configuration
                          ↓
@@ -37,7 +35,7 @@ Provider preset or existing Codex configuration
             Edit · test · apply · restore
 ```
 
-CGswitch backs up relevant Codex files before applying a provider profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
+CGswitch backs up relevant Codex files before applying a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
 
 ## Features
 
@@ -92,9 +90,23 @@ Custom providers can use the Responses API-compatible configuration supported by
 - Light, dark, and system theme modes.
 - English and Simplified Chinese interface languages, with system-language detection.
 - Optional launch at login, silent start, and minimize-to-tray behavior.
+- System tray menu with quick actions: switch profiles, open settings, jump to accounts, and show the main window. Single-click on the tray icon can be set to either show the main window or open the tray menu.
 - Optional Codex restart after applying a profile.
-- Optional automatic update checks with release notes before installation.
-- Local database, configuration-file, and Codex-file backup management.
+- Optional automatic update checks with release notes before installation; the install-then-restart flow writes an `update-marker` that surfaces the "updated to vX" notification on the next launch.
+- Local database, configuration-file, and Codex-file backup management, with separate immediate ops, auto-backup (frequency and retention count), and a collapsible record view that lists auto/manual source, size, and time.
+
+### Settings
+
+The settings page is organized into four tabs:
+
+- **General** — theme, language, launch-at-login, silent start, minimize-to-tray, single-click tray action, and Codex restart behavior.
+- **Application** — Codex process controls, system proxy detection, and Codex-related launch options.
+- **Advanced** — long-context compaction, MCP / plugin / Skills tool toggles, log directory, and update channel.
+- **About** — application info card with version, GitHub / changelog links, and the data-path list with per-path icons.
+
+### MCP differences
+
+When the live Codex `config.toml` and CGswitch's MCP mirror drift apart, MCP opens a dedicated diff page that lists every divergent server with a red/green LCS diff and supports batch or single-row `adopt` / `revert` actions.
 
 ## Download and installation
 
@@ -119,11 +131,9 @@ Replace the path if you installed the app somewhere else. Official packages are 
 
 ## Quick start
 
-1. Download and launch CGswitch.
-2. Open **Providers**, add a built-in preset or **Custom**, then enter the provider credentials or bind a ChatGPT account.
-3. Save the profile, use **Test connection** and **Get models** when available, then apply the profile.
-4. Enable the optional Codex restart behavior if you want CGswitch to restart Codex after applying changes.
-5. Use **MCP**, **Plugins**, or **Skill** in the sidebar when you need to manage those global resources.
+1. Open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then apply.
+2. Enable the optional Codex restart behavior in **Settings → General** if you want CGswitch to restart Codex after applying a profile.
+3. Use **MCP**, **Plugins**, or **Skill** in the sidebar to manage the corresponding global Codex resources.
 
 ## Data and privacy
 
@@ -134,12 +144,16 @@ CGswitch keeps its application data under the current user's home directory. The
 ├── settings.json
 ├── cgswitch.db
 ├── balance-cache.json
-├── skills/
+├── logs/
+│   └── cgswitch.log
+├── update-marker
 └── backups/
     ├── config/
     ├── database/
     └── codex-files/
 ```
+
+CGswitch keeps its run logs under `~/.cgswitch/logs/` (1MB × 10 rotation, kept under `src-tauri/src/lib.rs` via `tauri_plugin_log`). The `update-marker` file is written just before a release is installed and consumed on the next launch to surface the "updated to vX" notification.
 
 The live Codex files remain under `~/.codex`:
 
@@ -156,13 +170,9 @@ API keys, OAuth credentials, profiles, and backups are local data. CGswitch crea
 
 ## FAQ and troubleshooting
 
-### Where is my Codex configuration?
-
-The main live configuration is `~/.codex/config.toml`; related model and authentication files are `~/.codex/models.json` and `~/.codex/auth.json`. CGswitch's own database and backups are under `~/.cgswitch`.
-
 ### What happens when I apply a profile?
 
-CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. You can choose whether Codex should restart after the operation.
+CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → General**.
 
 ### Are profiles, MCP, Plugins, and Skills the same thing?
 
@@ -171,10 +181,6 @@ No. Profiles describe model/provider settings; MCP describes tool servers; Plugi
 ### Why can a third-party plugin still fail after a provider is configured?
 
 A model provider configuration does not guarantee that every App or MCP connector plugin can load. Some connector plugins also require compatible official ChatGPT authentication or their own dependencies. Check the plugin's requirements if its package is installed but a connector is unavailable.
-
-### Why cannot macOS open the app?
-
-See [macOS first launch](#macos-first-launch). Gatekeeper may require an explicit allow action or the `xattr` command for the downloaded app.
 
 ### Why did a connection test fail?
 
@@ -224,27 +230,31 @@ Release bundles are written under `src-tauri/target/release/bundle/`.
 
 ## Architecture
 
-CGswitch uses a small local desktop stack:
+CGswitch uses React + TypeScript + Vite + Tailwind CSS + CodeMirror on the frontend, Tauri 2 + Rust for native file access and Codex integration, and SQLite for local profiles, accounts, MCP mirrors, and events. A typed frontend IPC layer with a browser mock covers frontend development and tests.
 
-- React and TypeScript for the UI.
-- Vite, Tailwind CSS, and CodeMirror for the frontend tooling and editors.
-- Tauri 2 and Rust for native file access, Codex integration, connections, plugins, Skills, and updates.
-- SQLite for local profiles, accounts, MCP mirrors, and application events.
-- A typed frontend IPC layer with a browser mock for frontend development and tests.
-
-The main source areas are organized as follows:
+The main source areas:
 
 ```text
 src/
-├── api/        typed IPC methods and browser mock
-├── app/        shell, navigation, state, polling, and management data cache
-├── assets/     bundled provider icons and resources
-├── components/ shared UI components (AppDialog, AppSelect, ConfigTextEditor, …)
-├── features/   profiles, mcp, plugins, skills, settings, updates
-└── i18n/       English and Simplified Chinese messages
+├── main.tsx     React entry point
+├── style.css    global tokens, layout conventions, and styles
+├── presets.ts   built-in provider display metadata
+├── icons.ts     bundled provider icon registry
+├── types.ts     shared TypeScript types
+├── utils.ts     shared frontend utilities
+├── api/         typed IPC methods and browser mock
+├── app/         shell, navigation, state, polling, and management data cache
+├── assets/      bundled provider icons and resources
+├── components/  shared UI components (AppDialog, AppSelect, ConfigTextEditor, …)
+├── features/    profiles, mcp, plugins, skills, settings, updates
+└── i18n/        English and Simplified Chinese messages
 
 src-tauri/src/
+├── main.rs       executable entry point
+├── lib.rs        Tauri runtime, command registration, and plugin setup
 ├── commands.rs   Tauri command boundary
+├── error.rs      typed application errors
+├── fsutil.rs     filesystem helpers (atomic write, …)
 ├── services/     AppContext and use cases (profiles, mcp, plugins, accounts, …)
 ├── codex/        Codex config files and process management
 ├── auth/         OAuth and account authentication

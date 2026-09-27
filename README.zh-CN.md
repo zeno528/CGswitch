@@ -27,8 +27,6 @@ CGswitch 面向使用 OpenAI Codex 的开发者，围绕电脑上的 Codex 本�
 
 ## CGswitch 如何融入 Codex 工作流
 
-Codex 的供应商设置、ChatGPT 账号认证和工具扩展共同构成日常工作环境，却分布在不同的本地配置和资源目录中。CGswitch 把它们放到同一个管理界面：供应商设置保存为可命名、可切换的档案，MCP、Plugins 和 Skills 作为全局 Codex 资源独立管理。
-
 ```text
 供应商模板或现有 Codex 配置
               ↓
@@ -92,9 +90,23 @@ Codex 的供应商设置、ChatGPT 账号认证和工具扩展共同构成日常
 - 支持浅色、深色和跟随系统主题。
 - 支持英文和简体中文界面，并可自动检测系统语言。
 - 支持开机启动、静默启动和关闭时最小化到托盘。
+- 系统托盘菜单提供快速操作：切换供应商、打开设置、跳转到账号页、显示主窗口；托盘单击行为可设为"显示主窗口"或"显示菜单"。
 - 应用配置后可选择自动重启 Codex。
-- 可自动检查应用更新，并在安装前查看更新日志。
-- 管理本地数据库、配置文件和 Codex 文件备份。
+- 可自动检查应用更新，安装前先看更新日志；安装→重启流程通过 `update-marker` 触发下次启动时的"已更新到 vX"提示。
+- 管理本地数据库、配置文件和 Codex 文件备份：即时操作、自动备份（频率与保留数量独立开关）、可折叠记录（按自动/手动来源、数量、大小摘要展示，恢复入口常显，重命名/删除收进更多菜单）。
+
+### 设置
+
+设置页分四个 tab：
+
+- **常规** — 主题、语言、开机启动、静默启动、最小化到托盘、托盘单击行为、应用配置后是否自动重启 Codex。
+- **应用** — Codex 进程控制、系统代理检测与 Codex 启动选项。
+- **高级** — 长上下文压缩、MCP / 插件 / Skill 工具开关、日志目录、更新渠道。
+- **关于** — 应用信息卡片（版本号、GitHub / 更新日志链接）和数据路径列表（每项配图标）。
+
+### MCP 差异
+
+当 Codex 实时 `config.toml` 与 CGswitch 的 MCP 镜像不一致时，进入专用差异处理页：列出每一项不同的 server，红色 / 绿色 LCS 行级 diff，支持单条或批量 `adopt` / `revert`。
 
 ## 下载与安装
 
@@ -119,11 +131,9 @@ xattr -cr /Applications/CGswitch.app
 
 ## 快速开始
 
-1. 下载并启动 CGswitch。
-2. 进入「供应商配置」，选择内置模板或「Custom」，填写供应商凭据或绑定 ChatGPT 账号。
-3. 保存配置；需要时使用「测试连接」和「获取模型」，然后应用配置。
-4. 如果希望应用后自动重启 Codex，在设置中开启对应选项。
-5. 需要管理全局资源时，从侧边栏进入「MCP 管理」「插件」或「Skill」。
+1. 进入「供应商配置」，选择内置模板或「Custom」，填写凭据或绑定 ChatGPT 账号，然后应用。
+2. 如果希望应用后自动重启 Codex，在「设置 → 常规」中开启对应选项。
+3. 需要管理全局资源时，从侧边栏进入「MCP 管理」「插件」或「Skill」。
 
 ## 数据与隐私
 
@@ -134,12 +144,16 @@ CGswitch 将应用数据保存在当前用户的主目录下，实际文件和�
 ├── settings.json
 ├── cgswitch.db
 ├── balance-cache.json
-├── skills/
+├── logs/
+│   └── cgswitch.log
+├── update-marker
 └── backups/
     ├── config/
     ├── database/
     └── codex-files/
 ```
+
+运行日志写在 `~/.cgswitch/logs/` 下（1MB × 10 轮转，配置集中在 `src-tauri/src/lib.rs` 的 `tauri_plugin_log`）。`update-marker` 在升级安装前写入、启动时消费，用于弹出"已更新到 vX"提示。
 
 Codex 的实际配置仍位于 `~/.codex`：
 
@@ -156,13 +170,9 @@ API Key、OAuth 凭据、配置和备份都属于本地数据。CGswitch 会在�
 
 ## 常见问题与排查
 
-### Codex 配置在哪里？
-
-主要配置是 `~/.codex/config.toml`；相关模型和认证文件是 `~/.codex/models.json` 与 `~/.codex/auth.json`。CGswitch 自身的数据库和备份位于 `~/.cgswitch`。
-
 ### 点击「应用」会发生什么？
 
-CGswitch 会先备份相关文件，再更新供应商相关的 Codex 配置，并尽可能保留其他配置区域。操作完成后是否重启 Codex 由设置决定。
+CGswitch 会先备份相关文件，再更新供应商相关的 Codex 配置，并尽可能保留其他配置区域。操作完成后是否重启 Codex 由「设置 → 常规」决定。
 
 ### 供应商配置、MCP、Plugins 和 Skills 是一回事吗？
 
@@ -171,10 +181,6 @@ CGswitch 会先备份相关文件，再更新供应商相关的 Codex 配置，�
 ### 为什么配置了第三方供应商，插件仍然无法使用？
 
 模型供应商的配置并不能保证所有 App 或 MCP Connector 插件都能加载。部分 Connector 插件还需要兼容的官方 ChatGPT 认证或其他依赖。插件已经安装但 Connector 不可用时，请查看插件自身要求。
-
-### macOS 为什么无法打开应用？
-
-请参阅[「macOS 首次打开」](#macos-首次打开)。Gatekeeper 可能需要手动允许，或对下载的应用执行 `xattr` 命令。
 
 ### 为什么连接测试失败？
 
@@ -224,27 +230,31 @@ pnpm tauri build
 
 ## 架构
 
-CGswitch 使用轻量的本地桌面技术栈：
+CGswitch 使用 React + TypeScript + Vite + Tailwind CSS + CodeMirror 搭建前端，Tauri 2 + Rust 负责原生文件访问和 Codex 集成，SQLite 存储本地配置、账号、MCP 镜像与应用事件；类型化的前端 IPC 层配浏览器 mock 覆盖前端开发与测试。
 
-- React 和 TypeScript：应用界面。
-- Vite、Tailwind CSS 和 CodeMirror：前端构建与编辑器。
-- Tauri 2 和 Rust：原生文件访问、Codex 集成、连接测试、插件、Skill 和更新。
-- SQLite：本地配置、账号、MCP 镜像和应用事件。
-- 类型化的前端 IPC 层，以及用于前端开发和测试的浏览器 mock。
-
-主要源码目录如下：
+主要源码目录：
 
 ```text
 src/
-├── api/        类型化 IPC 方法和浏览器 mock
-├── app/        应用壳层、导航、状态、轮询和管理数据缓存
-├── assets/     打包的供应商图标与静态资源
-├── components/ 共享 UI 组件（AppDialog、AppSelect、ConfigTextEditor 等）
-├── features/   profiles、mcp、plugins、skills、settings、updates
-└── i18n/       英文与简体中文文案
+├── main.tsx     React 入口
+├── style.css    全局 token、布局与样式
+├── presets.ts   内置供应商展示元数据
+├── icons.ts     内置供应商图标注册表
+├── types.ts     共享 TypeScript 类型
+├── utils.ts     共享前端工具
+├── api/         类型化 IPC 方法和浏览器 mock
+├── app/         应用壳层、导航、状态、轮询和管理数据缓存
+├── assets/      打包的供应商图标与静态资源
+├── components/  共享 UI 组件（AppDialog、AppSelect、ConfigTextEditor 等）
+├── features/    profiles、mcp、plugins、skills、settings、updates
+└── i18n/        英文与简体中文文案
 
 src-tauri/src/
+├── main.rs       可执行入口
+├── lib.rs        Tauri runtime、command 注册与插件装配
 ├── commands.rs   Tauri command 边界
+├── error.rs      类型化应用错误
+├── fsutil.rs     文件系统工具（atomic write 等）
 ├── services/     AppContext 与用例（profiles、mcp、plugins、accounts 等）
 ├── codex/        Codex 配置文件与进程管理
 ├── auth/         OAuth 与账号认证
