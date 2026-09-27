@@ -22,7 +22,7 @@ export default {
   ignore: "Ignore",
   importOne: "Import",
   importAll: "Import all",
-  backToSkills: "Back to Skills",
+  cancel: "Cancel",
   bulkSkipsConflicts: "Choose name conflicts individually; Import all skips them.",
   importing: "Importing...",
   previewSkill: "Preview Skill",

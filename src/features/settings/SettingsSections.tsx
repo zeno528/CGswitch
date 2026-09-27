@@ -403,13 +403,21 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
         <div className="apple-group divide-y divide-[var(--panel-divider)] px-[var(--gap-card-inline)]">
           {paths.filter((item) => item.label !== BACKUP_DIR_LABEL).map((item) => {
             const Icon = item.label === "about.paths.codexConfig" ? FileCog : item.label === "about.paths.logs" ? FileText : Database;
+            const description = item.label === "about.paths.codexConfig" ? t("about.pathDescriptions.codexConfig") : item.label === "about.paths.logs" ? t("about.pathDescriptions.logs") : t("about.pathDescriptions.appData");
             return (
-              <div key={item.label} className="flex min-w-0 items-center gap-3 py-4">
-                <Icon className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />
-                <span className="field-label muted w-32 shrink-0">{pathLabel(t, item.label)}</span>
-                <span className="mono min-w-0 flex-1 truncate text-sm" title={item.path}>{item.path.replace(/^\/(Users|home)\/[^/]+/, "~")}</span>
-                <button type="button" className="apple-icon-button shrink-0 text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={Boolean(openingPath)} title={t("about.openPath", { label: pathLabel(t, item.label) })} aria-label={t("about.openPath", { label: pathLabel(t, item.label) })} onClick={() => onOpenPath(item)}>
+              <div key={item.label} className="flex items-center justify-between gap-4 py-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                    <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="setting-title">{pathLabel(t, item.label)}</div>
+                    <div className="setting-description mt-0.5">{description}</div>
+                  </div>
+                </div>
+                <button type="button" className="apple-action-button shrink-0 text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={Boolean(openingPath)} title={t("about.openPath", { label: pathLabel(t, item.label) })} aria-label={t("about.openPath", { label: pathLabel(t, item.label) })} onClick={() => onOpenPath(item)}>
                   {openingPath === item.path ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <FolderOpen className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
+                  {t("about.open")}
                 </button>
               </div>
             );

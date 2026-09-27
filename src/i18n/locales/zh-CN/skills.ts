@@ -22,7 +22,7 @@ export default {
   ignore: "忽略",
   importOne: "导入",
   importAll: "全部导入",
-  backToSkills: "返回 Skill 列表",
+  cancel: "取消",
   bulkSkipsConflicts: "同名冲突需单独选择；全部导入会跳过冲突项。",
   importing: "导入中…",
   previewSkill: "预览 Skill",

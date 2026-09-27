@@ -170,6 +170,12 @@ export default {
       logs: "日志目录",
       codexConfig: "Codex 配置",
     },
+    pathDescriptions: {
+      appData: "存放 CGswitch 的应用数据",
+      logs: "查看 CGswitch 的运行日志",
+      codexConfig: "查看 Codex 的配置文件",
+    },
+    open: "打开",
     openPath: "打开{{label}}",
   },
 } as const;

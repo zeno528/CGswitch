@@ -158,9 +158,14 @@ describe("SettingsSections", () => {
     );
     expect(html).toContain("应用数据目录");
     expect(html).toContain("日志目录");
+    expect(html).toContain("存放 CGswitch 的应用数据");
+    expect(html).toContain("查看 CGswitch 的运行日志");
+    expect(html).toContain("查看 Codex 的配置文件");
+    expect(html).not.toContain(".cgswitch");
+    expect(html).not.toContain("config.toml");
     expect(html).not.toContain("备份目录");
     expect(html.match(/aria-label="打开[^\"]+"/g)).toHaveLength(3);
-    expect(html.match(/class="apple-icon-button /g)).toHaveLength(3);
+    expect(html.match(/打开<\/button>/g)).toHaveLength(3);
   });
 
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {

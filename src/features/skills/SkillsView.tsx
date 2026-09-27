@@ -184,7 +184,7 @@ function ImportPage({ candidates, busy, onBack, onImport, onImportFolder }: { ca
       </div>
       <div className="apple-edit-toolbar apple-edit-toolbar--footer">
         {visibleCandidates.some((skill) => skill.has_content_conflict) ? <span className="muted meta-xs mr-auto">{t("bulkSkipsConflicts")}</span> : null}
-        <button type="button" className="apple-action-button" disabled={busy !== null} onClick={onBack}>{t("backToSkills")}</button>
+        <button type="button" className="apple-action-button" disabled={busy !== null} onClick={onBack}>{t("cancel")}</button>
         <button type="button" className="apple-action-button app-button--primary" disabled={busy !== null || !importablePaths.length} onClick={() => onImport(importablePaths)}>
           {busy === "import" ? t("importing") : t("importAll")}
         </button>
