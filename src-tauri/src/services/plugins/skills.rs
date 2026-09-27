@@ -248,6 +248,30 @@ pub(super) fn replace_skill(source: &Path, target: &Path) -> AppResult<()> {
     Ok(())
 }
 
+/// 导入单个 Skill 目录：返回 true=已导入，false=内容与仓库正本一致跳过。
+fn import_skill_directory(repository: &Path, source: &Path) -> AppResult<bool> {
+    let name = source
+        .file_name()
+        .and_then(|item| item.to_str())
+        .ok_or_else(|| app_err!("无法识别 Skill 名称"))?;
+    validate_plugin_name(name)?;
+    // 信任边界：选中的目录必须是 Skill；提前到 backup_skill 之前，避免无效副作用
+    if !source.join("SKILL.md").is_file() {
+        return Err(app_err!("所选目录不是 Skill：缺少 SKILL.md"));
+    }
+    let target = repository.join(name);
+    // 去重：与仓库正本逐字节一致即跳过（同一路径自然命中），零副作用
+    if directories_equal(&target, source) {
+        return Ok(false);
+    }
+    backup_skill(repository, name)?;
+    replace_skill(source, &target)?;
+    let mut sources = read_skill_sources(repository);
+    sources.insert(name.to_string(), source.display().to_string());
+    write_skill_sources(repository, &sources)?;
+    Ok(true)
+}
+
 impl AppContext {
     /// Codex Skill 注册表中的独立 Skill 列表。
     pub async fn list_skills(&self) -> AppResult<Vec<SkillSummary>> {
@@ -361,31 +385,32 @@ impl AppContext {
         .map_err(|error| app_err!("Skill 扫描任务失败: {error}"))?
     }
 
-    /// 导入任意本地目录中的 Skill：返回 true=已导入，false=内容与仓库正本一致跳过。
-    pub async fn import_skill(&self, source_path: &str) -> AppResult<bool> {
+    /// 导入任意本地目录中的 Skill：选中目录自身是 Skill 时导入一个；
+    /// 否则视作容器目录，批量导入其下各 Skill 子目录。返回实际导入数量，0=全部与仓库正本一致。
+    pub async fn import_skill(&self, source_path: &str) -> AppResult<usize> {
         let repository = skill_repository(&self.paths.root);
         let source = PathBuf::from(source_path);
         tauri::async_runtime::spawn_blocking(move || {
-            let name = source
-                .file_name()
-                .and_then(|item| item.to_str())
-                .ok_or_else(|| app_err!("无法识别 Skill 名称"))?;
-            validate_plugin_name(name)?;
-            // 信任边界：选中的目录必须是 Skill；提前到 backup_skill 之前，避免无效副作用
-            if !source.join("SKILL.md").is_file() {
+            if source.join("SKILL.md").is_file() {
+                return import_skill_directory(&repository, &source).map(usize::from);
+            }
+            // 容器目录（如 claude/skills 整体选中）：收集各 Skill 子目录逐一导入
+            let mut children: Vec<PathBuf> = skill_io(fs::read_dir(&source))?
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.join("SKILL.md").is_file())
+                .collect();
+            if children.is_empty() {
                 return Err(app_err!("所选目录不是 Skill：缺少 SKILL.md"));
             }
-            let target = repository.join(name);
-            // 去重：与仓库正本逐字节一致即跳过（同一路径自然命中），零副作用
-            if directories_equal(&target, &source) {
-                return Ok(false);
+            children.sort();
+            let mut count = 0;
+            for child in &children {
+                let imported = import_skill_directory(&repository, child)
+                    .map_err(|error| app_err!("Skill {} 导入失败: {error}", child.display()))?;
+                count += usize::from(imported);
             }
-            backup_skill(&repository, name)?;
-            replace_skill(&source, &target)?;
-            let mut sources = read_skill_sources(&repository);
-            sources.insert(name.to_string(), source.display().to_string());
-            write_skill_sources(&repository, &sources)?;
-            Ok(true)
+            Ok(count)
         })
         .await
         .map_err(|error| app_err!("Skill 导入任务失败: {error}"))?
@@ -600,10 +625,13 @@ mod tests {
         std::fs::create_dir_all(&source).unwrap();
         std::fs::write(source.join("SKILL.md"), "---\ndescription: 初始版本\n---\n").unwrap();
 
-        assert!(context
-            .import_skill(&source.display().to_string())
-            .await
-            .unwrap());
+        assert_eq!(
+            context
+                .import_skill(&source.display().to_string())
+                .await
+                .unwrap(),
+            1
+        );
         let initial = context.list_skills().await.unwrap();
         assert_eq!(
             initial
@@ -643,10 +671,13 @@ mod tests {
                 .unwrap()
                 .update_available
         );
-        assert!(context
-            .import_skill(&source.display().to_string())
-            .await
-            .unwrap());
+        assert_eq!(
+            context
+                .import_skill(&source.display().to_string())
+                .await
+                .unwrap(),
+            1
+        );
         assert_eq!(
             context
                 .list_skills()
@@ -682,21 +713,63 @@ mod tests {
         std::fs::create_dir_all(&source).unwrap();
         std::fs::write(source.join("SKILL.md"), "---\ndescription: 相同内容\n---\n").unwrap();
 
-        assert!(context
-            .import_skill(&source.display().to_string())
-            .await
-            .unwrap());
+        assert_eq!(
+            context
+                .import_skill(&source.display().to_string())
+                .await
+                .unwrap(),
+            1
+        );
         let sources = read_skill_sources(&repository);
 
-        // 同一路径二次导入：内容一致返回 false，且登记表与备份目录零改动
-        assert!(!context
-            .import_skill(&source.display().to_string())
-            .await
-            .unwrap());
+        // 同一路径二次导入：内容一致返回 0，且登记表与备份目录零改动
+        assert_eq!(
+            context
+                .import_skill(&source.display().to_string())
+                .await
+                .unwrap(),
+            0
+        );
         assert_eq!(read_skill_sources(&repository), sources);
         assert!(!repository
             .join(SKILL_BACKUP_DIRECTORY)
             .join("same-skill")
             .exists());
+    }
+
+    #[tokio::test]
+    async fn import_skill_imports_container_directory_of_skills() {
+        let (home, context) = test_context();
+        let repository = skill_repository(&context.paths.root);
+        // 容器目录：自身无 SKILL.md，子目录各自是 Skill（如 claude/skills 整体选中）
+        let container = home.path().join("claude").join("skills");
+        for name in ["alpha", "beta"] {
+            let directory = container.join(name);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(
+                directory.join("SKILL.md"),
+                format!("---\nname: {name}\ndescription: d\n---\n"),
+            )
+            .unwrap();
+        }
+
+        assert_eq!(
+            context
+                .import_skill(&container.display().to_string())
+                .await
+                .unwrap(),
+            2
+        );
+        assert!(repository.join("alpha").join("SKILL.md").is_file());
+        assert!(repository.join("beta").join("SKILL.md").is_file());
+
+        // 内容一致后整目录重复导入全部跳过
+        assert_eq!(
+            context
+                .import_skill(&container.display().to_string())
+                .await
+                .unwrap(),
+            0
+        );
     }
 }

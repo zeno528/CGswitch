@@ -1037,7 +1037,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           update_available: false, enabled: false,
         });
       }
-      return true as T;
+      return 1 as T;
     case "enable_skill":
     case "disable_skill":
     case "delete_skill":

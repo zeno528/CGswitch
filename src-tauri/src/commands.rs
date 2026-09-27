@@ -117,7 +117,7 @@ pub async fn scan_unmanaged_skills(
 }
 
 #[tauri::command]
-pub async fn import_skill(source_path: String, state: State<'_, AppContext>) -> AppResult<bool> {
+pub async fn import_skill(source_path: String, state: State<'_, AppContext>) -> AppResult<usize> {
     state.import_skill(&source_path).await
 }
 

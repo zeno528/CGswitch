@@ -61,7 +61,7 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
     try {
       let imported = 0;
       for (const path of paths) {
-        if (await api.importSkill(path)) imported++;
+        imported += await api.importSkill(path);
       }
       const importedNames = new Set(candidates.filter((candidate) => paths.includes(candidate.store_path)).map((candidate) => candidate.name));
       setCandidates((current) => current.filter((candidate) => !importedNames.has(candidate.name)));
@@ -85,7 +85,7 @@ export default function SkillsView({ activationEpoch }: { activationEpoch: numbe
       }
       setBusy("folder");
       const imported = await api.importSkill(picked ?? "mock-folder-skill");
-      if (imported) feedback.success(t("importedToast", { count: 1 }));
+      if (imported) feedback.success(t("importedToast", { count: imported }));
       else feedback.warning(t("importedIdenticalToast"));
       setImporting(false);
       await refresh(true);
@@ -161,8 +161,8 @@ function ImportPage({ candidates, busy, onBack, onImport, onImportFolder }: { ca
           <div className="apple-group apple-list-card">
             {visibleCandidates.map((skill) => (
               <div key={skill.store_path} className="apple-list-row gap-4">
-                <span className="min-w-0 flex-1">
-                  <button type="button" className="max-w-full truncate align-bottom font-semibold hover:text-accent" onClick={() => void openPreview(skill)}>{skill.name}</button>
+                <span className="group min-w-0 flex-1">
+                  <button type="button" className="max-w-full truncate align-bottom font-semibold transition-colors group-hover:text-accent" onClick={() => void openPreview(skill)}>{skill.name}</button>
                   <span className={`apple-chip ml-2 ${skill.is_update ? "text-accent" : ""}`}>{skill.is_update ? t("updateFound") : t("newCandidate")}</span>
                   <span className="apple-chip ml-2">{t("source", { source: skill.source })}</span>
                   {skill.has_content_conflict ? <span className="meta-xs ml-2 font-semibold text-[var(--warning)]">{t("conflict")}</span> : null}
@@ -204,5 +204,5 @@ function ChatGPTLogo({ active }: { active: boolean }) {
 
 function SkillRow({ skill, busy, onRun, onPreview }: { skill: SkillSummary; busy: boolean; onRun: (name: string, action: "enable" | "disable" | "delete") => Promise<void>; onPreview: (name: string) => void }) {
   const { t } = useTranslation("skills");
-  return <div className="apple-list-row"><button type="button" className="min-w-0 max-w-2/3 flex-1 cursor-pointer text-left" title={t("previewSkill")} onClick={() => void onPreview(skill.name)}><div className="font-semibold hover:text-accent">{skill.name}</div>{skill.description ? <div className="muted meta-xs truncate">{skill.description}</div> : null}</button><div className="flex shrink-0 items-center gap-2"><button type="button" role="switch" className={`apple-icon-button ${skill.enabled ? "app-button--primary" : "hover:bg-transparent"}`} aria-label={skill.enabled ? t("toggleRemoveAria", { name: skill.name }) : t("toggleAddAria", { name: skill.name })} aria-checked={skill.enabled} disabled={busy} onClick={() => void onRun(skill.name, skill.enabled ? "disable" : "enable")}><ChatGPTLogo active={skill.enabled} /></button><button type="button" className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("delete")} aria-label={t("deleteAria", { name: skill.name })} disabled={busy} onClick={() => void onRun(skill.name, "delete")}><Trash2 className="h-4 w-4" /></button></div></div>;
+  return <div className="apple-list-row"><button type="button" className="group min-w-0 max-w-2/3 flex-1 cursor-pointer text-left" title={t("previewSkill")} onClick={() => void onPreview(skill.name)}><div className="font-semibold transition-colors group-hover:text-accent">{skill.name}</div>{skill.description ? <div className="muted meta-xs truncate">{skill.description}</div> : null}</button><div className="flex shrink-0 items-center gap-2"><button type="button" role="switch" className={`apple-icon-button ${skill.enabled ? "app-button--primary" : "hover:bg-transparent"}`} aria-label={skill.enabled ? t("toggleRemoveAria", { name: skill.name }) : t("toggleAddAria", { name: skill.name })} aria-checked={skill.enabled} disabled={busy} onClick={() => void onRun(skill.name, skill.enabled ? "disable" : "enable")}><ChatGPTLogo active={skill.enabled} /></button><button type="button" className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("delete")} aria-label={t("deleteAria", { name: skill.name })} disabled={busy} onClick={() => void onRun(skill.name, "delete")}><Trash2 className="h-4 w-4" /></button></div></div>;
 }
