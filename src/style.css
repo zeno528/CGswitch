@@ -1799,12 +1799,12 @@ button:focus-visible {
   padding: 0;
   gap: 0;
   overflow: hidden;
-  /* 描边随内容亮度分段：亮渐变头部一段用暗线勾边（对比不依赖虚化底色，深浅色通用），
+  /* 描边随内容亮度分段：深紫头部一段用亮线勾边（对比不依赖虚化底色，深浅色通用），
      往下渐隐回落到主题 ring 色。手法 = 透明 border + padding-box/border-box 双层背景（渐变描边标准解法） */
   border: 1px solid transparent;
   background:
     linear-gradient(var(--panel-bg), var(--panel-bg)) padding-box,
-    linear-gradient(180deg, rgb(0 0 0 / 0.2) 0%, rgb(0 0 0 / 0.16) 30%, var(--panel-ring) 44%) border-box;
+    linear-gradient(180deg, rgb(255 255 255 / 0.28) 0%, rgb(255 255 255 / 0.16) 30%, var(--panel-ring) 44%) border-box;
   box-shadow: 0 22px 70px rgb(0 0 0 / 0.22);
 }
 
@@ -1818,8 +1818,11 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 9px;
-  /* 升级弹窗专用的低饱和紫蓝渐变，深浅主题保持同一配色。 */
-  background: linear-gradient(110deg, #e2d8f8 0%, #dbe4fa 100%);
+  /* 升级弹窗专用渐变：新 logo 图标底紫渐变的满铺放大（电紫深空），底部淡紫光晕托住 logo，
+     白色手绘涂鸦在深底上更清晰；深底白字，深浅主题保持同一配色。demo：归档/update-hero-gradient-demo.html 方案 B */
+  background:
+    radial-gradient(85% 115% at 50% 120%, rgb(197 130 252 / 0.38), transparent 62%),
+    linear-gradient(120deg, #1c0cba 0%, #4520e6 46%, #7a3cf4 80%, #a468fb 100%);
 }
 
 /* 头部装饰涂鸦平铺（关于页头部、升级弹窗头部）：白描边手绘图案铺满宿主，opacity 低速纹理，
@@ -1861,17 +1864,17 @@ button:focus-visible {
   position: relative;
 }
 
-/* 浅色 hero 在深浅主题中都使用固定深色文字。 */
+/* 深紫 hero 在深浅主题中都使用固定白字。 */
 .app-dialog-content--hero .app-dialog-title {
   font-size: 21px;
   font-weight: 550;
   letter-spacing: -0.2px;
   line-height: 1;
-  color: #211936;
+  color: #ffffff;
 }
 
 .app-dialog-content--hero .app-dialog-close {
-  color: #211936;
+  color: #ffffff;
 }
 
 .app-dialog-content--hero .app-dialog-close:hover {

@@ -44,7 +44,7 @@ describe("AppUpdateProvider", () => {
     expect(dialogSource).toContain('t("notice.updateNow")');
     // 品牌渐变头部：项目 logo + 版本标题（hero 变体由 AppDialog 承载）
     expect(dialogSource).toContain('src="/logo.svg"');
-    expect(styles).toContain(".app-dialog-content--hero .app-dialog-title {\n  font-size: 21px;\n  font-weight: 550;\n  letter-spacing: -0.2px;\n  line-height: 1;\n  color: #211936;");
+    expect(styles).toContain(".app-dialog-content--hero .app-dialog-title {\n  font-size: 21px;\n  font-weight: 550;\n  letter-spacing: -0.2px;\n  line-height: 1;\n  color: #ffffff;");
     // Logo 源图在深浅背景上都可读，无需 CSS 滤镜补偿
     expect(styles).not.toContain(".app-logo {\n  filter:");
     expect(styles).not.toContain(":root.dark .app-logo");
