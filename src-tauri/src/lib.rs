@@ -408,7 +408,12 @@ pub fn run() {
             app.manage(StartupClock(startup_started));
             let menu = tray_menu(app.handle(), &settings.language, &[], None)?;
             TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().expect("缺少应用图标").clone())
+                .icon(
+                    // Windows 上 default_window_icon 取 ICO 第一帧（16x16），托盘按 DPI 放大后发糊；
+                    // 固定用 32x32 PNG（macOS 的 default_window_icon 本就取自该文件）。
+                    tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))
+                        .expect("托盘图标解码失败"),
+                )
                 .menu(&menu)
                 .show_menu_on_left_click(show_tray_menu_on_left_click)
                 .on_tray_icon_event(|tray, event| {
@@ -443,6 +448,15 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Windows 任务栏优先取窗口 Small 槽图标，而 Tauri 默认塞给窗口的 default_window_icon
+            // 是 ICO 第一帧（16x16），高 DPI 下放大发糊；显式覆盖为 32x32（150% 缩放任务栏为 36px）。
+            #[cfg(target_os = "windows")]
+            if let Some(main) = app.get_webview_window("main") {
+                let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png"))
+                    .expect("窗口图标解码失败");
+                let _ = main.set_icon(icon);
+            }
 
             log::info!(
                 "[app.startup] stage=setup_end elapsed_ms={} msg=\"Tauri setup 完成\"",
