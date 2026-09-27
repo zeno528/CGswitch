@@ -33,14 +33,6 @@
   --brand-gradient-blend: color-mix(in srgb, var(--brand-gradient-start) 55%, var(--brand-gradient-middle));
   --brand-gradient-blend-mix: 31%;
   --brand-gradient-fade-mix: 11%;
-  /* 升级弹窗头部的品牌渐变（一套背景独立成定义）：
-     与激活卡共用同一组色彩 token，但整条不透明、右侧按品牌渐变填满不淡出；深浅主题随 mix token 自动适配 */
-  --brand-hero-gradient: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), var(--panel-bg)) 0%,
-    color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), var(--panel-bg)) 40%,
-    color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), var(--panel-bg)) 100%
-  );
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
   --sidebar-bg: var(--panel-bg);
@@ -1219,7 +1211,7 @@ body.drag-active * {
   background: var(--panel-bg);
 }
 
-/* 配置卡激活态专用：半透明品牌渐变，可叠加在卡片底色上；升级弹窗头部已独立为 --brand-hero-gradient。 */
+/* 配置卡激活态专用：半透明品牌渐变，可叠加在卡片底色上。 */
 .brand-gradient-surface {
   background-image: linear-gradient(90deg, color-mix(in srgb, var(--brand-gradient-start) var(--brand-gradient-start-mix), transparent) 0%, color-mix(in srgb, var(--brand-gradient-blend) var(--brand-gradient-blend-mix), transparent) 20%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-middle-mix), transparent) 40%, color-mix(in srgb, var(--brand-gradient-middle) var(--brand-gradient-fade-mix), transparent) 58%, transparent 100%);
 }
@@ -1826,7 +1818,8 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 9px;
-  background-image: var(--brand-hero-gradient);
+  /* 升级弹窗专用的低饱和紫蓝渐变，深浅主题保持同一配色。 */
+  background: linear-gradient(110deg, #e2d8f8 0%, #dbe4fa 100%);
 }
 
 /* 头部装饰涂鸦平铺（关于页头部、升级弹窗头部）：白描边手绘图案铺满宿主，opacity 低速纹理，
@@ -1868,22 +1861,21 @@ button:focus-visible {
   position: relative;
 }
 
-/* hero 标题使用主题纯色文字，避免渐变与投影影响版本信息可读性。 */
+/* 浅色 hero 在深浅主题中都使用固定深色文字。 */
 .app-dialog-content--hero .app-dialog-title {
   font-size: 21px;
   font-weight: 550;
   letter-spacing: -0.2px;
   line-height: 1;
-  color: var(--text-primary);
+  color: #211936;
 }
 
 .app-dialog-content--hero .app-dialog-close {
-  color: var(--text-primary);
+  color: #211936;
 }
 
 .app-dialog-content--hero .app-dialog-close:hover {
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
-  color: var(--text-primary);
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 
 .app-dialog-content--hero .app-dialog-body {
