@@ -1,7 +1,7 @@
 # 发版流水线（构建+发布准备）：/release skill 负责跑 bump 脚本与撰写 CHANGELOG 内容
-# （## [Unreleased] 段落，不含版本号与日期）；本工作流承担确定性动作——校验、三平台
-# 构建、创建发行页（版本标题行由这里生成）、上传产物。工作流不回写 main，
-# CHANGELOG 的版本标题归档由 /release skill 在下次起草时完成（见 SKILL.md Step 3）。
+# （第一个 ## [版本] - 日期 段落，版本号与日期起草时写死）；本工作流承担确定性动作——校验、
+# 三平台构建、创建发行页（发行说明 = CHANGELOG 第一段原文照抄 + 安装指南兜底）、上传产物。
+# 工作流不回写 main，CHANGELOG 无归档步骤。
 # 触发方式：仅手动（workflow_dispatch），发版是显式决策，push main / push tag 都不触发。
 # release_mode 三选一：draft（默认）构建完停在草稿、不通知关注者，等 /release skill 人工发布；
 # prerelease 构建完自动以预发行公开（不占 latest 指针）；latest 构建完自动正式发布并通知关注者。
@@ -48,9 +48,8 @@ jobs:
             exit 1
           fi
       - uses: actions/checkout@v7
-      # 第 0 秒拦截：VERSION 非空即视为发版（CHANGELOG 的 Unreleased 段落可选，
-      # 没写则发行页只带工作流生成的版本标题行与安装指南）。
-      # 仅当该版本已公开发布时绿色跳过，避免重复 dispatch 重复构建。
+      # 第 0 秒拦截：VERSION 非空即视为发版（CHANGELOG 无任何版本段落时，
+      # 发行页只带兜底标题行与安装指南）。仅当该版本已公开发布时绿色跳过，避免重复 dispatch 重复构建。
       - id: guard
         name: 校验 VERSION
         shell: bash
@@ -147,7 +146,7 @@ jobs:
       - id: version
         run: |
           echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
-          # 发行日期按维护者时区取当天，即实际发行日（AI 起草日志时无法预知）
+          # 发行日期按维护者时区取当天（仅兜底标题行使用：CHANGELOG 没有任何版本段落时）
           echo "date=$(TZ=Asia/Shanghai date +%F)" >> "$GITHUB_OUTPUT"
       # 发行模式由手动触发入参决定（默认 draft 停在草稿）
       - id: mode
@@ -156,25 +155,32 @@ jobs:
         shell: bash
         env:
           INPUT_MODE: ${{ github.event.inputs.release_mode }}
-      # 发行说明 = 工作流生成的版本标题行（## [版本] - 日期）+ CHANGELOG.md 的 Unreleased
-      # 段落内容（可选，/release skill 写）+ 安装指南兜底（必带，没写更新日志时用户也能知道
-      # 下载哪个包）+ GitHub 原生生成的 PR 清单 / 贡献者 / Full Changelog。已存在草稿（重跑
-      # 场景）则更新，已公开则拒绝改动。CHANGELOG.md 不回写 main，Unreleased 保持原样
+      # 发行说明 = CHANGELOG.md 第一个版本段落原文照抄（标题行 ## [版本] - 日期 由
+      # /release skill 起草时写好；照抄前校验段落版本号 == VERSION，不一致 fail-fast）+
+      # 安装指南兜底（必带）+ GitHub 原生生成的 PR 清单 / 贡献者 / Full Changelog。整份
+      # CHANGELOG 没有任何版本段落时兜底生成标题行。已存在草稿（重跑场景）则更新，已公开则拒绝改动
       - id: create
         name: 创建发行页（draft 模式建草稿；prerelease/latest 先建草稿收资产，run 内立即转正，不停草稿）
         run: |
           TAG="v$VERSION"
           NOTES="$(mktemp)"
-          # 提取 Unreleased 段落内容（到下一个 ## 二级标题为止）；版本标题行不依赖 CHANGELOG，
-          # 统一由下面 printf 生成，保证发行页的版本号/日期确定且不重复
-          awk '
-            index($0, "## [Unreleased]") == 1 { insec = 1; next }
-            insec && /^## \[/ { exit }
-            insec { print }
-          ' CHANGELOG.md > "$NOTES"
-          # 纯版本段落另存一份：$NOTES 之后会被拼接改写（安装指引 + PR 清单），
-          # latest.json 的 notes 只用干净段落
-          cp "$NOTES" release-notes-section.md
+          SECTION_VERSION="$(awk '/^## \[/{ if (match($0, /^## \[[^]]+\]/)) print substr($0, 5, RLENGTH-5); exit }' CHANGELOG.md)"
+          if [ -n "$SECTION_VERSION" ]; then
+            [ "$SECTION_VERSION" = "$VERSION" ] || {
+              echo "::error::CHANGELOG.md 第一段版本号 [$SECTION_VERSION] 与 VERSION [$VERSION] 不一致；对齐段落标题与 VERSION 后重新 dispatch"
+              exit 1
+            }
+            # 第一段原文照抄（含标题行，到下一个 ## 二级标题为止）
+            awk '
+              /^## \[/ { if (found) exit; found = 1 }
+              found { print }
+            ' CHANGELOG.md > "$NOTES"
+            # latest.json 的 notes 用去掉标题行的干净正文（纯标题段落视为无日志）
+            tail -n +2 "$NOTES" > release-notes-section.md
+          else
+            printf '## [%s] - %s\n' "$VERSION" "$DATE" > "$NOTES"
+            : > release-notes-section.md
+          fi
           GUIDE="$(mktemp)"
           cat > "$GUIDE" <<'EOF'
 
@@ -196,10 +202,7 @@ jobs:
           > 然后重试；若应用不在 `/Applications`，将命令中的路径替换为实际 `.app` 路径。
           EOF
           sed -i "s/__VERSION__/$VERSION/g" "$GUIDE"
-          {
-            printf '## [%s] - %s\n' "$VERSION" "$DATE"
-            cat "$NOTES" "$GUIDE"
-          } > "$NOTES.full" && mv "$NOTES.full" "$NOTES"
+          cat "$NOTES" "$GUIDE" > "$NOTES.full" && mv "$NOTES.full" "$NOTES"
           if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
             git tag "$TAG" "$GITHUB_SHA"
             git push origin "refs/tags/$TAG"
