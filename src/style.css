@@ -209,24 +209,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* 应用内两个品牌 Logo 共用同一套主题反色：白色源图在浅色主题转黑，深色主题保留白色。 */
-.app-logo {
-  filter: invert(1);
-}
-
-:root.dark .app-logo {
-  filter: none;
-}
-
-/* 更新弹窗头部的 Logo 与标题共用主题纯色。 */
-.app-dialog-hero .app-logo {
-  filter: invert(1);
-}
-
-:root.dark .app-dialog-hero .app-logo {
-  filter: none;
-}
-
 .app-version {
   align-items: center;
   border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
