@@ -201,6 +201,7 @@ const webSkills: SkillSummary[] = [
     enabled: true,
   },
 ];
+const webLocalSkillPath = "C:\\Users\\<user>\\.agents\\skills\\local-skill";
 
 let webMarketplaces: PluginMarketplace[] = [
   {
@@ -1015,8 +1016,15 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "get_import_skill_content":
       return `---\ndescription: 浏览器调试用导入 Skill\n---\n\n# ${String(args?.sourcePath ?? "Skill")}` as T;
     case "scan_unmanaged_skills":
-      return [{ name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理", store_path: "C:\\Users\\<user>\\.agents\\skills\\local-skill", source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate] as T;
+      return (webSkills.some((skill) => skill.name === "local-skill") ? [] : [{ name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理", store_path: webLocalSkillPath, source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate]) as T;
     case "import_skill":
+      if (args?.sourcePath === webLocalSkillPath && !webSkills.some((skill) => skill.name === "local-skill")) {
+        webSkills.push({
+          name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理",
+          source_url: null, store_path: webLocalSkillPath, source_path: webLocalSkillPath,
+          update_available: false, enabled: false,
+        });
+      }
       return true as T;
     case "enable_skill":
     case "disable_skill":
