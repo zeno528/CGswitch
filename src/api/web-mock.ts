@@ -58,6 +58,8 @@ const webProfiles: ProfileSummary[] = [
   },
 ];
 
+const webDescriptions = new Map<string, string>();
+
 // label 是 i18n key，由前端 t() 翻译展示；与 Rust path_info（services/settings.rs）保持一致
 const webPaths = [
   { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
@@ -201,6 +203,7 @@ const webSkills: SkillSummary[] = [
     enabled: true,
   },
 ];
+const webLocalSkillPath = "C:\\Users\\<user>\\.agents\\skills\\local-skill";
 
 let webMarketplaces: PluginMarketplace[] = [
   {
@@ -447,6 +450,7 @@ function webProfileDetail(id: string): ProfileDetail {
   return {
     id: profile.id,
     name: profile.name,
+    description: webDescriptions.get(id) ?? null,
     account_id: profile.account_id,
     auth_source: profile.auth_source ?? (profile.account_id ? "oauth" : profile.kind === "official" ? "desktop" : null),
     desktop_login: detail?.desktop_login ?? null,
@@ -693,6 +697,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         updated_at: now,
       };
       webProfiles.push(profile);
+      if (typeof args?.description === "string" && args.description.trim()) webDescriptions.set(profile.id, args.description.trim());
       webDetails[profile.id] = {
         base_url: baseUrl,
         api_key: apiKey,
@@ -726,6 +731,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         updated_at: now,
       };
       webProfiles.push(profile);
+      if (typeof args?.description === "string" && args.description.trim()) webDescriptions.set(profile.id, args.description.trim());
       webDetails[profile.id] = {
         base_url: baseUrl || null,
         api_key: apiKey || null,
@@ -956,6 +962,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         updated_at: now,
       };
       webProfiles.splice(webProfiles.indexOf(profile) + 1, 0, copy);
+      const description = webDescriptions.get(profile.id);
+      if (description) webDescriptions.set(copy.id, description);
       if (webDetails[profile.id]) webDetails[copy.id] = { ...webDetails[profile.id] };
       return copy as T;
     }
@@ -965,6 +973,11 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       profile.name = String(args?.name ?? profile.name);
+      if (typeof args?.description === "string") {
+        const description = args.description.trim();
+        if (description) webDescriptions.set(profile.id, description);
+        else webDescriptions.delete(profile.id);
+      }
       const detail = webDetails[profile.id];
       if (detail) {
         if (typeof args?.baseUrl === "string") detail.base_url = args.baseUrl.trim() || null;
@@ -1015,8 +1028,15 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "get_import_skill_content":
       return `---\ndescription: 浏览器调试用导入 Skill\n---\n\n# ${String(args?.sourcePath ?? "Skill")}` as T;
     case "scan_unmanaged_skills":
-      return [{ name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理", store_path: "C:\\Users\\<user>\\.agents\\skills\\local-skill", source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate] as T;
+      return (webSkills.some((skill) => skill.name === "local-skill") ? [] : [{ name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理", store_path: webLocalSkillPath, source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate]) as T;
     case "import_skill":
+      if (args?.sourcePath === webLocalSkillPath && !webSkills.some((skill) => skill.name === "local-skill")) {
+        webSkills.push({
+          name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理",
+          source_url: null, store_path: webLocalSkillPath, source_path: webLocalSkillPath,
+          update_available: false, enabled: false,
+        });
+      }
       return true as T;
     case "enable_skill":
     case "disable_skill":
@@ -1147,6 +1167,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_profile": {
       const index = webProfiles.findIndex((item) => item.id === args?.id);
       if (index >= 0) webProfiles.splice(index, 1);
+      webDescriptions.delete(String(args?.id));
       return undefined as T;
     }
     case "reorder_profiles": {

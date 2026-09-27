@@ -271,7 +271,7 @@ new_field = "accumulated"
 fn desktop_profile_plan_badge_reads_own_database_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     let mut stored = context.database.profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth_with_plan("desktop-ws", "token-1", "plus"));
@@ -299,7 +299,7 @@ fn desktop_profile_plan_badge_reads_own_database_snapshot() {
 fn desktop_accounts_derive_from_database_snapshot_not_live_auth() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     let mut stored = context.database.profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth("desktop-ws", "token-1"));
@@ -342,7 +342,7 @@ fn desktop_accounts_dedupe_same_login_across_profiles() {
     let (_home, context) = chatgpt_test_context();
     for updated_at in ["2", "3"] {
         let profile = context
-            .add_builtin_profile("chatgpt", None, None, None, None)
+            .add_builtin_profile("chatgpt", None, None, None, None, None)
             .unwrap();
         let mut stored = context.database.profile(&profile.id).unwrap();
         stored.payload.raw_auth = Some(chatgpt_auth("desktop-ws", "token-1"));
@@ -361,7 +361,7 @@ fn desktop_accounts_dedupe_same_login_across_profiles() {
 fn desktop_profile_syncs_and_restores_auth_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     assert_eq!(
         context
@@ -414,7 +414,7 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
 fn desktop_profile_restores_saved_auth_snapshot_even_when_manual() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     let mut stored = context.database.profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth("desktop-account", "stale-snapshot"));
@@ -452,7 +452,7 @@ fn apply_bound_oauth_profile_leaves_auth_for_oauth_writer() {
         })
         .unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, Some("oauth-account"))
+        .add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-account"))
         .unwrap();
     assert_eq!(
         context
@@ -501,7 +501,7 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
             .unwrap();
     }
     let desktop = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     assert!(context
         .set_profile_account(&desktop.id, Some("oauth-one"))
@@ -509,7 +509,7 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
     assert_eq!(context.bound_account_id(&desktop.id).unwrap(), None);
 
     let oauth = context
-        .add_builtin_profile("chatgpt", None, None, None, Some("oauth-one"))
+        .add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-one"))
         .unwrap();
     context
         .set_profile_account(&oauth.id, Some("oauth-two"))
@@ -529,7 +529,7 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
 fn get_state_syncs_desktop_auth_into_profile_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
 
@@ -551,7 +551,7 @@ fn get_state_syncs_desktop_auth_into_profile_snapshot() {
 fn focus_refresh_keeps_last_desktop_snapshot_when_live_auth_is_invalid() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
 
@@ -617,7 +617,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
         })
         .unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, Some("oauth-account"))
+        .add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-account"))
         .unwrap();
     let oauth = crate::auth::codex_oauth::CodexOAuthManager::new(context.database.clone());
     oauth
@@ -715,7 +715,7 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
         })
         .unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, Some("account-1"))
+        .add_builtin_profile("chatgpt", None, None, None, None, Some("account-1"))
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
     let id_token = |account_id: &str| {
@@ -751,7 +751,7 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
 fn desktop_auth_clear_repopulates_after_focus_refresh() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
     std::fs::write(
@@ -784,7 +784,7 @@ fn desktop_auth_clear_repopulates_after_focus_refresh() {
 fn legacy_empty_desktop_auth_snapshot_repopulates_after_focus_refresh() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
     let mut stored = context.database.profile(&profile.id).unwrap();
@@ -940,7 +940,7 @@ fn update_profile_config_clears_active_live_auth_when_editor_is_empty() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
     let detail = context.get_profile(&profile.id).unwrap();
@@ -980,6 +980,7 @@ experimental_bearer_token = "old-key"
         .update_profile(
             &profile.id,
             "ZAI",
+            None,
             Some("https://new.example"),
             Some("new-key"),
             None,
@@ -1057,7 +1058,7 @@ fn update_profile_allows_duplicate_name() {
 
     // 名字不是唯一键，重命名为已存在的名字应允许，靠 ID 区分
     let updated = context
-        .update_profile(&second.id, "first", None, None, None)
+        .update_profile(&second.id, "first", None, None, None, None)
         .unwrap();
     assert_eq!(updated.name, "first");
 }
@@ -1090,6 +1091,7 @@ fn add_builtin_profile_creates_snapshot_only() {
     let profile = context
         .add_builtin_profile(
             "deepseek",
+            None,
             Some("https://custom.example"),
             Some("sk-test"),
             None,
@@ -1135,7 +1137,7 @@ fn add_builtin_profile_creates_snapshot_only() {
 
     // 同名模板允许重复添加，名字相同，靠 ID 区分
     let duplicate = context
-        .add_builtin_profile("deepseek", None, Some("sk-test"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
     assert_eq!(duplicate.name, "DeepSeek");
     assert_ne!(duplicate.id, profile.id);
@@ -1174,7 +1176,7 @@ async fn balance_rejects_unsupported_or_keyless() {
 
     // 不支持余额/用量查询的供应商拒绝
     let unsupported = context
-        .add_builtin_profile("opencode", None, Some("opencode-key"), None, None)
+        .add_builtin_profile("opencode", None, None, Some("opencode-key"), None, None)
         .unwrap();
     let error = context
         .get_profile_balance(&unsupported.id, &oauth)
@@ -1184,7 +1186,7 @@ async fn balance_rejects_unsupported_or_keyless() {
 
     // MiniMax 但只有占位符密钥（未配置真实密钥）拒绝
     let keyless = context
-        .add_builtin_profile("minimax", None, None, None, None)
+        .add_builtin_profile("minimax", None, None, None, None, None)
         .unwrap();
     let error = context
         .get_profile_balance(&keyless.id, &oauth)
@@ -1612,7 +1614,7 @@ fn adding_preset_does_not_activate() {
     let context = AppContext::new(paths).unwrap();
     // 添加供应商是纯入库动作，绝不激活（只有手动应用才建立使用中）
     context
-        .add_builtin_profile("deepseek", None, Some("sk-test"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
     let state = context.get_state().unwrap();
     assert_eq!(state.active_profile_id, None);
@@ -1708,7 +1710,7 @@ fn apply_builtin_profile_writes_exact_config_and_catalog() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, Some("sk-test"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
 
@@ -1989,7 +1991,7 @@ fn apply_raw_profile_carries_live_mcp_section() {
         "[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n",
     );
     let profile = context
-        .add_custom_profile("智谱", raw, None, None, None, None, None)
+        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
 
     context.apply_profile(&profile.id).unwrap();
@@ -2049,7 +2051,7 @@ fn restore_database_writes_mcp_back_to_live() {
 fn context_with_profile(context: &AppContext) {
     let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
     context
-        .add_custom_profile("智谱", raw, None, None, None, None, None)
+        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
 }
 
@@ -2067,7 +2069,7 @@ fn created_profiles_snapshot_prefers_database_mcp_mirror() {
     // 自定义供应商：粘贴的配置没有 MCP，保存后快照带上全局段（编辑器打开即见）
     let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
     let custom = context
-        .add_custom_profile("智谱", raw, None, None, None, None, None)
+        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
     let detail = context.get_profile(&custom.id).unwrap();
     let stored = detail.raw_config.expect("自定义快照应有 raw_config");
@@ -2076,7 +2078,7 @@ fn created_profiles_snapshot_prefers_database_mcp_mirror() {
 
     // 内置供应商：快照同样带上全局段
     let builtin = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     let detail = context.get_profile(&builtin.id).unwrap();
     let stored = detail.raw_config.expect("内置快照应有 raw_config");
@@ -2090,10 +2092,10 @@ fn created_profiles_fall_back_to_live_mcp_when_mirror_empty() {
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
     let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
     let custom = context
-        .add_custom_profile("智谱", raw, None, None, None, None, None)
+        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
     let builtin = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
 
     for profile in [custom, builtin] {
@@ -2661,7 +2663,7 @@ fn update_builtin_profile_writes_key_back_when_active() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, Some("sk-old"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-old"), None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
     assert_eq!(
@@ -2673,6 +2675,7 @@ fn update_builtin_profile_writes_key_back_when_active() {
         .update_profile(
             &profile.id,
             "DeepSeek 官方",
+            None,
             Some("https://api.deepseek.com/"),
             Some("sk-real"),
             None,
@@ -2705,7 +2708,7 @@ fn unused_builtin_edit_save_writes_db_only_without_key_prompt() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, Some("sk-test"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
 
     // 未使用：编辑保存只写库，不要求密钥占位符、不碰 live 配置
@@ -2715,6 +2718,7 @@ fn unused_builtin_edit_save_writes_db_only_without_key_prompt() {
         .update_profile(
             &profile.id,
             "DeepSeek",
+            None,
             Some("https://api.deepseek.com/"),
             Some("sk-edited"),
             None,
@@ -2740,7 +2744,7 @@ fn keyless_builtin_saves_to_db_but_apply_requires_key() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, None, None, None)
+        .add_builtin_profile("deepseek", None, None, None, None, None)
         .unwrap();
     assert!(!profile.has_key);
     let detail = context.get_profile(&profile.id).unwrap();
@@ -2765,7 +2769,7 @@ fn active_builtin_save_without_placeholder_keeps_edited_text() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, Some("sk-test"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
 
@@ -2803,11 +2807,11 @@ fn builtin_catalogs_are_not_mixed() {
 
     let context = AppContext::new(paths).unwrap();
     let deepseek = context
-        .add_builtin_profile("deepseek", None, Some("sk-d"), None, None)
+        .add_builtin_profile("deepseek", None, None, Some("sk-d"), None, None)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(2));
     let zhipu = context
-        .add_builtin_profile("zhipu", None, Some("sk-z"), None, None)
+        .add_builtin_profile("zhipu", None, None, Some("sk-z"), None, None)
         .unwrap();
 
     context.apply_profile(&deepseek.id).unwrap();
@@ -2833,7 +2837,7 @@ fn apply_minimax_inserts_catalog_line_and_writes_catalog() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("minimax", None, Some("mm-key"), None, None)
+        .add_builtin_profile("minimax", None, None, Some("mm-key"), None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
 
@@ -2877,7 +2881,7 @@ fn apply_chatgpt_writes_official_default_and_clears_empty_desktop_auth() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None)
+        .add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     context.apply_profile(&profile.id).unwrap();
 
@@ -2995,6 +2999,7 @@ fn clearing_catalog_text_untracks_custom_catalog_and_restores_builtin_models_jso
         .add_builtin_profile(
             crate::builtin::KIND_DEEPSEEK,
             None,
+            None,
             Some("sk-test"),
             None,
             None,
@@ -3109,7 +3114,7 @@ name = "ZAI"
 
     // 内置配置：改名后脱离内置模板，按完整配置快照处理
     let builtin = context
-        .add_builtin_profile("zhipu", None, Some("sk-test"), None, None)
+        .add_builtin_profile("zhipu", None, None, Some("sk-test"), None, None)
         .unwrap();
     let updated = context
         .update_profile_config(
@@ -3134,7 +3139,7 @@ fn update_profile_config_builtin_raw_applies_with_key_and_catalog() {
     let context = AppContext::new(paths).unwrap();
     std::fs::write(context.paths.codex_config(), "model = \"other\"\n").unwrap();
     let profile = context
-        .add_builtin_profile("zhipu", None, Some("sk-test"), None, None)
+        .add_builtin_profile("zhipu", None, None, Some("sk-test"), None, None)
         .unwrap();
 
     let edited = r#"
@@ -3217,6 +3222,100 @@ base_url = "https://api.example"
 }
 
 #[test]
+fn profile_description_survives_live_sync_and_can_be_cleared() {
+    let (_home, context) = chatgpt_test_context();
+    let profile = context
+        .add_builtin_profile("chatgpt", Some("  工作配置  "), None, None, None, None)
+        .unwrap();
+    assert_eq!(
+        context
+            .get_profile(&profile.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("工作配置")
+    );
+
+    context.apply_profile(&profile.id).unwrap();
+    let active = context.get_state().unwrap();
+    let active_profile = active
+        .profiles
+        .iter()
+        .find(|item| item.id == profile.id)
+        .unwrap();
+    assert!(serde_json::to_value(active_profile)
+        .unwrap()
+        .get("description")
+        .is_none());
+    assert_eq!(
+        context
+            .get_profile(&profile.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("工作配置")
+    );
+
+    context
+        .update_profile(&profile.id, &profile.name, Some("新描述"), None, None, None)
+        .unwrap();
+    assert_eq!(
+        context
+            .get_profile(&profile.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("新描述")
+    );
+    context
+        .update_profile(&profile.id, &profile.name, None, None, None, None)
+        .unwrap();
+    assert_eq!(
+        context
+            .get_profile(&profile.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("新描述")
+    );
+    context
+        .update_profile(&profile.id, &profile.name, Some("  "), None, None, None)
+        .unwrap();
+    assert_eq!(context.get_profile(&profile.id).unwrap().description, None);
+    assert!(context
+        .update_profile(
+            &profile.id,
+            &profile.name,
+            Some(&"x".repeat(201)),
+            None,
+            None,
+            None
+        )
+        .is_err());
+
+    let custom = context
+        .add_custom_profile(
+            "自定义",
+            Some("备注"),
+            "model = \"gpt-5.6\"\n",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        context
+            .get_profile(&custom.id)
+            .unwrap()
+            .description
+            .as_deref(),
+        Some("备注")
+    );
+}
+
+#[test]
 fn update_profile_saves_and_clears_admin_url() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();
@@ -3232,6 +3331,7 @@ fn update_profile_saves_and_clears_admin_url() {
             "GLM",
             None,
             None,
+            None,
             Some("https://console.example.com"),
         )
         .unwrap();
@@ -3241,12 +3341,19 @@ fn update_profile_saves_and_clears_admin_url() {
     );
 
     let invalid = context
-        .update_profile(&profile.id, "GLM", None, None, Some("console.example.com"))
+        .update_profile(
+            &profile.id,
+            "GLM",
+            None,
+            None,
+            None,
+            Some("console.example.com"),
+        )
         .unwrap_err();
     assert!(invalid.0.contains("http"));
 
     context
-        .update_profile(&profile.id, "GLM", None, None, Some(""))
+        .update_profile(&profile.id, "GLM", None, None, None, Some(""))
         .unwrap();
     let detail = context.get_profile(&profile.id).unwrap();
     assert_eq!(detail.admin_url, None);
@@ -3282,6 +3389,7 @@ base_url = "https://api.example"
         .update_profile(
             &profile.id,
             "GLM",
+            None,
             None,
             None,
             Some("https://console.example.com"),
@@ -3377,7 +3485,7 @@ base_url = "https://api.example"
         })
         .unwrap();
     let official = context
-        .add_builtin_profile("chatgpt", None, None, None, Some("acc-1"))
+        .add_builtin_profile("chatgpt", None, None, None, None, Some("acc-1"))
         .unwrap();
     let dup2 = context.duplicate_profile(&official.id).unwrap();
     assert_eq!(

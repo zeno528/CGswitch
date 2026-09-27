@@ -38,6 +38,9 @@ pub enum AuthSource {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct ProfilePayload {
+    /// 仅供 CGswitch 卡片展示，不写入 Codex 配置。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(default)]
     pub model_values: BTreeMap<String, String>,
     #[serde(default)]
@@ -267,6 +270,7 @@ pub struct ProfileBalanceInfo {
 pub struct ProfileDetail {
     pub id: String,
     pub name: String,
+    pub description: Option<String>,
     /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,
     pub auth_source: Option<AuthSource>,

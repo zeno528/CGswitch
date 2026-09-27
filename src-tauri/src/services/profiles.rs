@@ -17,6 +17,14 @@ pub(super) fn validated_name(name: &str) -> AppResult<String> {
     Ok(name.to_string())
 }
 
+fn validated_description(description: Option<&str>) -> AppResult<Option<String>> {
+    let description = description.map(str::trim).filter(|text| !text.is_empty());
+    if description.is_some_and(|text| text.chars().count() > 200) {
+        return Err(app_err!("供应商描述不能超过 200 个字符"));
+    }
+    Ok(description.map(str::to_string))
+}
+
 pub(crate) fn validated_icon(icon: Option<&str>) -> AppResult<Option<String>> {
     icon.map(str::trim)
         .filter(|value| !value.is_empty())
@@ -98,6 +106,7 @@ impl AppContext {
                         if let Some(live) = &live_payload {
                             let mut live = live.clone();
                             // 供应商元数据不在 live 配置里，覆盖时保留。
+                            live.description = stored.payload.description.clone();
                             live.admin_url = stored.payload.admin_url.clone();
                             live.show_balance = stored.payload.show_balance;
                             live.fetched_models = stored.payload.fetched_models.clone();
@@ -204,6 +213,7 @@ impl AppContext {
     pub fn add_builtin_profile(
         &self,
         kind: &str,
+        description: Option<&str>,
         base_url: Option<&str>,
         api_key: Option<&str>,
         admin_url: Option<&str>,
@@ -218,6 +228,7 @@ impl AppContext {
             std::str::from_utf8(&rendered).map_err(|_| app_err!("内置模板不是有效 UTF-8"))?;
         let mut payload =
             codex_config::capture_from_document(&codex_config::parse_document(text)?)?;
+        payload.description = validated_description(description)?;
         payload.builtin = Some(template.kind.to_string());
         // 快照优先并入数据库 MCP 镜像；首次使用时镜像为空才回退 live。
         payload.raw_config = Some(codex_config::without_managed_mcp_servers(
@@ -273,6 +284,7 @@ impl AppContext {
     pub fn add_custom_profile(
         &self,
         name: &str,
+        description: Option<&str>,
         config_text: &str,
         base_url: Option<&str>,
         api_key: Option<&str>,
@@ -286,6 +298,7 @@ impl AppContext {
         }
         let document = codex_config::parse_document(config_text)?;
         let mut payload = codex_config::capture_from_document(&document)?;
+        payload.description = validated_description(description)?;
         let base_url = base_url.map(str::trim).filter(|value| !value.is_empty());
         let api_key = api_key.map(str::trim).filter(|key| !key.is_empty());
         if let Some(admin_url) = admin_url.map(str::trim).filter(|value| !value.is_empty()) {
@@ -554,6 +567,7 @@ impl AppContext {
         Ok(ProfileDetail {
             id: stored.id.clone(),
             name: stored.name.clone(),
+            description: payload.description.clone(),
             account_id: stored.account_id.clone(),
             desktop_login,
             icon: stored.icon.clone(),
@@ -694,6 +708,7 @@ impl AppContext {
         &self,
         id: &str,
         name: &str,
+        description: Option<&str>,
         base_url: Option<&str>,
         api_key: Option<&str>,
         admin_url: Option<&str>,
@@ -701,6 +716,9 @@ impl AppContext {
         let name = validated_name(name)?;
         let stored = self.database.profile(id)?;
         let mut payload = stored.payload;
+        if description.is_some() {
+            payload.description = validated_description(description)?;
+        }
         let admin_url = admin_url.map(str::trim).filter(|value| !value.is_empty());
         if let Some(url) = admin_url {
             if !(url.starts_with("https://") || url.starts_with("http://")) {

@@ -92,6 +92,8 @@ export default {
     changeIconLabel: "更换图标",
     nameLabel: "名称",
     namePlaceholder: "供应商名称",
+    descriptionLabel: "描述",
+    descriptionPlaceholder: "简要说明这个供应商（可选）",
     protocolLabel: "接口协议",
     protocolResponses: "Responses（原生）",
     requestUrlLabel: "API 端点",

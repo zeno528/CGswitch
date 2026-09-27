@@ -170,6 +170,12 @@ export default {
       logs: "Logs",
       codexConfig: "Codex config",
     },
+    pathDescriptions: {
+      appData: "Stores CGswitch app data",
+      logs: "View CGswitch runtime logs",
+      codexConfig: "View the Codex configuration file",
+    },
+    open: "Open",
     openPath: "Open {{label}}",
   },
 } as const;

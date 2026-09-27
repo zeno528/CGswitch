@@ -27,6 +27,7 @@ export interface ProfileSummary {
 export interface ProfileDetail {
   id: string;
   name: string;
+  description: string | null;
   /** 官方配置绑定的订阅账号 id；第三方为 null。 */
   account_id: string | null;
   /** 官方配置创建时固定的认证来源。 */

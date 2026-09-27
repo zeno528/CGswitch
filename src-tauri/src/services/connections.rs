@@ -106,18 +106,15 @@ mod tests {
 
     #[test]
     fn opencode_probe_model_is_in_responses_catalog() {
-        // 探针打的是 /v1/responses，模型不在 responses 组目录里就会被网关
-        // 按「模型不存在」拒绝，有效 Key 也误报连通失败（目录换血时防回归）。
         let catalog: serde_json::Value =
             serde_json::from_slice(crate::builtin::OPENCODE_MODELS).unwrap();
-        let slugs: Vec<&str> = catalog["models"]
+        let in_catalog = catalog["models"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|model| model["slug"].as_str().unwrap())
-            .collect();
+            .any(|model| model["slug"] == super::OPENCODE_PROBE_MODEL);
         assert!(
-            slugs.contains(&super::OPENCODE_PROBE_MODEL),
+            in_catalog,
             "探针模型 {} 不在 OpenCode responses 组目录中",
             super::OPENCODE_PROBE_MODEL
         );

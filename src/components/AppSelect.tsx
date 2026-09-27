@@ -38,7 +38,7 @@ export function AppSelect<T extends string | number>({
   const menuRef = useRef<HTMLDivElement>(null);
   // 定位（向下/向上自适应翻转）与行内 ⋯ 菜单共用同一套逻辑；收起（外点/滚动/Escape）同样复用全局基建
   const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, "match");
-  useMenuDismiss(open, rootRef, menuRef, () => setOpen(false));
+  useMenuDismiss(open, rootRef, menuRef, setOpen);
 
   // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
   // 菜单是 fixed 定位，offsetTop 即相对菜单的偏移；把选中项滚到可视区中部，越界时 scrollTop 自动收敛

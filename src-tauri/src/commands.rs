@@ -229,6 +229,7 @@ pub fn capture_profile(name: String, state: State<'_, AppContext>) -> AppResult<
 #[tauri::command]
 pub fn add_builtin_profile(
     kind: String,
+    description: Option<String>,
     base_url: Option<String>,
     api_key: Option<String>,
     admin_url: Option<String>,
@@ -237,6 +238,7 @@ pub fn add_builtin_profile(
 ) -> AppResult<ProfileSummary> {
     state.add_builtin_profile(
         &kind,
+        description.as_deref(),
         base_url.as_deref(),
         api_key.as_deref(),
         admin_url.as_deref(),
@@ -265,6 +267,7 @@ pub fn get_builtin_config(kind: String) -> AppResult<String> {
 #[allow(clippy::too_many_arguments)]
 pub fn add_custom_profile(
     name: String,
+    description: Option<String>,
     config_text: String,
     base_url: Option<String>,
     api_key: Option<String>,
@@ -275,6 +278,7 @@ pub fn add_custom_profile(
 ) -> AppResult<ProfileSummary> {
     state.add_custom_profile(
         &name,
+        description.as_deref(),
         &config_text,
         base_url.as_deref(),
         api_key.as_deref(),
@@ -471,6 +475,7 @@ pub fn get_profile(id: String, state: State<'_, AppContext>) -> AppResult<Profil
 pub fn update_profile(
     id: String,
     name: String,
+    description: Option<String>,
     base_url: Option<String>,
     api_key: Option<String>,
     admin_url: Option<String>,
@@ -479,6 +484,7 @@ pub fn update_profile(
     state.update_profile(
         &id,
         &name,
+        description.as_deref(),
         base_url.as_deref(),
         api_key.as_deref(),
         admin_url.as_deref(),

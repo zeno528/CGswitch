@@ -92,6 +92,8 @@ export default {
     changeIconLabel: "Change icon",
     nameLabel: "Name",
     namePlaceholder: "Provider name",
+    descriptionLabel: "Description",
+    descriptionPlaceholder: "Briefly describe this provider (optional)",
     protocolLabel: "API protocol",
     protocolResponses: "Responses (native)",
     requestUrlLabel: "Base URL",

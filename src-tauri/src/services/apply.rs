@@ -353,6 +353,7 @@ impl AppContext {
         live.builtin = profile.payload.builtin.clone();
         live.auth_source = auth_source;
         // 供应商元数据不属于 live 文档，同步时保留。
+        live.description = profile.payload.description.clone();
         live.admin_url = profile.payload.admin_url.clone();
         live.show_balance = profile.payload.show_balance;
         live.fetched_models = profile.payload.fetched_models.clone();

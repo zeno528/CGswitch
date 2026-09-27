@@ -56,13 +56,15 @@ export const api = {
   captureProfile: (name: string) => call<ProfileSummary>("capture_profile", { name }),
   addBuiltinProfile: (
     kind: string,
+    description: string,
     baseUrl?: string,
     apiKey?: string,
     adminUrl?: string,
     accountId?: string,
-  ) => call<ProfileSummary>("add_builtin_profile", { kind, baseUrl, apiKey, adminUrl, accountId }),
+  ) => call<ProfileSummary>("add_builtin_profile", { kind, description, baseUrl, apiKey, adminUrl, accountId }),
   addCustomProfile: (
     name: string,
+    description: string,
     configText: string,
     baseUrl?: string,
     apiKey?: string,
@@ -72,6 +74,7 @@ export const api = {
   ) =>
     call<ProfileSummary>("add_custom_profile", {
       name,
+      description,
       configText,
       baseUrl,
       apiKey,
@@ -108,8 +111,8 @@ export const api = {
     call<void>("set_profile_account", { id, accountId }),
   duplicateProfile: (id: string) => call<ProfileSummary>("duplicate_profile", { id }),
   getProfile: (id: string) => call<ProfileDetail>("get_profile", { id }),
-  updateProfile: (id: string, name: string, baseUrl?: string, apiKey?: string, adminUrl?: string) =>
-    call<ProfileSummary>("update_profile", { id, name, baseUrl, apiKey, adminUrl }),
+  updateProfile: (id: string, name: string, description: string, baseUrl?: string, apiKey?: string, adminUrl?: string) =>
+    call<ProfileSummary>("update_profile", { id, name, description, baseUrl, apiKey, adminUrl }),
   updateProfileConfig: (
     id: string,
     configText: string,

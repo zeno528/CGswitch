@@ -34,14 +34,14 @@ describe("matchesSkillName", () => {
   });
 });
 
-describe("Skill 导入默认选择", () => {
-  it("进入导入页时默认选择所有可导入项，跳过内容冲突项", () => {
+describe("Skill 批量导入", () => {
+  it("只批量导入无内容冲突项，冲突项留给单项操作", () => {
     expect(selectableSkillPaths([
       { name: "new-skill", description: null, store_path: "/tmp/new", source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 },
       { name: "conflict-skill", description: null, store_path: "/tmp/conflict", source: "Agent", has_content_conflict: true, is_update: false, modified_at: 0 },
     ])).toEqual(["/tmp/new"]);
-    expect(viewSource).toContain("setSelectedPaths(selectableSkillPaths(candidates));");
-    expect(viewSource).toContain("setSelectedPaths(selectableSkillPaths(next));");
+    expect(viewSource).toContain("const importablePaths = selectableSkillPaths(visibleCandidates);");
+    expect(viewSource).not.toContain("selectedPaths");
   });
 });
 
