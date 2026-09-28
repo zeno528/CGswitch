@@ -159,6 +159,7 @@ pub const BUILTINS: [BuiltinTemplate; 13] = [
     },
     // 火山方舟豆包：Coding Plan 专用 base（/api/coding/v3）原生 Responses；
     // 勿改 /api/v3（不耗 Coding Plan 额度、按量另计）。
+    // Agent Plan 用户同域换成 /api/plan/v3；海外 BytePlus Coding Plan 端点见 src/presets.ts。
     BuiltinTemplate {
         kind: KIND_DOUBAO,
         name: "火山方舟豆包",

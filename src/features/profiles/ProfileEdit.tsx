@@ -558,6 +558,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                                 <span className="meta-xs inline-flex w-13 shrink-0 items-center justify-center rounded-md bg-(--tile-bg) py-0.5 font-medium text-accent">
                                   {endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")}
                                 </span>
+                                {endpoint.label ? <span className="meta-xs shrink-0 rounded-md bg-(--tile-bg) px-1.5 py-0.5 font-medium text-[var(--text-secondary)]">{endpoint.label}</span> : null}
                                 <span className="min-w-0 truncate">{endpoint.base_url}</span>
                               </span>
                               {selected ? <Check className="app-select-option__check" size={16} strokeWidth={2.5} aria-hidden="true" /> : null}
@@ -604,7 +605,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                       </button>
                       {fetchedModels.length > 0 ? <span className="muted text-xs">{t("edit.modelsAvailable", { count: fetchedModels.length })}</span> : null}
                     </div>
-                    <AppSelect value={fetchedModels.includes(modelValue) ? modelValue : null} options={fetchedModels.map((id) => ({ label: id, value: id }))} onChange={(value) => setModelValue(value)} placeholder={fetchedModels.length ? t("edit.selectModel") : t("edit.fetchModelsFirst")} />
+                    <AppSelect value={fetchedModels.includes(modelValue) ? modelValue : null} options={fetchedModels.map((id) => ({ label: id, value: id }))} onChange={(value) => setModelValue(value)} placeholder={fetchedModels.length ? t("edit.selectModel") : t("edit.fetchModelsFirst")} disabled={!apiKey.trim() || !baseUrl.trim()} />
                   </div>
                 </div>
               </>

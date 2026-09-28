@@ -6,6 +6,8 @@ import i18next from "i18next";
 /** 官方多区域端点档（cn/全球）；region 只用于下拉展示，写入配置的永远是 URL 本身。 */
 export interface PresetEndpoint {
   region: "cn" | "global";
+  /** 同一区域存在多条计费通道时的档位名（如 Coding Plan / Agent Plan）；缺省时菜单只显示区域徽标。 */
+  label?: string;
   base_url: string;
   admin_url: string | null;
 }
@@ -117,7 +119,13 @@ export const builtinPresets: BuiltinPreset[] = [
     { region: "cn", base_url: "https://tokenhub.tencentmaas.com/v1", admin_url: "https://console.cloud.tencent.com/tokenhub/apikey" },
     { region: "global", base_url: "https://tokenhub-intl.tencentmaas.com/v1", admin_url: null },
   ] },
-  { kind: "doubao", get name() { return i18next.t("preset.doubao"); }, provider: "volcengine-coding-plan", icon: "volcengine", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey", model: "ark-code-latest" },
+  // 国内提供 Coding Plan / Agent Plan；海外 BytePlus 仅提供官方确认的 Coding Plan 档。
+  // 注意海外域名是 bytepluses.com；/api/v3 不消耗 Coding Plan 额度、按量另计。
+  { kind: "doubao", get name() { return i18next.t("preset.doubao"); }, provider: "volcengine-coding-plan", icon: "volcengine", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey", model: "ark-code-latest", endpoints: [
+    { region: "cn", label: "Coding Plan", base_url: "https://ark.cn-beijing.volces.com/api/coding/v3", admin_url: "https://ark.volcengine.com/region:cn-beijing/apikey" },
+    { region: "cn", label: "Agent Plan", base_url: "https://ark.cn-beijing.volces.com/api/plan/v3", admin_url: "https://console.volcengine.com/ark/region:cn-beijing/openManagement?advancedActiveKey=agentPlan" },
+    { region: "global", label: "Coding Plan", base_url: "https://ark.ap-southeast.bytepluses.com/api/coding/v3", admin_url: "https://ai.byteplus.com/ark/region:ap-southeast-1/apikey" },
+  ] },
   { kind: "qianfan", get name() { return i18next.t("preset.qianfan"); }, provider: "qianfan", icon: "baiducloud", base_url: "https://qianfan.baidubce.com/v2", admin_url: "https://console.bce.baidu.com/qianfan/", model: "glm-5.1" },
   { kind: "xai", get name() { return i18next.t("preset.xai"); }, provider: "xai", icon: "xai", base_url: "https://api.x.ai/v1", admin_url: "https://console.x.ai/team/default/api-keys", model: "grok-4.7" },
 ];

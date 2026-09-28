@@ -69,7 +69,7 @@ describe("builtinPresets 新增 responses 供应商", () => {
 
 describe("builtinPresets 双区域端点档", () => {
   it("仅官方双端点供应商携带 cn+global 档，且首项与默认 base_url/admin_url 一致", () => {
-    const dual = ["hunyuan", "kimi", "minimax", "qwen", "zhipu"];
+    const dual = ["doubao", "hunyuan", "kimi", "minimax", "qwen", "zhipu"];
     const carried = builtinPresets.filter((p) => p.endpoints).map((p) => p.kind).sort();
     expect(carried, "只有官方文档确认的双区域供应商才带端点档").toEqual(dual);
 
@@ -80,7 +80,24 @@ describe("builtinPresets 双区域端点档", () => {
       if (endpoints.length > 0) {
         expect(endpoints[0].base_url, `${preset.kind} 首档应为默认区域`).toBe(preset.base_url);
         expect(endpoints[0].admin_url, `${preset.kind} 首档控制台应为默认控制台`).toBe(preset.admin_url);
+        // 同一区域可能有多条计费通道（label 区分），档位名不得为空串
+        for (const ep of endpoints) {
+          expect(ep.label === undefined || ep.label.length > 0, `${preset.kind} 档位名不得为空`).toBe(true);
+        }
       }
     }
+  });
+
+  it("火山方舟提供国内双套餐与海外 BytePlus Coding Plan 档", () => {
+    const doubao = builtinPresets.find((p) => p.kind === "doubao");
+    const endpoints = doubao?.endpoints ?? [];
+    expect(endpoints.map((ep) => `${ep.region}/${ep.base_url}`)).toEqual([
+      "cn/https://ark.cn-beijing.volces.com/api/coding/v3",
+      "cn/https://ark.cn-beijing.volces.com/api/plan/v3",
+      "global/https://ark.ap-southeast.bytepluses.com/api/coding/v3",
+    ]);
+    // 按量 /api/v3 不在档内（不消耗 Coding Plan 套餐额度）
+    expect(doubao?.model).toBe("ark-code-latest");
+    expect(doubao?.provider).toBe("volcengine-coding-plan");
   });
 });
