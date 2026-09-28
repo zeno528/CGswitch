@@ -1,26 +1,26 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use tempfile::NamedTempFile;
 
-use crate::error::{err, AppResult};
+use crate::error::{app_err, AppResult};
 use crate::paths::now_ms;
 
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> AppResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .map_err(|error| err(format!("无法创建目录 {}: {error}", parent.display())))?;
+            .map_err(|error| app_err!("无法创建目录 {}: {error}", parent.display()))?;
     }
 
     let mut temp = NamedTempFile::new_in(path.parent().unwrap_or(Path::new(".")))
-        .map_err(|error| err(format!("无法创建临时文件: {error}")))?;
+        .map_err(|error| app_err!("无法创建临时文件: {error}"))?;
     temp.write_all(bytes)
         .and_then(|_| temp.flush())
-        .map_err(|error| err(format!("无法写入临时文件: {error}")))?;
+        .map_err(|error| app_err!("无法写入临时文件: {error}"))?;
     let temp_path = temp.into_temp_path();
     replace_file(&temp_path, path)
-        .map_err(|error| err(format!("无法替换 {}: {error}", path.display())))?;
+        .map_err(|error| app_err!("无法替换 {}: {error}", path.display()))?;
     Ok(())
 }
 
@@ -63,10 +63,10 @@ pub fn backup_file(source: &Path, directory: &Path, stem: &str) -> AppResult<Opt
         return Ok(None);
     }
     fs::create_dir_all(directory)
-        .map_err(|error| err(format!("无法创建备份目录 {}: {error}", directory.display())))?;
+        .map_err(|error| app_err!("无法创建备份目录 {}: {error}", directory.display()))?;
     let target = directory.join(format!("{stem}-{}.bak", now_ms()));
     fs::copy(source, &target)
-        .map_err(|error| err(format!("无法备份 {}: {error}", source.display())))?;
+        .map_err(|error| app_err!("无法备份 {}: {error}", source.display()))?;
     prune_backups(directory, stem, ".bak", 5);
     Ok(Some(target))
 }
@@ -88,21 +88,6 @@ pub fn prune_backups(directory: &Path, prefix: &str, extension: &str, keep: usiz
     while backups.len() > keep {
         let oldest = backups.remove(0);
         let _ = fs::remove_file(oldest);
-    }
-}
-
-trait WriteAll {
-    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()>;
-    fn flush(&mut self) -> io::Result<()>;
-}
-
-impl WriteAll for NamedTempFile {
-    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
-        std::io::Write::write_all(self, bytes)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        std::io::Write::flush(self)
     }
 }
 

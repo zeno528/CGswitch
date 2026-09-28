@@ -1,14 +1,7 @@
-use super::{app_err, now_ms, prune_backups, AppContext, AppResult, Path, PathBuf};
+use super::{app_err, now_ms, now_secs, prune_backups, AppContext, AppResult, Path, PathBuf};
 
 pub(super) const DATABASE_BACKUP_PREFIX: &str = "cg-backup-";
 const LEGACY_DATABASE_BACKUP_PREFIX: &str = "cgswitch-export-";
-
-fn now_seconds() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default()
-}
 
 // 手动备份带 manual- 标记，自动备份保持纯时间戳：前端靠文件名区分记录行的"手动/自动"前缀
 fn database_backup_name(manual: bool) -> String {
@@ -108,7 +101,7 @@ impl AppContext {
             None => true,
             Some(latest) => {
                 let created_at = latest.created_at.max(0) as u64;
-                now_seconds().saturating_sub(created_at)
+                now_secs().saturating_sub(created_at)
                     >= settings.auto_backup_interval_hours.saturating_mul(3600)
             }
         };

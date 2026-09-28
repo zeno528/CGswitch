@@ -17,7 +17,7 @@ use crate::models::{
     McpSyncDiffEntry, McpSyncEntryKind, McpSyncPreview, PathInfo, ProfileBalanceInfo,
     ProfileDetail, ProfileKind, ProfilePayload, ProfileSummary, Settings,
 };
-use crate::paths::{now_ms, AppPaths};
+use crate::paths::{now_ms, now_secs, AppPaths};
 
 mod accounts;
 mod apply;
@@ -27,7 +27,7 @@ mod mcp_probe;
 mod model_fetch;
 mod plugin_net;
 mod plugins;
-mod profile_config;
+pub(crate) mod profile_config;
 mod profiles;
 mod settings;
 mod storage;

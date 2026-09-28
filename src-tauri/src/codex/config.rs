@@ -104,16 +104,21 @@ pub fn patch_context_override(
     Ok(document.to_string())
 }
 
+/// features 表：不存在则创建；"features 不是 TOML table" 的报错两个 patch 共用。
+fn features_table_mut(document: &mut DocumentMut) -> AppResult<&mut Table> {
+    document
+        .as_table_mut()
+        .entry("features")
+        .or_insert_with(|| Item::Table(Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| app_err!("features 不是 TOML table"))
+}
+
 pub fn patch_system_proxy(text: &str, enabled: bool) -> AppResult<String> {
     let mut document = parse_document(text)?;
     if enabled {
-        let features = document
-            .as_table_mut()
-            .entry("features")
-            .or_insert_with(|| Item::Table(Table::new()))
-            .as_table_mut()
-            .ok_or_else(|| app_err!("features 不是 TOML table"))?;
-        features.insert("respect_system_proxy", Item::Value(Value::from(true)));
+        features_table_mut(&mut document)?
+            .insert("respect_system_proxy", Item::Value(Value::from(true)));
     } else if let Some(features) = document
         .as_table_mut()
         .get_mut("features")
@@ -127,13 +132,7 @@ pub fn patch_system_proxy(text: &str, enabled: bool) -> AppResult<String> {
 pub fn patch_context_management(text: &str, enabled: bool) -> AppResult<String> {
     let mut document = parse_document(text)?;
     if enabled {
-        let features = document
-            .as_table_mut()
-            .entry("features")
-            .or_insert_with(|| Item::Table(Table::new()))
-            .as_table_mut()
-            .ok_or_else(|| app_err!("features 不是 TOML table"))?;
-        let context_management = features
+        let context_management = features_table_mut(&mut document)?
             .entry("context_management")
             .or_insert_with(|| Item::Table(Table::new()))
             .as_table_mut()

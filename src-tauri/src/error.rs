@@ -15,10 +15,6 @@ impl Serialize for AppError {
 
 pub type AppResult<T> = Result<T, AppError>;
 
-pub fn err(context: impl Into<String>) -> AppError {
-    AppError(context.into())
-}
-
 macro_rules! app_err {
     ($($arg:tt)*) => {
         crate::error::AppError(format!($($arg)*))

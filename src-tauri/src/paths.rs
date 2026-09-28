@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::{err, AppResult};
+use crate::error::{app_err, AppResult};
 
 #[derive(Debug, Clone)]
 pub struct AppPaths {
@@ -33,7 +33,7 @@ impl AppPaths {
             &self.logs,
         ] {
             std::fs::create_dir_all(dir)
-                .map_err(|error| err(format!("无法创建目录 {}: {error}", dir.display())))?;
+                .map_err(|error| app_err!("无法创建目录 {}: {error}", dir.display()))?;
         }
         Ok(())
     }
@@ -68,6 +68,14 @@ pub fn now_ms() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|value| value.as_millis())
+        .unwrap_or_default()
+}
+
+/// Unix 秒（i64 语义由调用方按需转换）：备份文件名与 token 时间戳共用同一个"当前时刻"定义。
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs())
         .unwrap_or_default()
 }
 
