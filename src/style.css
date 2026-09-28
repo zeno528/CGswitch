@@ -2729,36 +2729,19 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   line-height: 1.6;
 }
 
-.cm-editor .cm-scroller { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.cm-horizontal-scrollbar-row {
-  display: none;
-  height: 8px;
-  overflow: hidden;
-}
-
-.cm-horizontal-scrollbar-gutter {
-  flex: 0 0 auto;
-  height: 8px;
-}
-
-.cm-horizontal-scrollbar {
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
+/* 横向滚动走原生滚动条（全局 webkit 细滚动条样式自动生效）；行号栏是 sticky 层，
+   代码从其下穿过，不透明背景见下方 gutter 规则。 */
+.cm-editor .cm-scroller { overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; }
 
 /* 编辑器滚动条只在编辑器悬停或获得焦点时显现，保留滚动能力和原有占位。 */
-.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar) {
+.apple-editor-shell:not(:hover):not(:focus-within) .cm-scroller {
   scrollbar-color: transparent transparent;
 }
 
-.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar)::-webkit-scrollbar-thumb {
+.apple-editor-shell:not(:hover):not(:focus-within) .cm-scroller::-webkit-scrollbar-thumb {
   background: transparent;
 }
 
-.cm-horizontal-scrollbar > div { height: 1px; }
 /* 行号列宽随位数自适应（min-width 保住 24px 紧凑观感）；固定宽度会让三位以上行号
    被 .cm-gutter 的 overflow: hidden 裁掉末位 */
 .cm-gutters .cm-lineNumbers { width: auto; min-width: 1.5rem; flex: 0 0 auto; }

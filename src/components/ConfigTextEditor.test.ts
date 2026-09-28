@@ -44,22 +44,18 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain("editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });");
   });
 
-  it("keeps the horizontal scrollbar outside the line-number gutter", () => {
-    expect(editorSource).toContain('className="cm-horizontal-scrollbar-row"');
-    expect(editorSource).toContain('className="cm-horizontal-scrollbar-gutter"');
-    expect(editorSource).toContain('className="cm-horizontal-scrollbar"');
-    expect(editorSource).toContain("editor.scrollDOM.scrollLeft = scrollbar.scrollLeft");
-    expect(editorSource.indexOf('<div ref={hostRef} />')).toBeLessThan(editorSource.indexOf('className="cm-horizontal-scrollbar-row"'));
+  it("横向滚动走原生滚动条：行号栏 sticky 固定，不再自绘同步滚动条", () => {
+    expect(editorSource).not.toContain("cm-horizontal-scrollbar");
+    expect(editorSource).not.toContain("onEditorWheel");
     expect(editorSource).toContain("const previousScrollTop = editor.scrollDOM.scrollTop");
     expect(editorSource).toContain("editor.scrollDOM.scrollTop = previousScrollTop");
   });
 
-  it("按整个文档的最长行在首屏计算横向滚动条", () => {
+  it("按整个文档的最长行在首屏预设 contentDOM 最小宽度（虚拟化下原生滚动才能到底）", () => {
     expect(editorSource).toContain('document.createElement("canvas").getContext("2d")');
     expect(editorSource).toContain("editor.state.doc.lines; number += 1");
-    expect(editorSource).toContain("editor.contentDOM.style.minWidth = `${documentWidth}px`");
-    expect(editorSource).toContain("const hasOverflow = contentWidth > viewportWidth;");
-    expect(editorSource).toContain("syncHorizontalScrollbar();");
+    expect(editorSource).toContain("editor.contentDOM.style.minWidth");
+    expect(editorSource).toContain("syncContentWidth();");
   });
 
   it("用错误行高亮和红色粗体行号替代独立错误 gutter", () => {

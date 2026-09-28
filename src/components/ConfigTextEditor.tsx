@@ -223,10 +223,6 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const { t } = useTranslation();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   const hostRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarRowRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarGutterRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarContentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
@@ -270,11 +266,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   // 避免 useEffect（绘后执行）导致编辑器区域晚一帧出现的空壳闪烁。
   useLayoutEffect(() => {
     const parent = hostRef.current;
-    const scrollbarRow = horizontalScrollbarRowRef.current;
-    const scrollbarGutter = horizontalScrollbarGutterRef.current;
-    const scrollbar = horizontalScrollbarRef.current;
-    const scrollbarContent = horizontalScrollbarContentRef.current;
-    if (!parent || !scrollbarRow || !scrollbarGutter || !scrollbar || !scrollbarContent) return;
+    if (!parent) return;
 
     const reportDiagnostics = (view: EditorView) => {
       let count = 0;
@@ -305,71 +297,33 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     // 编辑器可能先于异步详情挂载，value 到达/变化时由下方 [value] 效应重探并热重配
     const docIndentUnit = detectIndentUnit(valueRef.current);
     appliedIndentUnitRef.current = docIndentUnit;
+    // 长文档按视口虚拟化，渲染宽度 ≠ 全文宽度：按 canvas 测量预设 contentDOM 的
+    // min-width，原生横向滚动条才能滚到最后一列（tab 展开宽度也要计入）。
     const measureContext = document.createElement("canvas").getContext("2d");
-    let syncingScroll = false;
     let syncFrame = 0;
-    const syncHorizontalScrollbar = () => {
-      const scroller = editor.scrollDOM;
-      const gutters = scroller.querySelector<HTMLElement>(".cm-gutters-before");
-      const gutterWidth = gutters?.getBoundingClientRect().width ?? 0;
-      const viewportWidth = Math.max(0, scroller.getBoundingClientRect().width - gutterWidth);
-      let documentWidth = scroller.scrollWidth - gutterWidth;
-      if (measureContext) {
-        const style = getComputedStyle(editor.contentDOM);
-        measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-        const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
-        documentWidth = 0;
-        for (let number = 1; number <= editor.state.doc.lines; number += 1) {
-          const parts = editor.state.doc.line(number).text.split("\t");
-          let lineWidth = 0;
-          for (let index = 0; index < parts.length; index += 1) {
-            lineWidth += measureContext.measureText(parts[index]!).width;
-            if (index < parts.length - 1 && tabWidth > 0) {
-              const remainder = lineWidth % tabWidth;
-              lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
-            }
+    const syncContentWidth = () => {
+      if (!measureContext) return;
+      const style = getComputedStyle(editor.contentDOM);
+      measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
+      let documentWidth = 0;
+      for (let number = 1; number <= editor.state.doc.lines; number += 1) {
+        const parts = editor.state.doc.line(number).text.split("\t");
+        let lineWidth = 0;
+        for (let index = 0; index < parts.length; index += 1) {
+          lineWidth += measureContext.measureText(parts[index]!).width;
+          if (index < parts.length - 1 && tabWidth > 0) {
+            const remainder = lineWidth % tabWidth;
+            lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
           }
-          documentWidth = Math.max(documentWidth, lineWidth);
         }
-        documentWidth = Math.ceil(documentWidth);
+        documentWidth = Math.max(documentWidth, lineWidth);
       }
-      // 长文档按视口虚拟化，预设全文宽度才能让首屏横向滚动生效。
-      editor.contentDOM.style.minWidth = `${documentWidth}px`;
-      documentWidth = Math.max(documentWidth, scroller.scrollWidth - gutterWidth);
-      const contentWidth = Math.max(viewportWidth, documentWidth);
-      const hasOverflow = contentWidth > viewportWidth;
-      const maxScrollLeft = hasOverflow ? Math.max(0, contentWidth - viewportWidth) : 0;
-      scrollbarGutter.style.width = `${gutterWidth}px`;
-      scrollbarGutter.style.backgroundColor = gutters ? getComputedStyle(gutters).backgroundColor : "transparent";
-      scrollbarContent.style.width = `${contentWidth}px`;
-      scrollbarRow.style.display = hasOverflow ? "flex" : "none";
-      scrollbar.scrollLeft = Math.min(scroller.scrollLeft, maxScrollLeft);
-      scrollbar.setAttribute("aria-valuemax", String(maxScrollLeft));
-      scrollbar.setAttribute("aria-valuenow", String(scroller.scrollLeft));
+      editor.contentDOM.style.minWidth = `${Math.ceil(documentWidth)}px`;
     };
-    const scheduleScrollbarSync = () => {
+    const scheduleContentWidthSync = () => {
       cancelAnimationFrame(syncFrame);
-      syncFrame = requestAnimationFrame(syncHorizontalScrollbar);
-    };
-    const onEditorScroll = () => {
-      if (syncingScroll) return;
-      syncingScroll = true;
-      scrollbar.scrollLeft = editor.scrollDOM.scrollLeft;
-      scrollbar.setAttribute("aria-valuenow", String(editor.scrollDOM.scrollLeft));
-      syncingScroll = false;
-    };
-    const onScrollbarScroll = () => {
-      if (syncingScroll) return;
-      syncingScroll = true;
-      editor.scrollDOM.scrollLeft = scrollbar.scrollLeft;
-      scrollbar.setAttribute("aria-valuenow", String(scrollbar.scrollLeft));
-      syncingScroll = false;
-    };
-    const onEditorWheel = (event: WheelEvent) => {
-      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
-      if (!delta) return;
-      event.preventDefault();
-      scrollbar.scrollLeft += delta;
+      syncFrame = requestAnimationFrame(syncContentWidth);
     };
 
     editor = new EditorView({
@@ -390,27 +344,21 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !syncingValueRef.current) onChangeRef.current(update.state.doc.toString());
             reportDiagnostics(update.view);
-            if (update.docChanged || update.geometryChanged) scheduleScrollbarSync();
+            if (update.docChanged || update.geometryChanged) scheduleContentWidthSync();
           }),
         ],
       }),
       parent,
     });
     viewRef.current = editor;
-    editor.scrollDOM.addEventListener("scroll", onEditorScroll);
-    editor.scrollDOM.addEventListener("wheel", onEditorWheel, { passive: false });
-    scrollbar.addEventListener("scroll", onScrollbarScroll);
-    const resizeObserver = new ResizeObserver(scheduleScrollbarSync);
+    const resizeObserver = new ResizeObserver(scheduleContentWidthSync);
     resizeObserver.observe(editor.dom);
-    syncHorizontalScrollbar();
+    syncContentWidth();
     reportDiagnostics(editor);
 
     return () => {
       cancelAnimationFrame(syncFrame);
       resizeObserver.disconnect();
-      editor.scrollDOM.removeEventListener("scroll", onEditorScroll);
-      editor.scrollDOM.removeEventListener("wheel", onEditorWheel);
-      scrollbar.removeEventListener("scroll", onScrollbarScroll);
       editor.destroy();
       if (viewRef.current === editor) viewRef.current = null;
     };
@@ -461,22 +409,6 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     <div className="apple-editor-shell" style={{ minHeight: editorMinHeight }}>
       <div className="apple-editor-surface">
         <div ref={hostRef} />
-        <div ref={horizontalScrollbarRowRef} className="cm-horizontal-scrollbar-row">
-          <div ref={horizontalScrollbarGutterRef} className="cm-horizontal-scrollbar-gutter" aria-hidden="true" />
-          <div
-            ref={horizontalScrollbarRef}
-            className="cm-horizontal-scrollbar"
-            role="scrollbar"
-            aria-label={t("editor.horizontalScrollbar")}
-            aria-orientation="horizontal"
-            aria-valuemin={0}
-            aria-valuemax={0}
-            aria-valuenow={0}
-            tabIndex={0}
-          >
-            <div ref={horizontalScrollbarContentRef} />
-          </div>
-        </div>
       </div>
     </div>
   );

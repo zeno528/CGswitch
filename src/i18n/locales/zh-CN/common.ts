@@ -37,7 +37,6 @@ export default {
   editor: {
     placeholder: "在此编辑配置…",
     jsonSyntaxError: "JSON 语法错误，请检查此处的逗号、括号或值",
-    horizontalScrollbar: "编辑器水平滚动条",
   },
   preset: {
     custom: "自定义",

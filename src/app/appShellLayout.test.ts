@@ -278,12 +278,10 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-count-badge {\n  position: absolute;\n  left: auto;\n  right: -3.4px;\n  top: -3.4px;");
   });
 
-  it("让配置编辑器的横向滚动条从行号栏右侧开始", () => {
+  it("配置编辑器恢复原生横向滚动，不再自绘同步滚动条", () => {
     expect(styles).toContain("max-height: min(34rem, 60vh);");
-    expect(styles).toContain(".cm-editor .cm-scroller { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }");
-    expect(styles).toContain(".cm-horizontal-scrollbar {");
-    expect(styles).toContain(".cm-horizontal-scrollbar-row {");
-    expect(styles).toContain(".cm-horizontal-scrollbar-gutter {");
+    expect(styles).toContain(".cm-editor .cm-scroller { overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; }");
+    expect(styles).not.toContain(".cm-horizontal-scrollbar");
   });
 
   it("取消编辑器外围的焦点发光描边", () => {
