@@ -158,12 +158,14 @@ export default {
     updateDescription: "Check for available updates.",
     openRepo: "Open the GitHub repository",
     changelog: "Changelog",
+    changelogDescription: "See what changed in each release",
     viewReleases: "View the latest release on GitHub",
     checkUpdate: "Check for updates",
     installing: "Downloading and installing...",
     upgradeTo: "Update to",
     dataAndPaths: "Data and paths",
-    starInvitation: "Enjoying CGswitch? Give us a Star on <github>GitHub</github> ⭐",
+    repository: "GitHub repository",
+    repositoryDescription: "Source code and issues · If you find it useful, feel free to give us a Star ⭐ on GitHub",
     paths: {
       appData: "App data",
       backups: "Backups",
@@ -175,7 +177,6 @@ export default {
       logs: "View CGswitch runtime logs",
       codexConfig: "View the Codex configuration file",
     },
-    open: "Open",
     openPath: "Open {{label}}",
   },
 } as const;

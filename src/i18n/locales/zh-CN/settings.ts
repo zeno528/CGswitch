@@ -158,12 +158,14 @@ export default {
     updateDescription: "检查是否有可用的新版本。",
     openRepo: "打开 GitHub 项目仓库",
     changelog: "更新日志",
+    changelogDescription: "查看各版本的改动与新功能",
     viewReleases: "在 GitHub 查看最新发行版",
     checkUpdate: "检查更新",
     installing: "正在下载安装…",
     upgradeTo: "升级至",
     dataAndPaths: "数据与路径",
-    starInvitation: "喜欢 CGswitch？欢迎在 <github>GitHub</github> 给我们点个 Star ⭐",
+    repository: "GitHub 仓库",
+    repositoryDescription: "源代码与问题反馈 · 如果觉得有用，欢迎在 GitHub 给我们点个 Star ⭐",
     paths: {
       appData: "应用数据目录",
       backups: "备份目录",
@@ -175,7 +177,6 @@ export default {
       logs: "查看 CGswitch 的运行日志",
       codexConfig: "查看 Codex 的配置文件",
     },
-    open: "打开",
     openPath: "打开{{label}}",
   },
 } as const;

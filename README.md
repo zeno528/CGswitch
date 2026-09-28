@@ -42,7 +42,7 @@ CGswitch backs up relevant Codex files before applying a profile. Provider profi
 ### Provider profiles
 
 - Start from a built-in provider preset, capture the current `~/.codex/config.toml`, or create a custom provider.
-- Edit `config.toml`, `models.json`, and `auth.json` with TOML/JSON validation and syntax-aware editors.
+- Edit `config.toml`, `models.json`, and `auth.json` with TOML/JSON validation.
 - Fetch available models from a provider's `/models` endpoint and select them in the profile editor.
 - Rename, duplicate, reorder, delete, and apply profiles.
 - Keep unrelated Codex configuration such as MCP and plugin sections when applying provider-specific changes where possible.
@@ -92,17 +92,17 @@ Custom providers can use the Responses API-compatible configuration supported by
 - Optional launch at login, silent start, and minimize-to-tray behavior.
 - System tray menu with quick actions: switch profiles, open settings, jump to accounts, and show the main window. Single-click on the tray icon can be set to either show the main window or open the tray menu.
 - Optional Codex restart after applying a profile.
-- Optional automatic update checks with release notes before installation; the install-then-restart flow writes an `update-marker` that surfaces the "updated to vX" notification on the next launch.
-- Local database, configuration-file, and Codex-file backup management, with separate immediate ops, auto-backup (frequency and retention count), and a collapsible record view that lists auto/manual source, size, and time.
+- Optional automatic update checks with release notes before installation, with an "updated to vX" notification on the next launch.
+- Local backups of the database, configuration files, and Codex files are created automatically; database backups can be browsed and restored from Settings.
 
 ### Settings
 
 The settings page is organized into four tabs:
 
-- **General** — theme, language, launch-at-login, silent start, minimize-to-tray, single-click tray action, and Codex restart behavior.
-- **Application** — Codex process controls, system proxy detection, and Codex-related launch options.
-- **Advanced** — long-context compaction, MCP / plugin / Skills tool toggles, log directory, and update channel.
-- **About** — application info card with version, GitHub / changelog links, and the data-path list with per-path icons.
+- **General** — theme, language, launch-at-login, silent start, and minimize-to-tray.
+- **Application** — single-click tray action, restart Codex after switching, and automatic update checks.
+- **Advanced** — database backup management with immediate backup, import/export, auto-backup (frequency and retention), and collapsible backup records.
+- **About** — application info card with version, GitHub / changelog links, and the data-path list.
 
 ### MCP differences
 
@@ -132,7 +132,7 @@ Replace the path if you installed the app somewhere else. Official packages are 
 ## Quick start
 
 1. Open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then apply.
-2. Enable the optional Codex restart behavior in **Settings → General** if you want CGswitch to restart Codex after applying a profile.
+2. Enable the optional Codex restart behavior in **Settings → Application** if you want CGswitch to restart Codex after applying a profile.
 3. Use **MCP**, **Plugins**, or **Skill** in the sidebar to manage the corresponding global Codex resources.
 
 ## Data and privacy
@@ -153,7 +153,7 @@ CGswitch keeps its application data under the current user's home directory. The
     └── codex-files/
 ```
 
-CGswitch keeps its run logs under `~/.cgswitch/logs/` (1MB × 10 rotation, kept under `src-tauri/src/lib.rs` via `tauri_plugin_log`). The `update-marker` file is written just before a release is installed and consumed on the next launch to surface the "updated to vX" notification.
+CGswitch keeps its run logs under `~/.cgswitch/logs/` (1MB × 10 rotation).
 
 The live Codex files remain under `~/.codex`:
 
@@ -172,7 +172,7 @@ API keys, OAuth credentials, profiles, and backups are local data. CGswitch crea
 
 ### What happens when I apply a profile?
 
-CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → General**.
+CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → Application**.
 
 ### Are profiles, MCP, Plugins, and Skills the same thing?
 
@@ -230,7 +230,7 @@ Release bundles are written under `src-tauri/target/release/bundle/`.
 
 ## Architecture
 
-CGswitch uses React + TypeScript + Vite + Tailwind CSS + CodeMirror on the frontend, Tauri 2 + Rust for native file access and Codex integration, and SQLite for local profiles, accounts, MCP mirrors, and events. A typed frontend IPC layer with a browser mock covers frontend development and tests.
+CGswitch is built with Tauri 2 + Rust for native file access and Codex integration, with a React frontend and a local SQLite database.
 
 The main source areas:
 

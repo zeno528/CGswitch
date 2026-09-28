@@ -2032,7 +2032,7 @@ button:focus-visible {
 }
 
 .oauth-content {
-  background: var(--main-surface-bg);
+  background: var(--sidebar-bg);
   padding: 24px 34px var(--dialog-pad-bottom);
 }
 

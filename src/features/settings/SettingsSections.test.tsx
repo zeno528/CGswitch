@@ -114,7 +114,7 @@ describe("SettingsSections", () => {
     );
     expect(html).toContain("检查更新");
     expect(html).not.toContain("检查 GitHub 正式发布版本");
-    expect(html.indexOf("检查更新</button>")).toBeLessThan(html.indexOf("更新日志</button>"));
+    expect(html.indexOf("检查更新</button>")).toBeLessThan(html.indexOf("更新日志"));
     expect(styles).toContain(".settings-about__actions > .apple-action-button");
   });
 
@@ -135,7 +135,9 @@ describe("SettingsSections", () => {
     expect(html).not.toContain("settings-about__update-description");
     expect(html).not.toContain("hero-doodles");
     expect(styles).not.toContain(".settings-about__app-card {");
-    expect(html).toContain("给我们点个 Star");
+    // Star 邀请收进 GitHub 行描述（参考 Folo/AFFiNE 的行列表式 About）
+    expect(html).toContain("GitHub 仓库");
+    expect(html).toContain("点个 Star");
   });
 
   it("does not show the backup directory in the about paths", () => {
@@ -164,8 +166,9 @@ describe("SettingsSections", () => {
     expect(html).not.toContain(".cgswitch");
     expect(html).not.toContain("config.toml");
     expect(html).not.toContain("备份目录");
-    expect(html.match(/aria-label="打开[^\"]+"/g)).toHaveLength(3);
-    expect(html.match(/打开<\/button>/g)).toHaveLength(3);
+    // 路径行与 About 行统一为「整行可点 + 箭头」（共用 SettingsRowLink）：无「打开」按钮
+    expect(html).not.toContain("打开</button>");
+    expect(html.match(/lucide-chevron-right/g)).toHaveLength(5);
   });
 
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {

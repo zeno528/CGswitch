@@ -1,4 +1,4 @@
-import { Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
+import { ChevronRight, Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { createPortal } from "react-dom";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -329,6 +329,24 @@ export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPat
   );
 }
 
+// 设置页「整行可点」行链接：图标座 + 标题/描述 + 尾部箭头，About 与「数据与路径」共用同一行语言
+function SettingsRowLink({ icon, title, description, tooltip, onClick, disabled, trailing }: {
+  icon: ReactNode; title: string; description: string; tooltip: string; onClick: () => void; disabled?: boolean; trailing?: ReactNode;
+}) {
+  return (
+    <button type="button" className="group flex w-full items-center justify-between gap-4 py-4 text-left" disabled={disabled} title={tooltip} onClick={onClick}>
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">{icon}</span>
+        <span className="min-w-0">
+          <span className="setting-title block transition-colors group-hover:text-accent">{title}</span>
+          <span className="setting-description mt-0.5 block">{description}</span>
+        </span>
+      </span>
+      {trailing ?? <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" />}
+    </button>
+  );
+}
+
 interface SettingsAboutProps { paths: PathInfo[]; onOpenPath: (item: PathInfo) => void; openingPath: string | null; }
 
 export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutProps) {
@@ -356,7 +374,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
 
   return (
     <div className="flex flex-col gap-[var(--gap-section)]">
-      <div className="apple-group px-[var(--gap-card-inline)]">
+      <div className="apple-group divide-y divide-[var(--panel-divider)] px-[var(--gap-card-inline)]">
         <div className="relative flex flex-wrap items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
             <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
@@ -382,21 +400,19 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             )}
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-4 py-4">
-          <p className="setting-description mr-auto min-w-0">
-            <Trans ns="settings" i18nKey="about.starInvitation" components={{ github: <button type="button" className="underline underline-offset-2 hover:text-accent focus-visible:text-accent" onClick={openRepository} /> }} />
-          </p>
-          <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
-            <button type="button" className="settings-about__link inline-flex items-center gap-2 px-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.openRepo")} onClick={openRepository}>
-              <GithubMark className="h-4 w-4" />
-              GitHub
-            </button>
-            <button type="button" className="settings-about__link inline-flex items-center gap-2 px-1 text-accent transition-opacity hover:opacity-70 focus-visible:opacity-70" title={t("about.viewReleases")} onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}>
-              <History className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-              {t("about.changelog")}
-            </button>
-          </div>
-        </div>
+        {/* 参考 Folo / AFFiNE：About 区拆成与「数据与路径」同语言的行列表 */}
+        <SettingsRowLink
+          icon={<History className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}
+          title={t("about.changelog")} description={t("about.changelogDescription")}
+          tooltip={t("about.viewReleases")}
+          onClick={() => void api.openUrl(releaseNotesUrl(update?.version ?? version.trim())).catch((error) => feedback.error(String(error)))}
+        />
+        <SettingsRowLink
+          icon={<GithubMark className="h-[18px] w-[18px]" />}
+          title={t("about.repository")} description={t("about.repositoryDescription")}
+          tooltip={t("about.openRepo")}
+          onClick={openRepository}
+        />
       </div>
       <div className="flex flex-col gap-2">
         <h3 className="title-sm px-1">{t("about.dataAndPaths")}</h3>
@@ -405,21 +421,15 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             const Icon = item.label === "about.paths.codexConfig" ? FileCog : item.label === "about.paths.logs" ? FileText : Database;
             const description = item.label === "about.paths.codexConfig" ? t("about.pathDescriptions.codexConfig") : item.label === "about.paths.logs" ? t("about.pathDescriptions.logs") : t("about.pathDescriptions.appData");
             return (
-              <div key={item.label} className="flex items-center justify-between gap-4 py-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
-                    <Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="setting-title">{pathLabel(t, item.label)}</div>
-                    <div className="setting-description mt-0.5">{description}</div>
-                  </div>
-                </div>
-                <button type="button" className="apple-action-button shrink-0 text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={Boolean(openingPath)} title={t("about.openPath", { label: pathLabel(t, item.label) })} aria-label={t("about.openPath", { label: pathLabel(t, item.label) })} onClick={() => onOpenPath(item)}>
-                  {openingPath === item.path ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <FolderOpen className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
-                  {t("about.open")}
-                </button>
-              </div>
+              <SettingsRowLink
+                key={item.label}
+                icon={<Icon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}
+                title={pathLabel(t, item.label)} description={description}
+                tooltip={t("about.openPath", { label: pathLabel(t, item.label) })}
+                onClick={() => onOpenPath(item)}
+                disabled={Boolean(openingPath)}
+                trailing={openingPath === item.path ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-[var(--text-secondary)]" strokeWidth={2} aria-hidden="true" /> : undefined}
+              />
             );
           })}
         </div>
