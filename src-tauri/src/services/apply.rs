@@ -7,18 +7,6 @@ use super::{
 use crate::auth::codex_oauth::CodexOAuthManager;
 
 impl AppContext {
-    pub fn sync_active_profile_from_live(&self) -> AppResult<bool> {
-        let _guard = self
-            .operation
-            .lock()
-            .map_err(|_| app_err!("操作锁已损坏"))?;
-        let Some(document) = self.live_document() else {
-            return Ok(false);
-        };
-        self.sync_active_profile_document(&document)?;
-        Ok(true)
-    }
-
     pub fn apply_profile(&self, id: &str) -> AppResult<()> {
         let _guard = self
             .operation

@@ -657,12 +657,6 @@ pub fn restore_mcp_from_database(state: State<'_, AppContext>) -> AppResult<usiz
     state.restore_mcp_from_database()
 }
 
-/// 用户显式导入：live 当前 MCP 段强制镜像进数据库，返回导入的服务器数量。
-#[tauri::command]
-pub fn import_mcp_from_live(state: State<'_, AppContext>) -> AppResult<usize> {
-    state.import_mcp_from_live()
-}
-
 /// 对比 live config.toml 与数据库镜像的 MCP 差异（只读不写），供同步前人工裁决。
 /// 窗口激活时会与 get_state 一起被调用，而它会等 operation 锁——重启/切换持锁数秒，
 /// 同步命令在主线程等锁会把窗口消息泵占死。与 restart_codex 同理丢到 blocking 线程：

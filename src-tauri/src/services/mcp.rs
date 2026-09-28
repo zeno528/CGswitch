@@ -234,23 +234,6 @@ impl AppContext {
         Ok(count)
     }
 
-    /// 用户显式操作：把 live 当前 MCP 段强制导入数据库（含清空镜像以对齐 live）。
-    /// 返回导入的服务器数量。
-    pub fn import_mcp_from_live(&self) -> AppResult<usize> {
-        let _guard = self
-            .operation
-            .lock()
-            .map_err(|_| app_err!("操作锁已损坏"))?;
-        let document = codex_config::parse_document(&self.read_live_config()?)?;
-        let fragments = codex_config::mcp_server_fragments_from_document(&document);
-        let count = fragments.len();
-        self.replace_mcp_mirror(&fragments)?;
-        tauri_plugin_log::log::info!(
-            "[mcp.config.import] outcome=success count={count} msg=\"已从 live 配置导入 MCP\""
-        );
-        Ok(count)
-    }
-
     /// 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live。
     pub fn mcp_section_toml(&self) -> AppResult<String> {
         Ok(

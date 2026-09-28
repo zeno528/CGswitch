@@ -538,8 +538,6 @@ const webBalanceCache: Record<string, ProfileBalanceInfo> = {};
 const webChatgptQuota: ProfileBalanceInfo = {
   currency: "",
   total_balance: "",
-  granted_balance: "",
-  topped_up_balance: "",
   usage_percent: 18,
   usage_reset: "3h12m",
   usage_reset_at: Date.now() + 3 * 60 * 60 * 1000 + 12 * 60 * 1000,
@@ -852,8 +850,6 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
             {
               currency: "",
               total_balance: "",
-              granted_balance: "",
-              topped_up_balance: "",
               usage_percent: 15,
               usage_reset: "2h23m",
               usage_label: "5小时",
@@ -871,8 +867,6 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           {
             currency: "CNY",
             total_balance: "110.00",
-            granted_balance: "10.00",
-            topped_up_balance: "100.00",
             usage_percent: null,
             usage_reset: null,
             weekly_usage_percent: null,
@@ -1264,8 +1258,6 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return webMcpServers.map(renderMcpFragmentWeb).join("\n") as T;
     }
     case "restore_mcp_from_database":
-      return webMcpServers.length as T;
-    case "import_mcp_from_live":
       return webMcpServers.length as T;
     case "mcp_sync_preview": {
       // web 调试样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异页

@@ -141,8 +141,6 @@ export interface EditorDiagnosticSummary {
 export interface ProfileBalanceInfo {
   currency: string;
   total_balance: string;
-  granted_balance: string;
-  topped_up_balance: string;
   /** 用量型供应商（如 MiniMax Token Plan）的已用百分比；余额型供应商为 null。 */
   usage_percent: number | null;
   /** 主用量窗口重置倒计时（如 "2h23m"）。 */

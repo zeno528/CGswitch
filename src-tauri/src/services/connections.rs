@@ -66,8 +66,6 @@ mod tests {
         ProfileBalanceInfo {
             currency: currency.into(),
             total_balance: total.into(),
-            granted_balance: "0.00".into(),
-            topped_up_balance: total.into(),
             usage_percent: None,
             usage_reset: None,
             usage_reset_at: None,
@@ -737,8 +735,6 @@ async fn query_minimax_balance(
                 balance_infos: vec![ProfileBalanceInfo {
                     currency: String::new(),
                     total_balance: String::new(),
-                    granted_balance: String::new(),
-                    topped_up_balance: String::new(),
                     usage_percent: Some(usage_percent),
                     usage_reset: entry.remains_time.and_then(|ms| format_reset(ms, false)),
                     usage_reset_at: None,
@@ -811,8 +807,6 @@ pub(crate) fn zhipu_quota_info(
     Ok(ProfileBalanceInfo {
         currency: String::new(),
         total_balance: String::new(),
-        granted_balance: String::new(),
-        topped_up_balance: String::new(),
         usage_percent: Some(primary.used_percent),
         usage_reset: primary.reset.clone(),
         usage_reset_at: primary.reset_at,
@@ -961,8 +955,6 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
     Some(ProfileBalanceInfo {
         currency: String::new(),
         total_balance: String::new(),
-        granted_balance: String::new(),
-        topped_up_balance: String::new(),
         usage_percent: Some(usage_percent),
         usage_reset: chatgpt_reset_countdown(primary.reset_at, primary.limit_window_seconds),
         usage_reset_at: chatgpt_reset_timestamp(primary.reset_at),

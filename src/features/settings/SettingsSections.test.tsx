@@ -326,7 +326,7 @@ describe("SettingsSections", () => {
       accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false, plan_type: "pro", subscription_active_until: 1_789_694_940_000 }],
     };
     const balance: ProfileBalanceInfo = {
-      currency: "", total_balance: "", granted_balance: "", topped_up_balance: "",
+      currency: "", total_balance: "",
       usage_percent: 18, usage_reset: "3h12m", usage_reset_at: Date.now() + 3 * 3_600_000, weekly_usage_percent: null, weekly_reset: null,
       reset_credits_available: 2,
       reset_credits: [

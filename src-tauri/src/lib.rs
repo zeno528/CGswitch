@@ -283,7 +283,6 @@ pub fn run() {
             commands::revert_mcp_live_entries,
             commands::get_mcp_section_toml,
             commands::restore_mcp_from_database,
-            commands::import_mcp_from_live,
             commands::mcp_sync_preview,
             commands::get_mcp_server_toml,
             commands::patch_mcp_fragment,
@@ -359,11 +358,7 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
-                    }
+                    show_main_window(app);
                 }))?;
 
             // 设置加载失败若静默回退默认值，用户配置「消失」且无迹可寻，必须留痕

@@ -161,8 +161,6 @@ export const api = {
   getMcpSectionToml: () => call<string>("get_mcp_section_toml"),
   // 显式恢复：数据库镜像写回 live config.toml，返回恢复数量
   restoreMcpFromDatabase: () => call<number>("restore_mcp_from_database"),
-  // 显式导入：live 当前 MCP 段强制镜像进数据库，返回导入数量
-  importMcpFromLive: () => call<number>("import_mcp_from_live"),
   // 同步预览：对比 live 与数据库镜像的 MCP 差异（只读），供同步前人工裁决
   mcpSyncPreview: () => call<McpSyncPreview>("mcp_sync_preview"),
   saveMcpServer: (originalName: string | null, spec: McpServerSpec, fragment?: string) =>

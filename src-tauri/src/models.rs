@@ -232,8 +232,6 @@ pub struct ChatgptResetCredit {
 pub struct ProfileBalanceInfo {
     pub currency: String,
     pub total_balance: String,
-    pub granted_balance: String,
-    pub topped_up_balance: String,
     /// 用量型供应商（如 MiniMax Token Plan）的已用百分比；余额型供应商为 None。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_percent: Option<u32>,

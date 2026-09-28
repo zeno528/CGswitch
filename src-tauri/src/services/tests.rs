@@ -27,6 +27,17 @@ fn chatgpt_test_context() -> (tempfile::TempDir, AppContext) {
     (home, context)
 }
 
+/// 测试夹具：live config 的 [mcp_servers] 段整体镜像进数据库，返回导入的服务器数。
+/// （生产侧 import_mcp_from_live 因 UI 从未接线已随命令链一并移除，测试仍需要它构造镜像状态。）
+fn import_mcp_from_live(context: &AppContext) -> usize {
+    let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    let document = codex_config::parse_document(&live).unwrap();
+    let fragments = codex_config::mcp_server_fragments_from_document(&document);
+    let count = fragments.len();
+    context.replace_mcp_mirror(&fragments).unwrap();
+    count
+}
+
 fn chatgpt_auth(account_id: &str, access_token: &str) -> String {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
@@ -1018,7 +1029,9 @@ fn sync_active_profile_from_live_persists_external_mcp_changes() {
     )
     .unwrap();
 
-    context.sync_active_profile_from_live().unwrap();
+    if let Some(document) = context.live_document() {
+        context.sync_active_profile_document(&document).unwrap();
+    }
     let stored = context.database.profile(&profile.id).unwrap();
     assert!(stored
         .payload
@@ -1896,7 +1909,7 @@ fn mcp_managed_entry_hidden_and_untouchable() {
     assert_eq!(names, ["github"]);
 
     // 正常导入一次保证镜像与 live 一致，再往镜像塞入残留的 node_repl 片段
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
     let mut fragments = context.database.mcp_server_fragments().unwrap();
     fragments.push((
         "node_repl".into(),
@@ -2029,7 +2042,7 @@ fn restore_database_writes_mcp_back_to_live() {
     let (source_context, _home_a) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
     context_with_profile(&source_context);
-    source_context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&source_context);
     let exported = source_context.export_database().unwrap();
     let backup_name = exported.file_name().unwrap().to_string_lossy().into_owned();
 
@@ -2059,7 +2072,7 @@ fn context_with_profile(context: &AppContext) {
 fn created_profiles_snapshot_prefers_database_mcp_mirror() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.mirrored]\nurl = \"https://mirror/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
     std::fs::write(
         context.paths.codex_config(),
         "[mcp_servers.live]\nurl = \"https://live/mcp\"\n",
@@ -2148,11 +2161,11 @@ fn mcp_delete_via_app_clears_database_mirror() {
 fn mcp_import_from_live_forces_mirror() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部清空 live 后，显式「从配置导入」让数据库接受空态（放弃保留的镜像）
     std::fs::write(context.paths.codex_config(), "model = \"gpt-5.6\"\n").unwrap();
-    let count = context.import_mcp_from_live().unwrap();
+    let count = import_mcp_from_live(&context);
     assert_eq!(count, 0);
     assert!(context.database.mcp_server_fragments().unwrap().is_empty());
     assert!(context.restore_mcp_from_database().is_err());
@@ -2163,7 +2176,7 @@ fn restore_mcp_rewrites_only_the_mcp_region() {
     let (context, _home) = mcp_test_context(
         "model = \"gpt-5.6\"\n\n[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n\n[projects.'x']\ntrust_level = \"trusted\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部把 tavily 那行的引号删掉：整份文件解析不了，MCP 段之外的内容完好
     std::fs::write(
@@ -2192,7 +2205,7 @@ fn restore_mcp_keeps_managed_entries_when_rebuilding_the_region() {
     const MANAGED: &str = "[mcp_servers.node_repl]\ncommand = \"node_repl.exe\"\n\n[mcp_servers.node_repl.env]\nCODEX_HOME = \"/x\"\n";
     let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{MANAGED}");
     let (context, _home) = mcp_test_context(&live);
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 解析不了时重建 MCP 区域：托管条目不在镜像里，必须按 live 原文留在原位
     std::fs::write(
@@ -2218,7 +2231,7 @@ fn restore_mcp_region_stops_at_the_next_section() {
     const TAIL: &str = "[[skills.config]]\npath = 'C:\\skills\\a\\SKILL.md'\nenabled = false\n\n[plugins.\"browser@openai-bundled\"]\nenabled = true\n";
     let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{TAIL}");
     let (context, _home) = mcp_test_context(&live);
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     std::fs::write(
         context.paths.codex_config(),
@@ -2241,7 +2254,7 @@ fn restore_mcp_region_stops_at_the_next_section() {
 fn restore_mcp_refuses_when_no_mcp_region_can_be_located() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 文件彻底损坏且不含 MCP 段：拒绝整份重写（那会丢掉区域外的全部配置），
     // 原文件一个字节都不动，交由备份恢复处理
@@ -2255,7 +2268,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     let (context, _home) = mcp_test_context(
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部（codex mcp remove）删掉 a：列表只读，a 保留为“仅数据库”差异
     std::fs::write(
@@ -2267,7 +2280,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     assert_eq!(context.database.mcp_server_fragments().unwrap().len(), 2);
 
     // 显式“以配置文件为准”才收敛：a 从数据库清除，预览归零
-    let count = context.import_mcp_from_live().unwrap();
+    let count = import_mcp_from_live(&context);
     assert_eq!(count, 1);
     let fragments = context.database.mcp_server_fragments().unwrap();
     assert_eq!(fragments.len(), 1);
@@ -2279,7 +2292,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
 #[test]
 fn mcp_preview_flags_live_only_db_only_and_changed() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部改 a 的 url、新增 b，且不再触发 list：预览应报“内容不同”与“仅配置文件”
     std::fs::write(
@@ -2326,7 +2339,7 @@ fn mcp_diff_verbs_are_surgical_to_one_entry() {
     let (context, _home) = mcp_test_context(
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部同时修改 a、b：出现两条 changed 差异
     std::fs::write(
@@ -2406,7 +2419,7 @@ fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
     let (context, _home) = mcp_test_context(
         "model = \"gpt-5\"\n\n[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n\n[scale]\nkeep = true\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部把两条都改了，且把顺序调换成 b、a
     std::fs::write(
@@ -2453,7 +2466,7 @@ fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
 #[test]
 fn mcp_batch_diff_live_aborts_without_writing_when_one_entry_fails() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
     let before = read_config_text(&context);
     let backups = config_backup_count(&context);
 
@@ -2482,7 +2495,7 @@ fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
     let (context, _home) = mcp_test_context(
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n\n[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部只改了 a、b；c 保持原样
     std::fs::write(
@@ -2514,7 +2527,7 @@ fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
 #[test]
 fn mcp_preview_ignores_comment_only_difference() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 只在条目内加一行注释：建模字段全等 = 语义等价，不算差异
     std::fs::write(
@@ -2529,7 +2542,7 @@ fn mcp_preview_ignores_comment_only_difference() {
 #[test]
 fn mcp_restore_keeps_live_text_for_semantically_equal_servers() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // live 侧只多了注释（建模字段一致）：恢复时保留 live 原文，不回滚注释
     std::fs::write(
@@ -2557,7 +2570,7 @@ fn mcp_restore_keeps_live_text_for_semantically_equal_servers() {
 #[test]
 fn mcp_preview_ignores_blank_line_only_difference() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     std::fs::write(
         context.paths.codex_config(),
@@ -2589,7 +2602,7 @@ fn mcp_preview_ignores_legacy_empty_mcp_root_header() {
 #[test]
 fn mcp_preview_empty_when_mirror_matches_live() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     let preview = context.mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
@@ -2600,7 +2613,7 @@ fn mcp_preview_empty_when_mirror_matches_live() {
 #[test]
 fn mcp_preview_fails_when_live_unparseable() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // live 无法解析：预览报错，前端进入“仅可从数据库恢复”降级模式
     std::fs::write(context.paths.codex_config(), "not [ valid").unwrap();
