@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, CircleAlert, GitCompare, Undo2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
@@ -78,23 +78,14 @@ function McpDiffDetail({ entry }: { entry: McpSyncDiffEntry }) {
 interface McpDiffRowProps {
   entry: McpSyncDiffEntry;
   busy: boolean;
-  collapsed: boolean;
-  onToggle: () => void;
   onResolve: McpDiffPageProps["onResolve"];
 }
 
-/** 与 MCP 列表卡片同构：apple-group + 展开体继承全局 apple-disclosure 动画与 mcp-tools-disclosure 布局。 */
-function McpDiffRow({ entry, busy, collapsed, onToggle, onResolve }: McpDiffRowProps) {
+/** 与 MCP 列表卡片同构，差异内容始终展开。 */
+function McpDiffRow({ entry, busy, onResolve }: McpDiffRowProps) {
   const { t } = useTranslation("mcp");
-  const expanded = !collapsed;
   return (
-    <div
-      className="apple-group select-none"
-      onClick={(event) => {
-        if (!(event.target instanceof HTMLElement) || event.target.closest("button, input, code, [role=\"switch\"]")) return;
-        onToggle();
-      }}
-    >
+    <div className="apple-group">
       <div className="apple-list-row mcp-expanded-card__header">
         <span className={`apple-chip ${entry.kind === "live_only" ? "chip-warn" : "chip-danger"}`}>{kindText(entry, t)}</span>
         <span className="min-w-0 flex-1 truncate font-semibold">{entry.name}</span>
@@ -109,28 +100,14 @@ function McpDiffRow({ entry, busy, collapsed, onToggle, onResolve }: McpDiffRowP
           </button>
         </div>
       </div>
-      <div className={`apple-disclosure mcp-tools-disclosure ${expanded ? "apple-disclosure--open" : ""}`}>
-        <div className="apple-disclosure__content" aria-hidden={!expanded} inert={!expanded}>
-          <div className="apple-disclosure__body">
-            <McpDiffDetail entry={entry} />
-          </div>
-        </div>
-      </div>
+      <McpDiffDetail entry={entry} />
     </div>
   );
 }
 
 export default function McpDiffPage({ preview, previewError, resolving, onBack, onResolve, onResolveAll, onRebuild }: McpDiffPageProps) {
   const { t } = useTranslation("mcp");
-  // 默认全部展开：单台 MCP 的差异只有几行，折叠默认态反而多一次点击
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const entries = preview?.entries ?? [];
-  const toggle = (name: string) => setCollapsed((current) => {
-    const next = new Set(current);
-    if (next.has(name)) next.delete(name);
-    else next.add(name);
-    return next;
-  });
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
       <div className="apple-page-bar apple-edit-toolbar apple-edit-toolbar--header justify-between">
@@ -166,7 +143,7 @@ export default function McpDiffPage({ preview, previewError, resolving, onBack, 
         ) : entries.length ? (
           <div className="space-y-2">
             {entries.map((entry) => (
-              <McpDiffRow key={entry.name} entry={entry} busy={resolving} collapsed={collapsed.has(entry.name)} onToggle={() => toggle(entry.name)} onResolve={onResolve} />
+              <McpDiffRow key={entry.name} entry={entry} busy={resolving} onResolve={onResolve} />
             ))}
           </div>
         ) : (

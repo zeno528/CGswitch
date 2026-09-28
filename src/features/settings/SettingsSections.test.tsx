@@ -125,7 +125,7 @@ describe("SettingsSections", () => {
     );
     expect(html.match(/class="apple-group /g)).toHaveLength(2);
     expect(html).toContain("app-version");
-    expect(html).toContain('class="apple-wordmark">CGswitch</span><span class="app-version">v');
+    expect(html).toContain('class="apple-wordmark">CGswitch</span><span class="flex items-center gap-2"><span class="app-version">v');
     expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
     expect(html).not.toContain("当前版本");
     expect(html).not.toContain("版本更新");
@@ -172,6 +172,8 @@ describe("SettingsSections", () => {
   });
 
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
+    expect(settingsSectionsSource).toContain('<span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span>');
+    expect(settingsSectionsSource).not.toContain("settings-about__update-description");
     expect(settingsSectionsSource).toContain('t("about.upgradeTo")');
     expect(settingsSectionsSource).not.toContain('t("about.updateNow")');
     expect(settingsSectionsSource).toContain('t("about.changelog")');

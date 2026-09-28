@@ -380,13 +380,13 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
             <div className="flex flex-col items-start gap-1">
               <span className="apple-wordmark">CGswitch</span>
-              <span className="app-version">v{version.trim()}</span>
+              <span className="flex items-center gap-2">
+                <span className="app-version">v{version.trim()}</span>
+                {update ? <span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span> : null}
+              </span>
             </div>
           </div>
           <div className="settings-about__actions flex flex-wrap items-center gap-[var(--gap-actions)]">
-            {update && (
-              <span className="settings-about__update-description setting-description flex items-center gap-2"><span className="h-2 w-2 shrink-0 rounded-full bg-accent" aria-hidden="true" />{t("about.updateAvailable")}</span>
-            )}
             {update ? (
               <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
                 {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}

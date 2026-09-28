@@ -95,14 +95,11 @@ describe("MCP 差异二级页", () => {
     expect(viewSource).toContain("useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);");
   });
 
-  it("差异默认全部展开（单台差异只有几行，折叠默认态多一次点击）", () => {
-    expect(pageSource).toContain("const [collapsed, setCollapsed] = useState<Set<string>>(new Set());");
-    expect(pageSource).toContain("const expanded = !collapsed;");
-  });
-
-  it("展开卡片继承 MCP 列表卡片：全局 apple-disclosure 动画 + mcp-tools-disclosure 布局 + mcp-expanded-card__header 头部", () => {
-    expect(pageSource).toContain('className={`apple-disclosure mcp-tools-disclosure ${expanded ? "apple-disclosure--open" : ""}`}');
-    expect(pageSource).toContain("apple-disclosure__content\" aria-hidden={!expanded} inert={!expanded}");
+  it("差异始终展开，保留 MCP 卡片头部", () => {
+    expect(pageSource).toContain('<McpDiffDetail entry={entry} />');
+    expect(pageSource).not.toContain("apple-disclosure");
+    expect(pageSource).not.toContain("collapsed");
+    expect(pageSource).not.toContain("onToggle");
     expect(pageSource).toContain('className="apple-list-row mcp-expanded-card__header"');
     expect(pageSource).not.toContain("mcp-diff-detail");
   });
@@ -122,8 +119,9 @@ describe("MCP 差异二级页", () => {
     expect(pageSource).not.toContain("apple-inline-btn");
   });
 
-  it("卡片是折叠切换控件，禁用文本选中避免双击误选", () => {
-    expect(pageSource).toContain('className="apple-group select-none"');
+  it("卡片不再响应空白处点击，正文允许选中", () => {
+    expect(pageSource).toContain('className="apple-group"');
+    expect(pageSource).not.toContain("onClick={(event) => {");
   });
 
   it("标题栏提供悬停说明卡片，解释红绿语义与两个动词，关键词加粗", () => {

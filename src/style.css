@@ -1066,6 +1066,9 @@ body.drag-active * {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+/* 字段标题旁的小按钮保留点击高度，不撑高标题行。 */
+.field-label + .apple-inline-btn { margin-block: -0.125rem; }
+
 /* 编辑类页面的统一返回按钮（ProfileEdit / ProfileIconEdit 共用） */
 .apple-page-header {
   display: flex;
@@ -1219,10 +1222,6 @@ body.drag-active * {
 .settings-about__actions > .apple-action-button {
   border-color: color-mix(in srgb, currentColor 20%, transparent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
-}
-
-.settings-about__update-description {
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
 .profile-list > .apple-group,
