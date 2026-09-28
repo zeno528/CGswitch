@@ -25,6 +25,10 @@ function daysRemaining(time?: number | null) {
   return time == null ? null : Math.max(0, Math.ceil((time - Date.now()) / 86_400_000));
 }
 
+export function expiryColorClass(days: number | null) {
+  return days == null ? "muted" : days <= 3 ? "text-(--danger)" : days <= 7 ? "text-(--warning)" : "muted";
+}
+
 function formatLocalTime(time: number, language: string) {
   return new Intl.DateTimeFormat(language, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(time);
 }
@@ -38,14 +42,6 @@ function localTimeZone(language: string) {
 }
 
 const quotaProgressAnimationDuration = 1000;
-
-// Match ECharts' default first-render bar animation exactly.
-function cubicInOut(value: number) {
-  const doubled = value * 2;
-  if (doubled < 1) return 0.5 * doubled * doubled * doubled;
-  const shifted = doubled - 2;
-  return 0.5 * (shifted * shifted * shifted + 2);
-}
 
 function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loading, animationRevision, animationFromRemaining }: { label: string; usedPercent: number; resetAt?: number | null; resetIn?: string | null; onRefresh?: () => void; loading?: boolean; animationRevision: number; animationFromRemaining?: number }) {
   const { t, i18n } = useTranslation("settings");
@@ -66,21 +62,17 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   useEffect(() => {
     const fill = fillRef.current;
     if (!fill || animationRevision === 0) return;
+    // key={animationRevision} 让元素带 scaleX(animationStartScale) 重挂载；先禁过渡固定起点，
+    // 再以 CSS transition 过渡到目标值（ECharts 同款 cubic-in-out 缓动）。
+    fill.style.transition = "none";
+    fill.style.transform = `scaleX(${animationStartScale})`;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       fill.style.transform = `scaleX(${animationEndScale})`;
       return;
     }
-
-    const startedAt = performance.now();
-    let frame = 0;
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / quotaProgressAnimationDuration);
-      const current = animationStart + (remaining - animationStart) * cubicInOut(progress);
-      fill.style.transform = `scaleX(${animationMax === 0 ? 1 : current / animationMax})`;
-      if (progress < 1) frame = window.requestAnimationFrame(tick);
-    };
-    frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
+    void fill.getBoundingClientRect();
+    fill.style.transition = `transform ${quotaProgressAnimationDuration}ms cubic-bezier(0.645, 0.045, 0.355, 1)`;
+    fill.style.transform = `scaleX(${animationEndScale})`;
   }, [animationRevision]);
 
   return <div className="min-w-0 space-y-2 text-xs">
@@ -90,7 +82,7 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
           <span className="field-subtitle">{title}</span>
           {onRefresh ? <button type="button" className="apple-icon-button h-5 w-5 text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={onRefresh}><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} strokeWidth={2} /></button> : null}
         </div>
-        <span className="meta-xs shrink-0 whitespace-nowrap">{t("account.remainingShort")} <span className={`font-semibold ${balanceChipClass(used, false)}`}>{remaining}%</span></span>
+        <span className="meta-xs shrink-0 whitespace-nowrap">{t("account.remainingShort")} <span className={`font-semibold ${balanceChipClass(used)}`}>{remaining}%</span></span>
       </div>
       {reset ? <div className="meta-xs mt-0.5 muted">{reset}</div> : null}
     </div>
@@ -232,14 +224,12 @@ function ResetCredits({ availableCount, credits }: { availableCount: number; cre
     {credits?.length ? <div className="mt-3 space-y-2">
       {credits.map((credit) => {
         const days = daysRemaining(credit.expires_at);
-        // 剩余天数临期变色：≤3 天危险、≤7 天警告，平时次要色
-        const daysClass = days == null ? "muted" : days <= 3 ? "text-(--danger)" : days <= 7 ? "text-(--warning)" : "muted";
         return (
           <div key={credit.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-(--panel-border) bg-(--main-surface-bg) px-3 py-2.5">
             <div className="min-w-0 text-xs">{resetTitle(credit.reset_type)}</div>
             <div className="whitespace-nowrap text-xs">
               {t("account.resetCreditExpiry", { time: formatExpiry(credit.expires_at) })}
-              {days == null ? null : <span className={daysClass}> · {t("account.resetCreditDaysRemaining", { count: days })}</span>}
+              {days == null ? null : <> · <span className={expiryColorClass(days)}>{t("account.resetCreditDaysRemaining", { count: days })}</span></>}
             </div>
           </div>
         );
@@ -253,7 +243,7 @@ function SubscriptionExpiry({ plan, expiresAt }: { plan?: string | null; expires
   const subscriptionExpiry = plan?.toLowerCase() === "free" ? null : expiresAt;
   if (!plan && !subscriptionExpiry) return null;
   const days = daysRemaining(subscriptionExpiry);
-  return <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1"><PlanBadge plan={plan ?? null} />{subscriptionExpiry ? <span className="meta-xs muted">{t("account.subscriptionRenewal", { time: formatLocalTime(subscriptionExpiry, i18n.language), timeZone: localTimeZone(i18n.language) })}{days == null ? null : <> · {t("account.subscriptionDaysRemaining", { count: days })}</>}</span> : null}</div>;
+  return <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1"><PlanBadge plan={plan ?? null} />{subscriptionExpiry ? <span className="meta-xs muted">{t("account.subscriptionRenewal", { time: formatLocalTime(subscriptionExpiry, i18n.language), timeZone: localTimeZone(i18n.language) })}{days == null ? null : <> · <span className={expiryColorClass(days)}>{t("account.subscriptionDaysRemaining", { count: days })}</span></>}</span> : null}</div>;
 }
 
 export default function AccountsView({ initialStatus, balanceCache, onAuthStatusChange }: { initialStatus: AuthStatus; balanceCache?: Record<string, ProfileBalanceInfo>; onAuthStatusChange?: (status: AuthStatus) => void }) {

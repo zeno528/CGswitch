@@ -1,11 +1,18 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isOAuthLoginExpiredError } from "./AccountsView";
+import { expiryColorClass, isOAuthLoginExpiredError } from "./AccountsView";
 
 const source = readFileSync(new URL("./AccountsView.tsx", import.meta.url), "utf8");
 
 describe("OAuth account quota recovery", () => {
+  it("续期日和重置次数共用临期颜色", () => {
+    expect([3, 7, 8].map(expiryColorClass)).toEqual(["text-(--danger)", "text-(--warning)", "muted"]);
+    expect(source.match(/<span className=\{expiryColorClass\(days\)\}>/g)).toHaveLength(2);
+    expect(source).toContain('className="meta-xs muted"');
+    expect(source).toContain('className="whitespace-nowrap text-xs"');
+  });
+
   it("recognizes expired credentials without treating network failures as re-login cases", () => {
     expect(isOAuthLoginExpiredError("Refresh Token 失效或已过期")).toBe(true); // i18n-exempt: Backend error fixture.
     expect(isOAuthLoginExpiredError("refresh_token 被服务端拒绝，该账号需要重新登录")).toBe(true); // i18n-exempt: Backend error fixture.

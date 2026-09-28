@@ -31,12 +31,7 @@ export const balanceQueryProviders = new Set(["deepseek", "minimax", "ZAI"]);
 export const usageQueryProviders = new Set(["minimax", "ZAI"]);
 
 /** 余额/用量胶囊变色（已用 <70% 绿 / 70-89 9、橙 / ≥90% 红；负余额红色） */
-export function balanceChipClass(
-  usagePercent: number | null,
-  failed: boolean,
-  totalBalance: string | null = null,
-): string {
-  if (failed) return "chip-danger";
+export function balanceChipClass(usagePercent: number | null, totalBalance: string | null = null): string {
   if (usagePercent == null) return Number(totalBalance) < 0 ? "chip-danger" : "chip-success";
   if (usagePercent >= 90) return "chip-danger";
   if (usagePercent >= 70) return "chip-warn";
