@@ -8,7 +8,6 @@ import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { McpIcon } from "../../components/McpIcon";
-import { mcpTransportText } from "../../utils";
 import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
 import McpDiffPage from "./McpDiffPage";
 import McpEdit from "./McpEdit";
@@ -125,7 +124,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
                 aria-label={t(probing ? "list.connectionStateChecking" : result?.ok ? "list.connectionStateConnected" : "list.connectionStateUnavailable")}
               />
               <span className="min-w-0 truncate font-semibold">{server.name}</span>
-              <MetaChip>{mcpTransportText(server, t)}</MetaChip>
+              <MetaChip>{server?.url ? "HTTP" : server?.command ? "STDIO" : t("transport.unknown")}</MetaChip>
               {result?.server_info?.version ? <MetaChip>{result.server_info.version}</MetaChip> : null}
               {toolsLoaded ? <MetaChip>{t("list.toolCount", { count: result?.tools.length ?? 0 })}</MetaChip> : null}
               {toolsBusy ? <span className="muted shrink-0"><LoadingSpinner /></span> : null}

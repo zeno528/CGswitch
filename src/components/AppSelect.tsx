@@ -17,7 +17,6 @@ interface AppSelectProps<T extends string | number> {
   onChange: (value: T) => void;
   placeholder?: string;
   disabled?: boolean;
-  className?: string;
   renderLabel?: (option: SelectOption<T>) => ReactNode;
 }
 
@@ -27,7 +26,6 @@ export function AppSelect<T extends string | number>({
   onChange,
   placeholder,
   disabled,
-  className = "",
   renderLabel,
 }: AppSelectProps<T>) {
   const { t } = useTranslation();
@@ -95,7 +93,7 @@ export function AppSelect<T extends string | number>({
     <div ref={rootRef} className="app-select-wrap" data-open={open}>
       <button
         type="button"
-        className={`app-select ${className}`}
+        className="app-select"
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
