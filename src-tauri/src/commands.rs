@@ -9,13 +9,14 @@ use crate::builtin;
 use crate::codex::config as codex_config;
 use crate::error::{app_err, AppResult};
 use crate::models::{
-    AppState, AuthSource, CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview,
-    ProfileBalanceInfo, ProfileDetail, ProfileSummary, Settings, TrayClickAction,
+    AppState, AuthSource, ClaudeProfileDetail, ClaudeProfileInput, ClaudeProfileSummary,
+    CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview, ProfileBalanceInfo,
+    ProfileDetail, ProfileSummary, Settings, TrayClickAction,
 };
 use crate::services::{
     AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
     PluginSkill, PluginSummary, PluginUpdate, ProfileBalance, ProfileConnectionResult,
-    SkillSummary,
+    SkillSummary, SkillTool,
 };
 
 fn should_try_next_account_credential(result: &ProfileConnectionResult) -> bool {
@@ -122,18 +123,125 @@ pub async fn import_skill(source_path: String, state: State<'_, AppContext>) -> 
 }
 
 #[tauri::command]
-pub async fn enable_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
-    state.enable_skill(&name).await
+pub async fn enable_skill(
+    name: String,
+    tool: SkillTool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.enable_skill(&name, tool).await
 }
 
 #[tauri::command]
-pub async fn disable_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
-    state.disable_skill(&name).await
+pub async fn disable_skill(
+    name: String,
+    tool: SkillTool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.disable_skill(&name, tool).await
 }
 
 #[tauri::command]
 pub async fn delete_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.delete_skill(&name).await
+}
+
+#[tauri::command]
+pub fn claude_list_profiles(state: State<'_, AppContext>) -> AppResult<Vec<ClaudeProfileSummary>> {
+    state.claude_list()
+}
+
+#[tauri::command]
+pub fn claude_get_profile(
+    id: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_get(&id)
+}
+
+#[tauri::command]
+pub fn claude_capture_profile(
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_capture(&name)
+}
+
+// ponytail: 参数即表单字段一一对应，IPC 边界保持散参（camelCase 自动映射），service 层才收拢成 Input
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn claude_save_profile(
+    id: Option<String>,
+    name: String,
+    base_url: Option<String>,
+    auth_token: Option<String>,
+    model: Option<String>,
+    description: Option<String>,
+    fetched_models: Option<Vec<String>>,
+    kind: Option<String>,
+    admin_url: Option<String>,
+    extra_env: Option<String>,
+    raw_settings: Option<String>,
+    icon: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_save(
+        id.as_deref(),
+        ClaudeProfileInput {
+            name,
+            base_url,
+            auth_token,
+            model,
+            description,
+            fetched_models,
+            kind,
+            admin_url,
+            extra_env,
+            raw_settings,
+            icon,
+        },
+    )
+}
+
+#[tauri::command]
+pub fn claude_set_profile_icon(
+    id: String,
+    icon: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_set_icon(&id, icon)
+}
+
+#[tauri::command]
+pub async fn claude_fetch_models(base_url: String, auth_token: String) -> AppResult<Vec<String>> {
+    crate::services::fetch_claude_models(&base_url, &auth_token).await
+}
+
+#[tauri::command]
+pub fn claude_delete_profile(id: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.claude_delete(&id)
+}
+
+#[tauri::command]
+pub fn claude_apply_profile(id: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.claude_apply(&id)
+}
+
+#[tauri::command]
+pub fn claude_reorder_profiles(ids: Vec<String>, state: State<'_, AppContext>) -> AppResult<()> {
+    state.claude_reorder(&ids)
+}
+
+#[tauri::command]
+pub fn claude_duplicate_profile(
+    id: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_duplicate(&id)
+}
+
+#[tauri::command]
+pub async fn claude_test_profile(id: String, state: State<'_, AppContext>) -> AppResult<u64> {
+    state.claude_test_profile(&id).await
 }
 
 #[tauri::command]
@@ -576,6 +684,34 @@ pub async fn restart_codex(state: State<'_, AppContext>) -> AppResult<()> {
 #[tauri::command]
 pub fn list_mcp_servers(state: State<'_, AppContext>) -> AppResult<Vec<McpServerSpec>> {
     state.list_mcp_servers()
+}
+
+#[tauri::command]
+pub fn list_claude_mcp_servers(state: State<'_, AppContext>) -> AppResult<Vec<McpServerSpec>> {
+    state.claude_mcp_servers()
+}
+
+#[tauri::command]
+pub fn get_claude_mcp_server_json(
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<Option<String>> {
+    state.claude_mcp_server_json(&name)
+}
+
+#[tauri::command]
+pub fn save_claude_mcp_server(
+    original_name: Option<String>,
+    name: String,
+    json: String,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.save_claude_mcp_server(original_name.as_deref(), &name, &json)
+}
+
+#[tauri::command]
+pub fn delete_claude_mcp_server(name: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.delete_claude_mcp_server(&name)
 }
 
 /// 测试 MCP 最小 initialize 握手；include_tools 为 true 时才额外读取 tools/list。

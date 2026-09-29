@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -13,6 +13,7 @@ import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
+import ClaudeProfilesView from "../features/claude/ClaudeProfilesView";
 import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
@@ -37,6 +38,19 @@ const checkMcpDiff = () =>
 // 进场动画的作用范围沿用原 CSS 动画的选择器：任何新挂载的页内容元素都整段上浮。
 const PAGE_ENTER_TARGET =
   ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
+
+/// 侧栏条目/分组标题的文案 key（common/nav 资源）：本列表是唯一使用方，新增导航项时同步扩这里。
+type SidebarLabelKey =
+  | "nav.providers"
+  | "nav.mcp"
+  | "nav.plugins"
+  | "nav.accounts"
+  | "nav.skills"
+  | "nav.settings"
+  | "nav.claudeProviders"
+  | "nav.groupCodex"
+  | "nav.groupClaude"
+  | "nav.groupCommon";
 
 /// 页面进场动画：沿原 cubic-bezier(0.16,1,0.35,1) 曲线做 8px 上浮，但位移逐帧量化到整设备像素。
 /// Chromium 渲染合成变换时本就按整设备像素取样：曲线尾段的亚像素爬行不会产生更细腻的运动，
@@ -348,7 +362,43 @@ export default function AppShell() {
     setView("accounts");
   };
 
+  const goClaude = () => {
+    if (view === "claude") return;
+    setView("claude");
+  };
+
   const navClass = "apple-sidebar-nav-button app-selection-state";
+
+  // 侧栏分组（C 方案）：Codex / Claude / 通用导航。新增页面 = 数组加一条，不再手写按钮块；
+  // 产品分组标识在收缩态仍可见，通用导航不显示多余分组标题。icon 存 ReactNode 以保留各页现有图标形态。
+  // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
+  const sidebarGroups: { key: string; labelKey: SidebarLabelKey; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; titleText?: string; onSelect: () => void }[] }[] = [
+    {
+      key: "codex",
+      labelKey: "nav.groupCodex",
+      items: [
+        { view: "profiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: goProfiles },
+        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: goPlugins },
+        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: goAccounts },
+      ],
+    },
+    {
+      key: "claude",
+      labelKey: "nav.groupClaude",
+      items: [
+        { view: "claude", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: goClaude },
+      ],
+    },
+    {
+      key: "common",
+      labelKey: "nav.groupCommon",
+      items: [
+        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: goMcp },
+        { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: goSkills },
+        { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => goSettings() },
+      ],
+    },
+  ];
 
   return (
     <FeedbackProvider>
@@ -390,44 +440,29 @@ export default function AppShell() {
                 <span className="apple-sidebar-flyout" aria-hidden="true">{t(sidebar.sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}</span>
               ) : null}
             </div>
-            <nav className="mx-1.5 mt-3 space-y-1">
-              <button type="button" className={navClass} data-active={view === "profiles" ? "true" : undefined} aria-label={t("nav.providers")} onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <Layers2 strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.providers")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.providers")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} title={mcpBadgeTitle} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                {/* 角标锚在图标上：收缩态只剩图标时位置依然正确，且 --sidebar-bg 与 --panel-bg 同色，角标描边不用另配 */}
-                <span className="relative flex shrink-0">
-                  <McpIcon className="h-[18px] w-[18px]" />
-                  {mcpBadge ? <span className="apple-count-badge" aria-hidden="true">{mcpBadge}</span> : null}
-                </span>
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.mcp")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.mcp")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "plugins" ? "true" : undefined} aria-label={t("nav.plugins")} onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <Blocks strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.plugins")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.plugins")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "skills" ? "true" : undefined} aria-label={t("nav.skills")} onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <Puzzle strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.skills")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.skills")}</span> : null}
-              </button>
+            <nav className="mx-1.5 mt-3 space-y-3">
+              {sidebarGroups.map((group) => (
+                <div key={group.key} className="apple-sidebar-group" role="group" aria-label={group.key === "common" ? undefined : t(group.labelKey)}>
+                  {group.key !== "common" ? <div className="apple-sidebar-group-label" aria-hidden="true">
+                    {group.key === "codex" ? <img src="/codex.svg" alt="" /> : null}
+                    {group.key === "claude" ? <img src="/claude-code.svg" alt="" /> : null}
+                    <span>{t(group.labelKey)}</span>
+                  </div> : null}
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <button key={item.view} type="button" className={navClass} data-active={view === item.view ? "true" : undefined} aria-label={t(item.labelKey)} title={item.titleText} onClick={item.onSelect} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+                        <span className="relative flex shrink-0">
+                          {item.icon}
+                          {item.badgeText ? <span className="apple-count-badge" aria-hidden="true">{item.badgeText}</span> : null}
+                        </span>
+                        <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>
+                        {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t(item.labelKey)}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
-            <div className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5">
-              <button type="button" className={navClass} data-active={view === "accounts" ? "true" : undefined} aria-label={t("nav.accounts")} onClick={goAccounts} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <CircleUserRound strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.accounts")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.accounts")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "settings" ? "true" : undefined} aria-label={t("nav.settings")} onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <SettingsIcon strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.settings")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.settings")}</span> : null}
-              </button>
-            </div>
           </aside>
 
           <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
@@ -449,6 +484,8 @@ export default function AppShell() {
                 <PluginsView state={state} />
               ) : view === "skills" ? (
                 <SkillsView activationEpoch={activationEpoch} />
+              ) : view === "claude" ? (
+                <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} />
               ) : view === "accounts" ? (
                 <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (

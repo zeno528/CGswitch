@@ -388,10 +388,64 @@ pub struct CodexAppStatus {
 pub struct AppState {
     pub profiles: Vec<ProfileSummary>,
     pub active_profile_id: Option<String>,
+    /// Claude Code 侧当前激活的供应商（claude_profiles 表）。
+    pub active_claude_profile_id: Option<String>,
     pub codex: CodexAppStatus,
     pub settings: Settings,
     pub paths: Vec<PathInfo>,
     pub auth_status: AuthStatus,
     /// 供应商级余额缓存（上次成功查询结果），保证卡片静默显示、切换不闪烁。
     pub balance_cache: std::collections::BTreeMap<String, ProfileBalanceInfo>,
+}
+
+/// Claude Code 供应商列表摘要：token 只回是否已设置，明文只在详情里回显。
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ClaudeProfileSummary {
+    pub id: String,
+    pub name: String,
+    pub base_url: Option<String>,
+    /// token 是否已设置；明文只在详情里回显（卡片测试连通按钮的门控）。
+    pub has_token: bool,
+    pub model: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub updated_at: String,
+}
+
+/// Claude Code 供应商详情：编辑回显含 token 明文（与 Codex ProfileDetail.api_key 同语义）。
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct ClaudeProfileDetail {
+    pub id: String,
+    pub name: String,
+    pub base_url: Option<String>,
+    pub auth_token: Option<String>,
+    pub model: Option<String>,
+    pub description: Option<String>,
+    pub fetched_models: Vec<String>,
+    /// 创建时选择的预设 kind：编辑页反查端点档用。
+    pub kind: Option<String>,
+    pub admin_url: Option<String>,
+    /// 附加 env 键值（JSON 对象原文）：编辑页 settings.json 编辑器直接编辑这段文本。
+    pub extra_env: Option<String>,
+    /// settings.json 全文；旧配置可为空。
+    pub raw_settings: Option<String>,
+    /// 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。
+    pub icon: Option<String>,
+    pub updated_at: String,
+}
+
+/// claude_save_profile 的载荷：字段即编辑页表单，一一对应。
+#[derive(Debug, Clone, Default)]
+pub struct ClaudeProfileInput {
+    pub name: String,
+    pub base_url: Option<String>,
+    pub auth_token: Option<String>,
+    pub model: Option<String>,
+    pub description: Option<String>,
+    pub fetched_models: Option<Vec<String>>,
+    pub kind: Option<String>,
+    pub admin_url: Option<String>,
+    pub extra_env: Option<String>,
+    pub raw_settings: Option<String>,
+    pub icon: Option<String>,
 }

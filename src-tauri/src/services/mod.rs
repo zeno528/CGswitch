@@ -21,6 +21,7 @@ use crate::paths::{now_ms, now_secs, AppPaths};
 
 mod accounts;
 mod apply;
+mod claude;
 mod connections;
 mod mcp;
 mod mcp_probe;
@@ -32,11 +33,12 @@ mod profiles;
 mod settings;
 mod storage;
 
+pub use claude::fetch_claude_models;
 pub use connections::{test_provider_connection, ProfileBalance, ProfileConnectionResult};
 pub use model_fetch::fetch_models;
 pub use plugins::{
     detect_system_proxy, MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview,
-    PluginSkill, PluginSummary, PluginUpdate, SkillCandidate, SkillSummary,
+    PluginSkill, PluginSummary, PluginUpdate, SkillCandidate, SkillSummary, SkillTool,
 };
 pub use storage::DatabaseBackupInfo;
 

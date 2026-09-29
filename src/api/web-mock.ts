@@ -10,6 +10,7 @@ import type {
   PluginPreview,
   PluginSkill,
   PluginSummary,
+  ClaudeProfileDetail,
   SkillSummary,
   SkillCandidate,
   ProfileBalanceInfo,
@@ -201,9 +202,35 @@ const webSkills: SkillSummary[] = [
     source_path: null,
     update_available: false,
     enabled: true,
+    claude_enabled: false,
   },
 ];
 const webLocalSkillPath = "C:\\Users\\<user>\\.agents\\skills\\local-skill";
+
+// Claude Code 供应商 fixture：与后端 claude_profiles 表同构，save/apply/delete 有状态
+const webClaudeProfiles: ClaudeProfileDetail[] = [
+  {
+    id: "cla-demo-1",
+    name: "BigModel 中转",
+    base_url: "https://open.bigmodel.cn/api/anthropic",
+    auth_token: "demo-token",
+    model: "glm-5.3[1m]",
+    description: "演示配置",
+    fetched_models: ["glm-5.3", "glm-5.3-air", "glm-5.3[1m]"],
+    kind: "zhipu",
+    admin_url: "https://open.bigmodel.cn",
+    extra_env: null,
+    raw_settings: JSON.stringify({ model: "sonnet", env: {
+      ANTHROPIC_BASE_URL: "https://open.bigmodel.cn/api/anthropic",
+      ANTHROPIC_AUTH_TOKEN: "demo-token",
+      ANTHROPIC_MODEL: "glm-5.3[1m]",
+    } }, null, 2),
+    icon: "zhipu",
+    sort_order: 0,
+    updated_at: "1700000000000",
+  },
+];
+let webActiveClaudeProfileId: string | null = "cla-demo-1";
 
 let webMarketplaces: PluginMarketplace[] = [
   {
@@ -584,6 +611,7 @@ function webState(): AppState {
   return {
     profiles: [...webProfiles],
     active_profile_id: webActiveProfileId,
+    active_claude_profile_id: webActiveClaudeProfileId,
     codex: {
       running: true,
       display_path: "OpenAI.Codex_2p2nqsd0c76g0!App",
@@ -613,6 +641,51 @@ function renderMcpFragmentWeb(spec: McpServerSpec): string {
     for (const [key, value] of env) lines.push(`${key} = "${value}"`);
   }
   return lines.join("\n") + "\n";
+}
+
+function renderClaudeMcpEntryWeb(spec: McpServerSpec): string {
+  const entry: Record<string, unknown> = spec.command
+    ? { type: "stdio", command: spec.command }
+    : { type: "http", url: spec.url ?? "" };
+  if (spec.args.length) entry.args = spec.args;
+  if (Object.keys(spec.env).length) entry.env = spec.env;
+  const headers = { ...spec.http_headers } as Record<string, string>;
+  for (const [key, variable] of Object.entries(spec.env_http_headers)) headers[key] = `\${${variable}}`;
+  if (spec.bearer_token_env_var && !headers.Authorization) headers.Authorization = `Bearer \${${spec.bearer_token_env_var}}`;
+  if (Object.keys(headers).length) entry.headers = headers;
+  return JSON.stringify(entry, null, 2);
+}
+
+function parseClaudeMcpEntryWeb(name: string, text: string): McpServerSpec {
+  const entry = JSON.parse(text) as Record<string, unknown>;
+  const command = typeof entry.command === "string" ? entry.command : null;
+  const url = typeof entry.url === "string" ? entry.url : null;
+  if ((command ? 1 : 0) + (url ? 1 : 0) !== 1) throw new Error("Claude MCP 必须包含 command 或 url");
+  const headers = entry.headers && typeof entry.headers === "object" ? entry.headers as Record<string, unknown> : {};
+  const http_headers: Record<string, string> = {};
+  const env_http_headers: Record<string, string> = {};
+  let bearer_token_env_var: string | null = null;
+  for (const [key, raw] of Object.entries(headers)) {
+    const value = String(raw);
+    const bearer = /^Bearer \$\{(.+)\}$/.exec(value);
+    const variable = /^\$\{(.+)\}$/.exec(value);
+    if (bearer && key.toLowerCase() === "authorization") bearer_token_env_var = bearer[1];
+    else if (variable) env_http_headers[key] = variable[1];
+    else http_headers[key] = value;
+  }
+  return {
+    name,
+    enabled: null,
+    startup_timeout_sec: null,
+    tool_timeout_sec: null,
+    command,
+    args: Array.isArray(entry.args) ? entry.args.map(String) : [],
+    env: entry.env && typeof entry.env === "object" ? Object.fromEntries(Object.entries(entry.env as Record<string, unknown>).map(([key, value]) => [key, String(value)])) : {},
+    url,
+    bearer_token_env_var,
+    http_headers,
+    env_http_headers,
+  };
 }
 
 // 浏览器调试模式不查后端命令，用预设的展示元数据合成最小 config 模板
@@ -1028,14 +1101,144 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         webSkills.push({
           name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理",
           source_url: null, store_path: webLocalSkillPath, source_path: webLocalSkillPath,
-          update_available: false, enabled: false,
+          update_available: false, enabled: false, claude_enabled: false,
         });
       }
       return 1 as T;
     case "enable_skill":
-    case "disable_skill":
+    case "disable_skill": {
+      // 与后端一致：按 tool 只翻动对应端的分发状态，两端互不影响
+      const field = args?.tool === "claude" ? "claude_enabled" : "enabled";
+      const skill = webSkills.find((item) => item.name === args?.name);
+      if (skill) skill[field] = command === "enable_skill";
+      return undefined as T;
+    }
     case "delete_skill":
       return undefined as T;
+    case "claude_list_profiles":
+      return webClaudeProfiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        base_url: profile.base_url,
+        has_token: Boolean(profile.auth_token),
+        model: profile.model,
+        description: profile.description,
+        icon: profile.icon,
+        updated_at: profile.updated_at,
+      })) as T;
+    case "claude_get_profile": {
+      // 与后端一致：详情含 token 明文供编辑回显
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      return { ...profile } as T;
+    }
+    case "claude_capture_profile": {
+      const name = String(args?.name ?? "").trim();
+      if (!name) throw new Error("配置名称不能为空");
+      const timestamp = String(Date.now());
+      const captured: ClaudeProfileDetail = {
+        id: `cla-web-${timestamp}`,
+        name,
+        base_url: "https://relay.example/v1",
+        auth_token: "demo-token",
+        model: "example-model",
+        description: null,
+        fetched_models: [],
+        kind: null,
+        admin_url: null,
+        extra_env: null,
+        raw_settings: JSON.stringify({ model: "sonnet", env: {
+          ANTHROPIC_BASE_URL: "https://relay.example/v1",
+          ANTHROPIC_AUTH_TOKEN: "demo-token",
+          ANTHROPIC_MODEL: "example-model",
+        } }, null, 2),
+        icon: null,
+        sort_order: webClaudeProfiles.length,
+        updated_at: timestamp,
+      };
+      webClaudeProfiles.push(captured);
+      return { ...captured } as T;
+    }
+    case "claude_save_profile": {
+      const timestamp = String(Date.now());
+      const base = { name: String(args?.name ?? "").trim(), base_url: (args?.baseUrl as string | null) ?? null, auth_token: (args?.authToken as string | null) ?? null, model: (args?.model as string | null) ?? null, description: (args?.description as string | null) ?? null, fetched_models: (args?.fetchedModels as string[] | null) ?? [], kind: (args?.kind as string | null) ?? null, admin_url: (args?.adminUrl as string | null) ?? null, extra_env: (args?.extraEnv as string | null) ?? null, raw_settings: (args?.rawSettings as string | null) ?? null, icon: (args?.icon as string | null) ?? null };
+      if (!base.name) throw new Error("配置名称不能为空");
+      if (base.raw_settings !== null) {
+        const settings = JSON.parse(base.raw_settings) as Record<string, unknown>;
+        if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings.json 顶层必须是 JSON 对象");
+        const env = (settings.env ?? {}) as Record<string, unknown>;
+        if (!env || typeof env !== "object" || Array.isArray(env) || Object.values(env).some((value) => typeof value !== "string")) throw new Error("settings.json 的 env 必须是字符串键值对象");
+        base.base_url = (env.ANTHROPIC_BASE_URL as string | undefined) ?? null;
+        base.auth_token = (env.ANTHROPIC_AUTH_TOKEN as string | undefined) ?? null;
+        base.model = (env.ANTHROPIC_MODEL as string | undefined) ?? null;
+        const extras = Object.fromEntries(Object.entries(env).filter(([key]) => !["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"].includes(key)));
+        base.extra_env = Object.keys(extras).length ? JSON.stringify(extras) : null;
+      }
+      if (typeof args?.id === "string") {
+        const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+        if (!profile) throw new Error("Claude 供应商配置不存在");
+        Object.assign(profile, base, { updated_at: timestamp });
+        return { ...profile } as T;
+      }
+      const maxSort = webClaudeProfiles.reduce((max, item) => Math.max(max, item.sort_order), -1);
+      const created: ClaudeProfileDetail = { id: `cla-web-${timestamp}`, ...base, sort_order: maxSort + 1, updated_at: timestamp };
+      webClaudeProfiles.push(created);
+      return { ...created } as T;
+    }
+    case "claude_set_profile_icon": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      profile.icon = (args?.icon as string | null) ?? null;
+      return undefined as T;
+    }
+    case "claude_reorder_profiles": {
+      const ids = (args?.ids as string[] | undefined) ?? [];
+      ids.forEach((id, index) => {
+        const profile = webClaudeProfiles.find((item) => item.id === id);
+        if (profile) profile.sort_order = index;
+      });
+      webClaudeProfiles.sort((a, b) => a.sort_order - b.sort_order);
+      return undefined as T;
+    }
+    case "claude_duplicate_profile": {
+      const source = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!source) throw new Error("Claude 供应商配置不存在");
+      const timestamp = String(Date.now());
+      let candidate = `${source.name} copy`;
+      let counter = 2;
+      while (webClaudeProfiles.some((item) => item.name.toLowerCase() === candidate.toLowerCase())) {
+        candidate = `${source.name} copy ${counter}`;
+        counter += 1;
+      }
+      const maxSort = webClaudeProfiles.reduce((max, item) => Math.max(max, item.sort_order), -1);
+      const copy: ClaudeProfileDetail = { ...source, id: `cla-web-${timestamp}`, name: candidate, sort_order: maxSort + 1, updated_at: timestamp };
+      webClaudeProfiles.push(copy);
+      return { ...copy } as T;
+    }
+    case "claude_test_profile": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      if (!profile.base_url?.trim()) throw new Error("请先填写 API 地址");
+      if (!profile.auth_token?.trim()) throw new Error("请先填写 API Token");
+      return 42 as T;
+    }
+    case "claude_delete_profile": {
+      const index = webClaudeProfiles.findIndex((item) => item.id === args?.id);
+      if (index < 0) throw new Error("Claude 供应商配置不存在");
+      webClaudeProfiles.splice(index, 1);
+      if (webActiveClaudeProfileId === args?.id) webActiveClaudeProfileId = null;
+      return undefined as T;
+    }
+    case "claude_apply_profile": {
+      if (!webClaudeProfiles.some((item) => item.id === args?.id)) throw new Error("Claude 供应商配置不存在");
+      webActiveClaudeProfileId = String(args?.id);
+      return undefined as T;
+    }
+    case "claude_fetch_models": {
+      // 与后端一致：Anthropic 兼容 /v1/models，无 Token 直接拒绝
+      if (!String(args?.authToken ?? "").trim()) throw new Error("请先填写 API Token 再获取模型列表");
+      return ["glm-5.3", "glm-5.3-air", "glm-5.3[1m]"] as T;
+    }
     case "list_plugin_skills": {
       // 与后端一致：storePath 仅用于 Tauri 端跳过重复的插件列表解析，Web mock 直接读 fixture。
       const name = String(args?.name ?? "");
@@ -1223,6 +1426,23 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return String(args?.text ?? "") as T;
     case "list_mcp_servers":
       return [...webMcpServers] as T;
+    case "list_claude_mcp_servers":
+      return [...webMcpServers] as T;
+    case "get_claude_mcp_server_json": {
+      const server = webMcpServers.find((item) => item.name === args?.name);
+      return (server ? renderClaudeMcpEntryWeb(server) : null) as unknown as T;
+    }
+    case "save_claude_mcp_server": {
+      const name = String(args?.name ?? "").trim();
+      const original = typeof args?.originalName === "string" ? args.originalName : null;
+      const spec = parseClaudeMcpEntryWeb(name, String(args?.json ?? "{}"));
+      webMcpServers = webMcpServers.filter((server) => server.name !== (original ?? name));
+      webMcpServers.push(spec);
+      return undefined as T;
+    }
+    case "delete_claude_mcp_server":
+      webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
+      return undefined as T;
     case "probe_mcp_server": {
       const name = String(args?.name ?? "MCP");
       const includeTools = Boolean(args?.includeTools);

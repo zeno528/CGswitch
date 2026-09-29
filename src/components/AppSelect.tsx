@@ -2,7 +2,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useFixedMenuPosition } from "./useFixedMenuPosition";
 import { useMenuDismiss } from "./useMenuDismiss";
 
@@ -18,6 +18,10 @@ interface AppSelectProps<T extends string | number> {
   placeholder?: string;
   disabled?: boolean;
   renderLabel?: (option: SelectOption<T>) => ReactNode;
+  iconOnly?: boolean;
+  menuWidth?: CSSProperties["width"];
+  menuAlign?: "match" | "end";
+  compact?: boolean;
 }
 
 export function AppSelect<T extends string | number>({
@@ -27,6 +31,10 @@ export function AppSelect<T extends string | number>({
   placeholder,
   disabled,
   renderLabel,
+  iconOnly = false,
+  menuWidth,
+  menuAlign,
+  compact = false,
 }: AppSelectProps<T>) {
   const { t } = useTranslation();
   const selected = options.find((option) => String(option.value) === String(value));
@@ -35,7 +43,7 @@ export function AppSelect<T extends string | number>({
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // 定位（向下/向上自适应翻转）与行内 ⋯ 菜单共用同一套逻辑；收起（外点/滚动/Escape）同样复用全局基建
-  const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, "match");
+  const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, menuAlign ?? (iconOnly ? "end" : "match"), menuWidth);
   useMenuDismiss(open, rootRef, menuRef, setOpen);
 
   // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
@@ -70,7 +78,7 @@ export function AppSelect<T extends string | number>({
   };
 
   const menu = (
-    <div ref={menuRef} className="app-select-menu" data-open={open} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
+    <div ref={menuRef} className={`app-select-menu ${iconOnly ? "app-select-menu--arrow" : ""}`} data-open={open} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
       {options.map((option) => <button
         key={String(option.value)}
         type="button"
@@ -90,14 +98,15 @@ export function AppSelect<T extends string | number>({
   const menuContent = typeof document === "undefined" ? menu : createPortal(menu, document.body);
 
   return (
-    <div ref={rootRef} className="app-select-wrap" data-open={open}>
+    <div ref={rootRef} className={`app-select-wrap ${iconOnly ? "app-select-wrap--icon" : ""} ${compact ? "app-select-wrap--compact" : ""}`} data-open={open}>
       <button
         type="button"
-        className="app-select"
+        className={`app-select ${iconOnly ? "app-select--icon" : ""} ${compact ? "app-select--compact" : ""}`}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={placeholder}
+        aria-label={iconOnly ? (selected ? `${placeholder ?? t("select.placeholder")}: ${selected.label}` : placeholder ?? t("select.placeholder")) : placeholder}
+        title={iconOnly ? (selected?.label ?? placeholder) : undefined}
         onClick={() => hasOptions && setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (hasOptions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -106,8 +115,8 @@ export function AppSelect<T extends string | number>({
           }
         }}
       >
-        <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>
-        <ChevronDown className="app-select__icon" size={16} strokeWidth={2} aria-hidden="true" />
+        {iconOnly ? <span className="sr-only">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span> : <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>}
+        <ChevronDown className="app-select__icon" size={compact ? 14 : 16} strokeWidth={2} aria-hidden="true" />
       </button>
       {menuContent}
     </div>

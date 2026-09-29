@@ -17,11 +17,21 @@ pub struct AppPaths {
     /// 运行日志目录：tauri-plugin-log 按大小轮转写入，保留最近几个归档
     pub logs: PathBuf,
     pub codex_home: PathBuf,
+    /// Claude Code 的家目录（~/.claude）：供应商配置写入其下 settings.json。
+    pub claude_home: PathBuf,
 }
 
 impl AppPaths {
     pub fn codex_config(&self) -> PathBuf {
         self.codex_home.join("config.toml")
+    }
+
+    /// Claude Code 用户范围 MCP 配置（官方格式：用户目录下的 ~/.claude.json）。
+    pub fn claude_mcp_config(&self) -> PathBuf {
+        self.claude_home
+            .parent()
+            .unwrap_or(&self.claude_home)
+            .join(".claude.json")
     }
 
     pub fn ensure(&self) -> AppResult<()> {
@@ -54,6 +64,7 @@ pub fn from_home(home: &Path) -> AppResult<AppPaths> {
         codex_files_backup: root.join("backups").join("codex-files"),
         logs: root.join("logs"),
         codex_home: home.join(".codex"),
+        claude_home: home.join(".claude"),
         root,
     })
 }
@@ -94,5 +105,7 @@ mod tests {
             paths.codex_config(),
             home.join(".codex").join("config.toml")
         );
+        assert_eq!(paths.claude_home, home.join(".claude"));
+        assert_eq!(paths.claude_mcp_config(), home.join(".claude.json"));
     }
 }

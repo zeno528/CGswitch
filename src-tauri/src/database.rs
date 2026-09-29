@@ -7,7 +7,7 @@ use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{app_err, AppResult};
-use crate::models::{ProfileKind, ProfilePayload, ProfileSummary};
+use crate::models::{ClaudeProfileInput, ProfileKind, ProfilePayload, ProfileSummary};
 use crate::paths::AppPaths;
 use crate::services::profile_config::{parse_provider_detail, stored_provider_api_key};
 
@@ -90,6 +90,36 @@ fn migrations() -> Migrations<'static> {
             backfill_account_plan_type(tx)?;
             Ok(())
         }),
+        // Claude Code 支持第一期：独立供应商表与激活位（与 Codex profiles 完全并行，互不触碰）
+        M::up(
+            "CREATE TABLE claude_profiles (
+               id TEXT PRIMARY KEY,
+               name TEXT NOT NULL,
+               base_url TEXT,
+               auth_token TEXT,
+               model TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );
+             ALTER TABLE app_state ADD COLUMN active_claude_profile_id TEXT",
+        ),
+        // 编辑页端点档反查与官网按钮：记录创建时选的预设 kind 与控制台地址（对齐 Codex payload.builtin）
+        M::up(
+            "ALTER TABLE claude_profiles ADD COLUMN kind TEXT;
+             ALTER TABLE claude_profiles ADD COLUMN admin_url TEXT",
+        ),
+        // 编辑页描述与模型列表持久化（对齐 Codex description / set_profile_fetched_models）
+        M::up(
+            "ALTER TABLE claude_profiles ADD COLUMN description TEXT;
+             ALTER TABLE claude_profiles ADD COLUMN fetched_models TEXT",
+        ),
+        // 编辑页 settings.json 编辑器：三个托管键之外的附加 env（JSON 对象文本，应用时并入 env）
+        M::up("ALTER TABLE claude_profiles ADD COLUMN extra_env TEXT"),
+        // 编辑页可编辑 logo（对齐 Codex profiles.icon）
+        M::up("ALTER TABLE claude_profiles ADD COLUMN icon TEXT"),
+        // 卡片拖拽排序（对齐 Codex profiles.sort_order）
+        M::up("ALTER TABLE claude_profiles ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"),
+        M::up("ALTER TABLE claude_profiles ADD COLUMN raw_settings TEXT"),
     ])
 }
 
@@ -523,6 +553,190 @@ impl Database {
         Ok(())
     }
 
+    pub fn active_claude_profile(&self) -> AppResult<Option<String>> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                "SELECT active_claude_profile_id FROM app_state WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| app_err!("无法读取应用状态: {error}"))
+            .map(Option::flatten)
+    }
+
+    pub fn set_active_claude_profile(&self, id: Option<&str>) -> AppResult<()> {
+        let connection = self.lock()?;
+        connection
+            .execute(
+                "INSERT INTO app_state(singleton, active_claude_profile_id) VALUES(1, ?1)
+                 ON CONFLICT(singleton) DO UPDATE SET active_claude_profile_id=excluded.active_claude_profile_id",
+                params![id],
+            )
+            .map_err(|error| app_err!("无法保存应用状态: {error}"))?;
+        Ok(())
+    }
+
+    pub fn claude_profiles(&self) -> AppResult<Vec<StoredClaudeProfile>> {
+        let connection = self.lock()?;
+        let mut statement = connection
+            .prepare(&format!(
+                "SELECT {CLAUDE_PROFILE_COLUMNS}
+                 FROM claude_profiles ORDER BY sort_order ASC, created_at ASC, id ASC"
+            ))
+            .map_err(|error| app_err!("无法读取 Claude 供应商配置: {error}"))?;
+        let rows = statement
+            .query_map([], claude_profile_from_row)
+            .map_err(|error| app_err!("无法读取 Claude 供应商配置: {error}"))?;
+        let mut profiles = Vec::new();
+        for row in rows {
+            profiles.push(row.map_err(|error| app_err!("Claude 供应商配置数据无效: {error}"))?);
+        }
+        Ok(profiles)
+    }
+
+    pub fn claude_profile(&self, id: &str) -> AppResult<StoredClaudeProfile> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                &format!("SELECT {CLAUDE_PROFILE_COLUMNS} FROM claude_profiles WHERE id = ?1"),
+                params![id],
+                claude_profile_from_row,
+            )
+            .optional()
+            .map_err(|error| app_err!("无法读取 Claude 供应商配置: {error}"))?
+            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))
+    }
+
+    pub fn insert_claude_profile(
+        &self,
+        input: &ClaudeProfileInput,
+        timestamp: &str,
+    ) -> AppResult<StoredClaudeProfile> {
+        let id = format!(
+            "cla-{timestamp}-{}",
+            PROFILE_ID_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                &format!(
+                    "INSERT INTO claude_profiles(id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, created_at, updated_at, sort_order)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13,
+                            (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM claude_profiles))
+                     RETURNING {CLAUDE_PROFILE_COLUMNS}"
+                ),
+                params![
+                    id,
+                    &input.name,
+                    &input.base_url,
+                    &input.auth_token,
+                    &input.model,
+                    &input.description,
+                    input
+                        .fetched_models
+                        .as_ref()
+                        .map(|models| serde_json::to_string(models).unwrap_or_default()),
+                    &input.kind,
+                    &input.admin_url,
+                    &input.extra_env,
+                    &input.raw_settings,
+                    &input.icon,
+                    timestamp
+                ],
+                claude_profile_from_row,
+            )
+            .map_err(|error| app_err!("无法保存 Claude 供应商配置: {error}"))
+    }
+
+    pub fn update_claude_profile(
+        &self,
+        id: &str,
+        input: &ClaudeProfileInput,
+        timestamp: &str,
+    ) -> AppResult<StoredClaudeProfile> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                &format!(
+                    "UPDATE claude_profiles SET name=?2, base_url=?3, auth_token=?4, model=?5, description=?6, fetched_models=?7, kind=?8, admin_url=?9, extra_env=?10, raw_settings=?11, icon=?12, updated_at=?13 WHERE id=?1
+                     RETURNING {CLAUDE_PROFILE_COLUMNS}"
+                ),
+                params![
+                    id,
+                    &input.name,
+                    &input.base_url,
+                    &input.auth_token,
+                    &input.model,
+                    &input.description,
+                    input
+                        .fetched_models
+                        .as_ref()
+                        .map(|models| serde_json::to_string(models).unwrap_or_default()),
+                    &input.kind,
+                    &input.admin_url,
+                    &input.extra_env,
+                    &input.raw_settings,
+                    &input.icon,
+                    timestamp
+                ],
+                claude_profile_from_row,
+            )
+            .optional()
+            .map_err(|error| app_err!("无法更新 Claude 供应商配置: {error}"))?
+            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))
+    }
+
+    pub fn delete_claude_profile(&self, id: &str) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute("DELETE FROM claude_profiles WHERE id=?1", params![id])
+            .map_err(|error| app_err!("无法删除 Claude 供应商配置: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("Claude 供应商配置不存在"));
+        }
+        Ok(())
+    }
+
+    /// 卡片拖拽排序持久化（对齐 Codex reorder_profiles：事务内逐行写 sort_order）。
+    pub fn reorder_claude_profiles(&self, ids: &[String], timestamp: &str) -> AppResult<()> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始排序事务: {error}"))?;
+        for (index, id) in ids.iter().enumerate() {
+            transaction
+                .execute(
+                    "UPDATE claude_profiles SET sort_order = ?2, updated_at = ?3 WHERE id = ?1",
+                    params![id, index as i64, timestamp],
+                )
+                .map_err(|error| app_err!("保存排序失败: {error}"))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| app_err!("提交排序事务失败: {error}"))
+    }
+
+    pub fn set_claude_profile_icon(
+        &self,
+        id: &str,
+        icon: Option<&str>,
+        timestamp: &str,
+    ) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute(
+                "UPDATE claude_profiles SET icon=?2, updated_at=?3 WHERE id=?1",
+                params![id, icon, timestamp],
+            )
+            .map_err(|error| app_err!("无法更新 Claude 供应商配置图标: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("Claude 供应商配置不存在"));
+        }
+        Ok(())
+    }
+
     pub fn record_event(
         &self,
         profile_id: Option<&str>,
@@ -646,13 +860,17 @@ impl Database {
             backfill_account_plan_type(&transaction)
                 .map_err(|error| app_err!("回填账号套餐失败: {error}"))?;
         }
-        copy_table(
+        // app_state 按列交集复制：旧 schema 备份缺 active_claude_profile_id 时落列默认 NULL
+        copy_intersected_columns(
             &source,
             &transaction,
             "app_state",
-            "SELECT singleton, active_profile_id, default_account_id FROM app_state",
-            "INSERT INTO app_state(singleton, active_profile_id, default_account_id)
-             VALUES(?1, ?2, ?3)",
+            &[
+                "singleton",
+                "active_profile_id",
+                "default_account_id",
+                "active_claude_profile_id",
+            ],
         )?;
         // 备份带 sort_order 则原样复制（保留卡片排序）；旧 schema 备份无此列，落列默认 0（创建顺序）
         let source_has_sort_order: i64 = source
@@ -709,6 +927,23 @@ impl Database {
                  VALUES(?1, ?2, ?3, ?4)",
             )?;
         }
+        // 旧备份可能还没有 claude_profiles 表：无表跳过（Claude 供应商从零开始）
+        let has_claude_profiles: i64 = source
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='claude_profiles'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+        if has_claude_profiles > 0 {
+            // 列与 CLAUDE_PROFILE_COLUMNS 正典序求交集：备份有哪些列就复制哪些，缺列落默认 NULL
+            copy_intersected_columns(
+                &source,
+                &transaction,
+                "claude_profiles",
+                &CLAUDE_PROFILE_COLUMNS.split(", ").collect::<Vec<_>>(),
+            )?;
+        }
 
         transaction
             .commit()
@@ -755,6 +990,43 @@ fn copy_table(
     Ok(())
 }
 
+/// 备份表列与正典列序求交集：备份有哪些列就按正典序复制哪些，缺列由目标表默认值兜底。
+/// （restore_from_backup 的逐档手写分支由此收敛成一条复制语句。）
+fn copy_intersected_columns(
+    source: &Connection,
+    destination: &rusqlite::Transaction<'_>,
+    table: &str,
+    canonical_columns: &[&str],
+) -> AppResult<()> {
+    let mut columns: Vec<&str> = Vec::new();
+    for name in canonical_columns {
+        let present: i64 = source
+            .query_row(
+                &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+                params![name],
+                |row| row.get(0),
+            )
+            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+        if present > 0 {
+            columns.push(name);
+        }
+    }
+    let column_list = columns.join(", ");
+    let placeholders: Vec<String> = (1..=columns.len())
+        .map(|index| format!("?{index}"))
+        .collect();
+    copy_table(
+        source,
+        destination,
+        table,
+        &format!("SELECT {column_list} FROM {table}"),
+        &format!(
+            "INSERT INTO {table}({column_list}) VALUES({})",
+            placeholders.join(", ")
+        ),
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredProfile {
     pub id: String,
@@ -765,6 +1037,55 @@ pub struct StoredProfile {
     pub account_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Claude Code 供应商行：字段固定即列，不走 payload_json blob。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredClaudeProfile {
+    pub id: String,
+    pub name: String,
+    pub base_url: Option<String>,
+    pub auth_token: Option<String>,
+    pub model: Option<String>,
+    pub description: Option<String>,
+    /// 已获取的模型 ID 列表（JSON 数组文本，对齐 Codex fetched_models）。
+    pub fetched_models: Option<String>,
+    /// 创建时选择的预设 kind（自定义/无预设为 NULL）：编辑页反查端点档用。
+    pub kind: Option<String>,
+    pub admin_url: Option<String>,
+    /// 附加 env 键值（JSON 对象文本）：应用时并入 settings.json 的 env，先移除旧值再写入。
+    pub extra_env: Option<String>,
+    /// 完整 settings.json 原文（旧行为空）。
+    pub raw_settings: Option<String>,
+    /// 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。
+    pub icon: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    /// 卡片排序（拖拽持久化；同序按 created_at）。
+    pub sort_order: i64,
+}
+
+const CLAUDE_PROFILE_COLUMNS: &str =
+    "id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, created_at, updated_at, sort_order";
+
+fn claude_profile_from_row(row: &rusqlite::Row) -> rusqlite::Result<StoredClaudeProfile> {
+    Ok(StoredClaudeProfile {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        base_url: row.get(2)?,
+        auth_token: row.get(3)?,
+        model: row.get(4)?,
+        description: row.get(5)?,
+        fetched_models: row.get(6)?,
+        kind: row.get(7)?,
+        admin_url: row.get(8)?,
+        extra_env: row.get(9)?,
+        raw_settings: row.get(10)?,
+        icon: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+        sort_order: row.get(14)?,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1056,7 +1377,12 @@ mod tests {
             connection.pragma_update(None, "user_version", 4).unwrap();
             connection
                 .execute_batch(
-                    r#"CREATE TABLE accounts (
+                    r#"CREATE TABLE app_state (
+                         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                         active_profile_id TEXT,
+                         default_account_id TEXT
+                       );
+                       CREATE TABLE accounts (
                          id TEXT PRIMARY KEY,
                          email TEXT,
                          id_token TEXT,

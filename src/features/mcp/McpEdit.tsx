@@ -230,19 +230,17 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
           </div>
 
           <div className="apple-panel-section">
-            <div className="field-label mb-1.5 flex items-center gap-1.5">
-              {t("edit.tomlSource")}
-              {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label={t("edit.unsavedChanges")} title={t("edit.unsavedChanges")} /> : null}
-            </div>
-            <div className="editor-attach-group">
-              <div className="editor-attach-bar">
-                <button type="button" className="editor-ghost ml-auto" disabled={formatting || saving} onClick={() => void formatToml()}>
-                  <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                  <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
-                </button>
+            <div className="mb-1.5 flex min-h-8 items-center justify-between gap-2">
+              <div className="field-label flex items-center gap-1.5">
+                {t("edit.tomlSource")}
+                {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label={t("edit.unsavedChanges")} title={t("edit.unsavedChanges")} /> : null}
               </div>
-              <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder={t("edit.tomlPlaceholder")} onChange={setTomlText} onDiagnostics={setDiagnostics} />
+              <button type="button" className="editor-ghost editor-ghost--format shrink-0" disabled={formatting || saving} onClick={() => void formatToml()}>
+                <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+                <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
+              </button>
             </div>
+            <ConfigTextEditor ref={editorRef} value={tomlText} language="toml" placeholder={t("edit.tomlPlaceholder")} onChange={setTomlText} onDiagnostics={setDiagnostics} />
           </div>
         </div>
       </div>

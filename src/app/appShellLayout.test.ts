@@ -8,14 +8,25 @@ const profileEditSource = readFileSync(new URL("../features/profiles/ProfileEdit
 const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 
 describe("AppShell 布局", () => {
-  it("保持侧栏导航紧贴品牌区，并让账号和设置按钮锚定底部", () => {
+  it("保持侧栏导航紧贴品牌区，并按 Codex/Claude 分组数据驱动渲染，通用导航不显示标题", () => {
     expect(source).toContain("apple-sidebar relative h-full shrink-0");
-    expect(source).toContain('className="mx-1.5 mt-3 space-y-1"');
-    expect(source).toContain('className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5"');
+    expect(source).toContain('className="mx-1.5 mt-3 space-y-3"');
+    expect(source).toContain("sidebarGroups.map");
+    expect(source).toContain("apple-sidebar-group-label");
+    expect(source).toContain('src="/codex.svg"');
+    expect(source).toContain('src="/claude-code.svg"');
+    expect(source).toContain('group.key !== "common"');
+    expect(styles).toContain(".apple-sidebar-group + .apple-sidebar-group");
+    expect(styles).toContain(".apple-sidebar--collapsed .apple-sidebar-group-label span,");
+    // 每个导航项必须渲染可见文案 + 收缩态悬浮提示（曾因修复闭合标签丢失过，钉死）
+    expect(source).toContain('<span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>');
+    expect(source).toContain('sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout"');
+    // 底部绝对定位的手写按钮容器已由分组数据驱动渲染取代
+    expect(source).not.toContain("absolute inset-x-1.5 bottom-4");
   });
 
   it("重复点击当前侧栏页面时不重置页面", () => {
-    for (const view of ["profiles", "mcp", "plugins", "skills", "accounts", "settings"]) {
+    for (const view of ["profiles", "mcp", "plugins", "skills", "accounts", "settings", "claude"]) {
       expect(source).toContain(`if (view === "${view}") return;`);
     }
   });
@@ -23,7 +34,8 @@ describe("AppShell 布局", () => {
   it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {
     // 首屏：useSyncExternalStore 从 localStorage 缓存直出，不发起任何查询
     expect(source).toContain("useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge)");
-    expect(source).toContain('{mcpBadge ? <span className="apple-count-badge"');
+    // 分组渲染后角标经 item.badgeText 下发，来源仍是缓存的 mcpBadge
+    expect(source).toContain('{item.badgeText ? <span className="apple-count-badge"');
     // 查询：必须被 startupReady 门控 + 固定延迟，禁止直接进首屏/冷启动关键路径
     expect(source).toContain("if (!startupReady) return;");
     expect(source).toContain("window.setTimeout(checkMcpDiff, 1500);");
@@ -86,9 +98,10 @@ describe("AppShell 布局", () => {
     expect(source).toContain("appWindow.isFocused()");
   });
 
-  it("账号入口固定在设置入口上方，并通过全局视图打开", () => {
-    expect(source).toContain('data-active={view === "accounts" ? "true" : undefined}');
-    expect(source.indexOf('data-active={view === "accounts" ? "true" : undefined}')).toBeLessThan(source.indexOf('data-active={view === "settings" ? "true" : undefined}'));
+  it("账号入口固定在设置入口上方（分组数组顺序），并通过全局视图打开", () => {
+    expect(source).toContain('view: "accounts"');
+    expect(source).toContain('view: "settings"');
+    expect(source.indexOf('view: "accounts"')).toBeLessThan(source.indexOf('view: "settings"'));
     expect(source).toContain('onManageChatgptAccounts={goAccounts}');
   });
 
@@ -134,7 +147,7 @@ describe("AppShell 布局", () => {
   it("移除侧栏激活装饰条，并固定悬浮卡片为普通字重", () => {
     expect(source).not.toContain("apple-sidebar-indicator");
     expect(source).toContain('const navClass = "apple-sidebar-nav-button app-selection-state";');
-    expect(source).toContain('data-active={view === "settings" ? "true" : undefined}');
+    expect(source).toContain('data-active={view === item.view ? "true" : undefined}');
     expect(source).not.toContain('active ? "bg-(--tile-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) font-semibold text-accent" :');

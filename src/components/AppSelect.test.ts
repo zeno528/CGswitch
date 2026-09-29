@@ -53,4 +53,13 @@ describe("AppSelect 交互", () => {
     expect(componentSource).not.toContain("closeOnOutsidePointer");
     expect(componentSource).not.toContain('addEventListener("scroll"');
   });
+
+  it("支持模型列表的箭头触发器与独立菜单宽度", () => {
+    expect(componentSource).toContain("iconOnly");
+    expect(componentSource).toContain("menuWidth");
+    expect(componentSource).toContain("menuAlign");
+    expect(componentSource).toContain("compact");
+    expect(componentSource).toContain("app-select-menu--arrow");
+    expect(componentSource).toContain('iconOnly ? "end" : "match"');
+  });
 });

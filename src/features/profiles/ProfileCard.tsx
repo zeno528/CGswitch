@@ -1,8 +1,7 @@
-import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
+import { Check, Copy, Gauge, Globe, Wifi } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import type { TFunction } from "i18next";
 import { api } from "../../api";
 import { authQuotaErrorKind, getAuthQuotaError, getVisibleAuthQuota, profileAuthQuotaCacheKey, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
@@ -11,6 +10,7 @@ import { useFeedback } from "../../app/Feedback";
 import { PlanBadge } from "../../components/PlanBadge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
+import SortableCard from "../../components/SortableCard";
 import { TrashIcon } from "../../components/TrashIcon";
 import { localizeBalanceLabel } from "./balanceLabel";
 
@@ -101,26 +101,33 @@ export function ProfileCardContent({
   );
 }
 
+/** 卡片测试连通按钮的门控与悬停文案：缺什么报什么，其余一律“测试连通性”。
+ *  Codex 卡片、拖拽预览与 Claude 卡片共用同一判定，避免按钮行各写一套。 */
+export function profileConnectionGate(profile: ProfileSummary, t: TFunction<"profiles">) {
+  const disabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;
+  const title = !profile.provider || (profile.has_base_url && profile.has_key)
+    ? t("connection.test")
+    : !profile.has_base_url ? t("connection.missingApiEndpointWarning")
+      : t("connection.missingApiKeyWarning");
+  return { disabled, title };
+}
+
 interface ProfileCardActionsProps {
   active: boolean;
   busy: boolean;
-  profile: ProfileSummary;
   testing: boolean;
   dragging?: boolean;
+  /** 测试连通按钮是否禁用（调用方按各自领域判定：缺地址/缺密钥）。 */
+  connectionDisabled: boolean;
+  connectionTitle: string;
   onApply?: () => void;
   onDuplicate?: () => void;
   onTest?: () => void;
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, profile, testing, dragging = false, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, testing, dragging = false, connectionDisabled, connectionTitle, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
-  const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;
-  // 订阅与普通供应商共用同一套悬停文案：缺什么报什么，其余一律“测试连通性”
-  const connectionTitle = !profile.provider || (profile.has_base_url && profile.has_key)
-    ? t("connection.test")
-    : !profile.has_base_url ? t("connection.missingApiEndpointWarning")
-      : t("connection.missingApiKeyWarning");
   return (
     <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
       <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />{t("actions.inUse")}</> : t("actions.switch")}</button>
@@ -162,8 +169,6 @@ export default function ProfileCard({
   const [balanceRefreshing, setBalanceRefreshing] = useState(false);
   const balanceInFlightRef = useRef<Promise<void> | null>(null);
   const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
-  const sortable = useSortable({ id: profile.id });
-  const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition };
 
   const invalidateBalance = (message: string) => {
     setBalanceInfos([]);
@@ -270,19 +275,9 @@ export default function ProfileCard({
     }
   };
 
+  const connection = profileConnectionGate(profile, t);
   return (
-    <article
-      ref={sortable.setNodeRef}
-      data-draggable
-      data-profile-id={profile.id}
-      style={style}
-      className={`apple-group${active ? " is-active brand-gradient-surface" : ""}${dragHover ? " is-drag-hover" : ""} group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${sortable.isDragging ? "pointer-events-none opacity-0" : "opacity-100"}`}
-      title={t("card.clickToEdit")}
-      onClick={onEdit}
-    >
-      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grab place-items-center self-center rounded-md py-1 pl-3 pr-3 muted transition-colors hover:opacity-70 active:cursor-grabbing sm:self-stretch" title={t("card.dragToReorder")} aria-label={t("card.dragToReorder")} {...sortable.attributes} {...sortable.listeners} onClick={(event) => event.stopPropagation()}>
-        <GripVertical className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-      </span>
+    <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent
         profile={profile}
         balanceInfos={balanceInfos}
@@ -295,7 +290,7 @@ export default function ProfileCard({
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />
-      <ProfileCardActions active={active} busy={busy} profile={profile} testing={testing} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
-    </article>
+      <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
+    </SortableCard>
   );
 }

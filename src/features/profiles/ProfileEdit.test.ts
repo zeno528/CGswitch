@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./ProfileEdit.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const endpointFieldSource = readFileSync(new URL("../../components/EndpointField.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const zhLocale = readFileSync(new URL("../../i18n/locales/zh-CN/profiles.ts", import.meta.url), "utf8");
 const enLocale = readFileSync(new URL("../../i18n/locales/en-US/profiles.ts", import.meta.url), "utf8");
 
@@ -87,9 +88,9 @@ describe("ProfileEdit 用量查询", () => {
   });
 });
 
-describe("编辑器工具栏两行布局", () => {
-  it("tab 独占一行，附属条嵌进编辑器托盘顶部并按 tab 切换：config 快捷设置、models/auth 文件操作", () => {
-    expect(source).toContain('<div className="flex gap-1">');
+describe("编辑器文件头布局", () => {
+  it("tab 与格式化同一行，附属条嵌进编辑器托盘顶部并按 tab 切换：config 快捷设置、models/auth 文件操作", () => {
+    expect(source).toContain('<div className="flex min-h-8 items-center justify-between gap-2">');
     expect(source).toContain('<div className="editor-attach-group mt-2">');
     expect(source).toContain('<div className="editor-attach-bar">');
     expect(source).toContain("<TabFileControls");
@@ -98,10 +99,10 @@ describe("编辑器工具栏两行布局", () => {
     expect(source).toContain('onClear={() => (activeTab === "models" ? setCatalogText("") : setAuthText(""))}');
   });
 
-  it("格式化入口在附属条最右侧（ghost 权重），底部工具栏不再重复", () => {
-    expect(source).toContain('className="editor-ghost ml-auto"');
+  it("格式化入口在文件标签行最右侧（ghost 权重），底部工具栏不再重复", () => {
+    expect(source).toContain('className="editor-ghost editor-ghost--format ml-auto shrink-0"');
     expect(source.match(/formatCurrentDocument\(\)/g)).toHaveLength(1);
-    expect(source).not.toContain('{t("edit.format")}</button><button type="button" className="apple-action-button" onClick={onBack}>');
+    expect(source).toContain("格式化入口与文件标签同一行");
   });
 
   it("清空草稿保存时把空目录原文交给后端归一，而不是被 || null 吞成不动", () => {
@@ -118,15 +119,18 @@ describe("编辑页回车保存", () => {
 });
 
 describe("端点区域下拉", () => {
-  it("双区域端点为可输入 combobox：地址可自由编辑，弹层复用全局 app-select-menu 基建（定位/收起走共享 hook），只有档内两行", () => {
-    expect(source).toContain('baseUrlField("app-input app-input--action")');
-    expect(source).toContain("useFixedMenuPosition(endpointMenuOpen, endpointRootRef.current, endpointMenuRef");
-    expect(source).toContain("useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef");
-    expect(source).toContain('className="app-select-menu"');
-    expect(source).toContain('endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")');
-    expect(source).not.toContain("options.unshift");
-    expect(source).not.toContain("renderEndpointOption");
-    expect(source).not.toContain("renderEndpointMenuItem");
-    expect(source).not.toContain("closeOnOutsidePointer");
+  it("双区域端点为可输入 combobox：地址可自由编辑，弹层复用全局 app-select-menu 基建（抽到共享 EndpointField，两编辑页共用）", () => {
+    // 双区域档走共享 combobox；无档供应商回落普通输入（同一受控值）
+    expect(source).toContain("<EndpointField");
+    expect(source).toContain('baseUrlField("app-input")');
+    expect(source).toContain("endpoints={presetEndpoints}");
+    expect(endpointFieldSource).toContain("useFixedMenuPosition(open, rootRef.current, menuRef");
+    expect(endpointFieldSource).toContain("useMenuDismiss(open, rootRef, menuRef, setOpen");
+    expect(endpointFieldSource).toContain('className="app-select-menu"');
+    expect(endpointFieldSource).toContain('endpoint.region === "cn" ? regionCn : regionGlobal');
+    expect(endpointFieldSource).not.toContain("options.unshift");
+    expect(endpointFieldSource).not.toContain("renderEndpointOption");
+    expect(endpointFieldSource).not.toContain("renderEndpointMenuItem");
+    expect(endpointFieldSource).not.toContain("closeOnOutsidePointer");
   });
 });

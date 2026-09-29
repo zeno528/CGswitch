@@ -92,7 +92,7 @@ const plugins = createManagementCache<PluginSummary[]>(api.listPlugins, {
   restore: restoreNamedList<PluginSummary>,
 });
 const skills = createManagementCache<SkillSummary[]>(api.listSkills, {
-  key: "cgswitch.skills-cache-v1",
+  key: "cgswitch.skills-cache-v2", // v2：SkillSummary 增加 claude_enabled，旧缓存缺字段直接弃用
   restore: restoreNamedList<SkillSummary>,
 });
 const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers, {

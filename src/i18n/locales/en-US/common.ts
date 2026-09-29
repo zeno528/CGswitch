@@ -8,6 +8,10 @@ export default {
     skills: "Skill",
     accounts: "Accounts",
     settings: "Settings",
+    claudeProviders: "Providers",
+    groupCodex: "Codex",
+    groupClaude: "Claude",
+    groupCommon: "General",
   },
   sidebar: {
     expand: "Expand sidebar",

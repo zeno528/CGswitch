@@ -30,6 +30,15 @@ describe("Skill 标题栏", () => {
   });
 });
 
+describe("Skill 双端开关", () => {
+  it("每行提供 Codex 与 Claude Code 两个独立开关，各自走同一套启停逻辑", () => {
+    expect(viewSource).toContain('onRun(skill.name, skill.claude_enabled ? "disable" : "enable", "claude")');
+    expect(viewSource).toContain('onRun(skill.name, skill.enabled ? "disable" : "enable")');
+    expect(viewSource).toContain("api.enableSkill(name, tool)");
+    expect(viewSource).toContain("api.disableSkill(name, tool)");
+  });
+});
+
 describe("availableCount 刷新时机", () => {
   it("导入、删除与文件夹导入成功后立即重扫候选，角标不等窗口重新聚焦", () => {
     // 批量导入、删除、文件夹导入都会改变候选集；三处 refresh(true) 后必须跟 scanForUpdates()（同行或换行注释均可）

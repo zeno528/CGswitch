@@ -140,6 +140,7 @@ impl AppContext {
                 })
                 .collect::<Vec<ProfileSummary>>(),
             active_profile_id,
+            active_claude_profile_id: self.database.active_claude_profile()?,
             codex: CodexAppStatus {
                 running: !process_ids.is_empty(),
                 display_path,

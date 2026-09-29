@@ -1,7 +1,8 @@
 /** Skills page strings. */
 export default {
   installedCount: "Installed {{count}}",
-  enabledCount: "{{count}} enabled",
+  codexEnabledCount: "Codex {{count}} enabled",
+  claudeEnabledCount: "Claude {{count}} enabled",
   searchPlaceholder: "Search Skills...",
   importSkill: "Import Skill",
   importSkillAria: "Import Skill ({{count}} available to import or update)",
@@ -28,10 +29,12 @@ export default {
   previewSkill: "Preview Skill",
   toggleAddAria: "Add to Codex: {{name}}",
   toggleRemoveAria: "Remove from Codex: {{name}}",
+  toggleClaudeAddAria: "Add to Claude Code: {{name}}",
+  toggleClaudeRemoveAria: "Remove from Claude Code: {{name}}",
   delete: "Delete",
   deleteAria: "Delete {{name}}",
   deleteDialogTitle: "Delete Skill",
-  deleteDialogDescription: "This deletes the CGswitch repository copy and the Codex copy of {{name}}.",
+  deleteDialogDescription: "This deletes the CGswitch repository copy, the Codex copy, and the Claude Code copy of {{name}}.",
   deletedToast: "Skill deleted",
   importedToast: "Imported {{count}} Skills",
   importFromFolder: "Import from folder...",

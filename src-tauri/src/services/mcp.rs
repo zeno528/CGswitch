@@ -26,9 +26,13 @@ impl AppContext {
 
     /// 强制替换数据库镜像（应用自身的管理操作走这里，允许清空到零）。
     pub(super) fn replace_mcp_mirror(&self, fragments: &[(String, String)]) -> AppResult<()> {
-        if self.database.mcp_server_fragments()? != fragments {
+        let previous = self.database.mcp_server_fragments()?;
+        if previous != fragments {
             self.database
                 .replace_mcp_server_fragments(fragments, &now_ms().to_string())?;
+            // MCP 是应用级共享配置：Codex 镜像更新后同步到 Claude Code 用户范围文件，
+            // 不把服务器复制到每个供应商的 settings.json。
+            self.sync_claude_mcp_projection(&previous, fragments)?;
         }
         Ok(())
     }
@@ -112,7 +116,8 @@ impl AppContext {
         if fragments.is_empty() {
             return Ok(());
         }
-        self.write_mcp_section_to_live(&fragments)
+        self.write_mcp_section_to_live(&fragments)?;
+        self.sync_claude_mcp_projection(&[], &fragments)
     }
 
     /// 读取 live config.toml 中的全部 MCP 服务器（只读，不随供应商切换）。
@@ -228,6 +233,7 @@ impl AppContext {
         }
         let count = fragments.len();
         self.write_mcp_section_to_live(&fragments)?;
+        self.sync_claude_mcp_projection(&[], &fragments)?;
         tauri_plugin_log::log::info!(
             "[mcp.config.restore] outcome=success count={count} msg=\"已从数据库恢复 MCP 配置\""
         );

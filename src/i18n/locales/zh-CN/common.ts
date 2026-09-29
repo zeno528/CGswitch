@@ -1,12 +1,16 @@
 /** 通用层文案：导航、窗口控制等全应用共用的部分。 */
 export default {
   nav: {
-    providers: "供应商配置",
-    mcp: "MCP 管理",
+    providers: "供应商",
+    mcp: "MCP",
     plugins: "插件",
     skills: "Skill",
     accounts: "账号",
     settings: "设置",
+    claudeProviders: "供应商",
+    groupCodex: "Codex",
+    groupClaude: "Claude",
+    groupCommon: "通用",
   },
   sidebar: {
     expand: "展开侧边栏",

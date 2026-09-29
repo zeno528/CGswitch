@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
+const sortableCardSource = readFileSync(new URL("../../components/SortableCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("ProfileCard 官网入口", () => {
@@ -20,7 +21,8 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("所有配置激活时复用全局品牌渐变", () => {
-    expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
+    // 卡片外壳（含激活渐变与拖拽手柄）抽到共享 SortableCard，两列表页共用
+    expect(sortableCardSource).toContain('active ? " is-active brand-gradient-surface" : ""');
     expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
     expect(source).not.toContain("third-party-gradient");
     expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
@@ -81,14 +83,15 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("仅在端点或 API Key 缺失时禁用连通测试", () => {
-    expect(source).toContain("const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;");
+    // 门控抽到 profileConnectionGate（与拖拽预览、Claude 卡片共用同一判定）
+    expect(source).toContain("const disabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;");
     expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
 
   it("订阅与普通供应商共用同一套连通性悬停文案", () => {
     // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案
-    expect(source).toContain("const connectionTitle = !profile.provider || (profile.has_base_url && profile.has_key)");
+    expect(source).toContain("const title = !profile.provider || (profile.has_base_url && profile.has_key)");
     expect(source).not.toContain("connection.testSubscription");
   });
 

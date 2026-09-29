@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { webInvoke } from "./web-mock";
-import type { MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
+import type { AppState, ClaudeProfileDetail, MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
   it("keeps a provider description across create, edit and detail reads", async () => {
@@ -37,6 +37,40 @@ describe("web mock", () => {
 
   it("returns managed Skill content for preview", async () => {
     await expect(webInvoke<string>("get_skill_content", { name: "lark-base" })).resolves.toContain("# lark-base");
+  });
+
+  it("toggles per-tool skill distribution independently", async () => {
+    await webInvoke<void>("enable_skill", { name: "lark-base", tool: "claude" });
+    let skills = await webInvoke<SkillSummary[]>("list_skills");
+    expect(skills.find((skill) => skill.name === "lark-base")).toMatchObject({ enabled: true, claude_enabled: true });
+
+    await webInvoke<void>("disable_skill", { name: "lark-base", tool: "codex" });
+    skills = await webInvoke<SkillSummary[]>("list_skills");
+    expect(skills.find((skill) => skill.name === "lark-base")).toMatchObject({ enabled: false, claude_enabled: true });
+  });
+
+  it("keeps claude provider save/apply/delete stateful in web mode", async () => {
+    const created = await webInvoke<ClaudeProfileDetail>("claude_save_profile", { name: "临时配置", baseUrl: "https://temp.example", authToken: null, model: null });
+    expect(created.id).toContain("cla-web-");
+    expect(created.base_url).toBe("https://temp.example");
+
+    await webInvoke<void>("claude_apply_profile", { id: created.id });
+    let state = await webInvoke<AppState>("get_state");
+    expect(state.active_claude_profile_id).toBe(created.id);
+
+    await webInvoke<void>("claude_delete_profile", { id: created.id });
+    state = await webInvoke<AppState>("get_state");
+    expect(state.active_claude_profile_id).toBeNull();
+    await expect(webInvoke<ClaudeProfileDetail>("claude_get_profile", { id: created.id })).rejects.toThrow("不存在");
+  });
+
+  it("captures a Claude provider without activating it in web mode", async () => {
+    const before = (await webInvoke<AppState>("get_state")).active_claude_profile_id;
+    const captured = await webInvoke<ClaudeProfileDetail>("claude_capture_profile", { name: "当前配置" });
+    expect(captured.name).toBe("当前配置");
+    expect(JSON.parse(captured.raw_settings!)).toMatchObject({ model: "sonnet", env: { ANTHROPIC_BASE_URL: "https://relay.example/v1" } });
+    expect((await webInvoke<AppState>("get_state")).active_claude_profile_id).toBe(before);
+    await webInvoke<void>("claude_delete_profile", { id: captured.id });
   });
 
   it("keeps plugins and Codex skills in separate lists", async () => {

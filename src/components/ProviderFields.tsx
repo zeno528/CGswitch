@@ -1,0 +1,244 @@
+import { Download, Eye, EyeOff, Pencil, Wifi } from "lucide-react";
+import type { ReactNode } from "react";
+import { AppSelect } from "./AppSelect";
+import { LoadingSpinner } from "./LoadingSpinner";
+import { ProfileIconTile } from "./ProfileIconTile";
+
+const displayModelLabel = (value: string) => value.replace(/\[1m\]\s*$/i, "");
+
+export function ProviderIdentityFields({ idPrefix, name, description, icon, iconName, onIcon, onName, onDescription, labels }: {
+  idPrefix: string;
+  name: string;
+  description: string;
+  icon: string | null;
+  iconName?: string;
+  onIcon: () => void;
+  onName: (value: string) => void;
+  onDescription: (value: string) => void;
+  labels: {
+    changeIcon: string;
+    changeIconLabel: string;
+    name: string;
+    namePlaceholder: string;
+    description: string;
+    descriptionPlaceholder: string;
+  };
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+      <div className="flex min-w-0 items-center gap-4">
+        <button
+          type="button"
+          className="relative grid h-[61px] w-[61px] shrink-0 place-items-center rounded-[16px] transition-opacity hover:opacity-80"
+          title={labels.changeIcon}
+          aria-label={labels.changeIconLabel}
+          onClick={onIcon}
+        >
+          <ProfileIconTile name={iconName ?? name} icon={icon} size="fill" />
+          <span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white shadow" aria-hidden="true">
+            <Pencil className="h-2.5 w-2.5" strokeWidth={2} />
+          </span>
+        </button>
+        <div className="min-w-0 flex-1">
+          <label className="field-label mb-1.5 block" htmlFor={`${idPrefix}-name`}>{labels.name}</label>
+          <input id={`${idPrefix}-name`} className="app-input" maxLength={50} placeholder={labels.namePlaceholder} value={name} onChange={(event) => onName(event.target.value)} />
+        </div>
+      </div>
+      <div className="min-w-0">
+        <label className="field-label mb-1.5 block" htmlFor={`${idPrefix}-description`}>{labels.description}</label>
+        <input
+          id={`${idPrefix}-description`} className="app-input" autoComplete="off" maxLength={200}
+          placeholder={labels.descriptionPlaceholder} value={description}
+          onChange={(event) => onDescription(event.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function ProviderSecretField({ label, placeholder, value, onChange, visible, onToggle, showLabel, hideLabel, testLabel, testTitle, testing, onTest, help }: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  showLabel: string;
+  hideLabel: string;
+  testLabel: string;
+  testTitle?: string;
+  testing: boolean;
+  onTest: () => void;
+  help?: ReactNode;
+}) {
+  return <>
+    <div className="mb-1.5 mt-4 flex items-center gap-2">
+      <span className="field-label">{label}</span>
+      {help}
+      <button
+        type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5"
+        disabled={testing || Boolean(testTitle)} title={testTitle} onClick={onTest}
+      >
+        {testing ? <LoadingSpinner /> : <Wifi className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
+        {testLabel}
+      </button>
+    </div>
+    <div className="app-input-action">
+      <input className="app-input app-input--action" type={visible ? "text" : "password"} placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
+      <button
+        type="button" className="app-input-action__button" aria-label={visible ? hideLabel : showLabel}
+        title={visible ? hideLabel : showLabel} aria-pressed={visible} onClick={onToggle}
+      >
+        {visible ? <EyeOff className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> : <Eye className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
+      </button>
+    </div>
+  </>;
+}
+
+export function ProviderModelFields({ value, onChange, models, fetching, disabled, onFetch, onApplyModel, mappingFields, labels }: {
+  value: string;
+  onChange: (value: string) => void;
+  models: string[];
+  fetching: boolean;
+  disabled: boolean;
+  onFetch: () => void;
+  onApplyModel?: (value: string) => void;
+  mappingFields?: Array<{
+    key: string;
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+    displayValue?: string;
+    displayPlaceholder?: string;
+    displayDisabled?: boolean;
+    onDisplayChange?: (value: string) => void;
+    oneMillion?: boolean;
+    onToggleOneMillion?: (enabled: boolean) => void;
+  }>;
+  labels: {
+    model: string;
+    placeholder: string;
+    models: string;
+    fetch: string;
+    available: string;
+    select: string;
+    fetchFirst: string;
+    quickSet?: string;
+    mappingTitle?: string;
+    mappingDescription?: string;
+    role?: string;
+    displayName?: string;
+    requestModel?: string;
+    oneMillion?: string;
+    oneMillionColumn?: string;
+    oneMillionTitle?: string;
+  };
+}) {
+  if (mappingFields) {
+    return (
+      <div>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="title-sm">{labels.mappingTitle ?? labels.models}</div>
+            {labels.mappingDescription ? <div className="setting-description mt-1">{labels.mappingDescription}</div> : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {onApplyModel && labels.quickSet ? (
+              <div className="w-28 shrink-0">
+                <AppSelect
+                  value={null}
+                  options={models.map((item) => ({ label: item, value: item }))}
+                  onChange={onApplyModel}
+                  placeholder={labels.quickSet}
+                  disabled={disabled || fetching || models.length === 0}
+                  menuAlign="end"
+                  menuWidth="max-content"
+                  compact
+                />
+              </div>
+            ) : null}
+            <div className="w-28 shrink-0">
+              <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-7 w-full justify-center" disabled={fetching || disabled} onClick={onFetch}>
+                {fetching ? <LoadingSpinner /> : <Download className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
+                {labels.fetch}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-(--panel-border) bg-(--main-surface-bg)">
+          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_7rem] items-center gap-2 bg-(--tile-bg) px-3 py-2 sm:grid">
+            <span className="meta-xs muted font-medium">{labels.role ?? labels.model}</span>
+            <span className="meta-xs muted font-medium">{labels.displayName}</span>
+            <span className="meta-xs muted flex min-w-0 items-center gap-2 whitespace-nowrap font-medium">
+              <span>{labels.requestModel}</span>
+              {models.length > 0 ? <span aria-hidden="true">·</span> : null}
+              {models.length > 0 ? <span>{labels.available}</span> : null}
+            </span>
+            <span aria-hidden="true" />
+            <span className="meta-xs muted text-center font-medium">{labels.oneMillionColumn ?? labels.oneMillion}</span>
+          </div>
+          {mappingFields.map((field) => {
+            const options = models.map((item) => ({ label: displayModelLabel(item), value: item }));
+            if (field.value.trim() && !models.includes(field.value)) options.unshift({ label: displayModelLabel(field.value), value: field.value });
+            return (
+              <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_7rem] sm:items-center">
+                <div className="flex min-w-0 items-center">
+                  <span className="inline-flex min-h-8 w-full min-w-0 items-center rounded-lg bg-(--tile-bg) px-3 text-sm font-medium text-(--text-secondary)" title={field.label}>{field.label}</span>
+                </div>
+                <input
+                  className="app-input app-input--compact min-w-0 disabled:bg-(--tile-bg) disabled:text-(--text-secondary)"
+                  aria-label={`${field.label} ${labels.displayName ?? ""}`}
+                  placeholder={field.displayPlaceholder ?? ""}
+                  value={field.displayValue ?? ""}
+                  disabled={field.displayDisabled ?? !field.onDisplayChange}
+                  onChange={(event) => field.onDisplayChange?.(event.target.value)}
+                />
+                <input className="app-input app-input--compact min-w-0" aria-label={`${field.label} ${labels.requestModel ?? labels.model}`} placeholder={field.placeholder ?? ""} value={displayModelLabel(field.value)} onChange={(event) => field.onChange(event.target.value)} />
+                <AppSelect
+                  value={field.value.trim() ? field.value : null}
+                  options={options}
+                  onChange={field.onChange}
+                  placeholder={models.length ? labels.select : labels.fetchFirst}
+                  disabled={disabled}
+                  iconOnly
+                  menuWidth="max-content"
+                />
+                {field.onToggleOneMillion && labels.oneMillion ? (
+                  <label className={`editor-ghost !h-8 shrink-0 !px-2 sm:justify-center ${field.oneMillion ? "on" : ""}`} title={labels.oneMillionTitle}>
+                    <input type="checkbox" checked={field.oneMillion ?? false} onChange={(event) => field.onToggleOneMillion?.(event.target.checked)} />
+                    <span className="meta-xs font-medium">{labels.oneMillion}</span>
+                  </label>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return <div className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+    <div className="min-w-0">
+      <div className="field-label mb-1.5 flex h-6 items-center">{labels.model}</div>
+      <input className="app-input" placeholder={labels.placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
+    </div>
+    <div className="min-w-0">
+      <div className="mb-1.5 flex h-6 items-center gap-2">
+        <span className="field-label">{labels.models}</span>
+        <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5" disabled={fetching || disabled} onClick={onFetch}>
+          {fetching ? <LoadingSpinner /> : <Download className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
+          {labels.fetch}
+        </button>
+        {models.length > 0 ? <span className="muted text-xs">{labels.available}</span> : null}
+      </div>
+      <AppSelect
+        value={models.includes(value) ? value : null}
+        options={models.map((item) => ({ label: item, value: item }))}
+        onChange={onChange}
+        placeholder={models.length ? labels.select : labels.fetchFirst}
+        disabled={disabled}
+      />
+    </div>
+  </div>;
+}
