@@ -63,7 +63,7 @@ export default {
   baseUrlRequired: "Fill in the API URL first",
   tokenRequired: "Fill in the API token first",
   modelsFetched: "Fetched {{count}} models",
-  noModelsReturned: "The endpoint returned no models",
+  noModelsReturned: "This endpoint has no model list — use the preset model or type one manually",
   fetchFailed: "Failed to fetch models: {{error}}",
   adminUrlPlaceholder: "https://open.bigmodel.cn",
   envPlaceholder: "The complete settings.json file; provider fields in env sync with the form above.",

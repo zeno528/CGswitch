@@ -33,7 +33,7 @@ mod profiles;
 mod settings;
 mod storage;
 
-pub use claude::fetch_claude_models;
+pub use claude::{fetch_claude_models, probe_claude_messages_reachable};
 pub use connections::{test_provider_connection, ProfileBalance, ProfileConnectionResult};
 pub use model_fetch::fetch_models;
 pub use plugins::{

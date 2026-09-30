@@ -167,7 +167,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [envText]);
 
-  // 测试连通与获取模型列表共用同一条 Anthropic /v1/models 拉取（对齐 Codex 双按钮语义）
+  // 测试连通走真实调用路径 /v1/messages 判活（连通性真源）；获取模型只拉 /models，厂商兼容面没有时留空
   const fetchModelList = async (): Promise<string[]> => {
     if (!baseUrl.trim()) {
       feedback.warning(t("baseUrlRequired"));
@@ -195,10 +195,8 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   const testConnection = async () => {
     if (testing || !baseUrl.trim() || !authToken.trim()) return;
     setTesting(true);
-    const startedAt = performance.now();
     try {
-      await api.claudeFetchModels(baseUrl.trim(), authToken.trim());
-      const latency = Math.round(performance.now() - startedAt);
+      const latency = await api.claudeTestConnection(baseUrl.trim(), authToken.trim());
       feedback.success(t("connectionOk", { latency: ` · ${latency}ms` }));
     } catch (error) {
       feedback.error(t("connectionFailed", { error: String(error) }));

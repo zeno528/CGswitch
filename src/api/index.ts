@@ -140,6 +140,7 @@ export const api = {
   claudeSaveProfile: (input: { id?: string; name: string; baseUrl?: string | null; authToken?: string | null; model?: string | null; description?: string | null; fetchedModels?: string[] | null; kind?: string | null; adminUrl?: string | null; extraEnv?: string | null; rawSettings?: string | null; icon?: string | null; showBalance: boolean }) =>
     call<ClaudeProfileDetail>("claude_save_profile", input),
   claudeFetchModels: (baseUrl: string, authToken: string) => call<string[]>("claude_fetch_models", { baseUrl, authToken }),
+  claudeTestConnection: (baseUrl: string, authToken: string) => call<number>("claude_test_connection", { baseUrl, authToken }),
   claudeSetProfileIcon: (id: string, icon: string | null) => call<void>("claude_set_profile_icon", { id, icon }),
   claudeSetProfileShowBalance: (id: string, enabled: boolean) => call<void>("claude_set_profile_show_balance", { id, enabled }),
   claudeReorderProfiles: (ids: string[]) => call<void>("claude_reorder_profiles", { ids }),

@@ -328,6 +328,7 @@ pub fn run() {
             commands::claude_reorder_profiles,
             commands::claude_duplicate_profile,
             commands::claude_test_profile,
+            commands::claude_test_connection,
             commands::claude_fetch_models,
             commands::delete_skill,
             commands::list_plugin_skills,

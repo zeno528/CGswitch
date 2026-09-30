@@ -664,7 +664,7 @@ impl AppContext {
             .reorder_claude_profiles(ids, &now_ms().to_string())
     }
 
-    /// 卡片上的测试连通：用已存的凭证打一次 /models，成功回传耗时（对齐 Codex 卡片测试按钮）。
+    /// 卡片上的测试连通：用已存凭证向真实调用路径 /v1/messages 判活，成功回传耗时（对齐 Codex 卡片测试按钮）。
     pub async fn claude_test_profile(&self, id: &str) -> AppResult<u64> {
         let stored = self.database.claude_profile(id)?;
         let base_url = stored
@@ -675,9 +675,7 @@ impl AppContext {
             .auth_token
             .filter(|text| !text.trim().is_empty())
             .ok_or_else(|| app_err!("请先填写 API Token"))?;
-        let started_at = std::time::Instant::now();
-        fetch_claude_models(&base_url, &auth_token).await?;
-        Ok(started_at.elapsed().as_millis() as u64)
+        probe_claude_messages_reachable(&base_url, &auth_token).await
     }
 
     /// 完整复制配置（列值、图标、附加 env），新名称加 `copy` 后缀、同名追加序号，插到源卡片后面（对齐 Codex duplicate_profile）。
@@ -871,8 +869,21 @@ struct ClaudeModelEntry {
     id: String,
 }
 
+/// Anthropic 兼容请求共用的 HTTP 客户端：统一超时。
+fn anthropic_client() -> AppResult<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
+        .build()
+        .map_err(|error| app_err!("构建 HTTP 客户端失败: {error}"))
+}
+
 /// 拉取 Anthropic 兼容端点的模型列表：base_url 无版本段 → `{base}/v1/models`；
 /// 带 `/v{N}` 版本段 → `{base}/models`。脱敏/截断/版本段判断复用 model_fetch 的原语。
+///
+/// 厂商兼容面（DeepSeek/Kimi 的 `{OpenAI根}/anthropic`）往往不实现 /models 路由：
+/// 此时剥掉 /anthropic 后缀回同根 OpenAI 面拉真实列表（先 `/v1/models` 后 `/models`）——
+/// 同一厂商同一把 Key，两个面的列表响应同为 data[].id 同构。连通性判活另由
+/// probe_claude_messages_reachable 走真实调用路径负责，两者互不掺和。
 pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<Vec<String>> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
@@ -881,51 +892,264 @@ pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<
     if auth_token.trim().is_empty() {
         return Err(app_err!("请先填写 API Token 再获取模型列表"));
     }
-    let url = if ends_with_version_segment(trimmed) {
-        format!("{trimmed}/models")
+    let candidate_urls = if ends_with_version_segment(trimmed) {
+        vec![format!("{trimmed}/models")]
     } else {
-        format!("{trimmed}/v1/models")
+        let mut urls = vec![format!("{trimmed}/v1/models")];
+        if let Some(root) = trimmed.strip_suffix("/anthropic") {
+            if !root.is_empty() {
+                urls.push(format!("{root}/v1/models"));
+                urls.push(format!("{root}/models"));
+            }
+        }
+        urls
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .build()
-        .map_err(|error| app_err!("构建 HTTP 客户端失败: {error}"))?;
-    let response = client
-        .get(&url)
+    let client = anthropic_client()?;
+    for url in candidate_urls {
+        let response = client
+            .get(&url)
+            .header("x-api-key", auth_token)
+            .header("anthropic-version", "2023-06-01")
+            .bearer_auth(auth_token)
+            .send()
+            .await
+            .map_err(|error| app_err!("请求失败: {error}"))?;
+        let status = response.status();
+        if matches!(status.as_u16(), 404 | 405) {
+            continue;
+        }
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(app_err!(
+                "HTTP {status}: {}",
+                truncate_body(redact(&body, auth_token))
+            ));
+        }
+        let parsed: ClaudeModelsResponse = response
+            .json()
+            .await
+            .map_err(|error| app_err!("响应解析失败: {error}"))?;
+        let mut models: Vec<String> = parsed
+            .data
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect();
+        models.sort();
+        return Ok(models);
+    }
+    // 全部候选都没有 /models 路由：模型列表留空，上层提示手动填模型。
+    Ok(Vec::new())
+}
+
+/// Claude 侧连通性判活的真源：POST 最小对话请求（1 token）到真实调用路径 /v1/messages
+/// （带 /v{N} 版本段的 base 挂在版本段下）。DeepSeek/Kimi 等厂商兼容面没有 /models，
+/// 但对话路径必然存在；未知模型名会被服务端自动映射或以 4xx 拒绝，均证明端点可达。
+/// 401/403 报凭证错误、404 报非 Anthropic 兼容面，其余任何 HTTP 响应都算连通，回传耗时毫秒。
+pub async fn probe_claude_messages_reachable(trimmed: &str, auth_token: &str) -> AppResult<u64> {
+    if trimmed.is_empty() {
+        return Err(app_err!("API 端点为空"));
+    }
+    let url = if ends_with_version_segment(trimmed) {
+        format!("{trimmed}/messages")
+    } else {
+        format!("{trimmed}/v1/messages")
+    };
+    let started_at = std::time::Instant::now();
+    let response = anthropic_client()?
+        .post(&url)
         .header("x-api-key", auth_token)
         .header("anthropic-version", "2023-06-01")
         .bearer_auth(auth_token)
+        .json(&serde_json::json!({
+            "model": "claude",
+            "max_tokens": 1,
+            "messages": [{"role": "user", "content": "ping"}]
+        }))
         .send()
         .await
         .map_err(|error| app_err!("请求失败: {error}"))?;
-
     let status = response.status();
-    if !status.is_success() {
+    if matches!(status.as_u16(), 401 | 403 | 404) {
         let body = response.text().await.unwrap_or_default();
         return Err(app_err!(
             "HTTP {status}: {}",
             truncate_body(redact(&body, auth_token))
         ));
     }
-    let parsed: ClaudeModelsResponse = response
-        .json()
-        .await
-        .map_err(|error| app_err!("响应解析失败: {error}"))?;
-    let mut models: Vec<String> = parsed
-        .data
-        .unwrap_or_default()
-        .into_iter()
-        .map(|entry| entry.id)
-        .collect();
-    models.sort();
-    Ok(models)
+    Ok(started_at.elapsed().as_millis() as u64)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::plugins::test_context;
+
+    /// 本地一次性 HTTP 服务：按 (方法, 路径) 返回预置 (状态码, 响应体)，供模型拉取回退测试用。
+    fn spawn_local_http(
+        responder: impl Fn(&str, &str) -> (u16, String) + Send + 'static,
+    ) -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut buffer = [0u8; 4096];
+                let read = std::io::Read::read(&mut stream, &mut buffer).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                let mut parts = request.split_whitespace();
+                let method = parts.next().unwrap_or("");
+                let path = parts.next().unwrap_or("");
+                let (status, body) = responder(method, path);
+                let response = format!(
+                    "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                use std::io::Write as _;
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    /// 连通判活的真源是真实调用路径 /v1/messages：厂商兼容面可以没有 /models，但对话路径必然存在。
+    #[tokio::test]
+    async fn probe_reachable_when_messages_route_exists() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("POST", "/v1/messages") => (200, "{}".into()),
+            _ => (500, "{}".into()),
+        });
+        probe_claude_messages_reachable(&base, "token-1")
+            .await
+            .unwrap();
+    }
+
+    /// 服务端对请求体本身回 4xx（如未知模型）也证明路径与鉴权在位，仍是连通。
+    #[tokio::test]
+    async fn probe_treats_body_rejection_as_reachable() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("POST", "/v1/messages") => (400, r#"{"error":"bad request"}"#.into()),
+            _ => (500, "{}".into()),
+        });
+        probe_claude_messages_reachable(&base, "token-1")
+            .await
+            .unwrap();
+    }
+
+    /// 判活撞上 401 保留凭证错误：Key 无效不能谎报连通。
+    #[tokio::test]
+    async fn probe_reports_auth_failure() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("POST", "/v1/messages") => (401, r#"{"error":"unauthorized"}"#.into()),
+            _ => (500, "{}".into()),
+        });
+        let error = probe_claude_messages_reachable(&base, "token-1")
+            .await
+            .unwrap_err();
+        assert!(error.0.contains("401"), "{error:?}");
+    }
+
+    /// 判活若 /v1/messages 也是 404，说明该地址不是 Anthropic 兼容面，保留原始 404 报错。
+    #[tokio::test]
+    async fn probe_reports_missing_surface() {
+        let base = spawn_local_http(|_method, _path| (404, "{}".into()));
+        let error = probe_claude_messages_reachable(&base, "token-1")
+            .await
+            .unwrap_err();
+        assert!(error.0.contains("404"), "{error:?}");
+    }
+
+    /// 带 /v{N} 版本段的 base：判活直接挂在版本段下。
+    #[tokio::test]
+    async fn probe_under_version_segment_path() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("POST", "/v1/messages") => (200, "{}".into()),
+            _ => (500, "{}".into()),
+        });
+        probe_claude_messages_reachable(&format!("{base}/v1"), "token-1")
+            .await
+            .unwrap();
+    }
+
+    /// 获取模型只管 /models：厂商兼容面没有该路由时返回空列表，且不再顺带发判活请求
+    ///（连通性与模型列表解耦，真源分别是 /v1/messages 与 /models）。
+    #[tokio::test]
+    async fn fetch_models_404_returns_empty_without_probe() {
+        let posted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = posted.clone();
+        let base = spawn_local_http(move |method, path| match (method, path) {
+            ("GET", "/v1/models") => (404, "{}".into()),
+            _ => {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                (500, "{}".into())
+            }
+        });
+        let models = fetch_claude_models(&base, "token-1").await.unwrap();
+        assert!(models.is_empty());
+        assert!(
+            !posted.load(std::sync::atomic::Ordering::SeqCst),
+            "获取模型不应顺带发判活请求"
+        );
+    }
+
+    /// `{root}/anthropic` 形状的厂商兼容面没有 /models 时，剥后缀回同根 OpenAI 面拉真实列表
+    ///（同厂商同一把 Key，先试 `/v1/models` 再试 `/models`）。
+    #[tokio::test]
+    async fn fetch_models_falls_back_to_sibling_openai_surface() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("GET", "/anthropic/v1/models") => (404, "{}".into()),
+            ("GET", "/v1/models") => (200, r#"{"data":[{"id":"model-a"}]}"#.into()),
+            _ => (500, "{}".into()),
+        });
+        let models = fetch_claude_models(&format!("{base}/anthropic"), "token-1")
+            .await
+            .unwrap();
+        assert_eq!(models, vec!["model-a"]);
+    }
+
+    /// 同根 OpenAI 面先 `/v1/models` 后 `/models`（DeepSeek 用后者也能接住）。
+    #[tokio::test]
+    async fn fetch_models_sibling_falls_back_to_root_models() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("GET", "/anthropic/v1/models") => (404, "{}".into()),
+            ("GET", "/v1/models") => (404, "{}".into()),
+            ("GET", "/models") => (200, r#"{"data":[{"id":"model-a"}]}"#.into()),
+            _ => (500, "{}".into()),
+        });
+        let models = fetch_claude_models(&format!("{base}/anthropic"), "token-1")
+            .await
+            .unwrap();
+        assert_eq!(models, vec!["model-a"]);
+    }
+
+    /// 同根回退撞上 401 说明 Key 无效，报错而不是吞成空列表。
+    #[tokio::test]
+    async fn fetch_models_sibling_auth_failure_reports_error() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("GET", "/anthropic/v1/models") => (404, "{}".into()),
+            ("GET", "/v1/models") => (401, r#"{"error":"unauthorized"}"#.into()),
+            _ => (500, "{}".into()),
+        });
+        let error = fetch_claude_models(&format!("{base}/anthropic"), "token-1")
+            .await
+            .unwrap_err();
+        assert!(error.0.contains("401"), "{error:?}");
+    }
+
+    /// /models 存在的端点（真 Anthropic、完整中转、智谱）维持原行为：解析 data[].id 并排序。
+    #[tokio::test]
+    async fn models_list_still_parsed_when_present() {
+        let base = spawn_local_http(|method, path| match (method, path) {
+            ("GET", "/v1/models") => (
+                200,
+                r#"{"data":[{"id":"model-b"},{"id":"model-a"}]}"#.into(),
+            ),
+            _ => (500, "{}".into()),
+        });
+        let models = fetch_claude_models(&base, "token-1").await.unwrap();
+        assert_eq!(models, vec!["model-a", "model-b"]);
+    }
 
     fn read_settings(home: &tempfile::TempDir) -> Value {
         serde_json::from_str(

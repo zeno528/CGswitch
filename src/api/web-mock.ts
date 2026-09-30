@@ -1260,6 +1260,12 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (!String(args?.authToken ?? "").trim()) throw new Error("请先填写 API Token 再获取模型列表");
       return ["glm-5.3", "glm-5.3-air", "glm-5.3[1m]"] as T;
     }
+    case "claude_test_connection": {
+      // 浏览器侧不发真实 HTTP：与 claude_test_profile 同口径，校验必填后回固定延迟
+      if (!String(args?.baseUrl ?? "").trim()) throw new Error("请先填写 API 地址");
+      if (!String(args?.authToken ?? "").trim()) throw new Error("请先填写 API Token");
+      return 42 as T;
+    }
     case "list_plugin_skills": {
       // 与后端一致：storePath 仅用于 Tauri 端跳过重复的插件列表解析，Web mock 直接读 fixture。
       const name = String(args?.name ?? "");

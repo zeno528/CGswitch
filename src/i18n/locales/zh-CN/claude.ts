@@ -63,7 +63,7 @@ export default {
   baseUrlRequired: "请先填写 API 地址",
   tokenRequired: "请先填写 API Token",
   modelsFetched: "已获取 {{count}} 个模型",
-  noModelsReturned: "端点未返回任何模型",
+  noModelsReturned: "端点未提供模型列表，可使用预设模型或手动填写",
   fetchFailed: "获取模型列表失败：{{error}}",
   adminUrlPlaceholder: "https://open.bigmodel.cn",
   envPlaceholder: "完整的 settings.json 内容；env 中的供应商字段与上方表单双向同步。",

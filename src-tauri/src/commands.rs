@@ -227,6 +227,12 @@ pub async fn claude_fetch_models(base_url: String, auth_token: String) -> AppRes
     crate::services::fetch_claude_models(&base_url, &auth_token).await
 }
 
+/// 创建态表单的测试连通：向真实调用路径 /v1/messages 判活，成功回传耗时。
+#[tauri::command]
+pub async fn claude_test_connection(base_url: String, auth_token: String) -> AppResult<u64> {
+    crate::services::probe_claude_messages_reachable(&base_url, &auth_token).await
+}
+
 #[tauri::command]
 pub fn claude_delete_profile(id: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.claude_delete(&id)
