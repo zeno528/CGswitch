@@ -28,7 +28,7 @@ const LABELS: Record<string, string> = {
   claude: "Claude",
 };
 
-const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter", "custom", "qwen", "xai", "anthropic"]);
+const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter", "custom", "xai", "anthropic"]);
 
 export interface ProviderIcon {
   id: string;
