@@ -1,4 +1,5 @@
 import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type BuiltinPreset } from "../presets";
+import { splitEnvExtras } from "../features/claude/profileEnvText";
 import type {
   AppState,
   DatabaseBackupInfo,
@@ -232,6 +233,7 @@ const webClaudeProfiles: ClaudeProfileDetail[] = [
   },
 ];
 let webActiveClaudeProfileId: string | null = "cla-demo-1";
+let webClaudeCommonSettings: string | null = null;
 
 let webMarketplaces: PluginMarketplace[] = [
   {
@@ -1125,6 +1127,14 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "delete_skill":
       return undefined as T;
+    case "claude_get_common_settings":
+      return webClaudeCommonSettings as T;
+    case "claude_save_common_settings": {
+      const text = args?.text as string | null;
+      if (text !== null && splitEnvExtras(text) === undefined) throw new Error("settings.json 无效");
+      webClaudeCommonSettings = text;
+      return undefined as T;
+    }
     case "claude_list_profiles":
       return webClaudeProfiles.map((profile) => ({
         id: profile.id,
@@ -1183,7 +1193,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         const env = (settings.env ?? {}) as Record<string, unknown>;
         if (!env || typeof env !== "object" || Array.isArray(env) || Object.values(env).some((value) => typeof value !== "string")) throw new Error("settings.json 的 env 必须是字符串键值对象");
         base.base_url = (env.ANTHROPIC_BASE_URL as string | undefined) ?? null;
-        base.auth_token = (env.ANTHROPIC_AUTH_TOKEN as string | undefined) ?? null;
+        base.auth_token = (env.ANTHROPIC_AUTH_TOKEN as string | undefined) ?? (env.ANTHROPIC_API_KEY as string | undefined) ?? null;
         base.model = (env.ANTHROPIC_MODEL as string | undefined) ?? null;
         const extras = Object.fromEntries(Object.entries(env).filter(([key]) => !["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"].includes(key)));
         base.extra_env = Object.keys(extras).length ? JSON.stringify(extras) : null;

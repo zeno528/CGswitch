@@ -157,7 +157,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
           <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
         </button>
-        {!create && onDelete ? <button type="button" className="apple-action-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("edit.uninstall")}</button> : null}
+        {!create && onDelete ? <button type="button" className="apple-action-button app-button--danger" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("edit.uninstall")}</button> : null}
       </div>
 
       <div className="apple-edit-content">

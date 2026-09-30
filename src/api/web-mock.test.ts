@@ -1,8 +1,60 @@
 import { describe, expect, it } from "vitest";
 import { webInvoke } from "./web-mock";
+import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../features/claude/profileEnvText";
 import type { AppState, ClaudeProfileDetail, MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
+  it("官方 API 配置从全文回显 API Key", async () => {
+    const rawSettings = '{"env":{"ANTHROPIC_API_KEY":"fixture-key"}}';
+    const created = await webInvoke<ClaudeProfileDetail>("claude_save_profile", {
+      name: "fixture-api", kind: "anthropic", rawSettings,
+    });
+    try {
+      expect(created.auth_token).toBe("fixture-key");
+      expect(created.raw_settings).toBe(rawSettings);
+    } finally {
+      await webInvoke("claude_delete_profile", { id: created.id });
+    }
+  });
+
+  it("编辑先读取已保存模板，提取与取消不写库，保存后填充使用新版本", async () => {
+    const previous = await webInvoke<string | null>("claude_get_common_settings");
+    const saved = '{"hooks":{"Stop":[{"command":"old"}]},"env":{"CUSTOM":"old"}}';
+    try {
+      await webInvoke("claude_save_common_settings", { text: saved });
+      const opened = await webInvoke<string>("claude_get_common_settings");
+      expect(opened).toBe(saved);
+      const source = '{"hooks":{"Stop":[{"command":"new"}]},"env":{"CUSTOM":"new","ANTHROPIC_AUTH_TOKEN":"private"}}';
+      const draft = extractClaudeCommonSettings(source)!;
+      expect(JSON.parse(draft)).toEqual({ hooks: { Stop: [{ command: "new" }] }, env: { CUSTOM: "new" } });
+      // 提取只更新预览；关闭弹窗前数据库仍是旧版本，外面的填充仍使用旧模板。
+      await expect(webInvoke("claude_get_common_settings")).resolves.toBe(saved);
+      expect(JSON.parse(fillClaudeCommonSettings("{}", opened)!)).toEqual(JSON.parse(saved));
+      await webInvoke("claude_save_common_settings", { text: draft });
+      const next = await webInvoke<string>("claude_get_common_settings");
+      expect(next).toBe(draft);
+      const filled = fillClaudeCommonSettings('{"env":{"ANTHROPIC_AUTH_TOKEN":"current"}}', next)!;
+      expect(JSON.parse(filled)).toEqual({ hooks: { Stop: [{ command: "new" }] }, env: { ANTHROPIC_AUTH_TOKEN: "current", CUSTOM: "new" } });
+    } finally {
+      await webInvoke("claude_save_common_settings", { text: previous });
+    }
+  });
+  it("保存通用模板时拒绝非法内容，且不修改供应商或激活状态", async () => {
+    const before = await webInvoke<AppState>("get_state");
+    const profiles = await webInvoke<ClaudeProfileDetail[]>("claude_list_profiles");
+    const template = '{"hooks":{"Stop":[]},"env":{"CUSTOM":"keep"}}';
+    try {
+      await webInvoke("claude_save_common_settings", { text: template });
+      await expect(webInvoke("claude_get_common_settings")).resolves.toBe(template);
+      await expect(webInvoke("claude_save_common_settings", { text: '{"env":{"CUSTOM":42}}' })).rejects.toThrow();
+      await expect(webInvoke("claude_get_common_settings")).resolves.toBe(template);
+      await expect(webInvoke("claude_list_profiles")).resolves.toEqual(profiles);
+      expect((await webInvoke<AppState>("get_state")).active_claude_profile_id).toBe(before.active_claude_profile_id);
+    } finally {
+      await webInvoke("claude_save_common_settings", { text: null });
+    }
+    await expect(webInvoke("claude_get_common_settings")).resolves.toBeNull();
+  });
   it("keeps a provider description across create, edit and detail reads", async () => {
     const created = await webInvoke<ProfileSummary>("add_custom_profile", { name: "Demo", description: "  First note  ", configText: 'model = "demo"' });
     try {

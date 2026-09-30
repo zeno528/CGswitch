@@ -142,6 +142,7 @@ fn migrations() -> Migrations<'static> {
         // 让已应用过它们的存量库重放旧迁移（duplicate column 崩溃）。
         M::up("ALTER TABLE claude_profiles ADD COLUMN show_balance INTEGER NOT NULL DEFAULT 0"),
         M::up("ALTER TABLE mcp_servers ADD COLUMN claude_json TEXT"),
+        M::up("ALTER TABLE app_state ADD COLUMN claude_common_settings TEXT"),
     ])
 }
 
@@ -710,6 +711,31 @@ impl Database {
             .map(Option::flatten)
     }
 
+    pub fn claude_common_settings(&self) -> AppResult<Option<String>> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                "SELECT claude_common_settings FROM app_state WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| app_err!("无法读取 Claude 通用模板: {error}"))
+            .map(Option::flatten)
+    }
+
+    pub fn set_claude_common_settings(&self, text: Option<&str>) -> AppResult<()> {
+        let connection = self.lock()?;
+        connection
+            .execute(
+                "INSERT INTO app_state(singleton, claude_common_settings) VALUES(1, ?1)
+                 ON CONFLICT(singleton) DO UPDATE SET claude_common_settings=excluded.claude_common_settings",
+                params![text],
+            )
+            .map_err(|error| app_err!("无法保存 Claude 通用模板: {error}"))?;
+        Ok(())
+    }
+
     pub fn set_active_claude_profile(&self, id: Option<&str>) -> AppResult<()> {
         let connection = self.lock()?;
         connection
@@ -1052,6 +1078,7 @@ impl Database {
                 "active_profile_id",
                 "default_account_id",
                 "active_claude_profile_id",
+                "claude_common_settings",
             ],
         )?;
         // 备份带 sort_order 则原样复制（保留卡片排序）；旧 schema 备份无此列，落列默认 0（创建顺序）
@@ -1396,6 +1423,58 @@ mod tests {
     use super::*;
 
     #[test]
+    fn common_template_migrates_and_round_trips_without_changing_active_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 18).unwrap();
+            connection.execute("INSERT INTO app_state(singleton, active_profile_id, active_claude_profile_id) VALUES(1, 'codex-fixture', 'claude-fixture')", []).unwrap();
+        }
+        let legacy = dir.path().join("legacy.db");
+        std::fs::copy(&paths.database, &legacy).unwrap();
+        let db = Database::open(&paths).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap(), None);
+        assert_eq!(db.app_state().unwrap().0.as_deref(), Some("codex-fixture"));
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-fixture")
+        );
+
+        let raw = r#"{"hooks":{"Stop":[]},"env":{"CUSTOM":"keep"},"unknown":{"nested":[1,null]}}"#;
+        db.set_claude_common_settings(Some(raw)).unwrap();
+        let backup = dir.path().join("template.db");
+        db.export_database(&backup).unwrap();
+        db.set_claude_common_settings(Some("{}")).unwrap();
+        db.restore_from_backup(&backup).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap().as_deref(), Some(raw));
+        let invalid = dir.path().join("invalid.db");
+        Connection::open(&invalid)
+            .unwrap()
+            .execute_batch("CREATE TABLE profiles(id TEXT)")
+            .unwrap();
+        assert!(db.restore_from_backup(&invalid).is_err());
+        assert_eq!(db.claude_common_settings().unwrap().as_deref(), Some(raw));
+        assert_eq!(db.app_state().unwrap().0.as_deref(), Some("codex-fixture"));
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-fixture")
+        );
+
+        // 旧备份没有模板列：恢复后清空当前模板，不能留下本次恢复之外的数据。
+        db.restore_from_backup(&legacy).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap(), None);
+        db.set_claude_common_settings(Some(raw)).unwrap();
+        db.set_claude_common_settings(None).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap(), None);
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-fixture")
+        );
+    }
+
+    #[test]
     fn migration_creates_schema() {
         let dir = tempfile::tempdir().unwrap();
         let paths = crate::paths::from_home(dir.path()).unwrap();
@@ -1549,7 +1628,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 18);
+        assert_eq!(version, 19);
         let show_balance: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",

@@ -25,6 +25,7 @@ const LABELS: Record<string, string> = {
   get hunyuan() { return i18next.t("providerName.hunyuan"); },
   get volcengine() { return i18next.t("providerName.volcengine"); },
   anthropic: "Anthropic",
+  claude: "Claude",
 };
 
 const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter", "custom", "qwen", "xai", "anthropic"]);

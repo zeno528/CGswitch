@@ -166,6 +166,19 @@ pub fn claude_capture_profile(
     state.claude_capture(&name)
 }
 
+#[tauri::command]
+pub fn claude_get_common_settings(state: State<'_, AppContext>) -> AppResult<Option<String>> {
+    state.claude_common_settings()
+}
+
+#[tauri::command]
+pub fn claude_save_common_settings(
+    text: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_save_common_settings(text.as_deref())
+}
+
 // ponytail: 参数即表单字段一一对应，IPC 边界保持散参（camelCase 自动映射），service 层才收拢成 Input
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]

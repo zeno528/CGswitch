@@ -318,7 +318,17 @@ body {
 }
 
 .profile-card-content__text {
+  /* 固定标题行（h-7）+ 行间距（mt-1）+ 元信息行；无用量时也保留相同卡片高度。 */
+  height: calc(1.75rem + 0.25rem + 18px);
   transform: translateY(-2px);
+}
+
+/* 只有标题时在固定高度内居中；有元信息行时保持原来的两行位置。 */
+.profile-card-content__text:not(:has(.profile-card-meta)) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transform: none;
 }
 
 /* 余额/用量胶囊数据变色（全局统一；后续供应商直接复用）。
@@ -1839,6 +1849,11 @@ button:focus-visible {
   width: min(600px, calc(100vw - 2rem));
 }
 
+/* Claude 通用模板编辑：为完整 JSON 内容留出横向空间。 */
+.claude-template-dialog {
+  width: min(720px, calc(100vw - 2rem));
+}
+
 .app-dialog-content--confirm .app-dialog-description {
   font-weight: 500;
 }
@@ -2576,7 +2591,7 @@ button:focus-visible {
   min-height: 2rem;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.875rem;
   border: 0;
   border-radius: 0.625rem;
   background: transparent;

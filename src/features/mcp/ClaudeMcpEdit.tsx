@@ -88,7 +88,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
           <span className="apple-title">{create ? t("claude.createTitle") : t("claude.editTitle")}</span>
         </button>
-        {!create && onDelete ? <button type="button" className="apple-action-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("claude.delete")}</button> : null}
+        {!create && onDelete ? <button type="button" className="apple-action-button app-button--danger" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("claude.delete")}</button> : null}
       </div>
       <div className="apple-edit-content">
         <div className="apple-group p-0">

@@ -1,4 +1,4 @@
-import { Camera, GripVertical, Layers2, Plus } from "lucide-react";
+import { Camera, GripVertical, Layers2, LayoutTemplate, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -15,6 +15,7 @@ import { ProfileCardActions, ProfileCardContent, getCachedProfileBalance, getCac
 import { useProfileBalance } from "../profiles/useProfileBalance";
 import { claudeBalanceQueryKinds } from "../../presets";
 import ClaudeProfileEdit from "./ClaudeProfileEdit";
+import ClaudeCommonTemplateDialog from "./ClaudeCommonTemplateDialog";
 import type { ClaudeProfileDetail, ClaudeProfileSummary, ProfileBalanceInfo } from "../../types";
 
 function cardProfile(profile: ClaudeProfileSummary) {
@@ -101,6 +102,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [captureOpen, setCaptureOpen] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [captureName, setCaptureName] = useState("");
   const captureNameInput = useRef<HTMLInputElement>(null);
   const [editingProfile, setEditingProfile] = useState<ClaudeProfileSummary | null>(null);
@@ -257,10 +259,16 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
           <img src="/claude-code.svg" alt="" className="provider-page-brand__logo" draggable="false" />
           <span>Claude Code</span>
         </div>
-        <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          {tProfiles("toolbar.addProvider")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" className="apple-action-button" disabled={busy} onClick={() => setTemplateOpen(true)}>
+            <LayoutTemplate size={16} strokeWidth={2} />
+            {t("commonTemplate.title")}
+          </button>
+          <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            {tProfiles("toolbar.addProvider")}
+          </button>
+        </div>
       </header>
       <div className="apple-edit-content">
         {!loaded ? null : items.length === 0 ? (
@@ -294,6 +302,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
       <AppDialog open={captureOpen} onOpenChange={setCaptureOpen} title={tProfiles("dialog.captureTitle")} initialFocusRef={captureNameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setCaptureOpen(false)}>{tProfiles("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !captureName.trim()} onClick={() => void capture()}>{tProfiles("dialog.save")}</button></>}>
         <div className="space-y-4"><p className="muted text-sm">{t("captureDescription")}</p><input ref={captureNameInput} className="app-input" maxLength={50} placeholder={tProfiles("edit.namePlaceholder")} value={captureName} onChange={(event) => setCaptureName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void capture(); }} /></div>
       </AppDialog>
+      {templateOpen ? <ClaudeCommonTemplateDialog onClose={() => setTemplateOpen(false)} /> : null}
     </section>
   );
 }

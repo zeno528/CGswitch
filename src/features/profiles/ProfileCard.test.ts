@@ -8,6 +8,14 @@ const hookSource = readFileSync(new URL("./useProfileBalance.ts", import.meta.ur
 const sortableCardSource = readFileSync(new URL("../../components/SortableCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
+it("供应商卡片文字区域固定保留标题和元信息行高度", () => {
+  expect(styles).toMatch(/\.profile-card-content__text\s*\{[^}]*height: calc\(1\.75rem \+ 0\.25rem \+ 18px\);/);
+});
+
+it("没有第二行时标题居中，有第二行时保留原布局", () => {
+  expect(styles).toMatch(/\.profile-card-content__text:not\(:has\(\.profile-card-meta\)\)\s*\{[^}]*justify-content: center;[^}]*transform: none;/);
+});
+
 describe("ProfileCard 官网入口", () => {
   it("将官网入口放在供应商标题行并使用 Globe 图标", () => {
     const titleRow = source.indexOf('<div className="flex min-h-7 items-center gap-2">');

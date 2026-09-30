@@ -167,7 +167,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
           </div>
         </div>
         <div className="overflow-hidden rounded-xl border border-(--panel-border) bg-(--main-surface-bg)">
-          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_7rem] items-center gap-2 bg-(--tile-bg) px-3 py-2 sm:grid">
+          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_4.5rem] items-center gap-2 bg-(--tile-bg) px-3 py-2 sm:grid">
             <span className="meta-xs muted font-medium">{labels.role ?? labels.model}</span>
             <span className="meta-xs muted font-medium">{labels.displayName}</span>
             <span className="meta-xs muted flex min-w-0 items-center gap-2 whitespace-nowrap font-medium">
@@ -176,7 +176,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
               {models.length > 0 ? <span>{labels.available}</span> : null}
             </span>
             <span aria-hidden="true" />
-            <span className="meta-xs muted text-center font-medium">{labels.oneMillionColumn ?? labels.oneMillion}</span>
+            <span className="meta-xs muted whitespace-nowrap text-center font-medium">{labels.oneMillionColumn ?? labels.oneMillion}</span>
           </div>
           {mappingFields.map((field) => {
             const optionsByLabel = new Map<string, string>();
@@ -187,7 +187,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
             const options = [...optionsByLabel].map(([label, value]) => ({ label, value }));
             const selected = options.find((option) => option.label === displayModelLabel(field.value.trim()))?.value ?? null;
             return (
-              <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_7rem] sm:items-center">
+              <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_4.5rem] sm:items-center">
                 <div className="flex min-w-0 items-center">
                   <span className="inline-flex min-h-8 w-full min-w-0 items-center rounded-lg bg-(--tile-bg) px-3 text-sm font-medium text-(--text-secondary)" title={field.label}>{field.label}</span>
                 </div>

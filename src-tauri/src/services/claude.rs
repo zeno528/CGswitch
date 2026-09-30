@@ -102,7 +102,7 @@ fn extra_env_keys(raw: Option<&str>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn read_raw_settings(raw: &str, input: &mut ClaudeProfileInput) -> AppResult<()> {
+fn parse_settings_document(raw: &str) -> AppResult<Value> {
     let document: Value = serde_json::from_str(raw)
         .map_err(|error| app_err!("settings.json 不是有效 JSON: {error}"))?;
     let object = document
@@ -123,13 +123,42 @@ fn read_raw_settings(raw: &str, input: &mut ClaudeProfileInput) -> AppResult<()>
             }
         }
     }
+    Ok(document)
+}
+
+/// 账号模式仅使用 Claude Code 自己管理的登录；不触碰凭证文件。
+fn clear_account_auth_overrides(document: &mut Value) {
+    if let Some(env) = document.get_mut("env").and_then(Value::as_object_mut) {
+        for key in [
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+            "CLAUDE_CODE_USE_FOUNDRY",
+            "ANTHROPIC_PROFILE",
+            "ANTHROPIC_FEDERATION_RULE_ID",
+            "ANTHROPIC_ORGANIZATION_ID",
+        ] {
+            env.remove(key);
+        }
+    }
+    if let Some(object) = document.as_object_mut() {
+        object.remove("apiKeyHelper");
+    }
+}
+
+fn read_raw_settings(raw: &str, input: &mut ClaudeProfileInput) -> AppResult<()> {
+    let document = parse_settings_document(raw)?;
+    let env = document.get("env").and_then(Value::as_object);
     let field = |key: &str| {
         env.and_then(|env| env.get(key))
             .and_then(Value::as_str)
             .map(str::to_owned)
     };
     input.base_url = field("ANTHROPIC_BASE_URL");
-    input.auth_token = field("ANTHROPIC_AUTH_TOKEN");
+    input.auth_token = field("ANTHROPIC_AUTH_TOKEN").or_else(|| field("ANTHROPIC_API_KEY"));
     input.model = field("ANTHROPIC_MODEL");
     let extra: serde_json::Map<String, Value> = env
         .into_iter()
@@ -632,6 +661,21 @@ impl AppContext {
             .collect())
     }
 
+    pub fn claude_common_settings(&self) -> AppResult<Option<String>> {
+        self.database.claude_common_settings()
+    }
+
+    pub fn claude_save_common_settings(&self, text: Option<&str>) -> AppResult<()> {
+        let _guard = self
+            .operation
+            .lock()
+            .map_err(|_| app_err!("操作锁已损坏"))?;
+        if let Some(text) = text {
+            parse_settings_document(text)?;
+        }
+        self.database.set_claude_common_settings(text)
+    }
+
     /// 外部改过 ~/.claude/settings.json 时，把 live 全文与托管字段回写进激活快照
     /// （对齐 Codex 的 sync_active_profile_document）：无激活/读不了/解析失败/无差异
     /// 一律不写库，外部损坏绝不覆盖最后一次有效快照。
@@ -723,6 +767,15 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
+        if input.kind.as_deref() == Some("claude-account") {
+            let mut document =
+                parse_settings_document(input.raw_settings.as_deref().unwrap_or("{}"))?;
+            clear_account_auth_overrides(&mut document);
+            input.raw_settings = Some(
+                serde_json::to_string_pretty(&document)
+                    .map_err(|error| app_err!("settings.json 序列化失败: {error}"))?,
+            );
+        }
         if let Some(raw) = input.raw_settings.clone() {
             read_raw_settings(&raw, &mut input)?;
         }
@@ -952,6 +1005,13 @@ impl AppContext {
         if let Some(raw) = values.and_then(|profile| profile.raw_settings.as_deref()) {
             let mut checked = ClaudeProfileInput::default();
             read_raw_settings(raw, &mut checked)?;
+            if values.is_some_and(|profile| profile.kind.as_deref() == Some("claude-account")) {
+                let mut document = parse_settings_document(raw)?;
+                clear_account_auth_overrides(&mut document);
+                let bytes = serde_json::to_vec_pretty(&document)
+                    .map_err(|error| app_err!("settings.json 序列化失败: {error}"))?;
+                return atomic_write(&path, &bytes);
+            }
             return atomic_write(&path, raw.as_bytes());
         }
         let mut document: Value = match std::fs::read_to_string(&path) {
@@ -1003,6 +1063,9 @@ impl AppContext {
                     }
                 }
             }
+        }
+        if values.is_some_and(|profile| profile.kind.as_deref() == Some("claude-account")) {
+            clear_account_auth_overrides(&mut document);
         }
         let mut bytes = serde_json::to_vec_pretty(&document)
             .map_err(|error| app_err!("settings.json 序列化失败: {error}"))?;
@@ -1136,8 +1199,48 @@ pub async fn probe_claude_messages_reachable(trimmed: &str, auth_token: &str) ->
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn account_auth_overrides_are_removed_and_api_key_is_read_back() {
+        let mut document = serde_json::json!({
+            "apiKeyHelper": "fixture-helper", "hooks": {"Stop": []},
+            "permissions": {"deny": ["WebFetch"]},
+            "env": {"ANTHROPIC_BASE_URL": "https://fixture.test", "ANTHROPIC_API_KEY": "key",
+                "ANTHROPIC_AUTH_TOKEN": "token", "CLAUDE_CODE_OAUTH_TOKEN": "override",
+                "CLAUDE_CODE_USE_BEDROCK": "1", "ANTHROPIC_PROFILE": "fixture", "KEEP": "keep"}
+        });
+        super::clear_account_auth_overrides(&mut document);
+        assert_eq!(
+            document,
+            serde_json::json!({"hooks": {"Stop": []},
+            "permissions": {"deny": ["WebFetch"]}, "env": {"KEEP": "keep"}})
+        );
+        let mut input = crate::models::ClaudeProfileInput::default();
+        super::read_raw_settings(r#"{"env":{"ANTHROPIC_API_KEY":"key"}}"#, &mut input).unwrap();
+        assert_eq!(input.auth_token.as_deref(), Some("key"));
+    }
+
     use super::*;
     use crate::services::plugins::test_context;
+
+    #[test]
+    fn settings_validation_preserves_unknown_template_fields() {
+        let raw = r#"{"hooks":{"Stop":[]},"permissions":{"allow":["Read"]},"env":{"CUSTOM":"keep"},"unknown":{"nested":null}}"#;
+        assert_eq!(
+            parse_settings_document(raw).unwrap().to_string(),
+            serde_json::from_str::<Value>(raw).unwrap().to_string()
+        );
+        for invalid in [
+            "",
+            "{",
+            "null",
+            "[]",
+            r#"{"env":null}"#,
+            r#"{"env":[]}"#,
+            r#"{"env":{"CUSTOM":42}}"#,
+        ] {
+            assert!(parse_settings_document(invalid).is_err());
+        }
+    }
 
     #[test]
     fn native_mcp_json_survives_reads_toggles_edits_and_backup_restore() {

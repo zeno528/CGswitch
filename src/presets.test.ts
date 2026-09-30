@@ -1,5 +1,64 @@
 import { describe, expect, it } from "vitest";
-import { builtinPresets, customCatalogTemplate } from "./presets";
+import i18next from "i18next";
+import { builtinPresets, claudePresets, clientPresets, customCatalogTemplate, providerPresets, type ProviderPreset } from "./presets";
+
+describe("供应商目录的客户端边界", () => {
+  it("双客户端各用自己的配置，单客户端条目只出现在对应列表", () => {
+    const providers: ProviderPreset[] = [
+      { kind: "both", name: "Both", icon: "custom",
+        codex: { provider: "codex-provider", base_url: "https://codex.example.test", admin_url: "https://codex.example.test/admin", model: "codex-model",
+          endpoints: [{ region: "cn", base_url: "https://codex.example.test", admin_url: null }] },
+        claude: { provider: null, base_url: "https://claude.example.test", admin_url: null, model: "" },
+      },
+      { kind: "claude-only", name: "Claude only", icon: "custom",
+        claude: { provider: null, base_url: "https://only.example.test", admin_url: null, model: "claude-model" },
+      },
+      { kind: "codex-only", name: "Codex only", icon: "custom",
+        codex: { provider: null, base_url: "", admin_url: null, model: "codex-only-model" },
+      },
+    ];
+    const codex = clientPresets(providers, "codex");
+    const claude = clientPresets(providers, "claude");
+    expect(codex.map(({ kind }) => kind)).toEqual(["both", "codex-only"]);
+    expect(claude.map(({ kind }) => kind)).toEqual(["both", "claude-only"]);
+    expect(codex[0]).toMatchObject(providers[0].codex!);
+    expect(claude[0]).toMatchObject(providers[0].claude!);
+    expect(claude[0].endpoints).toBeUndefined();
+    expect(claude[0].model).toBe("");
+    expect(builtinPresets.some(({ kind }) => kind === "claude-account" || kind === "anthropic")).toBe(false);
+    expect(claudePresets.some(({ kind }) => kind === "chatgpt")).toBe(false);
+    expect(new Set(providerPresets.map(({ kind }) => kind)).size).toBe(providerPresets.length);
+  });
+
+  it("投影后语言切换仍更新共享名称，不改变接入配置", async () => {
+    const previousLanguage = i18next.language;
+    await i18next.init({ lng: "zh-CN", defaultNS: "common", resources: {
+      "zh-CN": { common: { preset: { custom: "名称" } } },
+      "en-US": { common: { preset: { custom: "Name" } } },
+    } });
+    try {
+      const providers: ProviderPreset[] = [{ kind: "fixture", get name() { return i18next.t("preset.custom"); }, icon: "custom",
+        codex: { provider: null, base_url: "https://codex.example.test", admin_url: null, model: "codex-model" },
+        claude: { provider: null, base_url: "https://claude.example.test", admin_url: null, model: "claude-model" },
+      }];
+      const codex = clientPresets(providers, "codex");
+      const claude = clientPresets(providers, "claude");
+      expect([codex[0].name, claude[0].name]).toEqual(["名称", "名称"]);
+      await i18next.changeLanguage("en-US");
+      expect([codex[0].name, claude[0].name]).toEqual(["Name", "Name"]);
+      expect([codex[0].model, claude[0].model]).toEqual(["codex-model", "claude-model"]);
+    } finally {
+      await i18next.changeLanguage(previousLanguage ?? "zh-CN");
+    }
+  });
+});
+
+it("Claude 官方账号与 API 是独立卡片，紧随自定义", () => {
+  expect(claudePresets.slice(0, 3).map(({ kind, name }) => [kind, name])).toEqual([
+    ["custom", claudePresets[0].name], ["claude-account", "Claude Account"], ["anthropic", "Anthropic API"],
+  ]);
+  expect(claudePresets[1].base_url).toBe("");
+});
 
 describe("customCatalogTemplate", () => {
   it("follows the Codex catalog schema with parser-required fields", () => {

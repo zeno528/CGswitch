@@ -22,6 +22,8 @@ interface AppSelectProps<T extends string | number> {
   menuWidth?: CSSProperties["width"];
   menuAlign?: "match" | "end";
   compact?: boolean;
+  /** 传入后使用复选菜单；onChange 返回被切换的键，菜单保持展开。 */
+  checkedValues?: readonly T[];
 }
 
 export function AppSelect<T extends string | number>({
@@ -35,6 +37,7 @@ export function AppSelect<T extends string | number>({
   menuWidth,
   menuAlign,
   compact = false,
+  checkedValues,
 }: AppSelectProps<T>) {
   const { t } = useTranslation();
   const selected = options.find((option) => String(option.value) === String(value));
@@ -74,12 +77,26 @@ export function AppSelect<T extends string | number>({
 
   const selectOption = (option: SelectOption<T>) => {
     onChange(option.value);
-    setOpen(false);
+    if (!checkedValues) setOpen(false);
   };
 
   const menu = (
-    <div ref={menuRef} className={`app-select-menu ${iconOnly ? "app-select-menu--arrow" : ""}`} data-open={open} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
-      {options.map((option) => <button
+    <div ref={menuRef} className={`app-select-menu ${iconOnly ? "app-select-menu--arrow" : ""}`} data-open={open} style={menuStyle} role={checkedValues ? "menu" : "listbox"} aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
+      {options.map((option) => checkedValues ? <label
+        key={String(option.value)}
+        className="app-select-option app-selection-state justify-start! gap-2!"
+      >
+        <input
+          type="checkbox"
+          role="menuitemcheckbox"
+          aria-checked={checkedValues.includes(option.value)}
+          checked={checkedValues.includes(option.value)}
+          disabled={disabled}
+          tabIndex={open ? 0 : -1}
+          onChange={() => selectOption(option)}
+        />
+        <span>{renderLabel?.(option) ?? option.label}</span>
+      </label> : <button
         key={String(option.value)}
         type="button"
         role="option"
@@ -103,7 +120,7 @@ export function AppSelect<T extends string | number>({
         type="button"
         className={`app-select ${iconOnly ? "app-select--icon" : ""} ${compact ? "app-select--compact" : ""}`}
         disabled={disabled}
-        aria-haspopup="listbox"
+        aria-haspopup={checkedValues ? "menu" : "listbox"}
         aria-expanded={open}
         aria-label={iconOnly ? (selected ? `${placeholder ?? t("select.placeholder")}: ${selected.label}` : placeholder ?? t("select.placeholder")) : placeholder}
         title={iconOnly ? (selected?.label ?? placeholder) : undefined}

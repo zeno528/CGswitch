@@ -205,6 +205,33 @@ export function computeTextChange(current: string, next: string) {
   return { from, to: currentTo, insert: next.slice(from, nextTo) };
 }
 
+// canvas 文本测量上下文只读共享：多个编辑器、多次显隐重挂复用，不随 effect 重建
+let measureContext: CanvasRenderingContext2D | null | undefined;
+
+/// 长文档按视口虚拟化，渲染宽度 ≠ 全文宽度：按 canvas 测量预设 contentDOM 的
+/// min-width，原生横向滚动条才能滚到最后一列（tab 展开宽度也要计入）。
+function syncContentWidth(editor: EditorView) {
+  if (measureContext === undefined) measureContext = document.createElement("canvas").getContext("2d");
+  if (!measureContext) return;
+  const style = getComputedStyle(editor.contentDOM);
+  measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
+  let documentWidth = 0;
+  for (let number = 1; number <= editor.state.doc.lines; number += 1) {
+    const parts = editor.state.doc.line(number).text.split("\t");
+    let lineWidth = 0;
+    for (let index = 0; index < parts.length; index += 1) {
+      lineWidth += measureContext.measureText(parts[index]!).width;
+      if (index < parts.length - 1 && tabWidth > 0) {
+        const remainder = lineWidth % tabWidth;
+        lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
+      }
+    }
+    documentWidth = Math.max(documentWidth, lineWidth);
+  }
+  editor.contentDOM.style.minWidth = `${Math.ceil(documentWidth)}px`;
+}
+
 interface ConfigTextEditorProps {
   value: string;
   language: "toml" | "json";
@@ -232,11 +259,20 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const editingCompartment = useRef(new Compartment());
   const indentUnitCompartment = useRef(new Compartment());
   const appliedIndentUnitRef = useRef<string | null>(null);
+  const syncFrameRef = useRef(0);
+  const destroyCheckRef = useRef(0);
+  const destroyedRef = useRef(false);
+  const creationDepsRef = useRef<readonly unknown[] | null>(null);
   const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, min(34rem, 60vh))`;
 
   valueRef.current = value;
   onChangeRef.current = onChange;
   onDiagnosticsRef.current = onDiagnostics;
+
+  const scheduleContentWidthSync = (editor: EditorView) => {
+    cancelAnimationFrame(syncFrameRef.current);
+    syncFrameRef.current = requestAnimationFrame(() => syncContentWidth(editor));
+  };
 
   useEffect(() => {
     const observer = new MutationObserver(() => setDark(document.documentElement.classList.contains("dark")));
@@ -264,6 +300,10 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
 
   // 编辑器实例在首帧绘制前同步创建（useLayoutEffect）：CodeMirror DOM 与页面同帧呈现，
   // 避免 useEffect（绘后执行）导致编辑器区域晚一帧出现的空壳闪烁。
+  // 页面保活（AppShell 的 Activity）会把隐藏页的 effects 拆掉、复显时重装，而 React 不区分
+  // "隐藏"与"真卸载"——两者共用同一段 cleanup。因此 cleanup 只摘除 DOM、不销毁实例，
+  // 复显时把存活实例原样挂回（滚动位置、撤销栈、语法树、诊断全部保留，不闪重建帧）；
+  // 真卸载交给微任务后裁决：届时 React 已把 hostRef 置空，补一次 destroy 防泄漏。
   useLayoutEffect(() => {
     const parent = hostRef.current;
     if (!parent) return;
@@ -280,6 +320,40 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       onDiagnosticsRef.current({ count, firstLine });
     };
 
+    const detachEditor = (view: EditorView, observer: ResizeObserver) => {
+      cancelAnimationFrame(syncFrameRef.current);
+      observer.disconnect();
+      view.dom.remove();
+      window.clearTimeout(destroyCheckRef.current);
+      destroyCheckRef.current = window.setTimeout(() => {
+        if (!hostRef.current && !destroyedRef.current) {
+          view.destroy();
+          destroyedRef.current = true;
+          if (viewRef.current === view) viewRef.current = null;
+        }
+      }, 0);
+    };
+
+    window.clearTimeout(destroyCheckRef.current);
+    const creationDeps = [dark, language, placeholder, validateToml, t] as const;
+    const previousDeps = creationDepsRef.current;
+    const alive = viewRef.current;
+    if (alive && !destroyedRef.current && previousDeps !== null && creationDeps.every((dep, index) => dep === previousDeps[index])) {
+      // 保活复显：实例存活且创建参数没变，挂回原 DOM 即可
+      parent.appendChild(alive.dom);
+      alive.requestMeasure();
+      scheduleContentWidthSync(alive);
+      const reattachedObserver = new ResizeObserver(() => scheduleContentWidthSync(alive));
+      reattachedObserver.observe(alive.dom);
+      return () => detachEditor(alive, reattachedObserver);
+    }
+    if (alive) {
+      // 创建参数变了（主题/语言/占位文案）：旧实例彻底销毁后重建
+      alive.destroy();
+      destroyedRef.current = true;
+      viewRef.current = null;
+    }
+
     const jsonDiagnostics = linter((view) => collectJsonDiagnostics(view.state));
     const tomlDiagnostics = linter(async (view) => {
       const diagnostics = await validateToml(view.state.doc.toString());
@@ -292,41 +366,12 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       }));
     });
 
-    let editor: EditorView;
     // 缩进单位按当前文档内容探测，供参考线按实际空白字符生成；
     // 编辑器可能先于异步详情挂载，value 到达/变化时由下方 [value] 效应重探并热重配
     const docIndentUnit = detectIndentUnit(valueRef.current);
     appliedIndentUnitRef.current = docIndentUnit;
-    // 长文档按视口虚拟化，渲染宽度 ≠ 全文宽度：按 canvas 测量预设 contentDOM 的
-    // min-width，原生横向滚动条才能滚到最后一列（tab 展开宽度也要计入）。
-    const measureContext = document.createElement("canvas").getContext("2d");
-    let syncFrame = 0;
-    const syncContentWidth = () => {
-      if (!measureContext) return;
-      const style = getComputedStyle(editor.contentDOM);
-      measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
-      let documentWidth = 0;
-      for (let number = 1; number <= editor.state.doc.lines; number += 1) {
-        const parts = editor.state.doc.line(number).text.split("\t");
-        let lineWidth = 0;
-        for (let index = 0; index < parts.length; index += 1) {
-          lineWidth += measureContext.measureText(parts[index]!).width;
-          if (index < parts.length - 1 && tabWidth > 0) {
-            const remainder = lineWidth % tabWidth;
-            lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
-          }
-        }
-        documentWidth = Math.max(documentWidth, lineWidth);
-      }
-      editor.contentDOM.style.minWidth = `${Math.ceil(documentWidth)}px`;
-    };
-    const scheduleContentWidthSync = () => {
-      cancelAnimationFrame(syncFrame);
-      syncFrame = requestAnimationFrame(syncContentWidth);
-    };
 
-    editor = new EditorView({
+    const editor = new EditorView({
       state: EditorState.create({
         doc: valueRef.current,
         extensions: [
@@ -344,24 +389,21 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !syncingValueRef.current) onChangeRef.current(update.state.doc.toString());
             reportDiagnostics(update.view);
-            if (update.docChanged || update.geometryChanged) scheduleContentWidthSync();
+            if (update.docChanged || update.geometryChanged) scheduleContentWidthSync(update.view);
           }),
         ],
       }),
       parent,
     });
     viewRef.current = editor;
-    const resizeObserver = new ResizeObserver(scheduleContentWidthSync);
+    destroyedRef.current = false;
+    creationDepsRef.current = creationDeps;
+    const resizeObserver = new ResizeObserver(() => scheduleContentWidthSync(editor));
     resizeObserver.observe(editor.dom);
-    syncContentWidth();
+    syncContentWidth(editor);
     reportDiagnostics(editor);
 
-    return () => {
-      cancelAnimationFrame(syncFrame);
-      resizeObserver.disconnect();
-      editor.destroy();
-      if (viewRef.current === editor) viewRef.current = null;
-    };
+    return () => detachEditor(editor, resizeObserver);
   }, [dark, language, placeholder, validateToml, t]);
 
   useEffect(() => {

@@ -55,7 +55,19 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain('document.createElement("canvas").getContext("2d")');
     expect(editorSource).toContain("editor.state.doc.lines; number += 1");
     expect(editorSource).toContain("editor.contentDOM.style.minWidth");
-    expect(editorSource).toContain("syncContentWidth();");
+    expect(editorSource).toContain("syncContentWidth(editor);");
+  });
+
+  it("页面保活复显时编辑器实例原样重挂，不销毁重建（切页不闪编辑器、滚动不丢）", () => {
+    // cleanup 只摘 DOM 不销毁：Activity 隐藏与真卸载共用 cleanup，销毁交给微任务裁决
+    expect(editorSource.match(/return \(\) => detachEditor\(/g)).toHaveLength(2);
+    // 复显走挂回存活实例的分支，不 new EditorView
+    expect(editorSource).toContain("parent.appendChild(alive.dom)");
+    expect(editorSource).toContain("alive.requestMeasure()");
+    // 真卸载裁决：hostRef 已被 React 置空才销毁，实例未销毁过才补刀
+    expect(editorSource).toContain("if (!hostRef.current && !destroyedRef.current)");
+    // 创建参数变化（主题/语言）仍走重建，保活不吞掉合法重建
+    expect(editorSource).toContain("alive.destroy();");
   });
 
   it("用错误行高亮和红色粗体行号替代独立错误 gutter", () => {

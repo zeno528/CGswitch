@@ -1,9 +1,43 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createInstance } from "i18next";
+import { I18nextProvider } from "react-i18next";
+import { AppSelect } from "./AppSelect";
 
 const styleSource = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 const componentSource = readFileSync(new URL("./AppSelect.tsx", import.meta.url), "utf8");
+const i18n = createInstance();
+void i18n.init({ lng: "en", resources: { en: { translation: {} } }, initAsync: false });
+
+describe("AppSelect checkbox menu", () => {
+  const options = [{ value: "first", label: "First" }, { value: "second", label: "Second" }];
+
+  it("复选模式使用真实复选框和独立选中状态，收起时不进入 Tab 顺序", () => {
+    const markup = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(AppSelect<string>, {
+      value: null, options, checkedValues: ["second"], placeholder: "More", onChange: () => {},
+    })));
+    expect(markup).toContain('aria-haspopup="menu"');
+    expect(markup).toContain('role="menu"');
+    expect(markup.match(/type="checkbox"/g)).toHaveLength(2);
+    expect(markup).toContain('aria-checked="false"');
+    expect(markup).toContain('aria-checked="true"');
+    expect(markup.match(/tabindex="-1"/g)).toHaveLength(2);
+    expect(markup).toContain(">More</span>");
+  });
+
+  it("原有单选模式保留列表语义和当前选项", () => {
+    const markup = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(AppSelect<string>, {
+      value: "second", options, placeholder: "Select", onChange: () => {},
+    })));
+    expect(markup).toContain('aria-haspopup="listbox"');
+    expect(markup).toContain('role="listbox"');
+    expect(markup).toContain('aria-selected="true"');
+    expect(markup).not.toContain('type="checkbox"');
+  });
+});
 
 describe("AppSelect styles", () => {
   it("三类控件共用侧边栏的悬停和激活高亮", () => {

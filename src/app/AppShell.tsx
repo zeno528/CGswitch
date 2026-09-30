@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
+import { Activity, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -89,17 +89,19 @@ function animatePageEnter(el: Element) {
   el.animate(frames, { duration: Math.round(total) });
 }
 
-/// 与原 CSS 动画语义一致：切页、设置分节切换、各页内部重挂载出现的新页内容都播放一次，
-/// 同一元素不重复播放。首扫用 useLayoutEffect 保证首帧就停在 8px 起点，之后交给
-/// MutationObserver 在微任务里（绘制前）接住后续挂载。
-function usePageEnterAnimation(mainRef: { current: HTMLElement | null }) {
+/// 与原 CSS 动画语义一致：每次进入页面（首次挂载、切页、切回保活页）页内容上浮一次，
+/// 各页内部重挂载出现的新页内容也播放。effect 以 view 为依赖：切回已保活的页面时 DOM
+/// 不变、MutationObserver 收不到，靠重跑 scan 补播；observer 只负责同页内部的新挂载，
+/// played 随 effect 重建，因此同一次停留内同一元素不会重复播。保活页隐藏后仍在 DOM 里
+/// （display:none），scan 按 offsetParent 跳过，不给看不见的页面播动画。
+function usePageEnterAnimation(mainRef: { current: HTMLElement | null }, view: AppView) {
   useLayoutEffect(() => {
     const main = mainRef.current;
     if (!main) return;
     const played = new WeakSet<Element>();
     const scan = () => {
       for (const el of main.querySelectorAll(PAGE_ENTER_TARGET)) {
-        if (played.has(el)) continue;
+        if ((el as HTMLElement).offsetParent === null || played.has(el)) continue;
         played.add(el);
         animatePageEnter(el);
       }
@@ -108,7 +110,7 @@ function usePageEnterAnimation(mainRef: { current: HTMLElement | null }) {
     const observer = new MutationObserver(scan);
     observer.observe(main, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [mainRef]);
+  }, [mainRef, view]);
 }
 
 function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
@@ -172,8 +174,8 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
 
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
-  const [profilesReset, setProfilesReset] = useState(0);
-  const [mcpReset, setMcpReset] = useState(0);
+  // 切页记忆：进过的页面保活（Activity hidden），未访问页连渲染都不发生，冷启动零新增。
+  const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["profiles"]));
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
   // 侧栏角标复用 MCP 页的差异计数文案，避免同一件事在两处各写一份
@@ -190,9 +192,12 @@ export default function AppShell() {
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
-  // 页面进场动画：挂在 <main> 上监听页内容挂载（见 usePageEnterAnimation）
+  // 页面进场动画：挂在 <main> 上监听页内容挂载，切回保活页时补播（见 usePageEnterAnimation）
   const mainRef = useRef<HTMLElement>(null);
-  usePageEnterAnimation(mainRef);
+  usePageEnterAnimation(mainRef, view);
+  useEffect(() => {
+    setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
+  }, [view]);
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
   const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
@@ -330,44 +335,29 @@ export default function AppShell() {
     updateScrollbarSize();
   }, []);
 
-  const goProfiles = () => {
-    if (view === "profiles") return;
-    setProfilesReset((value) => value + 1);
-    setView("profiles");
-  };
-
-  const goMcp = () => {
-    if (view === "mcp") return;
-    setMcpReset((value) => value + 1);
-    setView("mcp");
-  };
-
-  const goPlugins = () => {
-    if (view === "plugins") return;
-    setView("plugins");
-  };
-
-  const goSkills = () => {
-    if (view === "skills") return;
-    setView("skills");
-  };
-
-  const goSettings = () => {
-    if (view === "settings") return;
-    setView("settings");
-  };
-
-  const goAccounts = () => {
-    if (view === "accounts") return;
-    setView("accounts");
-  };
-
-  const goClaude = () => {
-    if (view === "claude") return;
-    setView("claude");
-  };
-
+  // 切页 = setView 换 Activity 的显隐，不强制重挂载：重复点击当前页由 setState bail-out
+  // 保证无副作用，进入过的页面保住工作现场（编辑草稿、弹窗、页内滚动）。
   const navClass = "apple-sidebar-nav-button app-selection-state";
+
+  // 各页内容唯一清单：Record 保证新增 AppView 分支时漏页是编译错误。
+  // 渲染时只挂载进过的页面，当前页 visible、其余 hidden——hidden 的页面 effects 已
+  // 清理（不加载、不轮询），state 与 DOM 保留，切回即恢复现场，effects 重跑后数据照常刷新。
+  const renderPages = (state: AppState) => {
+    const pages: Record<AppView, ReactNode> = {
+      profiles: <ProfilesView state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={() => setView("accounts")} />,
+      mcp: <McpView activationEpoch={activationEpoch} />,
+      plugins: <PluginsView state={state} />,
+      skills: <SkillsView activationEpoch={activationEpoch} />,
+      claude: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
+      accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />,
+      settings: <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
+    };
+    return (Object.keys(pages) as AppView[]).map((pageView) =>
+      visitedViews.has(pageView) ? (
+        <Activity key={pageView} mode={view === pageView ? "visible" : "hidden"}>{pages[pageView]}</Activity>
+      ) : null,
+    );
+  };
 
   // 侧栏分组（C 方案）：Codex / Claude / 通用导航。新增页面 = 数组加一条，不再手写按钮块；
   // 产品分组标识在收缩态仍可见，通用导航不显示多余分组标题。icon 存 ReactNode 以保留各页现有图标形态。
@@ -377,32 +367,32 @@ export default function AppShell() {
       key: "codex",
       labelKey: "nav.groupCodex",
       items: [
-        { view: "profiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: goProfiles },
-        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: goPlugins },
-        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: goAccounts },
+        { view: "profiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("profiles") },
+        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
+        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
       ],
     },
     {
       key: "claude",
       labelKey: "nav.groupClaude",
       items: [
-        { view: "claude", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: goClaude },
+        { view: "claude", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("claude") },
       ],
     },
     {
       key: "common",
       labelKey: "nav.groupCommon",
       items: [
-        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: goMcp },
-        { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: goSkills },
-        { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => goSettings() },
+        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
+        { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
+        { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
       ],
     },
   ];
 
   return (
     <FeedbackProvider>
-      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={goSettings} openAccounts={goAccounts} />
+      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={() => setView("settings")} openAccounts={() => setView("accounts")} />
       {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
       <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
@@ -467,7 +457,8 @@ export default function AppShell() {
           </aside>
 
           <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
-            <div key={state ? view : "loading"} className="apple-page-enter">
+            {/* key 不含 view：view 变化只切 Activity 显隐，外层整树重挂载会清掉保活现场 */}
+            <div key={state ? "app" : "loading"} className="apple-page-enter">
               {!state ? (
                 <div className="startup-skeleton" aria-busy="true">
                   <div className="startup-skeleton__title" />
@@ -477,20 +468,8 @@ export default function AppShell() {
                   <div className="startup-skeleton__list" />
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
-              ) : view === "profiles" ? (
-                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
-              ) : view === "mcp" ? (
-                <McpView key={mcpReset} activationEpoch={activationEpoch} />
-              ) : view === "plugins" ? (
-                <PluginsView state={state} />
-              ) : view === "skills" ? (
-                <SkillsView activationEpoch={activationEpoch} />
-              ) : view === "claude" ? (
-                <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />
-              ) : view === "accounts" ? (
-                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (
-                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />
+                renderPages(state)
               )}
             </div>
           </main>

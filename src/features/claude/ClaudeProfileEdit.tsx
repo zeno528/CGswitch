@@ -1,8 +1,9 @@
-import { ArrowLeft, CodeXml, ExternalLink, FileBraces, Save, Webhook } from "lucide-react";
+import { ArrowLeft, CodeXml, ExternalLink, FileBraces, LayoutTemplate, Save, Webhook } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import EndpointField from "../../components/EndpointField";
@@ -10,7 +11,9 @@ import PresetGrid from "../../components/PresetGrid";
 import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
 import { claudeBalanceQueryKinds, claudePresets, claudePresetByKind } from "../../presets";
 import ProfileIconEdit from "../profiles/ProfileIconEdit";
-import { buildSettingsText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras, type ClaudeModelDisplayKey, type ClaudeModelDisplayNames, type ClaudeModelMappingKey, type ClaudeModelMappings } from "./profileEnvText";
+import ClaudeCommonTemplateDialog from "./ClaudeCommonTemplateDialog";
+import { extractClaudeCommonSettings, fillClaudeCommonSettings, patchBypassPermissions } from "./profileEnvText";
+import { buildSettingsText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras, type ClaudeModelDisplayKey, type ClaudeModelDisplayNames, type ClaudeModelMappingKey, type ClaudeModelMappings } from "./profileEnvText";
 import type { ClaudeProfileDetail, ClaudeProfileSummary } from "../../types";
 
 function sameModelMappings(left: ClaudeModelMappings, right: ClaudeModelMappings) {
@@ -28,6 +31,8 @@ const modelDisplayKeyByModelKey: Partial<Record<ClaudeModelMappingKey, ClaudeMod
   ANTHROPIC_DEFAULT_HAIKU_MODEL: "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
   ANTHROPIC_CUSTOM_MODEL_OPTION: "ANTHROPIC_CUSTOM_MODEL_OPTION_NAME",
 };
+
+const effortLevels = ["low", "medium", "high", "xhigh", "max"] as const;
 
 interface ClaudeProfileEditProps {
   profile: ClaudeProfileSummary | null;
@@ -74,22 +79,54 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   const [modelDisplayNames, setModelDisplayNames] = useState<ClaudeModelDisplayNames>(() => readModelDisplayNames(initialEnvText));
   const model = modelMappings.ANTHROPIC_MODEL;
   const [envText, setEnvText] = useState(initialEnvText);
+  const envTextRef = useRef(envText);
+  envTextRef.current = envText;
+  const templateRequest = useRef(0);
+  const [fillingTemplate, setFillingTemplate] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const [editorDiagnostics, setEditorDiagnostics] = useState({ count: 0, firstLine: null as number | null });
   const editorRef = useRef<ConfigTextEditorHandle>(null);
   const envDirty = envText !== initialEnvText;
   const envMinLines = Math.max(envText.split(/\r?\n/).length, 12);
-  const autoCompactDisabled = readEnvValue(envText, "DISABLE_AUTO_COMPACT") === "1";
-  const autoCompactWindow = readEnvValue(envText, "CLAUDE_CODE_AUTO_COMPACT_WINDOW");
+  const { autoCompactDisabled, autoCompactWindow, effortLevel, autoMemoryEnabled, bashEditDiffEnabled, bypassPermissionsEnabled } = readAdvancedSettings(envText);
   const attributionHidden = readEnvValue(envText, "CLAUDE_CODE_ATTRIBUTION_HEADER") === "0";
   const gitAttributionHidden = readGitAttributionDisabled(envText);
   const agentTeamsEnabled = readEnvValue(envText, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") === "1";
-  const maxEffortEnabled = readEnvValue(envText, "CLAUDE_CODE_EFFORT_LEVEL") === "max";
+  useEffect(() => () => { templateRequest.current += 1; }, []);
+
+  const fillCommonTemplate = async () => {
+    if (fillingTemplate || saving) return;
+    const request = ++templateRequest.current;
+    setFillingTemplate(true);
+    try {
+      const template = await api.claudeGetCommonSettings();
+      if (request !== templateRequest.current) return;
+      if (template === null || extractClaudeCommonSettings(template) === "{}") {
+        feedback.info(t("commonTemplate.empty"));
+        return;
+      }
+      // 等待读取期间仍可编辑：合并到最新草稿，不能覆盖期间输入的内容。
+      const current = envTextRef.current;
+      const next = fillClaudeCommonSettings(current, template);
+      if (next === null) feedback.error(t("envInvalid"));
+      else if (next === current) feedback.info(t("commonTemplate.noChange"));
+      else {
+        setEnvText(next);
+        feedback.success(t("commonTemplate.filled"));
+      }
+    } catch (error) {
+      if (request === templateRequest.current) feedback.error(String(error));
+    } finally {
+      if (request === templateRequest.current) setFillingTemplate(false);
+    }
+  };
   // 创建态取所选预设；编辑态行的 kind 反查（对齐 Codex 双区域端点按 provider 反查的思路）
   const selectedPreset = useMemo(
     () => (create ? claudePresets.find((preset) => preset.kind === presetKind) ?? null : claudePresetByKind(kind)),
     [create, kind, presetKind],
   );
   const presetEndpoints = selectedPreset?.endpoints ?? null;
+  const accountLogin = kind === "claude-account";
   const supportsBalance = claudeBalanceQueryKinds.has(create ? presetKind : kind ?? "");
 
   const updateModelMapping = (key: ClaudeModelMappingKey, value: string) => {
@@ -137,6 +174,10 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     setName(preset.kind === "custom" ? "" : preset.name);
     setBaseUrl(preset.base_url);
     setAuthToken("");
+    setEnvText((current) => patchEnvFields(patchEnvValue(current, "ANTHROPIC_API_KEY", null), {
+      baseUrl: preset.base_url, authToken: "", model: preset.model,
+    }, preset.kind));
+    setFetchedModels([]);
     updateModelMapping("ANTHROPIC_MODEL", setOneMillionModelSuffix(preset.model, hasOneMillionModelSuffix(preset.model)));
     setAdminUrl(preset.admin_url ?? "");
     // 自定义不记 kind：编辑态端点档随 URL 自由填写
@@ -149,14 +190,14 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   // 表单改动 patch 进 env 文本；编辑器改动读回表单。同值 patch 幂等，不会成环。
   useEffect(() => {
     setEnvText((current) => {
-      const next = patchEnvFields(current, { baseUrl, authToken, model });
+      const next = patchEnvFields(current, { baseUrl, authToken, model }, kind);
       const mapped = patchModelMappings(next, modelMappings);
       const named = patchModelDisplayNames(mapped, modelDisplayNames);
       return named === current ? current : named;
     });
-  }, [baseUrl, authToken, model, modelMappings, modelDisplayNames]);
+  }, [baseUrl, authToken, model, modelMappings, modelDisplayNames, kind]);
   useEffect(() => {
-    const fields = readEnvFields(envText);
+    const fields = readEnvFields(envText, kind);
     if (!fields) return;
     if (fields.baseUrl !== baseUrl) setBaseUrl(fields.baseUrl);
     if (fields.authToken !== authToken) setAuthToken(fields.authToken);
@@ -223,8 +264,8 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     }
   };
 
-  const updateEnvValue = (key: string, value: string | null) => {
-    setEnvText((current) => patchEnvValue(current, key, value));
+  const updateEnvValue = (key: string, value: string | null, fallbackSettingsKey?: string) => {
+    setEnvText((current) => patchEnvValue(current, key, value, fallbackSettingsKey));
   };
 
   const toggleEnvValue = (key: string, enabled: boolean, enabledValue = "1") => {
@@ -252,9 +293,10 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   };
 
   const save = async () => {
-    if (saving || !name.trim() || (!create && !initialDetail)) return;
+    if (saving || fillingTemplate || !name.trim() || (!create && !initialDetail)) return;
     // 非法 JSON 不落库：托管键以外的内容不会被静默丢弃
-    const extras = splitEnvExtras(envText);
+    const settingsText = patchEnvFields(envText, { baseUrl, authToken, model }, kind);
+    const extras = splitEnvExtras(settingsText);
     if (extras === undefined) {
       feedback.error(t("envInvalid"));
       return;
@@ -272,7 +314,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
         kind: kind ?? null,
         adminUrl: adminUrl.trim() || null,
         extraEnv: extras,
-        rawSettings: envText,
+        rawSettings: settingsText,
         icon: selectedIcon,
         showBalance,
       });
@@ -308,6 +350,8 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     <section
       className="apple-edit-page mx-auto flex w-full max-w-none flex-col"
       onKeyDown={(event) => {
+        // 弹窗通过 Portal 冒泡到本页；Enter 只处理弹窗操作，不保存背景配置。
+        if (templateOpen) return;
         if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))) {
           event.preventDefault();
           void save();
@@ -334,6 +378,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                 description: tProfiles("edit.descriptionLabel"), descriptionPlaceholder: tProfiles("edit.descriptionPlaceholder"),
               }}
             />
+            {accountLogin ? <p className="setting-description mt-4">{t("accountLoginHelp")}</p> : <>
             <label className="field-label mb-1.5 mt-4 block">{t("protocolLabel")}</label>
             <div className="app-input flex min-w-0 items-center gap-2">
               <Webhook className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
@@ -363,6 +408,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
               testTitle={!authToken.trim() || !baseUrl.trim() ? tProfiles("edit.checkProviderFields") : undefined}
               testing={testing} onTest={() => void testConnection()}
             />
+            </>}
             <div className="mt-4">
               <div className="mb-1.5 flex items-center gap-2">
                 <span className="field-label">{tProfiles("edit.adminUrlLabel")}</span>
@@ -395,47 +441,111 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
             />
           </div>
           <div className="apple-panel-section flex flex-col">
-            <div className="flex min-h-8 items-center justify-between gap-2">
+            <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
               <button type="button" className="relative flex h-8 items-center gap-1.5 rounded-[10px] bg-(--selection-bg) px-3 text-[13px] font-semibold text-accent transition-colors" aria-pressed="true" title="settings.json">
                 <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />
                 <span>settings.json</span>
                 {envDirty ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}
               </button>
-              <button type="button" className="editor-ghost editor-ghost--format ml-auto shrink-0" disabled={saving} title={tProfiles("edit.formatTitle", { label: "settings.json", format: "JSON" })} onClick={formatEnv}>
+              <div className="editor-ghost-group ml-auto bg-(--selection-bg) px-2">
+                <span className="field-label font-normal! flex items-center gap-1">
+                  <LayoutTemplate size={16} strokeWidth={2} aria-hidden="true" />
+                  {t("commonTemplate.title")}
+                </span>
+                <span className="editor-ghost-group__separator" aria-hidden="true" />
+                <button type="button" className="editor-ghost shrink-0 enabled:hover:text-accent!" disabled={saving || fillingTemplate} onClick={() => void fillCommonTemplate()}>
+                  {t("commonTemplate.fill")}
+                </button>
+                <button type="button" className="editor-ghost shrink-0 enabled:hover:text-accent!" disabled={saving || fillingTemplate} onClick={() => setTemplateOpen(true)}>
+                  {t("commonTemplate.edit")}
+                </button>
+              </div>
+              <button type="button" className="editor-ghost editor-ghost--format shrink-0" disabled={saving} title={tProfiles("edit.formatTitle", { label: "settings.json", format: "JSON" })} onClick={formatEnv}>
                 <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 <span className="whitespace-nowrap font-medium">{tProfiles("edit.format")}</span>
               </button>
             </div>
             <div className="mt-2 flex flex-col">
               <div className="editor-attach-group">
-                <div className="editor-attach-bar">
-                  <div className="editor-ghost-group">
-                    <label className={`editor-ghost ${!autoCompactDisabled ? "on" : ""}`} title={t("advanced.autoCompactTitle")}>
-                      <input type="checkbox" checked={!autoCompactDisabled} onChange={(event) => toggleEnvValue("DISABLE_AUTO_COMPACT", !event.target.checked)} />
-                      <span className="whitespace-nowrap font-medium">{t("advanced.autoCompactLabel")}</span>
+                <div className="editor-attach-bar flex-nowrap! items-start!">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                    <div className="editor-ghost-group pl-1">
+                      <label className={`editor-ghost ${!autoCompactDisabled ? "on" : ""}`} title={t("advanced.autoCompactTitle")}>
+                        <input type="checkbox" checked={!autoCompactDisabled} onChange={(event) => updateEnvValue("DISABLE_AUTO_COMPACT", event.target.checked ? null : "1", "autoCompactEnabled")} />
+                        <span className="whitespace-nowrap font-medium">{t("advanced.autoCompactLabel")}</span>
+                      </label>
+                      <span className="editor-ghost-group__separator" aria-hidden="true" />
+                      <label className={`editor-ghost ${autoCompactDisabled ? "opacity-40 pointer-events-none" : ""}`} title={t("advanced.compactThresholdTitle")}>
+                        <span className="whitespace-nowrap">{t("advanced.compactThresholdLabel")}</span>
+                        <input className="app-input app-input--compact compact-token-input h-6 text-center" type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value, "autoCompactWindow")} />
+                      </label>
+                    </div>
+                    <label className={`editor-ghost ${attributionHidden ? "on" : ""}`} title={t("advanced.attributionTitle")}>
+                      <input type="checkbox" checked={attributionHidden} onChange={(event) => toggleEnvValue("CLAUDE_CODE_ATTRIBUTION_HEADER", event.target.checked, "0")} />
+                      <span className="whitespace-nowrap font-medium">{t("advanced.attributionLabel")}</span>
                     </label>
-                    <span className="editor-ghost-group__separator" aria-hidden="true" />
-                    <label className={`editor-ghost ${autoCompactDisabled ? "opacity-40 pointer-events-none" : ""}`} title={t("advanced.compactThresholdTitle")}>
-                      <span className="whitespace-nowrap">{t("advanced.compactThresholdLabel")}</span>
-                      <input className="app-input app-input--compact compact-token-input h-6 text-center" type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value)} />
+                    <label className={`editor-ghost ${gitAttributionHidden ? "on" : ""}`} title={t("advanced.gitAttributionTitle")}>
+                      <input type="checkbox" checked={gitAttributionHidden} onChange={(event) => toggleGitAttribution(event.target.checked)} />
+                      <span className="whitespace-nowrap font-medium">{t("advanced.gitAttributionLabel")}</span>
                     </label>
+                    <label className={`editor-ghost ${agentTeamsEnabled ? "on" : ""}`} title={t("advanced.agentTeamsTitle")}>
+                      <input type="checkbox" checked={agentTeamsEnabled} onChange={(event) => toggleEnvValue("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", event.target.checked)} />
+                      <span className="whitespace-nowrap font-medium">{t("advanced.agentTeamsLabel")}</span>
+                    </label>
+                    <div
+                      className="inline-flex h-7 items-center gap-2 px-2.5 field-label muted"
+                      title={t("advanced.effortTitle")}
+                      onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}
+                    >
+                      <span className="whitespace-nowrap font-medium">{t("advanced.effortLabel")}</span>
+                      <div className="editor-ghost--format bg-transparent! w-20 shrink-0 rounded-md">
+                        <AppSelect
+                          value={effortLevel}
+                          options={[
+                            { value: "", label: "Default" },
+                            ...(effortLevel && !effortLevels.some((level) => level === effortLevel)
+                              ? [{ value: effortLevel, label: effortLevel }] : []),
+                            ...effortLevels.map((level) => ({ value: level, label: level })),
+                          ]}
+                          onChange={(value) => updateEnvValue("CLAUDE_CODE_EFFORT_LEVEL", value || null, "effortLevel")}
+                          placeholder={t("advanced.effortLabel")}
+                          disabled={saving}
+                          menuWidth="7rem"
+                          compact
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <label className={`editor-ghost ${attributionHidden ? "on" : ""}`} title={t("advanced.attributionTitle")}>
-                    <input type="checkbox" checked={attributionHidden} onChange={(event) => toggleEnvValue("CLAUDE_CODE_ATTRIBUTION_HEADER", event.target.checked, "0")} />
-                    <span className="whitespace-nowrap font-medium">{t("advanced.attributionLabel")}</span>
-                  </label>
-                  <label className={`editor-ghost ${gitAttributionHidden ? "on" : ""}`} title={t("advanced.gitAttributionTitle")}>
-                    <input type="checkbox" checked={gitAttributionHidden} onChange={(event) => toggleGitAttribution(event.target.checked)} />
-                    <span className="whitespace-nowrap font-medium">{t("advanced.gitAttributionLabel")}</span>
-                  </label>
-                  <label className={`editor-ghost ${agentTeamsEnabled ? "on" : ""}`} title={t("advanced.agentTeamsTitle")}>
-                    <input type="checkbox" checked={agentTeamsEnabled} onChange={(event) => toggleEnvValue("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", event.target.checked)} />
-                    <span className="whitespace-nowrap font-medium">{t("advanced.agentTeamsLabel")}</span>
-                  </label>
-                  <label className={`editor-ghost ${maxEffortEnabled ? "on" : ""}`} title={t("advanced.maxEffortTitle")}>
-                    <input type="checkbox" checked={maxEffortEnabled} onChange={(event) => toggleEnvValue("CLAUDE_CODE_EFFORT_LEVEL", event.target.checked, "max")} />
-                    <span className="whitespace-nowrap font-medium">{t("advanced.maxEffortLabel")}</span>
-                  </label>
+                  <div className="editor-ghost--format bg-transparent! w-20 shrink-0 rounded-md" onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}>
+                    <AppSelect
+                      value={null}
+                      options={[
+                        { value: "autoMemory", label: t("advanced.autoMemoryLabel") },
+                        { value: "bashEditDiff", label: t("advanced.bashEditDiffLabel") },
+                        { value: "bypassPermissions", label: t("advanced.bypassPermissionsLabel") },
+                      ]}
+                      checkedValues={[
+                        ...(autoMemoryEnabled ? ["autoMemory"] : []),
+                        ...(bashEditDiffEnabled ? ["bashEditDiff"] : []),
+                        ...(bypassPermissionsEnabled ? ["bypassPermissions"] : []),
+                      ]}
+                      onChange={(value) => {
+                        if (value === "autoMemory") updateEnvValue("CLAUDE_CODE_DISABLE_AUTO_MEMORY", autoMemoryEnabled ? "1" : null, "autoMemoryEnabled");
+                        else if (value === "bashEditDiff") updateEnvValue("CLAUDE_CODE_BASH_EDIT_DIFF", bashEditDiffEnabled ? null : "1", "bashEditDiffEnabled");
+                        else if (value === "bypassPermissions") setEnvText((current) => patchBypassPermissions(current, !bypassPermissionsEnabled));
+                      }}
+                      renderLabel={(option) => (
+                        <span title={t(option.value === "autoMemory" ? "advanced.autoMemoryTitle"
+                          : option.value === "bashEditDiff" ? "advanced.bashEditDiffTitle" : "advanced.bypassPermissionsTitle")}>
+                          {option.label}
+                        </span>
+                      )}
+                      placeholder={t("advanced.moreLabel")}
+                      disabled={saving}
+                      menuAlign="end"
+                      compact
+                    />
+                  </div>
                 </div>
                 <div className="flex flex-col">
                   <ConfigTextEditor ref={editorRef} value={envText} language="json" minLines={envMinLines} placeholder={t("envPlaceholder")} onChange={setEnvText} onDiagnostics={setEditorDiagnostics} />
@@ -454,11 +564,12 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
           </button>
         ) : null}
         <button type="button" className="apple-action-button" onClick={onBack}>{tProfiles("dialog.cancel")}</button>
-        <button type="button" className="apple-action-button app-button--primary" disabled={saving || !name.trim()} onClick={() => void save()}>
+        <button type="button" className="apple-action-button app-button--primary" disabled={saving || fillingTemplate || !name.trim()} onClick={() => void save()}>
           <Save className="h-4 w-4" strokeWidth={2} />
           {saving ? tProfiles("edit.saving") : tProfiles("dialog.save")}
         </button>
       </div>
+      {templateOpen ? <ClaudeCommonTemplateDialog sourceText={envText} onClose={() => setTemplateOpen(false)} /> : null}
     </section>
   );
 }

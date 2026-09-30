@@ -318,6 +318,8 @@ pub fn run() {
             commands::enable_skill,
             commands::disable_skill,
             commands::claude_list_profiles,
+            commands::claude_get_common_settings,
+            commands::claude_save_common_settings,
             commands::claude_get_profile,
             commands::claude_capture_profile,
             commands::claude_save_profile,

@@ -27,10 +27,27 @@ describe("AppShell 布局", () => {
     expect(source).not.toContain("absolute inset-x-1.5 bottom-4");
   });
 
-  it("重复点击当前侧栏页面时不重置页面", () => {
-    for (const view of ["profiles", "mcp", "plugins", "skills", "accounts", "settings", "claude"]) {
-      expect(source).toContain(`if (view === "${view}") return;`);
-    }
+  it("切页记忆：进过的页面 Activity 保活，reset 键已拆除", () => {
+    // 渲染以 Record<AppView, ReactNode> 为唯一清单：新增 AppView 漏页是编译错误
+    expect(source).toContain("const pages: Record<AppView, ReactNode>");
+    // 只保活进过的页面：未访问页连渲染都不发生，冷启动零新增
+    expect(source).toContain("visitedViews.has(pageView)");
+    expect(source).toContain('<Activity key={pageView} mode={view === pageView ? "visible" : "hidden"}>');
+    // reset 键是"切回必回列表"的根源：每次进入 bump 强制重挂载，禁止复活
+    expect(source).not.toContain("profilesReset");
+    expect(source).not.toContain("mcpReset");
+    // 外层 key 不得含 view：否则每次切页整树重挂载，保活失效
+    expect(source).toContain('key={state ? "app" : "loading"}');
+    expect(source).not.toContain('key={state ? view : "loading"}');
+  });
+
+  it("切回保活页时进场动画补播，同页内部挂载不重复播", () => {
+    // scan 以 view 为依赖重跑：切回时 DOM 不变、observer 收不到，靠 effect 补播
+    expect(source).toContain("}, [mainRef, view]);");
+    // 隐藏保活页仍在 DOM（display:none），必须按可见性跳过
+    expect(source).toContain("offsetParent === null");
+    // played 随 effect 重建：同一次停留内同一元素不重播
+    expect(source).toContain("const played = new WeakSet<Element>();");
   });
 
   it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {
@@ -104,12 +121,12 @@ describe("AppShell 布局", () => {
     expect(source).toContain('view: "accounts"');
     expect(source).toContain('view: "settings"');
     expect(source.indexOf('view: "accounts"')).toBeLessThan(source.indexOf('view: "settings"'));
-    expect(source).toContain('onManageChatgptAccounts={goAccounts}');
+    expect(source).toContain('onManageChatgptAccounts={() => setView("accounts")}');
   });
 
   it("托盘账号项恢复窗口后打开账号页", () => {
     expect(source).toContain('listen("tray-open-accounts", () => latest.current.openAccounts())');
-    expect(source).toContain("openAccounts={goAccounts}");
+    expect(source).toContain('openAccounts={() => setView("accounts")}');
   });
 
   it("冷启动窗口一路透传到供应商卡：余额刷新只在进程启动期间延后", () => {
