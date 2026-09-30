@@ -44,6 +44,16 @@ describe("MCP 操作入口", () => {
     expect(viewSource).not.toContain("setProbeResults({});");
   });
 
+  it("Claude MCP 进页和激活强刷列表，单条保存、删除和开关不全量重探", () => {
+    const claude = viewSource.slice(viewSource.indexOf("function ClaudeMcpView("));
+    expect(claude).toContain("void refresh(true);");
+    expect(claude).toContain("void refresh(true, []); }, [activationEpoch]");
+    expect(claude).toContain("await refresh(true, []);");
+    expect(claude).toContain("void refresh(true, [name]);");
+    expect(claude).toContain("refresh(true, enabled ? [target.name] : [])");
+    expect(claude).toContain("only ? next.filter((server) => only.includes(server.name)) : next");
+  });
+
   it("MCP 卡片空白处可折叠且不抢占操作控件", () => {
     expect(viewSource).toContain('event.target.closest(\'button, input, code, [role="switch"]\')');
     expect(viewSource).toContain("if (!detailsVisible");

@@ -45,7 +45,7 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
 }
 
 /// 差异×动词到外科手术原语的唯一映射——每条命令只碰单个条目的单侧（镜像或 live），
-/// 不得使用 saveMcpServer/deleteMcpServer（它们会用整段 live 重建镜像，殃及其他未处理差异）：
+/// 不得使用 saveMcpServer/deleteMcpServer（它们会同时修改 live，无法表达只采纳镜像）：
 /// 同步 = 采纳外部修改（live 片段写入镜像；外部已删除的删除镜像条目）；
 /// 撤销 = 回退外部修改（数据库片段写回 live；外部新增的从 live 移除）。
 export function mcpEntryAction(entry: McpSyncDiffEntry, verb: McpDiffVerb): McpDiffAction | null {
@@ -565,7 +565,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
   );
 }
 
-function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) {
+function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; onSwitch: (target: McpTarget) => void }) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const cachedServers = getCachedClaudeMcpServers();
@@ -576,7 +576,7 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
   const [creatingServer, setCreatingServer] = useState(false);
   const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("claude", cachedServers ?? []);
 
-  const refresh = async (force = false) => {
+  const refresh = async (force = false, only?: string[]) => {
     let next: McpServerSpec[] | null = null;
     try {
       next = await loadClaudeMcpServers(force);
@@ -588,15 +588,20 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
     } finally {
       setLoaded(true);
     }
-    if (next?.length) void Promise.all(next.filter((server) => server.enabled !== false).map((server) => probe(server, { manual: false })));
+    if (next) {
+      const targets = only ? next.filter((server) => only.includes(server.name)) : next;
+      void Promise.all(targets.filter((server) => server.enabled !== false).map((server) => probe(server, { manual: false })));
+    }
   };
 
   const probedOnceRef = useRef(false);
   useEffect(() => {
     if (probedOnceRef.current) return;
     probedOnceRef.current = true;
-    void refresh();
+    void refresh(true);
   }, []);
+
+  useEffect(() => { if (activationEpoch === 0) return; void refresh(true, []); }, [activationEpoch]);
 
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({
@@ -611,7 +616,7 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
       deleteCachedMcpProbe(server.name, "claude");
       feedback.success(t("claude.deleted"));
       setEditingServer(null);
-      await refresh(true);
+      await refresh(true, []);
     } catch (error) {
       feedback.error(String(error));
     }
@@ -623,7 +628,7 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
         server={editingServer}
         create={creatingServer}
         onBack={() => { setEditingServer(null); setCreatingServer(false); }}
-        onSaved={() => { setEditingServer(null); setCreatingServer(false); void refresh(true); }}
+        onSaved={(name) => { setEditingServer(null); setCreatingServer(false); void refresh(true, [name]); }}
         onDelete={editingServer ? () => removeServer(editingServer) : undefined}
       />
     );
@@ -672,7 +677,7 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
                 onEdit={setEditingServer}
                 onProbe={(target) => void probe(target)}
                 onToggleTools={toggleTools}
-                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true))}
+                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []))}
               />
             ))}
           </div>
@@ -686,5 +691,5 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
   const [target, setTarget] = useState<McpTarget>("codex");
   return target === "codex"
     ? <CodexMcpView activationEpoch={activationEpoch} onSwitch={setTarget} />
-    : <ClaudeMcpView onSwitch={setTarget} />;
+    : <ClaudeMcpView activationEpoch={activationEpoch} onSwitch={setTarget} />;
 }

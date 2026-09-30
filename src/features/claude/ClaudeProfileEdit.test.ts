@@ -6,6 +6,11 @@ const editSource = readFileSync(new URL("./ClaudeProfileEdit.tsx", import.meta.u
 const viewSource = readFileSync(new URL("./ClaudeProfilesView.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 describe("Claude 新建配置隔离", () => {
+  it("详情读取失败保留列表，已有配置缺少详情时禁止保存", () => {
+    const openEdit = viewSource.slice(viewSource.indexOf("const openEdit ="), viewSource.indexOf("const closeEdit ="));
+    expect(openEdit).toMatch(/try \{\s*const detail = await api.claudeGetProfile\(profile.id\);\s*setEditDetail\(detail\);\s*setEditingProfile\(profile\);\s*\} catch \(error\) \{\s*feedback.error/);
+    expect(editSource).toContain("(!create && !initialDetail)");
+  });
   it("新建从空 settings 开始，不读取当前 live 配置", () => {
     expect(editSource).toMatch(/const initialEnvText = useMemo\(\s*\(\) => create \? "\{\}" : buildSettingsText/);
     expect(editSource).not.toContain("initialSettingsText");

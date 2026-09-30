@@ -86,7 +86,8 @@ const STRUCTURAL_CHECKS = [
     name: "使用 apple-edit-content 的文件必须同时包含 apple-page-bar",
     // app/AppShell.tsx 只在 DOM 查询里引用该类名（页面进场动画的挂载点选择器），
     // 自身不渲染任何页面布局骨架，页头由各 feature 页自备。
-    exempt: (rel) => rel === "app/AppShell.tsx",
+    // 设置页不设标题和返回按钮，顶部标签栏与中间滚动区组成页面骨架。
+    exempt: (rel) => rel === "app/AppShell.tsx" || rel === "features/settings/SettingsView.tsx",
     holds: (content) => content.includes("apple-page-bar"),
   },
 ];

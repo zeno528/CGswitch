@@ -179,8 +179,13 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
             <span className="meta-xs muted text-center font-medium">{labels.oneMillionColumn ?? labels.oneMillion}</span>
           </div>
           {mappingFields.map((field) => {
-            const options = models.map((item) => ({ label: displayModelLabel(item), value: item }));
-            if (field.value.trim() && !models.includes(field.value)) options.unshift({ label: displayModelLabel(field.value), value: field.value });
+            const optionsByLabel = new Map<string, string>();
+            for (const item of models) {
+              const label = displayModelLabel(item);
+              if (!optionsByLabel.has(label)) optionsByLabel.set(label, item);
+            }
+            const options = [...optionsByLabel].map(([label, value]) => ({ label, value }));
+            const selected = options.find((option) => option.label === displayModelLabel(field.value.trim()))?.value ?? null;
             return (
               <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_7rem] sm:items-center">
                 <div className="flex min-w-0 items-center">
@@ -196,7 +201,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
                 />
                 <input className="app-input app-input--compact min-w-0" aria-label={`${field.label} ${labels.requestModel ?? labels.model}`} placeholder={field.placeholder ?? ""} value={displayModelLabel(field.value)} onChange={(event) => field.onChange(event.target.value)} />
                 <AppSelect
-                  value={field.value.trim() ? field.value : null}
+                  value={selected}
                   options={options}
                   onChange={field.onChange}
                   placeholder={models.length ? labels.select : labels.fetchFirst}

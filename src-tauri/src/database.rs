@@ -17,6 +17,7 @@ pub struct McpServerRecord {
     pub toml: String,
     pub codex_enabled: bool,
     pub claude_enabled: bool,
+    pub claude_json: Option<String>,
 }
 
 /// profile id 进程内自增后缀：同一毫秒内创建多个供应商也不会撞唯一约束。
@@ -140,6 +141,7 @@ fn migrations() -> Migrations<'static> {
         // Claude 供应商用量条开关。迁移只能追加在末尾：插队会推后后续迁移的序号，
         // 让已应用过它们的存量库重放旧迁移（duplicate column 崩溃）。
         M::up("ALTER TABLE claude_profiles ADD COLUMN show_balance INTEGER NOT NULL DEFAULT 0"),
+        M::up("ALTER TABLE mcp_servers ADD COLUMN claude_json TEXT"),
     ])
 }
 
@@ -503,7 +505,7 @@ impl Database {
         let connection = self.lock()?;
         let mut statement = connection
             .prepare(
-                "SELECT name, toml, codex_enabled, claude_enabled
+                "SELECT name, toml, codex_enabled, claude_enabled, claude_json
                  FROM mcp_servers ORDER BY sort_order ASC, name ASC",
             )
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
@@ -514,6 +516,7 @@ impl Database {
                     toml: row.get(1)?,
                     codex_enabled: row.get::<_, i64>(2)? != 0,
                     claude_enabled: row.get::<_, i64>(3)? != 0,
+                    claude_json: row.get(4)?,
                 })
             })
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
@@ -559,12 +562,50 @@ impl Database {
         Ok(())
     }
 
+    /// 单条保存或改名：同一事务保留另一引擎开关与原生配置，不重建其他行。
+    pub fn save_mcp_server_record(
+        &self,
+        original_name: Option<&str>,
+        record: &McpServerRecord,
+        timestamp: &str,
+    ) -> AppResult<()> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始 MCP 写入事务: {error}"))?;
+        let old_name = original_name.unwrap_or(&record.name);
+        transaction.execute(
+            "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json)
+             VALUES(?1, ?2, COALESCE((SELECT sort_order FROM mcp_servers WHERE name=?7), (SELECT COALESCE(MAX(sort_order), -1)+1 FROM mcp_servers)), ?3, ?4, ?5, ?6)
+             ON CONFLICT(name) DO UPDATE SET toml=excluded.toml, updated_at=excluded.updated_at,
+             codex_enabled=excluded.codex_enabled, claude_enabled=excluded.claude_enabled, claude_json=excluded.claude_json",
+            params![record.name, record.toml, timestamp, record.codex_enabled, record.claude_enabled, record.claude_json, old_name],
+        ).map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
+        if old_name != record.name {
+            transaction
+                .execute("DELETE FROM mcp_servers WHERE name=?1", params![old_name])
+                .map_err(|error| app_err!("无法删除旧 MCP 名称: {error}"))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| app_err!("无法提交 MCP 写入事务: {error}"))
+    }
+
     /// 全量替换 Codex 活跃片段集：管理规模小，整表重写最简单。
     /// 已知行的引擎开关原样带过；不在新集合里的 Codex 关闭行保留（片段还要喂 Claude 端与恢复）。
     pub fn replace_mcp_server_fragments(
         &self,
         fragments: &[(String, String)],
         timestamp: &str,
+    ) -> AppResult<()> {
+        self.replace_mcp_server_fragments_with(fragments, timestamp, |_| Ok(()))
+    }
+
+    pub fn replace_mcp_server_fragments_with(
+        &self,
+        fragments: &[(String, String)],
+        timestamp: &str,
+        before_commit: impl FnOnce(&mut [McpServerRecord]) -> AppResult<()>,
     ) -> AppResult<()> {
         let previous = self.mcp_server_records()?;
         let mut connection = self.lock()?;
@@ -584,6 +625,7 @@ impl Database {
                     toml: toml.clone(),
                     codex_enabled: existing.is_none_or(|record| record.codex_enabled),
                     claude_enabled: existing.is_none_or(|record| record.claude_enabled),
+                    claude_json: existing.and_then(|record| record.claude_json.clone()),
                 }
             })
             .collect();
@@ -592,18 +634,21 @@ impl Database {
                 rows.push(record);
             }
         }
+        // 回调只能读写文件，不能重新进入数据库连接锁。
+        before_commit(&mut rows)?;
         for (index, record) in rows.iter().enumerate() {
             transaction
                 .execute(
-                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled)
-                     VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![
                         record.name,
                         record.toml,
                         index as i64,
                         timestamp,
                         record.codex_enabled as i64,
-                        record.claude_enabled as i64
+                        record.claude_enabled as i64,
+                        record.claude_json
                     ],
                 )
                 .map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
@@ -755,9 +800,13 @@ impl Database {
         id: &str,
         input: &ClaudeProfileInput,
         timestamp: &str,
+        before_commit: impl FnOnce(&StoredClaudeProfile) -> AppResult<()>,
     ) -> AppResult<StoredClaudeProfile> {
-        let connection = self.lock()?;
-        connection
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始配置更新事务: {error}"))?;
+        let updated = transaction
             .query_row(
                 &format!(
                     "UPDATE claude_profiles SET name=?2, base_url=?3, auth_token=?4, model=?5, description=?6, fetched_models=?7, kind=?8, admin_url=?9, extra_env=?10, raw_settings=?11, icon=?12, show_balance=?13, updated_at=?14 WHERE id=?1
@@ -786,18 +835,30 @@ impl Database {
             )
             .optional()
             .map_err(|error| app_err!("无法更新 Claude 供应商配置: {error}"))?
-            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))
+            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))?;
+        before_commit(&updated)?;
+        transaction
+            .commit()
+            .map_err(|error| app_err!("无法提交配置更新事务: {error}"))?;
+        Ok(updated)
     }
 
     pub fn delete_claude_profile(&self, id: &str) -> AppResult<()> {
-        let connection = self.lock()?;
-        let changed = connection
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始配置删除事务: {error}"))?;
+        let changed = transaction
             .execute("DELETE FROM claude_profiles WHERE id=?1", params![id])
             .map_err(|error| app_err!("无法删除 Claude 供应商配置: {error}"))?;
         if changed == 0 {
             return Err(app_err!("Claude 供应商配置不存在"));
         }
-        Ok(())
+        transaction.execute("UPDATE app_state SET active_claude_profile_id=NULL WHERE active_claude_profile_id=?1", params![id])
+            .map_err(|error| app_err!("无法清除激活配置: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| app_err!("无法提交配置删除事务: {error}"))
     }
 
     /// 卡片拖拽排序持久化（对齐 Codex reorder_profiles：事务内逐行写 sort_order）。
@@ -904,7 +965,7 @@ impl Database {
     }
 
     /// 从备份文件把数据恢复进当前数据库（清空现有数据后复制）。
-    pub fn restore_from_backup(&self, backup: &Path) -> AppResult<()> {
+    pub fn restore_from_backup(&self, backup: &Path) -> AppResult<bool> {
         let source = Connection::open_with_flags(backup, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|error| app_err!("无法打开备份文件: {error}"))?;
         let has_profiles: i64 = source
@@ -1039,32 +1100,20 @@ impl Database {
             )
             .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
         if has_mcp_servers > 0 {
-            let source_has_engine_flags = source
-                .query_row(
-                    "SELECT COUNT(*) FROM pragma_table_info('mcp_servers') WHERE name = 'codex_enabled'",
-                    [],
-                    |row| row.get::<_, i64>(0),
-                )
-                .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
-            if source_has_engine_flags > 0 {
-                copy_table(
-                    &source,
-                    &transaction,
-                    "mcp_servers",
-                    "SELECT name, toml, sort_order, updated_at, codex_enabled, claude_enabled FROM mcp_servers",
-                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled)
-                     VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
-                )?;
-            } else {
-                copy_table(
-                    &source,
-                    &transaction,
-                    "mcp_servers",
-                    "SELECT name, toml, sort_order, updated_at FROM mcp_servers",
-                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
-                     VALUES(?1, ?2, ?3, ?4)",
-                )?;
-            }
+            copy_intersected_columns(
+                &source,
+                &transaction,
+                "mcp_servers",
+                &[
+                    "name",
+                    "toml",
+                    "sort_order",
+                    "updated_at",
+                    "codex_enabled",
+                    "claude_enabled",
+                    "claude_json",
+                ],
+            )?;
         }
         // 旧备份可能还没有 claude_profiles 表：无表跳过（Claude 供应商从零开始）
         let has_claude_profiles: i64 = source
@@ -1087,7 +1136,7 @@ impl Database {
         transaction
             .commit()
             .map_err(|error| app_err!("恢复事务提交失败: {error}"))?;
-        Ok(())
+        Ok(has_mcp_servers > 0)
     }
 
     fn lock(&self) -> AppResult<std::sync::MutexGuard<'_, Connection>> {
@@ -1488,14 +1537,19 @@ mod tests {
             assert!(column_exists("mcp_servers", "codex_enabled"));
             assert!(!column_exists("mcp_servers", "global_enabled"));
             assert!(!column_exists("claude_profiles", "show_balance"));
+            connection.execute("INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled) VALUES('fixture', '[mcp_servers.fixture]\ncommand=\"echo\"', 0, '1', 0, 1)", []).unwrap();
         }
 
         let db = Database::open(&paths).unwrap();
+        let record = db.mcp_server_record("fixture").unwrap().unwrap();
+        assert!(!record.codex_enabled);
+        assert!(record.claude_enabled);
+        assert!(record.claude_json.is_none());
         let connection = db.lock().unwrap();
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 17);
+        assert_eq!(version, 18);
         let show_balance: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",

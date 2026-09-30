@@ -446,7 +446,7 @@ export default function AppShell() {
                   {group.key !== "common" ? <div className="apple-sidebar-group-label" aria-hidden="true">
                     {group.key === "codex" ? <img src="/codex.svg" alt="" /> : null}
                     {group.key === "claude" ? <img src="/claude-code.svg" alt="" /> : null}
-                    <span>{t(group.labelKey)}</span>
+                    <span className="apple-sidebar-label">{t(group.labelKey)}</span>
                   </div> : null}
                   <div className="space-y-1">
                     {group.items.map((item) => (
@@ -490,7 +490,7 @@ export default function AppShell() {
               ) : view === "accounts" ? (
                 <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (
-                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
+                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />
               )}
             </div>
           </main>

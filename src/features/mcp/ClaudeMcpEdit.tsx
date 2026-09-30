@@ -11,7 +11,7 @@ interface ClaudeMcpEditProps {
   server: McpServerSpec | null;
   create?: boolean;
   onBack: () => void;
-  onSaved: () => void;
+  onSaved: (name: string) => void;
   onDelete?: () => Promise<void>;
 }
 
@@ -68,7 +68,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
     try {
       await api.saveClaudeMcpServer(server?.name ?? null, trimmedName, jsonText);
       feedback.success(t("claude.saved"));
-      onSaved();
+      onSaved(trimmedName);
     } catch (error) {
       feedback.error(String(error));
     } finally {

@@ -11,7 +11,7 @@ export default {
     customOption: "Custom",
   },
   mappingTitle: "Model mapping",
-  mappingDescription: "Display names are for /model; request models are sent to the gateway; 1M marks million-token context.",
+  mappingDescription: "Request models are sent to the gateway; 1M marks million-token context.",
   quickSet: "Quick set",
   modelRoleLabel: "Model role",
   displayNameLabel: "Display name",

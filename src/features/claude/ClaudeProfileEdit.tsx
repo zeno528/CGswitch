@@ -252,7 +252,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   };
 
   const save = async () => {
-    if (saving || !name.trim()) return;
+    if (saving || !name.trim() || (!create && !initialDetail)) return;
     // 非法 JSON 不落库：托管键以外的内容不会被静默丢弃
     const extras = splitEnvExtras(envText);
     if (extras === undefined) {

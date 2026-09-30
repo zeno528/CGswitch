@@ -1,6 +1,5 @@
 import {
   AppWindow,
-  ArrowLeft,
   ArrowUpCircle,
   Info,
   Cog,
@@ -18,9 +17,9 @@ import type { AppState, PathInfo, Settings } from "../../types";
 import { SettingsAbout, SettingsAdvanced, SettingsGeneral, SettingsPanelSection } from "./SettingsSections";
 
 type Section = "general" | "codex" | "advanced" | "about";
-interface SettingsViewProps { state: AppState; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; onHome: () => void; }
+interface SettingsViewProps { state: AppState; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; }
 
-export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved, onHome }: SettingsViewProps) {
+export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved }: SettingsViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("settings");
   const [form, setForm] = useState<Settings>(state.settings);
@@ -50,7 +49,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   const openPath = async (item: PathInfo) => { if (openingPath) return; setOpeningPath(item.path); try { await api.openPath(item.path); } catch (error) { feedback.error(String(error)); } finally { setOpeningPath(null); } };
   const tab = (id: Section, label: string, Icon: typeof Cog) => <button type="button" data-section={id} className={`settings-tab relative flex h-10 items-center gap-1.5 rounded-md px-3 transition-colors ${section === id ? "text-accent" : "text-[var(--text-secondary)] hover:text-accent"}`} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon className="h-4 w-4 shrink-0" strokeWidth={2} />{label}</button>;
 
-  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div className="apple-page-bar apple-page-bar--sticky"><button type="button" className="apple-page-header apple-back-button" aria-label={t("view.backHome")} onClick={onHome}><ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} /><span className="apple-title">{t("view.title")}</span></button></div><div ref={tabBar} className="settings-tab-bar relative mt-2 flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
+  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div ref={tabBar} className="settings-tab-bar relative mt-2 flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
     {section === "general" ? <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} /> : null}
     {section === "codex" ? (
       <SettingsPanelSection id="codex" label={t("codex.sectionTitle")}>

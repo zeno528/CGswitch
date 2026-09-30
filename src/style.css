@@ -789,11 +789,6 @@ body.drag-active * {
   flex-shrink: 0;
 }
 
-.apple-sidebar--collapsed .apple-sidebar-group-label span,
-.apple-sidebar--collapsed .apple-sidebar-group:last-child .apple-sidebar-group-label {
-  display: none;
-}
-
 .apple-sidebar-flyout {
   position: absolute;
   left: calc(100% + 0.6rem);

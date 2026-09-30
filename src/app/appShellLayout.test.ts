@@ -17,7 +17,9 @@ describe("AppShell 布局", () => {
     expect(source).toContain('src="/claude-code.svg"');
     expect(source).toContain('group.key !== "common"');
     expect(styles).toContain(".apple-sidebar-group + .apple-sidebar-group");
-    expect(styles).toContain(".apple-sidebar--collapsed .apple-sidebar-group-label span,");
+    // 分组文案复用全局侧栏文字动画，不能用 display:none 瞬间切换。
+    expect(source).toContain('<span className="apple-sidebar-label">{t(group.labelKey)}</span>');
+    expect(styles).not.toContain(".apple-sidebar--collapsed .apple-sidebar-group-label");
     // 每个导航项必须渲染可见文案 + 收缩态悬浮提示（曾因修复闭合标签丢失过，钉死）
     expect(source).toContain('<span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>');
     expect(source).toContain('sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout"');

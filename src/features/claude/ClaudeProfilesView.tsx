@@ -151,13 +151,14 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
   };
 
   const openEdit = async (profile: ClaudeProfileSummary) => {
-    // 先预载详情再切换：编辑页在详情未就绪时整页返回 null，直接切换会空一帧（Codex openEdit 同模式）
-    let detail: ClaudeProfileDetail | null = null;
+    // 详情完整加载后才切换；失败保留列表，避免空表单覆盖已有配置。
     try {
-      detail = await api.claudeGetProfile(profile.id);
-    } catch { /* 详情由编辑页挂载后重取 */ }
-    setEditDetail(detail);
-    setEditingProfile(profile);
+      const detail = await api.claudeGetProfile(profile.id);
+      setEditDetail(detail);
+      setEditingProfile(profile);
+    } catch (error) {
+      feedback.error(String(error));
+    }
   };
 
   const closeEdit = async () => {

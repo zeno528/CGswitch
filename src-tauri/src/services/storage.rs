@@ -135,9 +135,7 @@ impl AppContext {
         if canonical == live {
             return Err(app_err!("不能导入当前正在使用的数据库文件"));
         }
-        self.database.restore_from_backup(&canonical)?;
-        // 备份里的 MCP 镜像写回 live config.toml（旧备份无 MCP 表则保持 live 现状）
-        self.write_mcp_to_live_from_database()?;
+        self.restore_database_from_path(&canonical)?;
         self.database.record_event(
             None,
             "import",
@@ -189,27 +187,7 @@ impl AppContext {
 
     pub fn restore_database(&self, name: &str) -> AppResult<()> {
         let path = self.database_backup_path(name)?;
-        // 恢复会整表替换 claude_profiles / app_state：先记下恢复前的激活行，
-        // 恢复后把 live settings.json 的托管键收敛到恢复出的激活位（回到备份时刻状态）
-        let previous_profile = self
-            .database
-            .active_claude_profile()?
-            .as_deref()
-            .map(|id| self.database.claude_profile(id))
-            .transpose()?;
-        self.database.restore_from_backup(&path)?;
-        let restored_profile = self
-            .database
-            .active_claude_profile()?
-            .as_deref()
-            .map(|id| self.database.claude_profile(id))
-            .transpose()?;
-        self.reconcile_claude_live_after_restore(
-            previous_profile.as_ref(),
-            restored_profile.as_ref(),
-        )?;
-        // 备份里的 MCP 镜像写回 live config.toml（旧备份无 MCP 表则保持 live 现状）
-        self.write_mcp_to_live_from_database()?;
+        self.restore_database_from_path(&path)?;
         self.database.record_event(
             None,
             "restore",
@@ -222,6 +200,75 @@ impl AppContext {
             path.display().to_string()
         );
         Ok(())
+    }
+
+    fn restore_database_from_path(&self, path: &Path) -> AppResult<()> {
+        let _guard = self
+            .operation
+            .lock()
+            .map_err(|_| app_err!("操作锁已损坏"))?;
+        let previous_mcp = self.database.mcp_server_records()?;
+        // 恢复会整表替换 claude_profiles / app_state：先记下恢复前的激活行，
+        // 恢复后把 live settings.json 的托管键收敛到恢复出的激活位（回到备份时刻状态）
+        let previous_profile = self
+            .database
+            .active_claude_profile()?
+            .as_deref()
+            .map(|id| self.database.claude_profile(id))
+            .transpose()?;
+        std::fs::create_dir_all(&self.paths.database_backup)
+            .map_err(|error| app_err!("无法创建备份目录: {error}"))?;
+        // 使用随机后缀，避免连续恢复和导出在同一毫秒内撞文件名；保留恢复前数据库供人工恢复。
+        let backup = tempfile::Builder::new()
+            .prefix("cg-backup-manual-")
+            .suffix(".db")
+            .tempfile_in(&self.paths.database_backup)
+            .map_err(|error| app_err!("无法创建恢复前备份: {error}"))?
+            .into_temp_path();
+        std::fs::remove_file(&backup).map_err(|error| app_err!("无法准备备份文件: {error}"))?;
+        self.database.export_database(&backup)?;
+        let backup = backup
+            .keep()
+            .map_err(|error| app_err!("无法保留恢复前备份: {error}"))?;
+        crate::fsutil::with_file_rollback(
+            &[
+                self.paths.codex_config(),
+                self.paths.claude_mcp_config(),
+                self.paths.claude_home.join("settings.json"),
+            ],
+            || {
+                let has_mcp = self.database.restore_from_backup(path)?;
+                let result = (|| {
+                    let restored_profile = self
+                        .database
+                        .active_claude_profile()?
+                        .as_deref()
+                        .map(|id| self.database.claude_profile(id))
+                        .transpose()?;
+                    self.reconcile_claude_live_after_restore(
+                        previous_profile.as_ref(),
+                        restored_profile.as_ref(),
+                    )?;
+                    // 备份里的 MCP 镜像写回 live config.toml（旧备份无 MCP 表则保持 live 现状）
+                    if has_mcp {
+                        self.write_mcp_to_live_from_database(&previous_mcp)?;
+                    }
+                    Ok(())
+                })();
+                if let Err(error) = result {
+                    self.database
+                        .restore_from_backup(&backup)
+                        .map_err(|rollback| {
+                            app_err!(
+                                "{error}；数据库回滚失败: {rollback}；恢复前备份: {}",
+                                backup.display()
+                            )
+                        })?;
+                    return Err(error);
+                }
+                Ok(())
+            },
+        )
     }
 
     pub fn delete_database_backup(&self, name: &str) -> AppResult<()> {

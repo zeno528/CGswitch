@@ -11,7 +11,7 @@ export default {
     customOption: "自定义",
   },
   mappingTitle: "模型映射",
-  mappingDescription: "显示名用于 /model；请求模型用于实际调用；1M 表示百万上下文。",
+  mappingDescription: "请求模型用于实际调用；1M 表示百万上下文。",
   quickSet: "一键设置",
   modelRoleLabel: "模型角色",
   displayNameLabel: "显示名",

@@ -7,6 +7,53 @@ use tempfile::NamedTempFile;
 use crate::error::{app_err, AppResult};
 use crate::paths::now_ms;
 
+/// 跨文件/数据库操作失败时恢复原文件；调用方负责持有应用操作锁。
+pub fn with_file_rollback<T>(
+    paths: &[PathBuf],
+    operation: impl FnOnce() -> AppResult<T>,
+) -> AppResult<T> {
+    let originals = paths
+        .iter()
+        .map(|path| match fs::read(path) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(app_err!("无法读取 {}: {error}", path.display())),
+        })
+        .collect::<AppResult<Vec<_>>>()?;
+    match operation() {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let mut failures = Vec::new();
+            for (path, original) in paths.iter().zip(originals) {
+                // 未发生写入的不重写，避免无权限文件导致虚假的回滚失败。
+                if fs::read(path).ok() == original {
+                    continue;
+                }
+                let result = match original {
+                    Some(bytes) => atomic_write(path, &bytes),
+                    None => fs::remove_file(path)
+                        .or_else(|error| {
+                            if error.kind() == io::ErrorKind::NotFound {
+                                Ok(())
+                            } else {
+                                Err(error)
+                            }
+                        })
+                        .map_err(|error| app_err!("无法撤下 {}: {error}", path.display())),
+                };
+                if let Err(error) = result {
+                    failures.push(error.to_string());
+                }
+            }
+            if failures.is_empty() {
+                Err(error)
+            } else {
+                Err(app_err!("{error}；原文件恢复失败：{}", failures.join("；")))
+            }
+        }
+    }
+}
+
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> AppResult<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
