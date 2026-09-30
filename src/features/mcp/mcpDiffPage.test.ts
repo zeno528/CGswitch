@@ -169,16 +169,16 @@ describe("MCP 差异二级页", () => {
     // 批量：同上，名单换成被处理的那几台
     expect(viewSource).toContain('await refresh(true, verb === "revert" ? actions.map((action) => action.name) : []);');
     // 编辑保存：不是"跳过它、其余全连"（那等于全量重探），而是谁都不连，
-    // 随后 probeServer 只验刚保存的那一台的连通性——保存的目的是"这台还能不能用"，
-    // 不是工具清单（那是点扳手才有的事），所以这里不能借 probeTools
+    // 随后 probe 只验刚保存的那一台的连通性——保存的目的是"这台还能不能用"，
+    // 不是工具清单（那是点扳手才有的事），所以这里不能传 includeTools
     const saveAnchor = viewSource.indexOf("onBack={(savedServer)");
     const savePath = viewSource.slice(saveAnchor, saveAnchor + 700);
     expect(savePath).toContain("refresh(true, [])");
     // 静默：保存已经弹过"已保存"，连通结果看那一行的状态灯，不再叠一条通知
-    expect(savePath).toContain("probeServer(savedServer, false, false)");
+    expect(savePath).toContain("probe(savedServer, { manual: false })");
     // 探测不等 refresh 的返回值（它可能为 null 把探测整个吞掉），顺序也不能反
-    expect(savePath.indexOf("await refresh(true, [])")).toBeLessThan(savePath.indexOf("probeServer(savedServer"));
-    expect(savePath).not.toContain("probeTools");
+    expect(savePath.indexOf("await refresh(true, [])")).toBeLessThan(savePath.indexOf("probe(savedServer"));
+    expect(savePath).not.toContain("includeTools");
     expect(viewSource).not.toContain("skip");
   });
 

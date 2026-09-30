@@ -9,7 +9,7 @@ const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 
 describe("AppShell 布局", () => {
   it("保持侧栏导航紧贴品牌区，并按 Codex/Claude 分组数据驱动渲染，通用导航不显示标题", () => {
-    expect(source).toContain("apple-sidebar relative h-full shrink-0");
+    expect(source).toContain("apple-sidebar relative flex h-full shrink-0 flex-col");
     expect(source).toContain('className="mx-1.5 mt-3 space-y-3"');
     expect(source).toContain("sidebarGroups.map");
     expect(source).toContain("apple-sidebar-group-label");
@@ -235,6 +235,8 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-action-button {\n  align-items: center;");
     expect(styles).toContain("height: var(--toolbar-control-height);");
     expect(styles).toContain(".app-input--pill {\n  height: var(--toolbar-control-height);");
+    expect(styles).toContain(".provider-page-brand {\n  display: inline-flex;\n  height: var(--toolbar-control-height);");
+    expect(styles).toContain(".mcp-target-switch {\n  height: var(--toolbar-control-height);");
   });
 
   it("让主题分段控件与工具栏容器共用药丸圆角", () => {

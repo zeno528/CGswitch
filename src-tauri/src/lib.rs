@@ -281,6 +281,7 @@ pub fn run() {
             commands::probe_mcp_server,
             commands::save_mcp_server,
             commands::delete_mcp_server,
+            commands::set_mcp_server_enabled,
             commands::set_mcp_mirror,
             commands::revert_mcp_live,
             commands::set_mcp_mirror_entries,

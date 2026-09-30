@@ -8,6 +8,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue, ACCEPT, AUTHORIZATION,
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use super::plugins::SkillTool;
 use super::{app_err, AppContext, AppResult};
 use crate::models::{McpProbeResult, McpServerInfo, McpServerSpec, McpTool};
 
@@ -774,21 +775,20 @@ impl AppContext {
         name: &str,
         include_tools: bool,
         manual: bool,
+        tool: SkillTool,
     ) -> AppResult<McpProbeResult> {
-        let server = self
-            .list_mcp_servers()?
-            .into_iter()
-            .find(|server| server.name == name);
-        // Claude 用户配置可以先于 Codex live 配置存在；两边共用 MCP 镜像时，
-        // 探测仍应按用户实际打开的那一侧解析，而不是把 Claude 条目误报成不存在。
-        let server = match server {
-            Some(server) => server,
-            None => self
-                .claude_mcp_servers()?
-                .into_iter()
-                .find(|server| server.name == name)
-                .ok_or_else(|| app_err!("找不到 MCP 服务器: {name}"))?,
-        };
+        // 按用户所在页的引擎解析名单与开关：两侧各自标记自己引擎的禁用状态，
+        // Codex 关了不影响 Claude 页探测，反之亦然。
+        let server = match tool {
+            SkillTool::Codex => self.list_mcp_servers()?,
+            SkillTool::Claude => self.claude_mcp_servers()?,
+        }
+        .into_iter()
+        .find(|server| server.name == name)
+        .ok_or_else(|| app_err!("找不到 MCP 服务器: {name}"))?;
+        if server.enabled == Some(false) {
+            return Err(app_err!("MCP 服务器已禁用: {name}"));
+        }
         let is_http = server.url.is_some() && server.command.is_none();
         // HTTP 探测需要代理归因；stdio 子进程的网络不受应用控制，日志不标注走向
         let proxy = if is_http {

@@ -189,7 +189,25 @@ impl AppContext {
 
     pub fn restore_database(&self, name: &str) -> AppResult<()> {
         let path = self.database_backup_path(name)?;
+        // 恢复会整表替换 claude_profiles / app_state：先记下恢复前的激活行，
+        // 恢复后把 live settings.json 的托管键收敛到恢复出的激活位（回到备份时刻状态）
+        let previous_profile = self
+            .database
+            .active_claude_profile()?
+            .as_deref()
+            .map(|id| self.database.claude_profile(id))
+            .transpose()?;
         self.database.restore_from_backup(&path)?;
+        let restored_profile = self
+            .database
+            .active_claude_profile()?
+            .as_deref()
+            .map(|id| self.database.claude_profile(id))
+            .transpose()?;
+        self.reconcile_claude_live_after_restore(
+            previous_profile.as_ref(),
+            restored_profile.as_ref(),
+        )?;
         // 备份里的 MCP 镜像写回 live config.toml（旧备份无 MCP 表则保持 live 现状）
         self.write_mcp_to_live_from_database()?;
         self.database.record_event(

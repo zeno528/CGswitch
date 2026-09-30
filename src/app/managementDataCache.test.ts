@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
+const { listMcpServers, listClaudeMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
   listMcpServers: vi.fn(),
+  listClaudeMcpServers: vi.fn(),
   listMarketplacePlugins: vi.fn(),
   listPlugins: vi.fn(),
   listDatabaseBackups: vi.fn(),
@@ -12,12 +13,13 @@ const localStorageMock = {
   setItem: (key: string, value: string) => persistedStorage.set(key, value),
 };
 
-vi.mock("../api", () => ({ api: { listMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
+vi.mock("../api", () => ({ api: { listMcpServers, listClaudeMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
 
 describe("managementDataCache", () => {
   beforeEach(() => {
     vi.resetModules();
     listMcpServers.mockReset();
+    listClaudeMcpServers.mockReset();
     listDatabaseBackups.mockReset();
     persistedStorage.clear();
     vi.stubGlobal("localStorage", localStorageMock);
@@ -36,6 +38,19 @@ describe("managementDataCache", () => {
 
     expect(cache.getCachedMcpServers()).toEqual(servers);
     expect(listMcpServers).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the cached Claude MCP list when the management page remounts", async () => {
+    const servers = [{ name: "github", command: "github-mcp-server", args: [], env: {}, enabled: null }];
+    listClaudeMcpServers.mockResolvedValue(servers);
+    const cache = await import("./managementDataCache");
+
+    expect(cache.getCachedClaudeMcpServers()).toBeNull();
+    await cache.loadClaudeMcpServers();
+    await cache.loadClaudeMcpServers();
+
+    expect(cache.getCachedClaudeMcpServers()).toEqual(servers);
+    expect(listClaudeMcpServers).toHaveBeenCalledTimes(1);
   });
 
   it("returns the cached backup list when the settings page remounts", async () => {
@@ -69,6 +84,27 @@ describe("managementDataCache", () => {
 
     expect(cache.getCachedMcpProbe("github", "v1")?.toolsLoaded).toBe(true);
     expect(cache.getCachedMcpProbe("github", "v2")).toBeNull();
+  });
+
+  it("keeps Codex and Claude probe results separate for same-named servers", async () => {
+    const cache = await import("./managementDataCache");
+    const result = {
+      ok: true,
+      latency_ms: 1,
+      status: 200,
+      protocol_version: "2025-03-26",
+      server_info: { name: "github", version: "1.0.0" },
+      tools: [],
+      tools_truncated: false,
+      error: null,
+      tools_error: null,
+    };
+
+    cache.setCachedMcpProbe("github", { fingerprint: "codex", result, toolsLoaded: false });
+    cache.setCachedMcpProbe("github", { fingerprint: "claude", result, toolsLoaded: false }, "claude");
+
+    expect(cache.getCachedMcpProbe("github", "codex")?.fingerprint).toBe("codex");
+    expect(cache.getCachedMcpProbe("github", "claude", "claude")?.fingerprint).toBe("claude");
   });
 
   it("persists only MCP tool names and restores them after a reload", async () => {

@@ -721,10 +721,11 @@ pub async fn probe_mcp_server(
     name: String,
     include_tools: bool,
     manual: Option<bool>,
+    tool: SkillTool,
     state: State<'_, AppContext>,
 ) -> AppResult<crate::models::McpProbeResult> {
     state
-        .probe_mcp_server(&name, include_tools, manual.unwrap_or(false))
+        .probe_mcp_server(&name, include_tools, manual.unwrap_or(false), tool)
         .await
 }
 
@@ -735,12 +736,28 @@ pub fn save_mcp_server(
     fragment: Option<String>,
     state: State<'_, AppContext>,
 ) -> AppResult<()> {
-    state.save_mcp_server_with_fragment(original_name.as_deref(), spec, fragment.as_deref())
+    state.save_mcp_server_with_fragment(
+        original_name.as_deref(),
+        spec,
+        fragment.as_deref(),
+        SkillTool::Codex,
+    )
 }
 
 #[tauri::command]
 pub fn delete_mcp_server(name: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.delete_mcp_server(&name)
+}
+
+/// MCP 引擎级开关：只移除该引擎用户范围 live 条目，数据库镜像保留以便恢复。
+#[tauri::command]
+pub fn set_mcp_server_enabled(
+    name: String,
+    tool: SkillTool,
+    enabled: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.set_mcp_server_enabled(&name, tool, enabled)
 }
 
 /// 差异处理"同步"：改写数据库镜像中的单个条目（fragment 为空表示删除该条目；均不触碰 live）。

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setMcpDiffBadge, setMcpServersCache } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setMcpDiffBadge, type McpProbeScope } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
@@ -68,16 +68,129 @@ function mcpServerFingerprint(server: McpServerSpec) {
   return (hash >>> 0).toString(36);
 }
 
-function cachedProbeState(servers: McpServerSpec[]) {
+function cachedProbeState(servers: McpServerSpec[], scope: McpProbeScope = "codex") {
   const results: Record<string, McpProbeResult> = {};
   const toolsLoaded: Record<string, boolean> = {};
   for (const server of servers) {
-    const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server));
+    const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server), scope);
     if (!entry) continue;
     results[server.name] = entry.result;
     if (entry.toolsLoaded) toolsLoaded[server.name] = true;
   }
   return { results, toolsLoaded };
+}
+
+/// MCP 探测状态机：Codex 与 Claude 两页共用同一套探测/工具清单/缓存逻辑，缓存按 scope 隔离。
+/// probe 一条函数覆盖两条路径：includeTools=false 只验连通（结果连同细节入库缓存），
+/// includeTools=true 拉工具清单（失败不覆盖既有连通结论，只报错——灯反映的是连通性，不是清单拉取）。
+/// manual 控制是否给用户反馈与后端 manual 标记，静默重探传 false；showLoading 默认跟随 manual。
+function useMcpProbes(scope: McpProbeScope, initialServers: McpServerSpec[]) {
+  const feedback = useFeedback();
+  const { t } = useTranslation("mcp");
+  const [probingNames, setProbingNames] = useState<Record<string, boolean>>({});
+  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>(() => cachedProbeState(initialServers, scope).results);
+  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
+  const [toolsLoading, setToolsLoading] = useState<Record<string, boolean>>({});
+  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(initialServers, scope).toolsLoaded);
+
+  const notifyFailure = (name: string, message: string) => {
+    if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
+    else feedback.error(t("list.connectionFailed", { name }));
+  };
+
+  /// 列表刷新后调用：用缓存重铺探测结果（进页不重新点亮状态灯），收起所有工具面板。
+  const applyCache = (servers: McpServerSpec[]) => {
+    const cached = cachedProbeState(servers, scope);
+    setProbeResults(cached.results);
+    setToolsOpen({});
+    setToolsLoading({});
+    setToolsLoaded(cached.toolsLoaded);
+  };
+
+  const probe = async (server: McpServerSpec, { includeTools = false, manual = true, showLoading = manual }: { includeTools?: boolean; manual?: boolean; showLoading?: boolean } = {}) => {
+    const name = server.name;
+    const fingerprint = mcpServerFingerprint(server);
+    // 连通探测不带工具清单：之前取到的工具列表跨探测保留，不因一次重探清空
+    const keepTools = (result: McpProbeResult) => {
+      const cached = getCachedMcpProbe(name, fingerprint, scope);
+      return cached?.toolsLoaded
+        ? { ...result, tools: cached.result.tools, tools_truncated: cached.result.tools_truncated, tools_error: cached.result.tools_error }
+        : result;
+    };
+    const remember = (result: McpProbeResult, toolsLoadedNow: boolean) => {
+      setProbeResults((current) => ({ ...current, [name]: result }));
+      setCachedMcpProbe(name, { fingerprint, result, toolsLoaded: toolsLoadedNow }, scope);
+      if (toolsLoadedNow) setToolsLoaded((current) => ({ ...current, [name]: true }));
+    };
+    if (includeTools) {
+      setToolsOpen((current) => ({ ...current, [name]: true }));
+      if (showLoading) setToolsLoading((current) => ({ ...current, [name]: true }));
+    } else if (showLoading) {
+      setProbingNames((current) => ({ ...current, [name]: true }));
+    }
+    try {
+      const result = await api.probeMcpServer(name, includeTools, manual, scope);
+      if (includeTools) {
+        if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name }));
+        if (result.tools_error) throw new Error(result.tools_error);
+        remember(result, true);
+      } else {
+        const next = keepTools(result);
+        remember(next, getCachedMcpProbe(name, fingerprint, scope)?.toolsLoaded ?? false);
+        if (manual) {
+          if (next.ok) feedback.success(t("list.connectionSuccess", { name, ms: next.latency_ms ?? "-" }));
+          else notifyFailure(name, next.error ?? "");
+        }
+      }
+    } catch (error) {
+      if (includeTools) {
+        if (manual) feedback.error(String(error));
+      } else {
+        const result = keepTools({ ok: false, latency_ms: null, status: null, protocol_version: null, server_info: null, tools: [], tools_truncated: false, error: String(error), tools_error: null });
+        remember(result, getCachedMcpProbe(name, fingerprint, scope)?.toolsLoaded ?? false);
+        if (manual) notifyFailure(name, String(error));
+      }
+    } finally {
+      if (includeTools) {
+        if (showLoading) setToolsLoading((current) => { const next = { ...current }; delete next[name]; return next; });
+      } else if (showLoading) {
+        setProbingNames((current) => { const next = { ...current }; delete next[name]; return next; });
+      }
+    }
+  };
+
+  const toggleTools = (server: McpServerSpec) => {
+    if (server.enabled === false) return;
+    const name = server.name;
+    if (toolsOpen[name]) {
+      setToolsOpen((current) => ({ ...current, [name]: false }));
+      return;
+    }
+    if (toolsLoading[name]) {
+      setToolsOpen((current) => ({ ...current, [name]: true }));
+      return;
+    }
+    void probe(server, { includeTools: true });
+  };
+
+  /// 应用级开关：两页只差刷新策略，由 refreshAfter 决定关/开后重连哪些机器。
+  const [togglingName, setTogglingName] = useState("");
+  const toggleEnabled = async (server: McpServerSpec, enabled: boolean, refreshAfter: () => Promise<unknown>) => {
+    if (togglingName) return;
+    setTogglingName(server.name);
+    try {
+      await api.setMcpServerEnabled(server.name, scope, enabled);
+      if (!enabled) deleteCachedMcpProbe(server.name, scope);
+      await refreshAfter();
+      feedback.success(t("feedback.updated"));
+    } catch (error) {
+      feedback.error(String(error));
+    } finally {
+      setTogglingName("");
+    }
+  };
+
+  return { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache };
 }
 
 function transportOf(server: McpServerSpec): Transport { return server.url ? "http" : server.command ? "stdio" : "unknown"; }
@@ -210,12 +323,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
   const [loadError, setLoadError] = useState("");
   const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
   const [creatingServer, setCreatingServer] = useState(false);
-  const [togglingName, setTogglingName] = useState("");
-  const [probingNames, setProbingNames] = useState<Record<string, boolean>>({});
-  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>(() => cachedProbeState(cachedServers ?? []).results);
-  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
-  const [toolsLoading, setToolsLoading] = useState<Record<string, boolean>>({});
-  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(cachedServers ?? []).toolsLoaded);
+  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("codex", cachedServers ?? []);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [diffOpen, setDiffOpen] = useState(false);
@@ -253,17 +361,14 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
     try {
       next = await loadMcpServers(force);
       setServers(next);
-      const cached = cachedProbeState(next);
-      setProbeResults(cached.results);
-      setToolsOpen({});
-      setToolsLoading({});
-      setToolsLoaded(cached.toolsLoaded);
+      applyCache(next);
       setLoadError("");
     } catch (error) { setLoadError(String(error)); }
     finally { setLoaded(true); }
     if (next) {
       const targets = only ? next.filter((server) => only.includes(server.name)) : next;
-      if (targets.length) void Promise.all(targets.map((server) => probeServer(server, false, false)));
+      const enabledTargets = targets.filter((server) => server.enabled !== false);
+      if (enabledTargets.length) void Promise.all(enabledTargets.map((server) => probe(server, { manual: false })));
     }
     await loadPreview();
     return next;
@@ -280,103 +385,6 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
   // 窗口激活时刷新差异预览：差异只可能来自 Codex 侧先改，激活是唯一需要重查差异的时机。
   // epoch=0 表示尚未激活过（含首次挂载，此时上面的 refresh 已经取过预览），不重复请求。
   useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);
-
-  const notifyProbeFailure = (name: string, message: string) => {
-    if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
-    else feedback.error(t("list.connectionFailed", { name }));
-  };
-
-  const toggleEnabled = async (server: McpServerSpec, enabled: boolean) => {
-    if (togglingName) return;
-    setTogglingName(server.name);
-    const previous = server.enabled;
-    setServers((current) => {
-      const next = current.map((item) => item.name === server.name ? { ...item, enabled: enabled ? null : false } : item);
-      setMcpServersCache(next);
-      return next;
-    });
-    try { await api.saveMcpServer(server.name, { ...server, enabled: enabled ? null : false }); feedback.success(t("feedback.updated")); }
-    catch (error) { setServers((current) => { const next = current.map((item) => item.name === server.name ? { ...item, enabled: previous } : item); setMcpServersCache(next); return next; }); feedback.error(String(error)); }
-    finally { setTogglingName(""); }
-  };
-
-  const probeServer = async (server: McpServerSpec, notify = true, showLoading = notify) => {
-    const fingerprint = mcpServerFingerprint(server);
-    const keepTools = (result: McpProbeResult) => {
-      const cached = getCachedMcpProbe(server.name, fingerprint);
-      return cached?.toolsLoaded
-        ? { ...result, tools: cached.result.tools, tools_truncated: cached.result.tools_truncated, tools_error: cached.result.tools_error }
-        : result;
-    };
-    if (showLoading) setProbingNames((current) => ({ ...current, [server.name]: true }));
-    try {
-      const result = keepTools(await api.probeMcpServer(server.name, false, notify));
-      setProbeResults((current) => ({ ...current, [server.name]: result }));
-      setCachedMcpProbe(server.name, { fingerprint, result, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
-      if (notify) {
-        if (result.ok) {
-          feedback.success(t("list.connectionSuccess", { name: server.name, ms: result.latency_ms ?? "-" }));
-        } else notifyProbeFailure(server.name, result.error ?? "");
-      }
-    } catch (error) {
-      const result: McpProbeResult = {
-        ok: false,
-        latency_ms: null,
-        status: null,
-        protocol_version: null,
-        server_info: null,
-        tools: [],
-        tools_truncated: false,
-        error: String(error),
-        tools_error: null,
-      };
-      const nextResult = keepTools(result);
-      setProbeResults((current) => ({ ...current, [server.name]: nextResult }));
-      setCachedMcpProbe(server.name, { fingerprint, result: nextResult, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
-      if (notify) notifyProbeFailure(server.name, String(error));
-    } finally {
-      if (showLoading) setProbingNames((current) => {
-        const next = { ...current };
-        delete next[server.name];
-        return next;
-      });
-    }
-  };
-
-  const probeTools = async (server: McpServerSpec, showLoading = true, open = true) => {
-    const name = server.name;
-    if (open) setToolsOpen((current) => ({ ...current, [name]: true }));
-    if (showLoading) setToolsLoading((current) => ({ ...current, [name]: true }));
-    try {
-      const result = await api.probeMcpServer(name, true, showLoading);
-      if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name }));
-      if (result.tools_error) throw new Error(result.tools_error);
-      setProbeResults((current) => ({ ...current, [name]: result }));
-      setCachedMcpProbe(name, { fingerprint: mcpServerFingerprint(server), result, toolsLoaded: true });
-      setToolsLoaded((current) => ({ ...current, [name]: true }));
-    } catch (error) {
-      if (showLoading) feedback.error(String(error));
-    } finally {
-      if (showLoading) setToolsLoading((current) => {
-        const next = { ...current };
-        delete next[name];
-        return next;
-      });
-    }
-  };
-
-  const toggleTools = async (server: McpServerSpec) => {
-    const name = server.name;
-    if (toolsOpen[name]) {
-      setToolsOpen((current) => ({ ...current, [name]: false }));
-      return;
-    }
-    if (toolsLoading[name]) {
-      setToolsOpen((current) => ({ ...current, [name]: true }));
-      return;
-    }
-    void probeTools(server);
-  };
 
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
@@ -486,7 +494,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
             // 指纹已变、缓存里没有它，先探会被刷掉，灯反而灭。所以先等列表对齐再探，
             // 且用表单保存下来的 spec 直接探，不依赖 refresh 的返回值（它可能为 null）。
             try { await refresh(true, []); } catch { /* 列表刷新失败不拖累连通性验证 */ }
-            if (savedServer) await probeServer(savedServer, false, false);
+            if (savedServer) await probe(savedServer, { manual: false });
           })();
         }}
         onDelete={editingServer ? () => removeServer(editingServer) : undefined}
@@ -506,7 +514,6 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
           </div>
         </div>
         <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
-          <McpTargetSwitch value="codex" onChange={onSwitch} />
           {badgeText ? (
             <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
               <GitCompare className="h-4 w-4" strokeWidth={2} />
@@ -514,6 +521,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
               <span className="apple-count-badge" aria-hidden="true">{badgeText}</span>
             </button>
           ) : null}
+          <McpTargetSwitch value="codex" onChange={onSwitch} />
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
             <Plus className="h-4 w-4" strokeWidth={2} />
             {t("list.addServer")}
@@ -544,9 +552,9 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
                   toolsBusy={Boolean(toolsLoading[server.name])}
                   toolsLoaded={Boolean(toolsLoaded[server.name])}
                   onEdit={setEditingServer}
-                  onProbe={(target) => void probeServer(target)}
+                  onProbe={(target) => void probe(target)}
                   onToggleTools={(target) => void toggleTools(target)}
-                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled)}
+                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []))}
                 />
               ))}
             </div>
@@ -560,32 +568,27 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
 function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
-  const [servers, setServers] = useState<McpServerSpec[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const cachedServers = getCachedClaudeMcpServers();
+  const [servers, setServers] = useState<McpServerSpec[]>(() => cachedServers ?? []);
+  const [loaded, setLoaded] = useState(cachedServers !== null);
   const [loadError, setLoadError] = useState("");
   const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
   const [creatingServer, setCreatingServer] = useState(false);
-  const [probingNames, setProbingNames] = useState<Record<string, boolean>>({});
-  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>({});
-  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
-  const [toolsLoading, setToolsLoading] = useState<Record<string, boolean>>({});
-  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>({});
+  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("claude", cachedServers ?? []);
 
-  const refresh = async () => {
-    let next: McpServerSpec[] = [];
+  const refresh = async (force = false) => {
+    let next: McpServerSpec[] | null = null;
     try {
-      next = await api.listClaudeMcpServers();
+      next = await loadClaudeMcpServers(force);
       setServers(next);
+      applyCache(next);
       setLoadError("");
-      setProbeResults({});
-      setToolsOpen({});
-      setToolsLoaded({});
     } catch (error) {
       setLoadError(String(error));
     } finally {
       setLoaded(true);
     }
-    if (next.length) void Promise.all(next.map((server) => probeServer(server, false, false)));
+    if (next?.length) void Promise.all(next.filter((server) => server.enabled !== false).map((server) => probe(server, { manual: false })));
   };
 
   const probedOnceRef = useRef(false);
@@ -594,47 +597,6 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
     probedOnceRef.current = true;
     void refresh();
   }, []);
-
-  const probeServer = async (server: McpServerSpec, includeTools = false, manual = true) => {
-    if (includeTools) {
-      setToolsLoading((current) => ({ ...current, [server.name]: true }));
-      setToolsOpen((current) => ({ ...current, [server.name]: true }));
-    } else {
-      setProbingNames((current) => ({ ...current, [server.name]: true }));
-    }
-    try {
-      const result = await api.probeMcpServer(server.name, includeTools, manual);
-      if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name: server.name }));
-      if (includeTools && result.tools_error) throw new Error(result.tools_error);
-      setProbeResults((current) => ({ ...current, [server.name]: result }));
-      if (includeTools) setToolsLoaded((current) => ({ ...current, [server.name]: true }));
-    } catch (error) {
-      const result: McpProbeResult = {
-        ok: false,
-        latency_ms: null,
-        status: null,
-        protocol_version: null,
-        server_info: null,
-        tools: [],
-        tools_truncated: false,
-        error: String(error),
-        tools_error: null,
-      };
-      setProbeResults((current) => ({ ...current, [server.name]: result }));
-      if (manual) feedback.error(String(error));
-    } finally {
-      if (includeTools) setToolsLoading((current) => ({ ...current, [server.name]: false }));
-      else setProbingNames((current) => ({ ...current, [server.name]: false }));
-    }
-  };
-
-  const toggleTools = (server: McpServerSpec) => {
-    if (toolsOpen[server.name]) {
-      setToolsOpen((current) => ({ ...current, [server.name]: false }));
-      return;
-    }
-    void probeServer(server, true);
-  };
 
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({
@@ -646,9 +608,10 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
     if (!confirmed) return;
     try {
       await api.deleteClaudeMcpServer(server.name);
+      deleteCachedMcpProbe(server.name, "claude");
       feedback.success(t("claude.deleted"));
       setEditingServer(null);
-      await refresh();
+      await refresh(true);
     } catch (error) {
       feedback.error(String(error));
     }
@@ -660,7 +623,7 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
         server={editingServer}
         create={creatingServer}
         onBack={() => { setEditingServer(null); setCreatingServer(false); }}
-        onSaved={() => { setEditingServer(null); setCreatingServer(false); void refresh(); }}
+        onSaved={() => { setEditingServer(null); setCreatingServer(false); void refresh(true); }}
         onDelete={editingServer ? () => removeServer(editingServer) : undefined}
       />
     );
@@ -707,8 +670,9 @@ function ClaudeMcpView({ onSwitch }: { onSwitch: (target: McpTarget) => void }) 
                 toolsBusy={Boolean(toolsLoading[server.name])}
                 toolsLoaded={Boolean(toolsLoaded[server.name])}
                 onEdit={setEditingServer}
-                onProbe={(target) => void probeServer(target)}
+                onProbe={(target) => void probe(target)}
                 onToggleTools={toggleTools}
+                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true))}
               />
             ))}
           </div>

@@ -211,7 +211,11 @@ export default function ClaudeProfilesView({ activeId, onChanged }: { activeId: 
 
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
-      <header className="apple-page-bar flex-wrap justify-end gap-4">
+      <header className="apple-page-bar flex-wrap justify-between gap-4">
+        <div className="provider-page-brand">
+          <img src="/claude-code.svg" alt="" className="provider-page-brand__logo" draggable="false" />
+          <span>Claude Code</span>
+        </div>
         <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCreate}>
           <Plus className="h-4 w-4" />
           {tProfiles("toolbar.addProvider")}

@@ -104,11 +104,13 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("if (!update) setConfirming(false);");
   });
 
-  it("更新入口只显示在 Codex 状态旁，不再渲染侧边栏横幅", () => {
+  it("更新入口固定在侧栏底部，供应商页头展示产品标识", () => {
     const appShellSource = readFileSync(new URL("../../app/AppShell.tsx", import.meta.url), "utf8");
     const profilesSource = readFileSync(new URL("../profiles/ProfilesView.tsx", import.meta.url), "utf8");
-    expect(appShellSource).not.toContain("<UpdateNotice />");
-    expect(profilesSource).toContain("<UpdateNotice />");
+    expect(appShellSource).toContain("UpdateNotice");
+    expect(appShellSource).toContain("update-notice--sidebar");
+    expect(profilesSource).not.toContain("<UpdateNotice />");
+    expect(profilesSource).toContain("provider-page-brand");
     expect(providerSource).not.toContain("apple-sidebar-label");
     expect(providerSource).toContain('className="update-notice-trigger"');
     expect(providerSource).toContain('h-7 w-7');

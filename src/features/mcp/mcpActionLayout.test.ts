@@ -31,10 +31,17 @@ describe("MCP 操作入口", () => {
 
   it("进入列表只做静默连通性探测，工具按钮才刷新工具", () => {
     expect(viewSource).not.toContain("MCP_STATUS_REFRESH_MS");
-    expect(viewSource).toContain("probeServer(server, false, false)");
+    expect(viewSource).toContain("probe(server, { manual: false })");
     // 工具只从扳手来（保存等其余路径一律只验连通性，不拉清单）
-    expect([...viewSource.matchAll(/probeTools\(/g)]).toHaveLength(1);
-    expect(viewSource).toContain("api.probeMcpServer(name, true, showLoading)");
+    expect([...viewSource.matchAll(/probe\(server, \{ includeTools: true \}\)/g)]).toHaveLength(1);
+    expect(viewSource).toContain("api.probeMcpServer(name, includeTools, manual, scope)");
+  });
+
+  it("Claude MCP 复用共享列表和探测缓存，进页不重新点亮状态灯", () => {
+    expect(viewSource).toContain("getCachedClaudeMcpServers()");
+    expect(viewSource).toContain('useMcpProbes("claude"');
+    expect(viewSource).toContain("applyCache(next)");
+    expect(viewSource).not.toContain("setProbeResults({});");
   });
 
   it("MCP 卡片空白处可折叠且不抢占操作控件", () => {
@@ -52,7 +59,6 @@ describe("MCP 操作入口", () => {
     expect(viewSource).not.toContain("{loading ? <div className=\"grid place-items-center py-2\"><LoadingSpinner /></div>");
     expect(viewSource).not.toContain("disabled={toolsBusy}");
     expect(viewSource).toContain("if (toolsLoading[name])");
-    expect([...viewSource.matchAll(/if \(open\) setToolsOpen\(\(current\)/g)]).toHaveLength(1);
   });
 
   it("列表按类型分组（stdio → http → unknown）优先、组内按名称", () => {

@@ -7,6 +7,8 @@ export type McpProbeCacheEntry = {
   toolsLoaded: boolean;
 };
 
+export type McpProbeScope = "codex" | "claude";
+
 type PersistedMcpProbeCacheEntry = Omit<McpProbeCacheEntry, "result"> & {
   result: Omit<McpProbeResult, "tools"> & { tools: string[] };
 };
@@ -99,6 +101,10 @@ const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers, {
   key: "cgswitch.mcp-servers-cache-v1",
   restore: restoreNamedList<McpServerSpec>,
 });
+const claudeMcpServers = createManagementCache<McpServerSpec[]>(api.listClaudeMcpServers, {
+  key: "cgswitch.claude-mcp-servers-cache-v1",
+  restore: restoreNamedList<McpServerSpec>,
+});
 const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPluginMarketplaces, {
   key: "cgswitch.plugin-marketplaces-cache-v1",
   restore: restoreNamedList<PluginMarketplace>,
@@ -108,6 +114,15 @@ const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPl
 const databaseBackups = createManagementCache<DatabaseBackupInfo[]>(api.listDatabaseBackups);
 const mcpProbes = new Map<string, McpProbeCacheEntry>();
 let mcpProbeStorageLoaded = false;
+
+function mcpProbeCacheKey(name: string, scope: McpProbeScope): string {
+  return scope === "codex" ? name : `\u0000${scope}\u0000${name}`;
+}
+
+function restoreMcpProbeCacheKey(key: string): string {
+  const prefix = "\u0000claude\u0000";
+  return key.startsWith(prefix) ? key : mcpProbeCacheKey(key, "codex");
+}
 
 function compactMcpProbeResult(result: McpProbeResult): PersistedMcpProbeCacheEntry["result"] {
   const { tools, ...rest } = result;
@@ -131,7 +146,7 @@ function loadMcpProbeStorage(): void {
   if (stored === null || typeof stored !== "object") return;
   for (const [name, entry] of Object.entries(stored as Record<string, PersistedMcpProbeCacheEntry>)) {
     if (!entry || typeof entry.fingerprint !== "string" || !Array.isArray(entry.result?.tools)) continue;
-    mcpProbes.set(name, { ...entry, result: restoreMcpProbeResult(entry.result) });
+    mcpProbes.set(restoreMcpProbeCacheKey(name), { ...entry, result: restoreMcpProbeResult(entry.result) });
   }
 }
 
@@ -180,6 +195,14 @@ export function getCachedMcpServers(): McpServerSpec[] | null {
 
 export function setMcpServersCache(items: McpServerSpec[]): void {
   mcpServers.set(items);
+}
+
+export function loadClaudeMcpServers(force = false): Promise<McpServerSpec[]> {
+  return claudeMcpServers.load(force);
+}
+
+export function getCachedClaudeMcpServers(): McpServerSpec[] | null {
+  return claudeMcpServers.get();
 }
 
 export function loadDatabaseBackups(force = false): Promise<DatabaseBackupInfo[]> {
@@ -240,21 +263,21 @@ export function subscribeMcpDiffBadge(listener: () => void): () => void {
   };
 }
 
-export function getCachedMcpProbe(name: string, fingerprint: string): McpProbeCacheEntry | null {
+export function getCachedMcpProbe(name: string, fingerprint: string, scope: McpProbeScope = "codex"): McpProbeCacheEntry | null {
   loadMcpProbeStorage();
-  const entry = mcpProbes.get(name);
+  const entry = mcpProbes.get(mcpProbeCacheKey(name, scope));
   return entry?.fingerprint === fingerprint ? entry : null;
 }
 
-export function setCachedMcpProbe(name: string, entry: McpProbeCacheEntry): void {
+export function setCachedMcpProbe(name: string, entry: McpProbeCacheEntry, scope: McpProbeScope = "codex"): void {
   loadMcpProbeStorage();
-  mcpProbes.set(name, entry);
+  mcpProbes.set(mcpProbeCacheKey(name, scope), entry);
   persistMcpProbeStorage();
 }
 
-export function deleteCachedMcpProbe(name: string): void {
+export function deleteCachedMcpProbe(name: string, scope: McpProbeScope = "codex"): void {
   loadMcpProbeStorage();
-  if (mcpProbes.delete(name)) persistMcpProbeStorage();
+  if (mcpProbes.delete(mcpProbeCacheKey(name, scope))) persistMcpProbeStorage();
 }
 
 // ==================== 市场插件目录缓存 ====================

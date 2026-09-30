@@ -14,7 +14,6 @@ import { useCardDragReorder } from "../../components/useCardDragReorder";
 import type { AppState, ProfileBalanceInfo, ProfileDetail, ProfileSummary } from "../../types";
 import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent, profileConnectionGate } from "./ProfileCard";
 import ProfileEdit from "./ProfileEdit";
-import { UpdateNotice } from "../updates/AppUpdateProvider";
 
 interface ProfilesViewProps {
   state: AppState;
@@ -192,7 +191,10 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="min-w-0"><UpdateNotice /></div>
+        <div className="provider-page-brand">
+          <img src="/codex.svg" alt="" className="provider-page-brand__logo" draggable="false" />
+          <span>Codex</span>
+        </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
           <div className={`codex-status-control codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}>
             <span className="codex-status" role="status" aria-live="polite" aria-atomic="true">

@@ -11,6 +11,14 @@ use crate::models::{ClaudeProfileInput, ProfileKind, ProfilePayload, ProfileSumm
 use crate::paths::AppPaths;
 use crate::services::profile_config::{parse_provider_detail, stored_provider_api_key};
 
+/// MCP 镜像行：共享片段 + 每引擎独立开关（false = 该引擎的用户范围 live 文件里没有此条目）。
+pub struct McpServerRecord {
+    pub name: String,
+    pub toml: String,
+    pub codex_enabled: bool,
+    pub claude_enabled: bool,
+}
+
 /// profile id 进程内自增后缀：同一毫秒内创建多个供应商也不会撞唯一约束。
 static PROFILE_ID_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -120,6 +128,15 @@ fn migrations() -> Migrations<'static> {
         // 卡片拖拽排序（对齐 Codex profiles.sort_order）
         M::up("ALTER TABLE claude_profiles ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"),
         M::up("ALTER TABLE claude_profiles ADD COLUMN raw_settings TEXT"),
+        // MCP 开关第一版（开发期中间态，已被下一迁移替换；槽位内容对已升级的存量库已固化，不可改）
+        M::up("ALTER TABLE mcp_servers ADD COLUMN global_enabled INTEGER NOT NULL DEFAULT 1"),
+        // MCP 开关按引擎独立：Codex/Claude 各自只控制自己用户范围 live 文件里的条目，
+        // 互不影响（对齐 Skills 的每工具独立开关）；中间态列随此移除。
+        M::up(
+            "ALTER TABLE mcp_servers ADD COLUMN codex_enabled INTEGER NOT NULL DEFAULT 1;
+             ALTER TABLE mcp_servers ADD COLUMN claude_enabled INTEGER NOT NULL DEFAULT 1;
+             ALTER TABLE mcp_servers DROP COLUMN global_enabled",
+        ),
     ])
 }
 
@@ -471,28 +488,82 @@ impl Database {
 
     /// 读取 MCP 服务器片段（名称, TOML 片段）按 sort_order；表空返回空列表。
     pub fn mcp_server_fragments(&self) -> AppResult<Vec<(String, String)>> {
+        Ok(self
+            .mcp_server_records()?
+            .into_iter()
+            .map(|record| (record.name, record.toml))
+            .collect())
+    }
+
+    /// 读取 MCP 片段及每引擎开关，按 sort_order；表空返回空列表。
+    pub fn mcp_server_records(&self) -> AppResult<Vec<McpServerRecord>> {
         let connection = self.lock()?;
         let mut statement = connection
-            .prepare("SELECT name, toml FROM mcp_servers ORDER BY sort_order ASC, name ASC")
+            .prepare(
+                "SELECT name, toml, codex_enabled, claude_enabled
+                 FROM mcp_servers ORDER BY sort_order ASC, name ASC",
+            )
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
         let rows = statement
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok(McpServerRecord {
+                    name: row.get(0)?,
+                    toml: row.get(1)?,
+                    codex_enabled: row.get::<_, i64>(2)? != 0,
+                    claude_enabled: row.get::<_, i64>(3)? != 0,
+                })
             })
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
-        let mut fragments = Vec::new();
-        for row in rows {
-            fragments.push(row.map_err(|error| app_err!("MCP 服务器数据无效: {error}"))?);
-        }
-        Ok(fragments)
+        rows.map(|row| row.map_err(|error| app_err!("MCP 服务器数据无效: {error}")))
+            .collect()
     }
 
-    /// 全量替换 MCP 服务器片段：管理规模小，整表重写最简单。
+    pub fn mcp_server_record(&self, name: &str) -> AppResult<Option<McpServerRecord>> {
+        Ok(self
+            .mcp_server_records()?
+            .into_iter()
+            .find(|record| record.name == name))
+    }
+
+    pub fn set_codex_mcp_enabled(&self, name: &str, enabled: bool) -> AppResult<()> {
+        self.update_mcp_enabled("codex_enabled", name, enabled)
+    }
+
+    pub fn set_claude_mcp_enabled(&self, name: &str, enabled: bool) -> AppResult<()> {
+        self.update_mcp_enabled("claude_enabled", name, enabled)
+    }
+
+    /// column 只能来自本文件的两个常量调用点，不接收外部输入。
+    fn update_mcp_enabled(&self, column: &str, name: &str, enabled: bool) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute(
+                &format!("UPDATE mcp_servers SET {column} = ?2 WHERE name = ?1"),
+                params![name, enabled as i64],
+            )
+            .map_err(|error| app_err!("无法更新 MCP 开关: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("MCP 服务器不存在: {name}"));
+        }
+        Ok(())
+    }
+
+    pub fn delete_mcp_server(&self, name: &str) -> AppResult<()> {
+        let connection = self.lock()?;
+        connection
+            .execute("DELETE FROM mcp_servers WHERE name = ?1", params![name])
+            .map_err(|error| app_err!("无法删除 MCP 服务器镜像: {error}"))?;
+        Ok(())
+    }
+
+    /// 全量替换 Codex 活跃片段集：管理规模小，整表重写最简单。
+    /// 已知行的引擎开关原样带过；不在新集合里的 Codex 关闭行保留（片段还要喂 Claude 端与恢复）。
     pub fn replace_mcp_server_fragments(
         &self,
         fragments: &[(String, String)],
         timestamp: &str,
     ) -> AppResult<()> {
+        let previous = self.mcp_server_records()?;
         let mut connection = self.lock()?;
         let transaction = connection
             .transaction()
@@ -500,12 +571,37 @@ impl Database {
         transaction
             .execute("DELETE FROM mcp_servers", [])
             .map_err(|error| app_err!("无法清理 MCP 服务器: {error}"))?;
-        for (index, (name, toml)) in fragments.iter().enumerate() {
+        let mut rows: Vec<McpServerRecord> = fragments
+            .iter()
+            .map(|(name, toml)| {
+                // 新集合里仍存在的行沿用旧开关（另一引擎的关闭状态不能被 Codex 侧保存冲掉）
+                let existing = previous.iter().find(|record| &record.name == name);
+                McpServerRecord {
+                    name: name.clone(),
+                    toml: toml.clone(),
+                    codex_enabled: existing.is_none_or(|record| record.codex_enabled),
+                    claude_enabled: existing.is_none_or(|record| record.claude_enabled),
+                }
+            })
+            .collect();
+        for record in previous {
+            if !record.codex_enabled && !rows.iter().any(|row| row.name == record.name) {
+                rows.push(record);
+            }
+        }
+        for (index, record) in rows.iter().enumerate() {
             transaction
                 .execute(
-                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
-                     VALUES(?1, ?2, ?3, ?4)",
-                    params![name, toml, index as i64, timestamp],
+                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        record.name,
+                        record.toml,
+                        index as i64,
+                        timestamp,
+                        record.codex_enabled as i64,
+                        record.claude_enabled as i64
+                    ],
                 )
                 .map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
         }
@@ -808,6 +904,7 @@ impl Database {
             .and_then(|_| transaction.execute("DELETE FROM accounts", []))
             .and_then(|_| transaction.execute("DELETE FROM app_state", []))
             .and_then(|_| transaction.execute("DELETE FROM mcp_servers", []))
+            .and_then(|_| transaction.execute("DELETE FROM claude_profiles", []))
             .map_err(|error| app_err!("恢复前清理数据失败: {error}"))?;
 
         // 旧 schema 备份没有身份两列/套餐列：按旧列复制后回填；新备份带列复制
@@ -918,14 +1015,32 @@ impl Database {
             )
             .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
         if has_mcp_servers > 0 {
-            copy_table(
-                &source,
-                &transaction,
-                "mcp_servers",
-                "SELECT name, toml, sort_order, updated_at FROM mcp_servers",
-                "INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
-                 VALUES(?1, ?2, ?3, ?4)",
-            )?;
+            let source_has_engine_flags = source
+                .query_row(
+                    "SELECT COUNT(*) FROM pragma_table_info('mcp_servers') WHERE name = 'codex_enabled'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+            if source_has_engine_flags > 0 {
+                copy_table(
+                    &source,
+                    &transaction,
+                    "mcp_servers",
+                    "SELECT name, toml, sort_order, updated_at, codex_enabled, claude_enabled FROM mcp_servers",
+                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                )?;
+            } else {
+                copy_table(
+                    &source,
+                    &transaction,
+                    "mcp_servers",
+                    "SELECT name, toml, sort_order, updated_at FROM mcp_servers",
+                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
+                     VALUES(?1, ?2, ?3, ?4)",
+                )?;
+            }
         }
         // 旧备份可能还没有 claude_profiles 表：无表跳过（Claude 供应商从零开始）
         let has_claude_profiles: i64 = source
@@ -1225,6 +1340,98 @@ mod tests {
         assert!(names.contains(&"switch_events".into()));
         assert!(names.contains(&"accounts".into()));
         assert!(names.contains(&"mcp_servers".into()));
+        assert!(names.contains(&"claude_profiles".into()));
+    }
+
+    /// Claude 支持引入前（user_version = 7）的存量库升级：既有数据完好，
+    /// Claude 表全列与激活位就位且默认空，global_enabled 给存量 MCP 行落默认 1。
+    #[test]
+    fn migration_from_pre_claude_database_preserves_existing_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 7).unwrap();
+            connection
+                .execute_batch(
+                    r#"INSERT INTO profiles(id, name, payload_json, kind, created_at, updated_at, sort_order)
+                       VALUES ('p-1', 'GLM', '{}', 'third_party', '1', '1', 0);
+                       INSERT INTO accounts(id, email, refresh_token, authenticated_at, chatgpt_account_id)
+                       VALUES ('acc-1', 'a@example.com', 'rt-1', 1, 'acc-1');
+                       INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
+                       VALUES ('github', '[mcp_servers.github]', 0, '1');
+                       INSERT INTO app_state(singleton, active_profile_id, default_account_id)
+                       VALUES (1, 'p-1', 'acc-1');"#,
+                )
+                .unwrap();
+        }
+
+        let db = Database::open(&paths).unwrap();
+
+        // 既有 Codex 数据完好
+        let profiles = db.profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].name, "GLM");
+        assert_eq!(db.accounts().unwrap()[0].refresh_token, "rt-1");
+        assert_eq!(
+            db.mcp_server_fragments().unwrap(),
+            vec![("github".to_string(), "[mcp_servers.github]".to_string())]
+        );
+        let (active, default) = db.app_state().unwrap();
+        assert_eq!(active.as_deref(), Some("p-1"));
+        assert_eq!(default.as_deref(), Some("acc-1"));
+
+        // Claude 表全列就位、激活位默认空；存量 MCP 行落 global_enabled 默认 1
+        assert_eq!(db.active_claude_profile().unwrap(), None);
+        assert!(db.claude_profiles().unwrap().is_empty());
+        let connection = db.lock().unwrap();
+        let columns: Vec<String> = connection
+            .prepare("SELECT name FROM pragma_table_info('claude_profiles') ORDER BY cid")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        for column in [
+            "id",
+            "name",
+            "base_url",
+            "auth_token",
+            "model",
+            "created_at",
+            "updated_at",
+            "kind",
+            "admin_url",
+            "description",
+            "fetched_models",
+            "extra_env",
+            "icon",
+            "sort_order",
+            "raw_settings",
+        ] {
+            assert!(
+                columns.iter().any(|name| name == column),
+                "claude_profiles 缺列 {column}"
+            );
+        }
+        let (codex_enabled, claude_enabled): (i64, i64) = connection
+            .query_row(
+                "SELECT codex_enabled, claude_enabled FROM mcp_servers WHERE name = 'github'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((codex_enabled, claude_enabled), (1, 1));
+        // 开发期中间态列已随迁移移除
+        let stale: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('mcp_servers') WHERE name = 'global_enabled'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stale, 0);
     }
 
     #[test]
@@ -1389,6 +1596,12 @@ mod tests {
                          refresh_token TEXT NOT NULL,
                          authenticated_at INTEGER NOT NULL,
                          auth_json TEXT
+                       );
+                       CREATE TABLE mcp_servers (
+                         name TEXT PRIMARY KEY,
+                         toml TEXT NOT NULL,
+                         sort_order INTEGER NOT NULL DEFAULT 0,
+                         updated_at TEXT NOT NULL
                        );
                        INSERT INTO accounts VALUES
                          ('ws-1', 'a@example.com', NULL, 'rt-1', 1, NULL),

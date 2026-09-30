@@ -16,7 +16,7 @@ import SkillsView from "../features/skills/SkillsView";
 import ClaudeProfilesView from "../features/claude/ClaudeProfilesView";
 import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
-import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
+import { AppUpdateProvider, UpdateNotice } from "../features/updates/AppUpdateProvider";
 import { setupI18n } from "../i18n";
 import type { AppState } from "../types";
 import { switchProfileFromTray } from "./traySwitch";
@@ -419,7 +419,7 @@ export default function AppShell() {
         </div>
 
         <div className="apple-workspace flex min-h-0 flex-1">
-          <aside className={`apple-sidebar relative h-full shrink-0 ${sidebar.sidebarCollapsed ? "apple-sidebar--collapsed" : ""}`}>
+          <aside className={`apple-sidebar relative flex h-full shrink-0 flex-col ${sidebar.sidebarCollapsed ? "apple-sidebar--collapsed" : ""}`}>
             <div className="apple-sidebar-brand-row" data-tauri-drag-region>
               <div
                 className="apple-sidebar-brand flex w-fit cursor-pointer items-center"
@@ -463,6 +463,7 @@ export default function AppShell() {
                 </div>
               ))}
             </nav>
+            <UpdateNotice className="update-notice--sidebar" />
           </aside>
 
           <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">

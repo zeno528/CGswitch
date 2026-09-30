@@ -1,4 +1,7 @@
 use super::*;
+use crate::models::ClaudeProfileInput;
+use rusqlite::Connection;
+use serde_json::Value;
 
 #[test]
 fn update_marker_writes_once_and_consumes_once() {
@@ -1707,6 +1710,243 @@ fn restore_database_preserves_profile_order() {
     );
 }
 
+/// Claude 供应商全字段随备份走：A/B 差异化字段 → 恢复后逐列对上，排序与激活位随之恢复，
+/// 恢复还把激活配置带回 live settings.json（raw_settings 原文整写）。
+#[test]
+fn claude_profiles_survive_backup_restore_round_trip() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths).unwrap();
+
+    let a = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "A".into(),
+                base_url: Some("https://a.example".into()),
+                auth_token: Some("tok-a".into()),
+                model: Some("glm-a".into()),
+                description: Some("第一份".into()),
+                kind: Some("zhipu".into()),
+                admin_url: Some("https://console.example".into()),
+                extra_env: Some(r#"{"FOO":"bar"}"#.into()),
+                icon: Some("zhipu".into()),
+                fetched_models: Some(vec!["glm-a".into(), "glm-a-x".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let b_raw =
+        r#"{"env":{"ANTHROPIC_BASE_URL":"https://b.example","ANTHROPIC_AUTH_TOKEN":"tok-b"}}"#;
+    let b = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "B".into(),
+                raw_settings: Some(b_raw.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    context.claude_apply(&b.id).unwrap();
+    context
+        .claude_reorder(&[b.id.clone(), a.id.clone()])
+        .unwrap();
+
+    let exported = context.export_database().unwrap();
+    let name = exported.file_name().unwrap().to_string_lossy().into_owned();
+    // 破坏现场：清空 Claude 数据与激活位，确保恢复结果只能来自备份
+    context.claude_delete(&a.id).unwrap();
+    context.claude_delete(&b.id).unwrap();
+    assert!(context.database.claude_profiles().unwrap().is_empty());
+    assert_eq!(context.database.active_claude_profile().unwrap(), None);
+
+    context.restore_database(&name).unwrap();
+    let restored = context.database.claude_profiles().unwrap();
+    assert_eq!(restored.len(), 2);
+    assert_eq!(restored[0].id, b.id, "排序随备份恢复");
+    let ra = restored.iter().find(|profile| profile.id == a.id).unwrap();
+    assert_eq!(ra.base_url.as_deref(), Some("https://a.example"));
+    assert_eq!(ra.auth_token.as_deref(), Some("tok-a"));
+    assert_eq!(ra.model.as_deref(), Some("glm-a"));
+    assert_eq!(ra.description.as_deref(), Some("第一份"));
+    assert_eq!(ra.kind.as_deref(), Some("zhipu"));
+    assert_eq!(ra.admin_url.as_deref(), Some("https://console.example"));
+    assert_eq!(ra.extra_env.as_deref(), Some(r#"{"FOO":"bar"}"#));
+    assert_eq!(ra.icon.as_deref(), Some("zhipu"));
+    assert_eq!(ra.fetched_models.as_deref(), Some(r#"["glm-a","glm-a-x"]"#));
+    let rb = restored.iter().find(|profile| profile.id == b.id).unwrap();
+    assert_eq!(rb.raw_settings.as_deref(), Some(b_raw));
+    assert_eq!(
+        context.database.active_claude_profile().unwrap().as_deref(),
+        Some(b.id.as_str())
+    );
+    let live = std::fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
+    assert_eq!(live, b_raw);
+}
+
+/// 旧版备份（尚无 claude_profiles 表 / global_enabled 列）恢复：Codex 数据照常恢复，
+/// Claude 从零开始；恢复前激活过的配置把托管键从 live 撤下（应用不再管理任何 Claude 配置）。
+#[test]
+fn restore_legacy_backup_without_claude_tables_starts_claude_empty() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths).unwrap();
+    let settings = home.path().join(".claude/settings.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(
+        &settings,
+        r#"{"model":"opus","permissions":{"allow":["Read"]}}"#,
+    )
+    .unwrap();
+    let active = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "A".into(),
+                base_url: Some("https://a.example".into()),
+                auth_token: Some("tok-a".into()),
+                extra_env: Some(r#"{"A_KEY":"1"}"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    context.claude_apply(&active.id).unwrap();
+
+    // 手工搭旧版库（v4 形状：无 claude_profiles、app_state 无激活位、mcp_servers 无 global_enabled）
+    let legacy = context.paths.database_backup.join("cg-backup-legacy.db");
+    {
+        let connection = Connection::open(&legacy).unwrap();
+        connection
+            .execute_batch(
+                r#"CREATE TABLE app_state (
+                     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                     active_profile_id TEXT,
+                     default_account_id TEXT
+                   );
+                   CREATE TABLE switch_events (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     profile_id TEXT,
+                     action TEXT NOT NULL,
+                     status TEXT NOT NULL,
+                     message TEXT,
+                     created_at TEXT NOT NULL
+                   );
+                   CREATE TABLE profiles (
+                     id TEXT PRIMARY KEY,
+                     name TEXT NOT NULL,
+                     payload_json TEXT NOT NULL,
+                     icon TEXT,
+                     kind TEXT NOT NULL,
+                     account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+                     created_at TEXT NOT NULL,
+                     updated_at TEXT NOT NULL
+                   );
+                   CREATE TABLE accounts (
+                     id TEXT PRIMARY KEY,
+                     email TEXT,
+                     id_token TEXT,
+                     refresh_token TEXT NOT NULL,
+                     authenticated_at INTEGER NOT NULL,
+                     auth_json TEXT
+                   );
+                   INSERT INTO accounts VALUES ('acc-1', 'a@example.com', NULL, 'rt-1', 1, NULL);
+                   INSERT INTO profiles(id, name, payload_json, kind, created_at, updated_at)
+                     VALUES ('p-1', 'GLM', '{}', 'third_party', '1', '1');
+                   INSERT INTO app_state(singleton, active_profile_id) VALUES (1, 'p-1');"#,
+            )
+            .unwrap();
+    }
+
+    context.restore_database("cg-backup-legacy.db").unwrap();
+
+    // Codex 数据照常恢复；Claude 表为空、激活位为空
+    assert_eq!(context.database.profiles().unwrap()[0].name, "GLM");
+    let (codex_active, _default) = context.database.app_state().unwrap();
+    assert_eq!(codex_active.as_deref(), Some("p-1"));
+    assert!(context.database.claude_profiles().unwrap().is_empty());
+    assert_eq!(context.database.active_claude_profile().unwrap(), None);
+    // live 托管键撤下，未托管键原样保留
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(doc["model"], "opus");
+    assert_eq!(doc["permissions"]["allow"][0], "Read");
+    assert!(doc["env"].get("ANTHROPIC_BASE_URL").is_none());
+    assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+    assert!(doc["env"].get("A_KEY").is_none());
+}
+
+/// 恢复数据库后 live settings.json 收敛到恢复出的激活位：
+/// 备份时刻激活 B、恢复前激活 A → 恢复后 live 是 B 的键，A 的附加键不残留，未托管键保留。
+#[test]
+fn restore_reconciles_claude_live_with_restored_active_profile() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths).unwrap();
+    let settings = home.path().join(".claude/settings.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(
+        &settings,
+        r#"{"model":"opus","permissions":{"allow":["Read"]}}"#,
+    )
+    .unwrap();
+
+    let a = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "A".into(),
+                base_url: Some("https://a.example".into()),
+                auth_token: Some("tok-a".into()),
+                extra_env: Some(r#"{"A_KEY":"1"}"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let b = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "B".into(),
+                base_url: Some("https://b.example".into()),
+                auth_token: Some("tok-b".into()),
+                extra_env: Some(r#"{"B_KEY":"2"}"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    // 备份时刻 B 激活，之后切到 A：live 现在是 A 的键
+    context.claude_apply(&b.id).unwrap();
+    let exported = context.export_database().unwrap();
+    let name = exported.file_name().unwrap().to_string_lossy().into_owned();
+    context.claude_apply(&a.id).unwrap();
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://a.example");
+
+    context.restore_database(&name).unwrap();
+
+    // 激活位回到 B，live 跟着回到 B：A 的附加键撤下，未托管键保留
+    assert_eq!(
+        context.database.active_claude_profile().unwrap().as_deref(),
+        Some(b.id.as_str())
+    );
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(doc["model"], "opus");
+    assert_eq!(doc["permissions"]["allow"][0], "Read");
+    assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://b.example");
+    assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "tok-b");
+    assert_eq!(doc["env"]["B_KEY"], "2");
+    assert!(doc["env"].get("A_KEY").is_none());
+}
+
 #[test]
 fn apply_builtin_profile_writes_exact_config_and_catalog() {
     let home = tempfile::tempdir().unwrap();
@@ -1896,6 +2136,98 @@ fn mcp_save_rejects_invalid_input() {
         .is_err());
 }
 
+/// 应用自己的操作（开关/保存/采纳）不得制造或残留差异：差异只属于外部修改。
+#[test]
+fn mcp_app_operations_leave_no_sync_diff() {
+    // 带原生 enabled=false 的片段：app 内打开开关必须让 live 与镜像同时收敛，
+    // 否则语义比（Some(false) vs None）会把 app 自己的操作误报成"已修改"
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\nenabled = false\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    import_mcp_from_live(&context);
+    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
+
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, true)
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(
+        preview.entries.is_empty(),
+        "app 开关制造了幻影差异: {:?}",
+        preview.entries
+    );
+    let live = read_config_text(&context);
+    assert!(!live.contains("enabled"), "原生 enabled 键应被剥离: {live}");
+
+    // 开→关→开 与 Claude 侧开关同样不得留下差异
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, true)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("b", SkillTool::Claude, false)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("b", SkillTool::Claude, true)
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(
+        preview.entries.is_empty(),
+        "开关循环留下差异: {:?}",
+        preview.entries
+    );
+}
+
+/// 外部把已关条目加回 live 后，差异页"同步"必须真正消掉差异：片段进镜像、开关翻开。
+#[test]
+fn mcp_adopt_external_readd_clears_diff_and_reenables() {
+    let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
+    import_mcp_from_live(&context);
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+
+    // 外部把同名片段写回 live：应报告"仅 live 有"
+    let external = "[mcp_servers.a]\nurl = \"https://a/mcp\"\ncommand = \"node\"\n";
+    std::fs::write(context.paths.codex_config(), external).unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert_eq!(preview.entries.len(), 1);
+    assert_eq!(preview.entries[0].kind, McpSyncEntryKind::LiveOnly);
+
+    // 采纳后差异清空，codex 开关翻开（live 里有条目 = on 的事实源）
+    context
+        .set_mcp_mirror_entry(
+            "a",
+            Some("[mcp_servers.a]\nurl = \"https://a/mcp\"\ncommand = \"node\"\n"),
+        )
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(
+        preview.entries.is_empty(),
+        "采纳后差异未清空: {:?}",
+        preview.entries
+    );
+    assert!(
+        context
+            .database
+            .mcp_server_record("a")
+            .unwrap()
+            .unwrap()
+            .codex_enabled
+    );
+    let listed = context.list_mcp_servers().unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|server| server.name == "a")
+            .unwrap()
+            .enabled,
+        None
+    );
+}
+
 #[test]
 fn mcp_managed_entry_hidden_and_untouchable() {
     // node_repl 由 Codex 桌面版自动写入/更新，本应用完全跳过且不许碰
@@ -1962,6 +2294,7 @@ fn mcp_save_with_fragment_is_wysiwyg() {
                 ..Default::default()
             },
             Some(fragment),
+            SkillTool::Codex,
         )
         .unwrap();
 
@@ -2287,6 +2620,121 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     assert_eq!(fragments[0].0, "b");
     let preview = context.mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
+}
+
+/// 引擎开关各自独立：Codex 关只删 config.toml 条目，Claude 侧 live 与开关不动，反之亦然。
+#[test]
+fn mcp_engine_toggle_only_touches_its_own_live_file() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    import_mcp_from_live(&context);
+
+    // Codex 关：config.toml 删条目；.claude.json 原样保留，Claude 开关仍是开
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+    let live = read_config_text(&context);
+    assert!(!live.contains("mcp_servers.a"), "{live}");
+    assert!(live.contains("mcp_servers.b"), "{live}");
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(claude.contains("\"a\""), "{claude}");
+    let record = context.database.mcp_server_record("a").unwrap().unwrap();
+    assert!(!record.codex_enabled);
+    assert!(record.claude_enabled);
+    let listed = context.list_mcp_servers().unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|server| server.name == "a")
+            .unwrap()
+            .enabled,
+        Some(false)
+    );
+    let claude_listed = context.claude_mcp_servers().unwrap();
+    assert_eq!(
+        claude_listed
+            .iter()
+            .find(|server| server.name == "a")
+            .unwrap()
+            .enabled,
+        None
+    );
+
+    // Claude 关：.claude.json 删条目；config.toml 里 b 原样（a 本就不在），Codex 开关不动
+    context
+        .set_mcp_server_enabled("a", SkillTool::Claude, false)
+        .unwrap();
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(!claude.contains("\"a\""), "{claude}");
+    let record = context.database.mcp_server_record("a").unwrap().unwrap();
+    assert!(!record.codex_enabled);
+    assert!(!record.claude_enabled);
+
+    // Codex 开：条目从镜像片段恢复回 config.toml；Claude 仍是关（.claude.json 不回填）
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, true)
+        .unwrap();
+    let live = read_config_text(&context);
+    assert!(live.contains("mcp_servers.a"), "{live}");
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(!claude.contains("\"a\""), "{claude}");
+    assert!(
+        context
+            .database
+            .mcp_server_record("a")
+            .unwrap()
+            .unwrap()
+            .codex_enabled
+    );
+
+    // Claude 开：条目投影回 .claude.json
+    context
+        .set_mcp_server_enabled("a", SkillTool::Claude, true)
+        .unwrap();
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(claude.contains("\"a\""), "{claude}");
+}
+
+/// 镜像整表重写保留关闭行且不吞另一引擎的开关；后续保存不会把已关条目顶回 live。
+#[test]
+fn mcp_mirror_rewrite_preserves_engine_flags_across_saves() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    import_mcp_from_live(&context);
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("b", SkillTool::Claude, false)
+        .unwrap();
+
+    // 保存与 a/b 无关的第三台：整表重写后两个关闭行原样保留，开关不被重置
+    context
+        .save_mcp_server(
+            None,
+            McpServerSpec {
+                name: "c".into(),
+                url: Some("https://c/mcp".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let a = context.database.mcp_server_record("a").unwrap().unwrap();
+    assert!(!a.codex_enabled, "a 的 Codex 开关被保存冲掉了");
+    assert!(a.claude_enabled);
+    let b = context.database.mcp_server_record("b").unwrap().unwrap();
+    assert!(b.codex_enabled);
+    assert!(!b.claude_enabled, "b 的 Claude 开关被保存冲掉了");
+    let live = read_config_text(&context);
+    assert!(!live.contains("mcp_servers.a"), "{live}");
+    assert!(live.contains("mcp_servers.b"), "{live}");
+    assert!(live.contains("mcp_servers.c"), "{live}");
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(claude.contains("\"a\""), "{claude}");
+    assert!(!claude.contains("\"b\""), "{claude}");
+    assert!(claude.contains("\"c\""), "{claude}");
 }
 
 #[test]

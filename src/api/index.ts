@@ -174,9 +174,9 @@ export const api = {
   saveClaudeMcpServer: (originalName: string | null, name: string, json: string) =>
     call<void>("save_claude_mcp_server", { originalName, name, json }),
   deleteClaudeMcpServer: (name: string) => call<void>("delete_claude_mcp_server", { name }),
-  // manual 用于后端日志分级：手动测试记 Info，进页静默探测只记 Debug
-  probeMcpServer: (name: string, includeTools = false, manual = true) =>
-    call<McpProbeResult>("probe_mcp_server", { name, includeTools, manual }),
+  // manual 用于后端日志分级：手动测试记 Info，进页静默探测只记 Debug；tool 决定按哪侧引擎的名单与开关判定
+  probeMcpServer: (name: string, includeTools = false, manual = true, tool: "codex" | "claude" = "codex") =>
+    call<McpProbeResult>("probe_mcp_server", { name, includeTools, manual, tool }),
   // 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live
   getMcpSectionToml: () => call<string>("get_mcp_section_toml"),
   // 显式恢复：数据库镜像写回 live config.toml，返回恢复数量
@@ -193,6 +193,7 @@ export const api = {
   // MCP 编辑页实时同步：片段解析回建模字段（编辑器 → 表单）
   parseMcpFragment: (toml: string) => call<McpServerSpec>("parse_mcp_fragment", { toml }),
   deleteMcpServer: (name: string) => call<void>("delete_mcp_server", { name }),
+  setMcpServerEnabled: (name: string, tool: "codex" | "claude", enabled: boolean) => call<void>("set_mcp_server_enabled", { name, tool, enabled }),
   setMcpMirror: (name: string, fragment: string | null) => call<void>("set_mcp_mirror", { name, fragment }),
   revertMcpLive: (name: string, fragment: string | null) => call<void>("revert_mcp_live", { name, fragment }),
   // 批量差异处理：整批一次写入（只备份/写盘一次），返回实际处理的条目数

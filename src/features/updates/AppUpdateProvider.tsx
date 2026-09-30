@@ -90,7 +90,7 @@ export function AppUpdateProvider({ enabled, ready = true, children }: { enabled
 }
 
 /** 状态栏更新图标：点击直接打开更新日志确认弹窗（先看日志，确认后才安装）。 */
-export function UpdateNotice() {
+export function UpdateNotice({ className = "" }: { className?: string } = {}) {
   const { update } = useAppUpdate();
   const { t } = useTranslation("updates");
   const [confirming, setConfirming] = useState(false);
@@ -99,7 +99,7 @@ export function UpdateNotice() {
   }, [update]);
   if (!update) return null;
   return (
-    <div className="update-notice">
+    <div className={`update-notice ${className}`.trim()}>
       <button
         type="button"
         className="update-notice-trigger"

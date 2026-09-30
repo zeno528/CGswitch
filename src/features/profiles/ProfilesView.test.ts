@@ -25,8 +25,9 @@ describe("ProfilesView 拖拽预览", () => {
     expect(source).toContain('t(action === "restart" ? "feedback.codexRestarted" : "feedback.codexStarted")');
   });
 
-  it("无更新提示时保留左侧占位，使右侧操作组不回流", () => {
-    expect(source).toContain('<div className="min-w-0"><UpdateNotice /></div>');
+  it("供应商页头展示 Codex 标识，更新入口移到全局侧栏", () => {
+    expect(source).toContain('<div className="provider-page-brand">');
+    expect(source).toContain('<img src="/codex.svg"');
     expect(source).toContain('apple-page-bar flex-wrap justify-between gap-4');
   });
 

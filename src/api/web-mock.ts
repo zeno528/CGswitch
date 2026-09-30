@@ -1595,6 +1595,15 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
+    case "set_mcp_server_enabled": {
+      const name = String(args?.name ?? "");
+      const enabled = Boolean(args?.enabled);
+      // mock 不分引擎：开关状态直接落到共享 fixture（UI 调试用）
+      webMcpServers = webMcpServers.map((server) => server.name === name
+        ? { ...server, enabled: enabled ? null : false }
+        : server);
+      return undefined as T;
+    }
     case "set_mcp_mirror":
     case "revert_mcp_live":
     case "set_mcp_mirror_entries":
