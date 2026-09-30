@@ -33,7 +33,7 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
           role="tab"
           aria-selected={value === target}
           className={`apple-action-button ${value === target ? "app-button--primary" : ""}`}
-          title={t(`target.${target}Title`)}
+          title={t("target.label")}
           onClick={() => onChange(target)}
         >
           <img src={target === "codex" ? "/codex.svg" : "/claude-code.svg"} alt="" className="h-4 w-4" />
@@ -626,16 +626,16 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
 
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({
-      title: t("claude.deleteTitle"),
-      description: <Trans ns="mcp" i18nKey="claude.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />,
-      confirmText: t("claude.delete"),
+      title: t("confirm.deleteTitle"),
+      description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />,
+      confirmText: t("confirm.delete"),
       destructive: true,
     });
     if (!confirmed) return;
     try {
       await api.deleteClaudeMcpServer(server.name);
       deleteCachedMcpProbe(server.name, "claude");
-      feedback.success(t("claude.deleted"));
+      feedback.success(t("feedback.deleted"));
       setEditingServer(null);
       await refresh(true, []);
     } catch (error) {
@@ -682,7 +682,7 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
         {!servers.length ? (
           <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
-            <p className="muted">{t("claude.empty")}</p>
+            <p className="muted">{t("empty.description")}</p>
           </EmptyStateCard>
         ) : (
           <div className="apple-group apple-list-card">

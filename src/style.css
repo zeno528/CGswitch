@@ -2652,9 +2652,14 @@ button:focus-visible {
   -moz-appearance: textfield;
 }
 
-/* .app-input 的 width:100%（layer 外、源码靠后）压过 w-* 工具类，带 [type] 提优先级 */
+/* 两端共用的压缩数值输入：固定宽度，数值与默认占位文字使用正常文字色；[type] 优先于 .app-input。 */
 .compact-token-input[type="number"] {
   width: 4.5rem;
+  color: var(--text-primary);
+}
+
+.compact-token-input[type="number"]::placeholder {
+  color: inherit;
 }
 
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
@@ -2756,6 +2761,21 @@ button:focus-visible {
 .apple-disclosure--open .apple-disclosure__content { grid-template-rows: 1fr; opacity: 1; margin-bottom: -3px; padding-bottom: 3px; }
 .apple-disclosure--open .apple-disclosure__body { margin-bottom: -3px; padding-top: var(--gap-section); padding-bottom: 3px; }
 .apple-disclosure--open .apple-disclosure__icon { color: var(--accent); transform: rotate(90deg); }
+
+/* MCP 高级选项：与设置页自动备份小卡一致，纯描边无背景，只靠边缘划分归属。 */
+.mcp-advanced-disclosure {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  padding: 0.375rem var(--gap-section);
+}
+
+/* 标题行收紧为贴近单行文字高度，去掉大卡片式留白。 */
+.mcp-advanced-disclosure .apple-disclosure__summary { min-height: 1.75rem; }
+
+.mcp-advanced-disclosure.apple-disclosure--open .apple-disclosure__body {
+  padding-top: 0.75rem;
+  padding-bottom: var(--gap-section);
+}
 
 .app-input {
   width: 100%;

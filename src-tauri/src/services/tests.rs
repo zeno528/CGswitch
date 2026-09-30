@@ -1638,6 +1638,21 @@ fn adding_preset_does_not_activate() {
 }
 
 #[test]
+fn deleting_active_profile_is_rejected() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths.clone()).unwrap();
+    let profile = context.capture_profile("A").unwrap();
+    context.apply_profile(&profile.id).unwrap();
+    // 使用中的配置不可删除（前端删除按钮对激活卡片禁用）：拒绝后配置仍在库中
+    assert!(context.delete_profile(&profile.id).is_err());
+    assert!(context.database.profile(&profile.id).is_ok());
+}
+
+#[test]
 fn export_and_restore_database_round_trip() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();
@@ -1759,8 +1774,9 @@ fn claude_profiles_survive_backup_restore_round_trip() {
     let exported = context.export_database().unwrap();
     let name = exported.file_name().unwrap().to_string_lossy().into_owned();
     // 破坏现场：清空 Claude 数据与激活位，确保恢复结果只能来自备份
-    context.claude_delete(&a.id).unwrap();
-    context.claude_delete(&b.id).unwrap();
+    // （service 层拒绝删除使用中的配置，清场直接走数据库层）
+    context.database.delete_claude_profile(&a.id).unwrap();
+    context.database.delete_claude_profile(&b.id).unwrap();
     assert!(context.database.claude_profiles().unwrap().is_empty());
     assert_eq!(context.database.active_claude_profile().unwrap(), None);
 

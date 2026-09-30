@@ -10,13 +10,16 @@ use crate::error::{app_err, AppResult};
 use crate::models::{ClaudeProfileInput, ProfileKind, ProfilePayload, ProfileSummary};
 use crate::paths::AppPaths;
 use crate::services::profile_config::{parse_provider_detail, stored_provider_api_key};
+use crate::services::SkillTool;
 
-/// MCP 镜像行：共享片段 + 每引擎独立开关（false = 该引擎的用户范围 live 文件里没有此条目）。
+/// MCP 镜像行：共享片段 + 每引擎独立安装状态与开关（卸载不等同于禁用）。
 pub struct McpServerRecord {
     pub name: String,
     pub toml: String,
     pub codex_enabled: bool,
     pub claude_enabled: bool,
+    pub codex_installed: bool,
+    pub claude_installed: bool,
     pub claude_json: Option<String>,
 }
 
@@ -143,6 +146,10 @@ fn migrations() -> Migrations<'static> {
         M::up("ALTER TABLE claude_profiles ADD COLUMN show_balance INTEGER NOT NULL DEFAULT 0"),
         M::up("ALTER TABLE mcp_servers ADD COLUMN claude_json TEXT"),
         M::up("ALTER TABLE app_state ADD COLUMN claude_common_settings TEXT"),
+        M::up(
+            "ALTER TABLE mcp_servers ADD COLUMN codex_installed INTEGER NOT NULL DEFAULT 1;
+             ALTER TABLE mcp_servers ADD COLUMN claude_installed INTEGER NOT NULL DEFAULT 1",
+        ),
     ])
 }
 
@@ -373,11 +380,21 @@ impl Database {
             .ok_or_else(|| app_err!("供应商配置不存在"))
     }
 
-    pub fn rename_profile(&self, id: &str, name: &str, timestamp: &str) -> AppResult<()> {
+    pub fn rename_profile(
+        &self,
+        id: &str,
+        name: &str,
+        timestamp: &str,
+        tool: SkillTool,
+    ) -> AppResult<()> {
         let connection = self.lock()?;
+        let table = match tool {
+            SkillTool::Codex => "profiles",
+            SkillTool::Claude => "claude_profiles",
+        };
         let changed = connection
             .execute(
-                "UPDATE profiles SET name=?2, updated_at=?3 WHERE id=?1",
+                &format!("UPDATE {table} SET name=?2, updated_at=?3 WHERE id=?1"),
                 params![id, name, timestamp],
             )
             .map_err(|error| app_err!("无法重命名供应商配置: {error}"))?;
@@ -497,6 +514,7 @@ impl Database {
         Ok(self
             .mcp_server_records()?
             .into_iter()
+            .filter(|record| record.codex_installed)
             .map(|record| (record.name, record.toml))
             .collect())
     }
@@ -506,7 +524,7 @@ impl Database {
         let connection = self.lock()?;
         let mut statement = connection
             .prepare(
-                "SELECT name, toml, codex_enabled, claude_enabled, claude_json
+                "SELECT name, toml, codex_enabled, claude_enabled, claude_json, codex_installed, claude_installed
                  FROM mcp_servers ORDER BY sort_order ASC, name ASC",
             )
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
@@ -518,6 +536,8 @@ impl Database {
                     codex_enabled: row.get::<_, i64>(2)? != 0,
                     claude_enabled: row.get::<_, i64>(3)? != 0,
                     claude_json: row.get(4)?,
+                    codex_installed: row.get::<_, i64>(5)? != 0,
+                    claude_installed: row.get::<_, i64>(6)? != 0,
                 })
             })
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
@@ -576,11 +596,12 @@ impl Database {
             .map_err(|error| app_err!("无法开始 MCP 写入事务: {error}"))?;
         let old_name = original_name.unwrap_or(&record.name);
         transaction.execute(
-            "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json)
-             VALUES(?1, ?2, COALESCE((SELECT sort_order FROM mcp_servers WHERE name=?7), (SELECT COALESCE(MAX(sort_order), -1)+1 FROM mcp_servers)), ?3, ?4, ?5, ?6)
+            "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json, codex_installed, claude_installed)
+             VALUES(?1, ?2, COALESCE((SELECT sort_order FROM mcp_servers WHERE name=?7), (SELECT COALESCE(MAX(sort_order), -1)+1 FROM mcp_servers)), ?3, ?4, ?5, ?6, ?8, ?9)
              ON CONFLICT(name) DO UPDATE SET toml=excluded.toml, updated_at=excluded.updated_at,
-             codex_enabled=excluded.codex_enabled, claude_enabled=excluded.claude_enabled, claude_json=excluded.claude_json",
-            params![record.name, record.toml, timestamp, record.codex_enabled, record.claude_enabled, record.claude_json, old_name],
+             codex_enabled=excluded.codex_enabled, claude_enabled=excluded.claude_enabled, claude_json=excluded.claude_json,
+             codex_installed=excluded.codex_installed, claude_installed=excluded.claude_installed",
+            params![record.name, record.toml, timestamp, record.codex_enabled, record.claude_enabled, record.claude_json, old_name, record.codex_installed, record.claude_installed],
         ).map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
         if old_name != record.name {
             transaction
@@ -627,11 +648,18 @@ impl Database {
                     codex_enabled: existing.is_none_or(|record| record.codex_enabled),
                     claude_enabled: existing.is_none_or(|record| record.claude_enabled),
                     claude_json: existing.and_then(|record| record.claude_json.clone()),
+                    codex_installed: true,
+                    claude_installed: existing.is_none_or(|record| record.claude_installed),
                 }
             })
             .collect();
-        for record in previous {
-            if !record.codex_enabled && !rows.iter().any(|row| row.name == record.name) {
+        for mut record in previous {
+            if !rows.iter().any(|row| row.name == record.name) {
+                if record.codex_enabled {
+                    // 接受 Codex 现场删除，只撤销 Codex 安装；Claude 的安装和开关保留。
+                    record.codex_installed = false;
+                    record.codex_enabled = false;
+                }
                 rows.push(record);
             }
         }
@@ -640,8 +668,8 @@ impl Database {
         for (index, record) in rows.iter().enumerate() {
             transaction
                 .execute(
-                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json)
-                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json, codex_installed, claude_installed)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                     params![
                         record.name,
                         record.toml,
@@ -649,7 +677,9 @@ impl Database {
                         timestamp,
                         record.codex_enabled as i64,
                         record.claude_enabled as i64,
-                        record.claude_json
+                        record.claude_json,
+                        record.codex_installed,
+                        record.claude_installed
                     ],
                 )
                 .map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
@@ -1139,6 +1169,8 @@ impl Database {
                     "codex_enabled",
                     "claude_enabled",
                     "claude_json",
+                    "codex_installed",
+                    "claude_installed",
                 ],
             )?;
         }
@@ -1423,6 +1455,76 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rename_profile_only_changes_target_clients_name_and_timestamp() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        let db = Database::open(&paths).unwrap();
+        let codex = db
+            .insert_profile("codex-fixture", &ProfilePayload::default(), "1")
+            .unwrap();
+        let claude = db
+            .insert_claude_profile(
+                &ClaudeProfileInput {
+                    name: "claude-fixture".into(),
+                    raw_settings: Some(
+                        r#"{"env":{"CUSTOM":"keep"},"permissions":{"deny":["Write"]}}"#.into(),
+                    ),
+                    auth_token: Some("fixture-token".into()),
+                    description: Some("keep".into()),
+                    show_balance: true,
+                    ..Default::default()
+                },
+                "1",
+            )
+            .unwrap();
+        db.set_active_profile(Some(&codex.id)).unwrap();
+        db.set_active_claude_profile(Some(&claude.id)).unwrap();
+        let mut expected_codex = serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap();
+        let mut expected_claude =
+            serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap();
+
+        db.rename_profile(&claude.id, "renamed-claude", "2", SkillTool::Claude)
+            .unwrap();
+        expected_claude["name"] = "renamed-claude".into();
+        expected_claude["updated_at"] = "2".into();
+        assert_eq!(
+            serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap(),
+            expected_claude
+        );
+        assert_eq!(
+            serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap(),
+            expected_codex
+        );
+
+        db.rename_profile(&codex.id, "renamed-codex", "3", SkillTool::Codex)
+            .unwrap();
+        expected_codex["name"] = "renamed-codex".into();
+        expected_codex["updated_at"] = "3".into();
+        assert_eq!(
+            serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap(),
+            expected_codex
+        );
+        assert_eq!(
+            serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap(),
+            expected_claude
+        );
+        assert_eq!(
+            db.app_state().unwrap().0.as_deref(),
+            Some(codex.id.as_str())
+        );
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some(claude.id.as_str())
+        );
+        assert!(db
+            .rename_profile(&claude.id, "wrong-client", "4", SkillTool::Codex)
+            .is_err());
+        assert!(db
+            .rename_profile(&codex.id, "wrong-client", "4", SkillTool::Claude)
+            .is_err());
+    }
+
+    #[test]
     fn common_template_migrates_and_round_trips_without_changing_active_profiles() {
         let dir = tempfile::tempdir().unwrap();
         let paths = crate::paths::from_home(dir.path()).unwrap();
@@ -1623,12 +1725,14 @@ mod tests {
         let record = db.mcp_server_record("fixture").unwrap().unwrap();
         assert!(!record.codex_enabled);
         assert!(record.claude_enabled);
+        assert!(record.codex_installed);
+        assert!(record.claude_installed);
         assert!(record.claude_json.is_none());
         let connection = db.lock().unwrap();
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 19);
+        assert_eq!(version, 20);
         let show_balance: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",

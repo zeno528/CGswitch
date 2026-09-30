@@ -562,6 +562,28 @@ let webMcpServers: McpServerSpec[] = [
     env_http_headers: {},
   },
 ];
+let webClaudeMcpServers = structuredClone(webMcpServers);
+
+function saveWebMcpServer(original: string | null, spec: McpServerSpec, tool: "codex" | "claude") {
+  const name = original ?? spec.name;
+  const current = tool === "codex" ? webMcpServers : webClaudeMcpServers;
+  const other = tool === "codex" ? webClaudeMcpServers : webMcpServers;
+  const firstInstall = !current.some((server) => server.name === name) && !other.some((server) => server.name === name);
+  const update = (servers: McpServerSpec[], enable: boolean) => {
+    const previous = servers.find((server) => server.name === name);
+    const next = servers.filter((server) => server.name !== name);
+    if (enable || previous || firstInstall) next.push({ ...structuredClone(spec), enabled: enable ? null : previous?.enabled ?? null });
+    return next;
+  };
+  if (tool === "codex") {
+    webMcpServers = update(current, true);
+    webClaudeMcpServers = update(other, false);
+  } else {
+    webClaudeMcpServers = update(current, true);
+    webMcpServers = update(other, false);
+  }
+}
+
 // 与后端一致：激活状态只由“应用”显式建立，添加/捕获供应商不激活
 let webActiveProfileId: string | null = null;
 const webBalanceCache: Record<string, ProfileBalanceInfo> = {};
@@ -994,8 +1016,13 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     }
     case "rename_profile": {
-      const profile = webProfiles.find((item) => item.id === args?.id);
-      if (profile) profile.name = String(args?.name ?? profile.name);
+      const profiles = args?.tool === "claude" ? webClaudeProfiles : webProfiles;
+      const profile = profiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("供应商配置不存在");
+      const name = String(args?.name ?? "").trim();
+      if (!name || new TextEncoder().encode(name).length > 50) throw new Error("供应商名称长度必须在 1 到 50 个字符之间");
+      profile.name = name;
+      profile.updated_at = String(Date.now());
       return undefined as T;
     }
     case "set_profile_icon": {
@@ -1254,10 +1281,11 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return 42 as T;
     }
     case "claude_delete_profile": {
+      // 使用中的配置不可删除：与后端守卫一致
+      if (webActiveClaudeProfileId === String(args?.id)) throw new Error("无法删除使用中的 Claude 供应商配置，请先切换到其他配置");
       const index = webClaudeProfiles.findIndex((item) => item.id === args?.id);
       if (index < 0) throw new Error("Claude 供应商配置不存在");
       webClaudeProfiles.splice(index, 1);
-      if (webActiveClaudeProfileId === args?.id) webActiveClaudeProfileId = null;
       return undefined as T;
     }
     case "claude_apply_profile": {
@@ -1399,6 +1427,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     }
     case "delete_profile": {
+      // 使用中的配置不可删除：与后端守卫一致
+      if (webActiveProfileId === String(args?.id)) throw new Error("无法删除使用中的供应商配置，请先切换到其他配置");
       const index = webProfiles.findIndex((item) => item.id === args?.id);
       if (index >= 0) webProfiles.splice(index, 1);
       webDescriptions.delete(String(args?.id));
@@ -1464,21 +1494,20 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "list_mcp_servers":
       return [...webMcpServers] as T;
     case "list_claude_mcp_servers":
-      return [...webMcpServers] as T;
+      return [...webClaudeMcpServers] as T;
     case "get_claude_mcp_server_json": {
-      const server = webMcpServers.find((item) => item.name === args?.name);
+      const server = webClaudeMcpServers.find((item) => item.name === args?.name);
       return (server ? renderClaudeMcpEntryWeb(server) : null) as unknown as T;
     }
     case "save_claude_mcp_server": {
       const name = String(args?.name ?? "").trim();
       const original = typeof args?.originalName === "string" ? args.originalName : null;
       const spec = parseClaudeMcpEntryWeb(name, String(args?.json ?? "{}"));
-      webMcpServers = webMcpServers.filter((server) => server.name !== (original ?? name));
-      webMcpServers.push(spec);
+      saveWebMcpServer(original, spec, "claude");
       return undefined as T;
     }
     case "delete_claude_mcp_server":
-      webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
+      webClaudeMcpServers = webClaudeMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
     case "probe_mcp_server": {
       const name = String(args?.name ?? "MCP");
@@ -1559,8 +1588,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "save_mcp_server": {
       const spec = args?.spec as McpServerSpec;
       const original = typeof args?.originalName === "string" ? args.originalName : null;
-      webMcpServers = webMcpServers.filter((server) => server.name !== (original ?? spec.name));
-      webMcpServers.push(spec);
+      saveWebMcpServer(original, spec, "codex");
       return undefined as T;
     }
     // —— MCP 编辑页双向同步的 web 调试桩（精度有限：仅渲染/解析建模字段，
@@ -1635,10 +1663,12 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "set_mcp_server_enabled": {
       const name = String(args?.name ?? "");
       const enabled = Boolean(args?.enabled);
-      // mock 不分引擎：开关状态直接落到共享 fixture（UI 调试用）
-      webMcpServers = webMcpServers.map((server) => server.name === name
+      const servers = args?.tool === "claude" ? webClaudeMcpServers : webMcpServers;
+      const next = servers.map((server) => server.name === name
         ? { ...server, enabled: enabled ? null : false }
         : server);
+      if (args?.tool === "claude") webClaudeMcpServers = next;
+      else webMcpServers = next;
       return undefined as T;
     }
     case "set_mcp_mirror":

@@ -104,7 +104,7 @@ export const api = {
   deleteDatabaseBackup: (name: string) => call<void>("delete_database_backup", { name }),
   renameDatabaseBackup: (oldName: string, title: string) =>
     call<void>("rename_database_backup", { oldName, title }),
-  renameProfile: (id: string, name: string) => call<void>("rename_profile", { id, name }),
+  renameProfile: (id: string, name: string, tool: SkillTool = "codex") => call<void>("rename_profile", { id, name, tool }),
   setProfileIcon: (id: string, icon: string | null) => call<void>("set_profile_icon", { id, icon }),
   setProfileShowBalance: (id: string, enabled: boolean) =>
     call<void>("set_profile_show_balance", { id, enabled }),

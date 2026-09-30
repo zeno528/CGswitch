@@ -1,20 +1,19 @@
-import { Camera, Layers2, LayoutTemplate, Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { Camera, Layers2, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { DndContext, DragOverlay, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import SortableCard from "../../components/SortableCard";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
 import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, connectionGate, getCachedProfileBalance, getCachedProfileBalanceError } from "../profiles/ProfileCard";
 import { useProfileBalance } from "../profiles/useProfileBalance";
+import ProfileNameDialog from "../profiles/ProfileNameDialog";
 import { claudeBalanceQueryKinds } from "../../presets";
 import ClaudeProfileEdit from "./ClaudeProfileEdit";
-import ClaudeCommonTemplateDialog from "./ClaudeCommonTemplateDialog";
 import type { ClaudeProfileDetail, ClaudeProfileSummary, ProfileBalanceInfo } from "../../types";
 
 function cardProfile(profile: ClaudeProfileSummary) {
@@ -46,7 +45,7 @@ function ClaudeDragPreview({ profile, width, height, active, busy, balanceCache 
   );
 }
 
-function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activationEpoch, coldStart, balanceCache, onEdit, onApply, onDuplicate, onTest, onRemove }: {
+function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activationEpoch, coldStart, balanceCache, onRename, onEdit, onApply, onDuplicate, onTest, onRemove }: {
   profile: ClaudeProfileSummary;
   active: boolean;
   dragHover: boolean;
@@ -55,6 +54,7 @@ function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activati
   activationEpoch: number;
   coldStart: boolean;
   balanceCache: Record<string, ProfileBalanceInfo>;
+  onRename: () => void;
   onEdit: () => void;
   onApply: () => void;
   onDuplicate: () => void;
@@ -83,7 +83,7 @@ function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activati
   });
   return (
     <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
-      <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onEdit} />
+      <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onRename} />
       <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={onTest} onRemove={onRemove} />
     </SortableCard>
   );
@@ -98,10 +98,9 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
   const [items, setItems] = useState<ClaudeProfileSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [captureOpen, setCaptureOpen] = useState(false);
-  const [templateOpen, setTemplateOpen] = useState(false);
-  const [captureName, setCaptureName] = useState("");
-  const captureNameInput = useRef<HTMLInputElement>(null);
+  const [modal, setModal] = useState<"capture" | "rename" | null>(null);
+  const [modalProfile, setModalProfile] = useState<ClaudeProfileSummary | null>(null);
+  const [profileName, setProfileName] = useState("");
   const [editingProfile, setEditingProfile] = useState<ClaudeProfileSummary | null>(null);
   const [editDetail, setEditDetail] = useState<ClaudeProfileDetail | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
@@ -133,13 +132,20 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     if (!busy) setCreatingProfile(true);
   };
 
-  const capture = async () => {
-    if (busy || !captureName.trim()) return;
+  const openRename = (profile: ClaudeProfileSummary) => { setModal("rename"); setModalProfile(profile); setProfileName(profile.name); };
+
+  const submitModal = async () => {
+    if (busy || !modal || !profileName.trim()) return;
     setBusy(true);
     try {
-      await api.claudeCaptureProfile(captureName.trim());
-      feedback.success(tProfiles("feedback.captureSuccess"));
-      setCaptureOpen(false);
+      if (modal === "capture") {
+        await api.claudeCaptureProfile(profileName.trim());
+        feedback.success(tProfiles("feedback.captureSuccess"));
+      } else if (modalProfile) {
+        await api.renameProfile(modalProfile.id, profileName.trim(), "claude");
+        feedback.success(tProfiles("feedback.providerRenamed"));
+      }
+      setModal(null);
       await refresh();
       onChanged();
     } catch (error) {
@@ -202,7 +208,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     setBusy(true);
     try {
       await api.claudeDuplicateProfile(profile.id);
-      feedback.success(t("duplicatedToast"));
+      feedback.success(tProfiles("feedback.providerDuplicated"));
       await refresh();
       onChanged();
     } catch (error) {
@@ -228,16 +234,16 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
   const deleteProfile = async (profile: ClaudeProfileSummary) => {
     if (busy) return;
     const confirmed = await feedback.confirm({
-      title: t("deleteDialogTitle"),
-      description: t("deleteDialogDescription", { name: profile.name }),
-      confirmText: t("delete"),
+      title: tProfiles("confirm.deleteTitle"),
+      description: <Trans ns="profiles" i18nKey="confirm.deleteConfirm" values={{ name: profile.name }} components={{ strong: <strong /> }} />,
+      confirmText: tProfiles("confirm.delete"),
       destructive: true,
     });
     if (!confirmed) return;
     setBusy(true);
     try {
       await api.claudeDeleteProfile(profile.id);
-      feedback.success(t("deletedToast"));
+      feedback.success(tProfiles("feedback.providerDeleted"));
       await refresh();
       onChanged();
     } catch (error) {
@@ -257,10 +263,6 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
           <span>Claude Code</span>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className="apple-action-button" disabled={busy} onClick={() => setTemplateOpen(true)}>
-            <LayoutTemplate size={16} strokeWidth={2} />
-            {t("commonTemplate.title")}
-          </button>
           <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCreate}>
             <Plus className="h-4 w-4" />
             {tProfiles("toolbar.addProvider")}
@@ -271,7 +273,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
         {!loaded ? null : items.length === 0 ? (
           <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}>
             <p className="muted">{t("empty")}</p>
-            <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => { setCaptureName(""); setCaptureOpen(true); }}>
+            <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => { setProfileName(""); setModalProfile(null); setModal("capture"); }}>
               <Camera className="h-4 w-4" strokeWidth={2} />
               {tProfiles("toolbar.capture")}
             </button>
@@ -282,7 +284,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
               <div className="profile-list relative space-y-[var(--gap-page)]">
                 {items.map((profile) => {
                   return (
-                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} dragHover={profile.id === dragHoverId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onEdit={() => void openEdit(profile)} onApply={() => void applyProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void deleteProfile(profile)} />
+                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} dragHover={profile.id === dragHoverId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void applyProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void deleteProfile(profile)} />
                   );
                 })}
               </div>
@@ -296,10 +298,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
           </DndContext>
         )}
       </div>
-      <AppDialog open={captureOpen} onOpenChange={setCaptureOpen} title={tProfiles("dialog.captureTitle")} initialFocusRef={captureNameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setCaptureOpen(false)}>{tProfiles("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !captureName.trim()} onClick={() => void capture()}>{tProfiles("dialog.save")}</button></>}>
-        <div className="space-y-4"><p className="muted text-sm">{t("captureDescription")}</p><input ref={captureNameInput} className="app-input" maxLength={50} placeholder={tProfiles("edit.namePlaceholder")} value={captureName} onChange={(event) => setCaptureName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void capture(); }} /></div>
-      </AppDialog>
-      {templateOpen ? <ClaudeCommonTemplateDialog onClose={() => setTemplateOpen(false)} /> : null}
+      <ProfileNameDialog mode={modal} name={profileName} busy={busy} description={modal === "capture" ? t("captureDescription") : undefined} onName={setProfileName} onClose={() => setModal(null)} onSubmit={() => void submitModal()} />
     </section>
   );
 }

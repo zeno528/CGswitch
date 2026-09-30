@@ -194,7 +194,7 @@ fn legacy_matches_live(raw: &str, profile: &StoredClaudeProfile) -> bool {
 
 /// 平凡快照判定：顶层除 env 外没有任何其他键，且 env 的键全在托管集合内。
 /// 新建供应商的 raw_settings 默认 "{}"（claude-account 保存时也强制 "{}"），
-/// 属于从未捕获过真实文件的全新档案——整文件替换会静默清空用户 settings.json
+/// 属于从未捕获过真实文件的全新配置——整文件替换会静默清空用户 settings.json
 /// 里的 permissions/hooks/statusLine 等现场，必须落入 merge 路径保住它们。
 fn is_trivial_settings_snapshot(raw: &str) -> bool {
     let Ok(Value::Object(object)) = serde_json::from_str(raw) else {
@@ -328,7 +328,7 @@ fn claude_string_map(
 }
 
 /// 将 Claude Code 的 mcpServers 条目转成共享数据库使用的建模字段。
-fn claude_entry_to_spec(name: &str, value: &Value) -> AppResult<McpServerSpec> {
+pub(super) fn claude_entry_to_spec(name: &str, value: &Value) -> AppResult<McpServerSpec> {
     let object = value
         .as_object()
         .ok_or_else(|| app_err!("Claude MCP 服务器 {name} 必须是对象"))?;
@@ -394,32 +394,34 @@ fn claude_entry_to_spec(name: &str, value: &Value) -> AppResult<McpServerSpec> {
     })
 }
 
+pub(super) fn read_claude_mcp_document(paths: &crate::paths::AppPaths) -> AppResult<Value> {
+    let path = paths.claude_mcp_config();
+    let document = match std::fs::read_to_string(&path) {
+        Ok(text) if text.trim().is_empty() => Ok(Value::Object(Map::new())),
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|error| app_err!(".claude.json 不是有效 JSON，拒绝写入: {error}")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Object(Map::new())),
+        Err(error) => Err(app_err!("无法读取 {}: {error}", path.display())),
+    }?;
+    if !document.is_object() {
+        return Err(app_err!(".claude.json 顶层不是对象，拒绝读写"));
+    }
+    if document
+        .get("mcpServers")
+        .is_some_and(|servers| !servers.is_object())
+    {
+        return Err(app_err!(".claude.json 的 mcpServers 不是对象，拒绝读写"));
+    }
+    Ok(document)
+}
+
 impl AppContext {
     fn claude_settings_path(&self) -> PathBuf {
         self.paths.claude_home.join("settings.json")
     }
 
     pub(super) fn read_claude_mcp_document(&self) -> AppResult<Value> {
-        let path = self.paths.claude_mcp_config();
-        let document = match std::fs::read_to_string(&path) {
-            Ok(text) if text.trim().is_empty() => Ok(Value::Object(Map::new())),
-            Ok(text) => serde_json::from_str(&text)
-                .map_err(|error| app_err!(".claude.json 不是有效 JSON，拒绝写入: {error}")),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Value::Object(Map::new()))
-            }
-            Err(error) => Err(app_err!("无法读取 {}: {error}", path.display())),
-        }?;
-        if !document.is_object() {
-            return Err(app_err!(".claude.json 顶层不是对象，拒绝读写"));
-        }
-        if document
-            .get("mcpServers")
-            .is_some_and(|servers| !servers.is_object())
-        {
-            return Err(app_err!(".claude.json 的 mcpServers 不是对象，拒绝读写"));
-        }
-        Ok(document)
+        read_claude_mcp_document(&self.paths)
     }
 
     fn write_claude_mcp_document(&self, document: &Value) -> AppResult<()> {
@@ -445,7 +447,9 @@ impl AppContext {
         let previous: std::collections::BTreeMap<_, _> = previous
             .iter()
             .filter(|record| {
-                record.claude_enabled && !codex_config::is_managed_mcp_name(&record.name)
+                record.claude_installed
+                    && record.claude_enabled
+                    && !codex_config::is_managed_mcp_name(&record.name)
             })
             .filter_map(|record| {
                 claude_mcp_entry(record, None)
@@ -456,7 +460,9 @@ impl AppContext {
         let current: std::collections::BTreeMap<_, _> = current
             .iter()
             .filter(|record| {
-                record.claude_enabled && !codex_config::is_managed_mcp_name(&record.name)
+                record.claude_installed
+                    && record.claude_enabled
+                    && !codex_config::is_managed_mcp_name(&record.name)
             })
             .map(|record| {
                 // 旧库没有原生快照时，保留现场的 Claude 专属字段；共享字段仍以镜像为准。
@@ -558,6 +564,8 @@ impl AppContext {
                     toml,
                     codex_enabled: false,
                     claude_enabled: true,
+                    codex_installed: true,
+                    claude_installed: true,
                 },
                 &now_ms().to_string(),
             )?;
@@ -580,7 +588,7 @@ impl AppContext {
             .map(|(name, value)| claude_entry_to_spec(name, value))
             .collect::<AppResult<Vec<_>>>()?;
         for record in records {
-            if record.claude_enabled {
+            if !record.claude_installed || record.claude_enabled {
                 continue;
             }
             if let Some(server) = result.iter_mut().find(|server| server.name == record.name) {
@@ -602,7 +610,7 @@ impl AppContext {
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
         if let Some(record) = self.database.mcp_server_record(name)? {
-            if !record.claude_enabled {
+            if record.claude_installed && !record.claude_enabled {
                 let entry = claude_mcp_entry(&record, None)?;
                 return serde_json::to_string_pretty(&entry)
                     .map(Some)
@@ -670,7 +678,7 @@ impl AppContext {
     }
 
     pub fn delete_claude_mcp_server(&self, name: &str) -> AppResult<()> {
-        self.delete_mcp_server(name)
+        self.delete_mcp_server_for_tool(name, SkillTool::Claude)
     }
 
     pub fn claude_list(&self) -> AppResult<Vec<ClaudeProfileSummary>> {
@@ -930,26 +938,17 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        let was_active = self.database.active_claude_profile()?.as_deref() == Some(id);
-        // 删除前先取一行：激活时它的附加 env 键也要从 live 撤下
-        let stored = self.database.claude_profile(id)?;
-        let paths = if was_active {
-            vec![self.claude_settings_path()]
-        } else {
-            Vec::new()
-        };
-        crate::fsutil::with_file_rollback(&paths, || {
-            if was_active {
-                // 删除激活中的配置：把托管键与它的附加键从 live 撤下，回到无供应商状态
-                self.write_claude_settings(None, &extra_env_keys(stored.extra_env.as_deref()))?;
-            }
-            self.database.delete_claude_profile(id)
-        })?;
-        if was_active {
-            tauri_plugin_log::log::info!(
-                "[apply.claude.delete] profile_id={id} outcome=success msg=\"激活配置已删除，env 托管键已撤下\""
-            );
+        // 产品规则：使用中的配置不可删除（前端对激活卡片禁用删除按钮，与 Codex 同规则）。
+        // 后端对齐拒绝：删除绝不能变成一次没有确认的 live 改写，托盘竞态只会得到明确报错。
+        if self.database.active_claude_profile()?.as_deref() == Some(id) {
+            return Err(app_err!(
+                "无法删除使用中的 Claude 供应商配置，请先切换到其他配置"
+            ));
         }
+        self.database.delete_claude_profile(id)?;
+        tauri_plugin_log::log::info!(
+            "[provider.claude.delete] profile_id={id} outcome=success msg=\"已删除 Claude 供应商配置\""
+        );
         Ok(())
     }
 
@@ -1025,7 +1024,7 @@ impl AppContext {
         if let Some(raw) = values.and_then(|profile| profile.raw_settings.as_deref()) {
             let mut checked = ClaudeProfileInput::default();
             read_raw_settings(raw, &mut checked)?;
-            // 平凡快照（新建档案的 "{}"/纯托管键 env）不做整文件替换，落入下方
+            // 平凡快照（新建配置的 "{}"/纯托管键 env）不做整文件替换，落入下方
             // merge 路径保住用户现场；非平凡快照（捕获/全文编辑过的）保持整文件替换。
             if !is_trivial_settings_snapshot(raw) {
                 if values.is_some_and(|profile| profile.kind.as_deref() == Some("claude-account")) {
@@ -2101,7 +2100,7 @@ API_KEY = "secret"
 
         context.delete_mcp_server("remote").unwrap();
         let doc = read_claude_mcp(&home);
-        assert!(doc["mcpServers"].get("remote").is_none());
+        assert!(doc["mcpServers"].get("remote").is_some());
         assert!(doc["mcpServers"].get("unmanaged").is_some());
     }
 
@@ -2252,7 +2251,7 @@ API_KEY = "secret"
     }
 
     #[test]
-    fn deleting_active_profile_retracts_managed_keys() {
+    fn deleting_active_profile_is_rejected() {
         let (home, context) = test_context();
         let stored = context
             .database
@@ -2262,13 +2261,15 @@ API_KEY = "secret"
             )
             .unwrap();
         context.claude_apply(&stored.id).unwrap();
-        context.claude_delete(&stored.id).unwrap();
-
+        // 使用中的配置不可删除（前端删除按钮对激活卡片禁用）：拒绝后 live 与库都保持原样
+        assert!(context.claude_delete(&stored.id).is_err());
         let doc = read_settings(&home);
-        assert!(doc["env"].get("ANTHROPIC_BASE_URL").is_none());
-        assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
-        assert_eq!(context.database.active_claude_profile().unwrap(), None);
-        assert!(context.database.claude_profiles().unwrap().is_empty());
+        assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://a.example");
+        assert_eq!(
+            context.database.active_claude_profile().unwrap().as_deref(),
+            Some(stored.id.as_str())
+        );
+        assert_eq!(context.database.claude_profiles().unwrap().len(), 1);
     }
 
     #[test]
@@ -2305,7 +2306,7 @@ API_KEY = "secret"
         assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
     }
 
-    /// 平凡快照（新建档案的 "{}"/纯托管键 env）不得整文件覆写用户现场：应用落 merge，
+    /// 平凡快照（新建配置的 "{}"/纯托管键 env）不得整文件覆写用户现场：应用落 merge，
     /// permissions/statusLine 与非托管 env 键原样保留；非 anthropic kind 的 token 落
     /// AUTH_TOKEN，live 里另一形态的手写 API_KEY 一并撤下。
     #[test]
@@ -2343,7 +2344,7 @@ API_KEY = "secret"
         assert!(doc["env"].get("ANTHROPIC_API_KEY").is_none());
     }
 
-    /// claude-account 新建档案的 raw_settings 恒为 "{}"（平凡快照）：应用只清账号覆写键
+    /// claude-account 新建配置的 raw_settings 恒为 "{}"（平凡快照）：应用只清账号覆写键
     /// 与 apiKeyHelper，permissions 等用户现场和其他 env 键保留。
     #[test]
     fn account_profile_apply_clears_overrides_and_keeps_user_settings() {

@@ -1,35 +1,15 @@
-import { ArrowLeft, ChevronRight, CodeXml, Minus, Plus, Save } from "lucide-react";
+import { ArrowLeft, CodeXml, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { AppSelect } from "../../components/AppSelect";
-import { AppDisclosure } from "../../components/AppDisclosure";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
+import McpConnectionForm, { PairEditor, TimeoutInput } from "./McpConnectionForm";
+import { pairsToRecord, recordToPairs, type KVPair } from "./mcpFormData";
 
 type Transport = "stdio" | "http";
-interface KVPair { key: string; value: string; }
-
-function recordToPairs(record: Record<string, string>): KVPair[] { return Object.entries(record).map(([key, value]) => ({ key, value })); }
-function pairsToRecord(pairs: KVPair[]): Record<string, string> {
-  const record: Record<string, string> = {};
-  for (const pair of pairs) { const key = pair.key.trim(); if (key) record[key] = pair.value.trim(); }
-  return record;
-}
-
-function PairEditor({ pairs, onChange, keyPlaceholder, valuePlaceholder }: { pairs: KVPair[]; onChange: (pairs: KVPair[]) => void; keyPlaceholder: string; valuePlaceholder: string }) {
-  const { t } = useTranslation("mcp");
-  if (!pairs.length) return <button type="button" className="app-dynamic-input__create" onClick={() => onChange([{ key: "", value: "" }])}><Plus size={16} strokeWidth={2} aria-hidden="true" />{t("edit.add")}</button>;
-  return <div className="app-dynamic-input">{pairs.map((pair, index) => <div key={index} className="app-dynamic-input__item"><div className="app-dynamic-input__pair"><div className="app-input-focus-frame"><input className="app-input app-dynamic-input__input mono" placeholder={keyPlaceholder} value={pair.key} onChange={(event) => onChange(pairs.map((current, currentIndex) => currentIndex === index ? { ...current, key: event.target.value } : current))} /></div><div className="app-input-stepper app-input-focus-frame"><input className="app-input app-dynamic-input__input app-input-stepper__input mono" placeholder={valuePlaceholder} value={pair.value} onChange={(event) => onChange(pairs.map((current, currentIndex) => currentIndex === index ? { ...current, value: event.target.value } : current))} /><div className="app-input-stepper__actions"><button type="button" className="app-input-stepper__action" aria-label={t("edit.removeRow")} onClick={() => onChange(pairs.filter((_current, currentIndex) => currentIndex !== index))}><Minus size={16} strokeWidth={2} aria-hidden="true" /></button><button type="button" className="app-input-stepper__action" aria-label={t("edit.addRowAfter")} onClick={() => onChange([...pairs.slice(0, index + 1), { key: "", value: "" }, ...pairs.slice(index + 1)])}><Plus size={16} strokeWidth={2} aria-hidden="true" /></button></div></div></div></div>)}</div>;
-}
-
-function TimeoutInput({ value, onChange, placeholder }: { value: number | null; onChange: (value: number | null) => void; placeholder: string }) {
-  const { t } = useTranslation("mcp");
-  return <div className="app-input-stepper app-input-focus-frame"><input className="app-input app-input-stepper__input" type="number" min={1} placeholder={placeholder} value={value ?? ""} onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)} /><div className="app-input-stepper__actions"><button type="button" className="app-input-stepper__action" aria-label={t("edit.decreaseSecond")} onClick={() => onChange(Math.max(1, (value ?? 1) - 1))}><Minus size={16} strokeWidth={2} aria-hidden="true" /></button><button type="button" className="app-input-stepper__action" aria-label={t("edit.increaseSecond")} onClick={() => onChange((value ?? 0) + 1)}><Plus size={16} strokeWidth={2} aria-hidden="true" /></button></div></div>;
-}
-
 interface McpEditProps {
   server: McpServerSpec | null;
   create?: boolean;
@@ -147,7 +127,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
 
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col" onKeyDown={(event) => {
-      if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest(".apple-editor-shell"))) {
+      if (event.key === "Enter" && !event.nativeEvent.isComposing && !(event.target instanceof Element && event.target.closest("textarea, .apple-editor-shell"))) {
         event.preventDefault();
         void save();
       }
@@ -162,72 +142,28 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
 
       <div className="apple-edit-content">
         <div className="apple-group p-0">
-          <div className="apple-panel-section">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <McpConnectionForm
+            name={name} setName={setName} transport={transport} setTransport={(value) => setTransport(value as Transport)}
+            command={command} setCommand={setCommand} argsText={argsText} setArgsText={setArgsText}
+            url={url} setUrl={setUrl} envPairs={envPairs} setEnvPairs={setEnvPairs}
+            headerPairs={headerPairs} setHeaderPairs={setHeaderPairs}
+            advancedOpen={advancedOpen} setAdvancedOpen={setAdvancedOpen}
+            httpFields={<div className="mt-4">
+              <div className="field-label mb-1.5">{t("edit.bearerLabel")}</div>
+              <input className="app-input mono" placeholder={t("edit.bearerPlaceholder")} value={bearer} onChange={(event) => setBearer(event.target.value)} />
+            </div>}
+            httpAdvancedFields={envHeaderPairs.length ? <PairEditor label={t("edit.headerFromEnv")} pairs={envHeaderPairs} onChange={setEnvHeaderPairs} keyPlaceholder={t("edit.headerKeyPlaceholder")} valuePlaceholder={t("edit.envVarPlaceholder")} /> : null}
+            timeoutFields={<div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
-                <div className="field-label mb-1.5">{t("edit.name")}</div>
-                <input className="app-input mono" maxLength={64} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} />
+                <div className="field-label mb-1.5">{t("edit.startupTimeout")}</div>
+                <TimeoutInput value={startupTimeout} onChange={setStartupTimeout} placeholder={t("edit.startupTimeoutPlaceholder")} />
               </div>
               <div>
-                <div className="field-label mb-1.5">{t("edit.transport")}</div>
-                <AppSelect value={transport} options={[{ label: t("edit.transportStdio"), value: "stdio" as const }, { label: t("edit.transportHttp"), value: "http" as const }]} onChange={setTransport} />
+                <div className="field-label mb-1.5">{t("edit.toolTimeout")}</div>
+                <TimeoutInput value={toolTimeout} onChange={setToolTimeout} placeholder={t("edit.toolTimeoutPlaceholder")} />
               </div>
-            </div>
-          </div>
-
-          <div className="apple-panel-section apple-panel-section--compact">
-            {transport === "stdio" ? <>
-              <div>
-                <div className="field-label mb-1.5">{t("edit.command")}</div>
-                <input className="app-input mono" placeholder={t("edit.commandPlaceholder")} value={command} onChange={(event) => setCommand(event.target.value)} />
-              </div>
-              <div className="mt-4">
-                <div className="field-label mb-1.5">{t("edit.args")}</div>
-                <textarea className="app-input mono min-h-20" rows={2} placeholder={t("edit.argsPlaceholder")} value={argsText} onChange={(event) => setArgsText(event.target.value)} />
-              </div>
-            </> : <>
-              <div>
-                <div className="field-label mb-1.5">{t("edit.url")}</div>
-                <input className="app-input mono" placeholder="https://mcp.example.com/mcp" value={url} onChange={(event) => setUrl(event.target.value)} />
-              </div>
-              <div className="mt-4">
-                <div className="field-label mb-1.5">{t("edit.bearerLabel")}</div>
-                <input className="app-input mono" placeholder={t("edit.bearerPlaceholder")} value={bearer} onChange={(event) => setBearer(event.target.value)} />
-              </div>
-            </>}
-            <AppDisclosure
-              className="mt-3"
-              open={advancedOpen}
-              onOpenChange={setAdvancedOpen}
-              summary={(
-                <>
-                  <ChevronRight className="apple-disclosure__icon" size={18} strokeWidth={2} aria-hidden="true" />
-                  <span className="field-subtitle">{t("edit.advanced")}</span>
-                </>
-              )}
-              showIcon={false}
-            >
-              {transport === "stdio" ? <>
-                <div className="field-label mb-1.5">{t("edit.env")}</div>
-                <PairEditor pairs={envPairs} onChange={setEnvPairs} keyPlaceholder={t("edit.envKeyPlaceholder")} valuePlaceholder={t("edit.valuePlaceholder")} />
-              </> : <>
-                <div className="field-label mb-1.5">{t("edit.headerFixed")}</div>
-                <PairEditor pairs={headerPairs} onChange={setHeaderPairs} keyPlaceholder={t("edit.headerKeyPlaceholder")} valuePlaceholder={t("edit.valuePlaceholder")} />
-                <div className="field-label mb-1.5 mt-4">{t("edit.headerFromEnv")}</div>
-                <PairEditor pairs={envHeaderPairs} onChange={setEnvHeaderPairs} keyPlaceholder={t("edit.headerKeyPlaceholder")} valuePlaceholder={t("edit.envVarPlaceholder")} />
-              </>}
-              <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <div className="field-label mb-1.5">{t("edit.startupTimeout")}</div>
-                  <TimeoutInput value={startupTimeout} onChange={setStartupTimeout} placeholder={t("edit.startupTimeoutPlaceholder")} />
-                </div>
-                <div>
-                  <div className="field-label mb-1.5">{t("edit.toolTimeout")}</div>
-                  <TimeoutInput value={toolTimeout} onChange={setToolTimeout} placeholder={t("edit.toolTimeoutPlaceholder")} />
-                </div>
-              </div>
-            </AppDisclosure>
-          </div>
+            </div>}
+          />
 
           <div className="apple-panel-section">
             <div className="mb-1.5 flex min-h-8 items-center justify-between gap-2">

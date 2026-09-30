@@ -1,9 +1,58 @@
 import { describe, expect, it } from "vitest";
 import { webInvoke } from "./web-mock";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../features/claude/profileEnvText";
-import type { AppState, ClaudeProfileDetail, MarketplacePlugin, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
+import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
+  it("MCP 开关与卸载只影响所选客户端，共用编辑不重新安装另一端", async () => {
+    const fixture = (await webInvoke<McpServerSpec[]>("list_mcp_servers"))[0];
+    for (const tool of ["codex", "claude"] as const) {
+      const name = `uninstall-${tool}`;
+      const list = tool === "codex" ? "list_mcp_servers" : "list_claude_mcp_servers";
+      const otherList = tool === "codex" ? "list_claude_mcp_servers" : "list_mcp_servers";
+      try {
+        await webInvoke("save_mcp_server", { spec: { ...fixture, name } });
+        const other = await webInvoke<McpServerSpec[]>(otherList);
+        await webInvoke("set_mcp_server_enabled", { name, tool, enabled: false });
+        expect((await webInvoke<McpServerSpec[]>(list)).find((server) => server.name === name)?.enabled).toBe(false);
+        expect(await webInvoke(otherList)).toEqual(other);
+        await webInvoke(tool === "codex" ? "delete_mcp_server" : "delete_claude_mcp_server", { name });
+        expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
+        expect(await webInvoke(otherList)).toEqual(other);
+        if (tool === "claude") {
+          await webInvoke("save_mcp_server", { originalName: name, spec: { ...fixture, name, command: "updated" } });
+        } else {
+          await webInvoke("save_claude_mcp_server", { originalName: name, name, json: '{"type":"stdio","command":"updated"}' });
+        }
+        expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
+      } finally {
+        await webInvoke("delete_mcp_server", { name });
+        await webInvoke("delete_claude_mcp_server", { name });
+      }
+    }
+  });
+
+  it("共享重命名只改目标客户端的名称，保留配置全文及元数据", async () => {
+    const created = await webInvoke<ClaudeProfileDetail>("claude_save_profile", {
+      name: "rename-fixture", rawSettings: '{"env":{"CUSTOM":"keep"},"permissions":{"deny":["Write"]}}',
+      description: "keep", icon: "custom", showBalance: true,
+    });
+    const codex = (await webInvoke<AppState>("get_state")).profiles;
+    try {
+      await webInvoke("rename_profile", { id: created.id, name: "  renamed  ", tool: "claude" });
+      const after = await webInvoke<ClaudeProfileDetail>("claude_get_profile", { id: created.id });
+      expect(after).toEqual({ ...created, name: "renamed", updated_at: after.updated_at });
+      expect((await webInvoke<AppState>("get_state")).profiles).toEqual(codex);
+      for (const name of [" ", "a".repeat(51)]) {
+        await expect(webInvoke("rename_profile", { id: created.id, name, tool: "claude" })).rejects.toThrow("供应商名称长度");
+      }
+      await expect(webInvoke("rename_profile", { id: created.id, name: "wrong-client" })).rejects.toThrow("供应商配置不存在");
+      expect(await webInvoke("claude_get_profile", { id: created.id })).toEqual(after);
+    } finally {
+      await webInvoke("claude_delete_profile", { id: created.id });
+    }
+  });
+
   it("官方 API 配置从全文回显 API Key", async () => {
     const rawSettings = '{"env":{"ANTHROPIC_API_KEY":"fixture-key"}}';
     const created = await webInvoke<ClaudeProfileDetail>("claude_save_profile", {
@@ -110,9 +159,13 @@ describe("web mock", () => {
     let state = await webInvoke<AppState>("get_state");
     expect(state.active_claude_profile_id).toBe(created.id);
 
+    // 使用中的配置不可删除（与后端守卫一致）：切换到别家后才能删
+    await expect(webInvoke<void>("claude_delete_profile", { id: created.id })).rejects.toThrow("使用中");
+    const other = await webInvoke<ClaudeProfileDetail>("claude_save_profile", { name: "临时配置二", baseUrl: "https://temp2.example", authToken: null, model: null });
+    await webInvoke<void>("claude_apply_profile", { id: other.id });
     await webInvoke<void>("claude_delete_profile", { id: created.id });
     state = await webInvoke<AppState>("get_state");
-    expect(state.active_claude_profile_id).toBeNull();
+    expect(state.active_claude_profile_id).toBe(other.id);
     await expect(webInvoke<ClaudeProfileDetail>("claude_get_profile", { id: created.id })).rejects.toThrow("不存在");
   });
 

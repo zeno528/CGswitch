@@ -6,7 +6,7 @@ use super::{
     app_err, atomic_write, backup_file, builtin, codex_config, codex_process,
     normalize_auth_override, now_ms, parse_external_auth_json, profile_summary, read_optional_text,
     AppContext, AppResult, AppState, AuthSource, CodexAppStatus, ProfileDetail, ProfileKind,
-    ProfileSummary,
+    ProfileSummary, SkillTool,
 };
 
 pub(super) fn validated_name(name: &str) -> AppResult<String> {
@@ -362,14 +362,16 @@ impl AppContext {
             .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned()))
     }
 
-    pub fn rename_profile(&self, id: &str, name: &str) -> AppResult<()> {
-        let stored = self.database.profile(id)?;
+    pub fn rename_profile(&self, id: &str, name: &str, tool: SkillTool) -> AppResult<()> {
+        let (previous_name, source) = match tool {
+            SkillTool::Codex => (self.database.profile(id)?.name, "codex"),
+            SkillTool::Claude => (self.database.claude_profile(id)?.name, "claude"),
+        };
         let name = validated_name(name)?;
         self.database
-            .rename_profile(id, &name, &now_ms().to_string())?;
+            .rename_profile(id, &name, &now_ms().to_string(), tool)?;
         tauri_plugin_log::log::info!(
-            "[provider.profile.rename] profile_id={id} profile_name={:?} new_name={name:?} outcome=success msg=\"已重命名配置\"",
-            stored.name
+            "[provider.profile.rename] source={source} profile_id={id} profile_name={previous_name:?} new_name={name:?} outcome=success msg=\"已重命名配置\""
         );
         Ok(())
     }
@@ -380,10 +382,12 @@ impl AppContext {
 
     pub fn delete_profile(&self, id: &str) -> AppResult<()> {
         let stored = self.database.profile(id)?;
-        self.database.delete_profile(id)?;
-        if self.active_profile_state()?.as_deref() == Some(id) {
-            self.database.set_active_profile(None)?;
+        // 产品规则：使用中的供应商配置不可删除（前端对激活卡片禁用删除按钮，ProfileCardActions）。
+        // 后端对齐拒绝：托盘切换后列表未刷新的竞态也只会得到明确报错，不会静默清掉激活位。
+        if self.is_active_profile(id)? {
+            return Err(app_err!("无法删除使用中的供应商配置，请先切换到其他配置"));
         }
+        self.database.delete_profile(id)?;
         // 删除清掉的是配置与本地凭据，留痕是唯一审计线索
         tauri_plugin_log::log::info!(
             "[provider.profile.delete] profile_id={id} profile_name={:?} outcome=success msg=\"已删除配置\"",

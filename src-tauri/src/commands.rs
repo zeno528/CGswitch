@@ -554,8 +554,13 @@ pub fn rename_database_backup(
 }
 
 #[tauri::command]
-pub fn rename_profile(id: String, name: String, state: State<'_, AppContext>) -> AppResult<()> {
-    state.rename_profile(&id, &name)
+pub fn rename_profile(
+    id: String,
+    name: String,
+    tool: Option<SkillTool>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.rename_profile(&id, &name, tool.unwrap_or(SkillTool::Codex))
 }
 
 #[tauri::command]

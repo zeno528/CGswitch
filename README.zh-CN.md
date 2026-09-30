@@ -35,7 +35,7 @@ CGswitch 面向使用 OpenAI Codex 的开发者，围绕电脑上的 Codex 本�
        编辑 · 测试 · 应用 · 恢复
 ```
 
-应用供应商档案前，CGswitch 会备份相关 Codex 文件。切换模型供应商时，MCP、Plugins 和 Skills 等全局资源仍保持独立，不必重新配置。
+应用供应商配置前，CGswitch 会备份相关 Codex 文件。切换模型供应商时，MCP、Plugins 和 Skills 等全局资源仍保持独立，不必重新配置。
 
 ## 功能
 
