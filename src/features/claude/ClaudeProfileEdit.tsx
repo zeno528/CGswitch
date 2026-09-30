@@ -89,7 +89,6 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   const envDirty = envText !== initialEnvText;
   const envMinLines = Math.max(envText.split(/\r?\n/).length, 12);
   const { autoCompactDisabled, autoCompactWindow, effortLevel, autoMemoryEnabled, bashEditDiffEnabled, bypassPermissionsEnabled } = readAdvancedSettings(envText);
-  const attributionHidden = readEnvValue(envText, "CLAUDE_CODE_ATTRIBUTION_HEADER") === "0";
   const gitAttributionHidden = readGitAttributionDisabled(envText);
   const agentTeamsEnabled = readEnvValue(envText, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS") === "1";
   useEffect(() => () => { templateRequest.current += 1; }, []);
@@ -266,10 +265,6 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
 
   const updateEnvValue = (key: string, value: string | null, fallbackSettingsKey?: string) => {
     setEnvText((current) => patchEnvValue(current, key, value, fallbackSettingsKey));
-  };
-
-  const toggleEnvValue = (key: string, enabled: boolean, enabledValue = "1") => {
-    updateEnvValue(key, enabled ? enabledValue : null);
   };
 
   const toggleGitAttribution = (enabled: boolean) => {
@@ -480,16 +475,12 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                         <input className="app-input app-input--compact compact-token-input h-6 text-center" type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value, "autoCompactWindow")} />
                       </label>
                     </div>
-                    <label className={`editor-ghost ${attributionHidden ? "on" : ""}`} title={t("advanced.attributionTitle")}>
-                      <input type="checkbox" checked={attributionHidden} onChange={(event) => toggleEnvValue("CLAUDE_CODE_ATTRIBUTION_HEADER", event.target.checked, "0")} />
-                      <span className="whitespace-nowrap font-medium">{t("advanced.attributionLabel")}</span>
-                    </label>
                     <label className={`editor-ghost ${gitAttributionHidden ? "on" : ""}`} title={t("advanced.gitAttributionTitle")}>
                       <input type="checkbox" checked={gitAttributionHidden} onChange={(event) => toggleGitAttribution(event.target.checked)} />
                       <span className="whitespace-nowrap font-medium">{t("advanced.gitAttributionLabel")}</span>
                     </label>
                     <label className={`editor-ghost ${agentTeamsEnabled ? "on" : ""}`} title={t("advanced.agentTeamsTitle")}>
-                      <input type="checkbox" checked={agentTeamsEnabled} onChange={(event) => toggleEnvValue("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", event.target.checked)} />
+                      <input type="checkbox" checked={agentTeamsEnabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", event.target.checked ? "1" : null)} />
                       <span className="whitespace-nowrap font-medium">{t("advanced.agentTeamsLabel")}</span>
                     </label>
                     <div

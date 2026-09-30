@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setMcpDiffBadge, type McpProbeScope } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setClaudeMcpServersCache, setMcpDiffBadge, setMcpServersCache, type McpProbeScope } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
@@ -173,17 +173,20 @@ function useMcpProbes(scope: McpProbeScope, initialServers: McpServerSpec[]) {
     void probe(server, { includeTools: true });
   };
 
-  /// 应用级开关：两页只差刷新策略，由 refreshAfter 决定关/开后重连哪些机器。
+  /// 应用级开关：两页只差刷新策略（refreshAfter）与乐观回滚（optimistic）。
+  /// optimistic 点击即翻列表与缓存，失败用其返回的回滚函数还原（模式对齐拆分前的旧实现）。
   const [togglingName, setTogglingName] = useState("");
-  const toggleEnabled = async (server: McpServerSpec, enabled: boolean, refreshAfter: () => Promise<unknown>) => {
+  const toggleEnabled = async (server: McpServerSpec, enabled: boolean, refreshAfter: () => Promise<unknown>, optimistic?: (server: McpServerSpec, enabled: boolean) => () => void) => {
     if (togglingName) return;
     setTogglingName(server.name);
+    const rollback = optimistic?.(server, enabled);
     try {
       await api.setMcpServerEnabled(server.name, scope, enabled);
       if (!enabled) deleteCachedMcpProbe(server.name, scope);
       await refreshAfter();
       feedback.success(t("feedback.updated"));
     } catch (error) {
+      rollback?.();
       feedback.error(String(error));
     } finally {
       setTogglingName("");
@@ -191,6 +194,21 @@ function useMcpProbes(scope: McpProbeScope, initialServers: McpServerSpec[]) {
   };
 
   return { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache };
+}
+
+/// 开关的乐观翻转（Codex/Claude 两页共用，只差缓存写入口）：点击即翻列表与列表缓存，
+/// 失败由 toggleEnabled 调用返回的回滚函数还原到点击前的 enabled 值（模式对齐拆分前旧实现）。
+function optimisticToggleEnabled(setServers: (update: (current: McpServerSpec[]) => McpServerSpec[]) => void, writeCache: (items: McpServerSpec[]) => void) {
+  return (server: McpServerSpec, enabled: boolean): () => void => {
+    const previous = server.enabled;
+    const apply = (value: boolean | null) => setServers((current) => {
+      const next = current.map((item) => item.name === server.name ? { ...item, enabled: value } : item);
+      writeCache(next);
+      return next;
+    });
+    apply(enabled ? null : false);
+    return () => apply(previous);
+  };
 }
 
 function transportOf(server: McpServerSpec): Transport { return server.url ? "http" : server.command ? "stdio" : "unknown"; }
@@ -241,6 +259,7 @@ type McpServerRowProps = {
 
 export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
   const { t } = useTranslation("mcp");
+  const testTitle = t(server.enabled === false ? "list.testConnectionDisabled" : "list.testConnection");
   const Icon = transportIcon(server);
 
   return (
@@ -282,9 +301,9 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
           <button
             type="button"
             className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={probing}
-            title={t("list.testConnection")}
-            aria-label={t("list.testConnection")}
+            disabled={probing || server.enabled === false}
+            title={testTitle}
+            aria-label={testTitle}
             onClick={() => onProbe(server)}
           >
             {probing ? <LoadingSpinner /> : <Wifi className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
@@ -324,6 +343,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
   const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
   const [creatingServer, setCreatingServer] = useState(false);
   const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("codex", cachedServers ?? []);
+  const optimisticToggle = optimisticToggleEnabled(setServers, setMcpServersCache);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [diffOpen, setDiffOpen] = useState(false);
@@ -554,7 +574,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
                   onEdit={setEditingServer}
                   onProbe={(target) => void probe(target)}
                   onToggleTools={(target) => void toggleTools(target)}
-                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []))}
+                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
                 />
               ))}
             </div>
@@ -575,6 +595,7 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
   const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
   const [creatingServer, setCreatingServer] = useState(false);
   const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("claude", cachedServers ?? []);
+  const optimisticToggle = optimisticToggleEnabled(setServers, setClaudeMcpServersCache);
 
   const refresh = async (force = false, only?: string[]) => {
     let next: McpServerSpec[] | null = null;
@@ -677,7 +698,7 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
                 onEdit={setEditingServer}
                 onProbe={(target) => void probe(target)}
                 onToggleTools={toggleTools}
-                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []))}
+                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
               />
             ))}
           </div>

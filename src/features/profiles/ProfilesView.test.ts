@@ -71,8 +71,10 @@ describe("ProfilesView 拖拽预览", () => {
   });
 
   it("激活卡的拖拽预览复用品牌渐变且不再覆盖旧底色", () => {
-    expect(source).toContain('active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover"');
-    expect(source).not.toContain('active ? "is-active is-drag-hover" : "is-drag-hover"');
+    // 预览外壳（含激活渐变 stateClass）抽到 ProfileCard 的 ProfileDragPreviewShell，两列表页共用
+    expect(cardSource).toContain('active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover"');
+    expect(cardSource).not.toContain('active ? "is-active is-drag-hover" : "is-drag-hover"');
+    expect(source).toContain("<ProfileDragPreviewShell");
     expect(styles).not.toContain(".profile-drag-preview.is-active {\n  background-image: linear-gradient(");
     expect(styles).not.toContain("--profile-active-bg:");
 

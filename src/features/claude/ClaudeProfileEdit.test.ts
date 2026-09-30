@@ -31,7 +31,7 @@ describe("Claude 新建配置隔离", () => {
   it("高级控制使用 Claude Code 官方 env 字段并复用编辑器控制样式", () => {
     expect(editSource).toContain("DISABLE_AUTO_COMPACT");
     expect(editSource).toContain("CLAUDE_CODE_AUTO_COMPACT_WINDOW");
-    expect(editSource).toContain("CLAUDE_CODE_ATTRIBUTION_HEADER");
+    expect(editSource).not.toContain("CLAUDE_CODE_ATTRIBUTION_HEADER");
     expect(editSource).toContain("patchGitAttribution");
     expect(editSource).toContain("gitAttributionLabel");
     expect(editSource).toContain("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS");

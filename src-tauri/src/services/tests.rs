@@ -1711,7 +1711,7 @@ fn restore_database_preserves_profile_order() {
 }
 
 /// Claude 供应商全字段随备份走：A/B 差异化字段 → 恢复后逐列对上，排序与激活位随之恢复，
-/// 恢复还把激活配置带回 live settings.json（raw_settings 原文整写）。
+/// 恢复还把激活配置的托管键收敛回 live settings.json（平凡快照走 merge，不整写原文）。
 #[test]
 fn claude_profiles_survive_backup_restore_round_trip() {
     let home = tempfile::tempdir().unwrap();
@@ -1785,7 +1785,11 @@ fn claude_profiles_survive_backup_restore_round_trip() {
         Some(b.id.as_str())
     );
     let live = std::fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
-    assert_eq!(live, b_raw);
+    // B 的快照只含托管 env 键，属平凡快照：写回落 merge 不再整文件替换（保住用户其余键），
+    // 断言收敛到 B 的托管键值即可。
+    let live: serde_json::Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(live["env"]["ANTHROPIC_BASE_URL"], "https://b.example");
+    assert_eq!(live["env"]["ANTHROPIC_AUTH_TOKEN"], "tok-b");
 }
 
 /// 旧版备份（尚无 claude_profiles 表 / global_enabled 列）恢复：Codex 数据照常恢复，

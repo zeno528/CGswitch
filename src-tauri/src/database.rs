@@ -122,7 +122,7 @@ fn migrations() -> Migrations<'static> {
             "ALTER TABLE claude_profiles ADD COLUMN description TEXT;
              ALTER TABLE claude_profiles ADD COLUMN fetched_models TEXT",
         ),
-        // 编辑页 settings.json 编辑器：三个托管键之外的附加 env（JSON 对象文本，应用时并入 env）
+        // 编辑页 settings.json 编辑器：托管键之外的附加 env（JSON 对象文本，应用时并入 env）
         M::up("ALTER TABLE claude_profiles ADD COLUMN extra_env TEXT"),
         // 编辑页可编辑 logo（对齐 Codex profiles.icon）
         M::up("ALTER TABLE claude_profiles ADD COLUMN icon TEXT"),

@@ -2,7 +2,9 @@
 //!
 //! 供应商 env 与 Codex 的 config.toml 管线并行：不把 Claude 供应商字段塞进 Codex TOML，
 //! 只复用 fsutil 的备份与原子写原语。MCP 是应用级共享配置，另投影到 Claude Code 的
-//! 用户范围 ~/.claude.json；settings.json 这里只动三个托管键（MANAGED_ENV_KEYS）。
+//! 用户范围 ~/.claude.json。settings.json 的写回分两条路：非平凡快照（捕获/全文编辑过的）
+//! 整文件替换；平凡快照与存量行走 merge——只整体替换托管 env 键（MANAGED_ENV_KEYS，
+//! token 按 kind 写 ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN），其余顶层键与 env 键原样保留。
 
 use std::path::PathBuf;
 
@@ -20,10 +22,12 @@ use crate::models::{ClaudeProfileDetail, ClaudeProfileInput, ClaudeProfileSummar
 use crate::paths::now_ms;
 
 /// CGswitch 托管的 env 键：应用/切换前先整体移除再写入，永不残留上一家的配置。
-/// 顺序即写入顺序：base_url → token → model。
-const MANAGED_ENV_KEYS: [&str; 3] = [
+/// token 在 live 里有两个形态键（AUTH_TOKEN 与 API_KEY），都属于托管、切换时一并撤下；
+/// 写回哪个由 kind 决定（anthropic 落 API_KEY、其余落 AUTH_TOKEN），用户手写的另一形态不残留。
+const MANAGED_ENV_KEYS: [&str; 4] = [
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_API_KEY",
     "ANTHROPIC_MODEL",
 ];
 
@@ -186,6 +190,25 @@ fn legacy_matches_live(raw: &str, profile: &StoredClaudeProfile) -> bool {
                 .extra_env
                 .as_deref()
                 .and_then(|text| serde_json::from_str::<Value>(text).ok())
+}
+
+/// 平凡快照判定：顶层除 env 外没有任何其他键，且 env 的键全在托管集合内。
+/// 新建供应商的 raw_settings 默认 "{}"（claude-account 保存时也强制 "{}"），
+/// 属于从未捕获过真实文件的全新档案——整文件替换会静默清空用户 settings.json
+/// 里的 permissions/hooks/statusLine 等现场，必须落入 merge 路径保住它们。
+fn is_trivial_settings_snapshot(raw: &str) -> bool {
+    let Ok(Value::Object(object)) = serde_json::from_str(raw) else {
+        return false;
+    };
+    if !object.keys().all(|key| key == "env") {
+        return false;
+    }
+    object.get("env").is_none_or(|env| {
+        env.as_object().is_some_and(|env| {
+            env.keys()
+                .all(|key| MANAGED_ENV_KEYS.contains(&key.as_str()))
+        })
+    })
 }
 
 /// 把 Codex 镜像中的一个 MCP 片段转换成 Claude Code 用户范围的 JSON 条目。
@@ -779,14 +802,12 @@ impl AppContext {
         if let Some(raw) = input.raw_settings.clone() {
             read_raw_settings(&raw, &mut input)?;
         }
-        input.name = input.name.trim().to_string();
-        if input.name.is_empty() {
-            return Err(app_err!("配置名称不能为空"));
-        }
+        // 名称/描述与 Codex 侧共用同一套校验（1-50 字符 / ≤200），claude_set_icon 复用 validated_icon 同理
+        input.name = super::profiles::validated_name(&input.name)?;
         input.base_url = clean(input.base_url);
         input.auth_token = clean(input.auth_token);
         input.model = clean(input.model);
-        input.description = clean(input.description);
+        input.description = super::profiles::validated_description(input.description.as_deref())?;
         input.kind = clean(input.kind);
         input.admin_url = clean(input.admin_url);
         input.icon = clean(input.icon);
@@ -871,15 +892,11 @@ impl AppContext {
             .position(|profile| profile.id == id)
             .ok_or_else(|| app_err!("Claude 供应商配置不存在"))?;
         let base: String = stored.name.trim().chars().take(45).collect();
-        let mut candidate = format!("{base} copy");
-        let mut counter = 2;
-        while profiles
-            .iter()
-            .any(|profile| profile.name.eq_ignore_ascii_case(&candidate))
-        {
-            candidate = format!("{base} copy {counter}");
-            counter += 1;
-        }
+        let candidate = super::unique_copy_name(&base, |name| {
+            profiles
+                .iter()
+                .any(|profile| profile.name.eq_ignore_ascii_case(name))
+        });
         let timestamp = now_ms().to_string();
         let created = self.database.insert_claude_profile(
             &ClaudeProfileInput {
@@ -954,11 +971,14 @@ impl AppContext {
             _ => Vec::new(),
         };
         // MCP 是全局用户范围配置，应用供应商时确保共享镜像已投影到 ~/.claude.json。
+        // 顺序固定为先写 settings.json 再做 MCP 投影/首导入：首导入逐条落库不在文件
+        // 回滚范围内，后置保证 settings 写失败时不留半套镜像；反之导入或落库失败时
+        // 两个 live 文件整体回滚（已导入的镜像行残留无害：下次应用走 sync 投影收敛）。
         crate::fsutil::with_file_rollback(
             &[self.claude_settings_path(), self.paths.claude_mcp_config()],
             || {
-                self.ensure_claude_mcp_projection()?;
                 self.write_claude_settings(Some(&stored), &stale_extra_keys)?;
+                self.ensure_claude_mcp_projection()?;
                 self.database.set_active_claude_profile(Some(id))
             },
         )?;
@@ -992,7 +1012,7 @@ impl AppContext {
         self.write_claude_settings(next, &remove_extra_keys)
     }
 
-    /// 全文快照直接恢复原文；旧配置继续只合并 env。
+    /// 非平凡全文快照直接恢复原文；平凡快照与旧配置走 merge 只合并托管 env 键。
     /// values=None 表示纯撤下（删除激活配置）。
     /// 文件不存在则从空对象起建，存在但不是合法 JSON / 顶层不是对象时拒绝写入，绝不覆盖。
     fn write_claude_settings(
@@ -1005,14 +1025,18 @@ impl AppContext {
         if let Some(raw) = values.and_then(|profile| profile.raw_settings.as_deref()) {
             let mut checked = ClaudeProfileInput::default();
             read_raw_settings(raw, &mut checked)?;
-            if values.is_some_and(|profile| profile.kind.as_deref() == Some("claude-account")) {
-                let mut document = parse_settings_document(raw)?;
-                clear_account_auth_overrides(&mut document);
-                let bytes = serde_json::to_vec_pretty(&document)
-                    .map_err(|error| app_err!("settings.json 序列化失败: {error}"))?;
-                return atomic_write(&path, &bytes);
+            // 平凡快照（新建档案的 "{}"/纯托管键 env）不做整文件替换，落入下方
+            // merge 路径保住用户现场；非平凡快照（捕获/全文编辑过的）保持整文件替换。
+            if !is_trivial_settings_snapshot(raw) {
+                if values.is_some_and(|profile| profile.kind.as_deref() == Some("claude-account")) {
+                    let mut document = parse_settings_document(raw)?;
+                    clear_account_auth_overrides(&mut document);
+                    let bytes = serde_json::to_vec_pretty(&document)
+                        .map_err(|error| app_err!("settings.json 序列化失败: {error}"))?;
+                    return atomic_write(&path, &bytes);
+                }
+                return atomic_write(&path, raw.as_bytes());
             }
-            return atomic_write(&path, raw.as_bytes());
         }
         let mut document: Value = match std::fs::read_to_string(&path) {
             Ok(text) if text.trim().is_empty() => Value::Object(serde_json::Map::new()),
@@ -1043,13 +1067,22 @@ impl AppContext {
                 env.remove(key);
             }
             if let Some(profile) = values {
-                for (key, value) in MANAGED_ENV_KEYS.iter().zip([
-                    profile.base_url.as_deref(),
-                    profile.auth_token.as_deref(),
-                    profile.model.as_deref(),
-                ]) {
+                // token 按 kind 落 API_KEY 或 AUTH_TOKEN（对齐前端 patchEnvFields）；
+                // 另一形态已在上方随托管键撤下，用户手写的旧形态不残留。
+                for (key, value) in [
+                    ("ANTHROPIC_BASE_URL", profile.base_url.as_deref()),
+                    (
+                        if profile.kind.as_deref() == Some("anthropic") {
+                            "ANTHROPIC_API_KEY"
+                        } else {
+                            "ANTHROPIC_AUTH_TOKEN"
+                        },
+                        profile.auth_token.as_deref(),
+                    ),
+                    ("ANTHROPIC_MODEL", profile.model.as_deref()),
+                ] {
                     if let Some(text) = value.filter(|text| !text.trim().is_empty()) {
-                        env.insert((*key).to_string(), Value::String(text.to_string()));
+                        env.insert(key.to_string(), Value::String(text.to_string()));
                     }
                 }
                 // 附加 env 在保存时已校验为对象；手改数据库的坏值在此静默跳过
@@ -1085,12 +1118,11 @@ struct ClaudeModelEntry {
     id: String,
 }
 
-/// Anthropic 兼容请求共用的 HTTP 客户端：统一超时。
+/// Anthropic 兼容请求共用的 HTTP 客户端：复用 connections 的统一出口（显式系统代理、
+/// 环回直连、按代理缓存的连接池）。该客户端默认 8 秒超时，Claude 侧的模型拉取与
+/// 判活按请求覆盖为 FETCH_TIMEOUT_SECS，保持原超时语义。
 fn anthropic_client() -> AppResult<reqwest::Client> {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .build()
-        .map_err(|error| app_err!("构建 HTTP 客户端失败: {error}"))
+    super::connections::http_client().map(|(client, _proxy)| client)
 }
 
 /// 拉取 Anthropic 兼容端点的模型列表：base_url 无版本段 → `{base}/v1/models`；
@@ -1125,6 +1157,7 @@ pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<
     for url in candidate_urls {
         let response = client
             .get(&url)
+            .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
             .header("x-api-key", auth_token)
             .header("anthropic-version", "2023-06-01")
             .bearer_auth(auth_token)
@@ -1175,6 +1208,7 @@ pub async fn probe_claude_messages_reachable(trimmed: &str, auth_token: &str) ->
     let started_at = std::time::Instant::now();
     let response = anthropic_client()?
         .post(&url)
+        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
         .header("x-api-key", auth_token)
         .header("anthropic-version", "2023-06-01")
         .bearer_auth(auth_token)
@@ -2267,8 +2301,174 @@ API_KEY = "secret"
         )
         .unwrap();
         assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://b.example");
-        // 编辑语义 = 三个托管键整体替换：表单里清空 token 保存即从 live 撤下
+        // 编辑语义 = 托管键整体替换：表单里清空 token 保存即从 live 撤下
         assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+    }
+
+    /// 平凡快照（新建档案的 "{}"/纯托管键 env）不得整文件覆写用户现场：应用落 merge，
+    /// permissions/statusLine 与非托管 env 键原样保留；非 anthropic kind 的 token 落
+    /// AUTH_TOKEN，live 里另一形态的手写 API_KEY 一并撤下。
+    #[test]
+    fn trivial_snapshot_merges_env_and_preserves_user_settings() {
+        let (home, context) = test_context();
+        let settings = home.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings,
+            r#"{"permissions":{"deny":["WebFetch"]},"statusLine":{"command":"fixture"},
+                "env":{"ANTHROPIC_API_KEY":"stale","KEEP":"1"}}"#,
+        )
+        .unwrap();
+        let created = context
+            .claude_save(
+                None,
+                ClaudeProfileInput {
+                    name: "新建".into(),
+                    raw_settings: Some(
+                        r#"{"env":{"ANTHROPIC_BASE_URL":"https://relay.example","ANTHROPIC_AUTH_TOKEN":"tok"}}"#
+                            .into(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        context.claude_apply(&created.id).unwrap();
+
+        let doc = read_settings(&home);
+        assert_eq!(doc["permissions"]["deny"][0], "WebFetch");
+        assert_eq!(doc["statusLine"]["command"], "fixture");
+        assert_eq!(doc["env"]["KEEP"], "1");
+        assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://relay.example");
+        assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "tok");
+        assert!(doc["env"].get("ANTHROPIC_API_KEY").is_none());
+    }
+
+    /// claude-account 新建档案的 raw_settings 恒为 "{}"（平凡快照）：应用只清账号覆写键
+    /// 与 apiKeyHelper，permissions 等用户现场和其他 env 键保留。
+    #[test]
+    fn account_profile_apply_clears_overrides_and_keeps_user_settings() {
+        let (home, context) = test_context();
+        let settings = home.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings,
+            r#"{"permissions":{"allow":["Read"]},"apiKeyHelper":"fixture-helper",
+                "env":{"ANTHROPIC_AUTH_TOKEN":"stale","ANTHROPIC_API_KEY":"stale-key",
+                    "CLAUDE_CODE_OAUTH_TOKEN":"override","KEEP":"1"}}"#,
+        )
+        .unwrap();
+        let created = context
+            .claude_save(
+                None,
+                ClaudeProfileInput {
+                    name: "账号".into(),
+                    kind: Some("claude-account".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(created.raw_settings.as_deref(), Some("{}"));
+        context.claude_apply(&created.id).unwrap();
+
+        let doc = read_settings(&home);
+        assert_eq!(doc["permissions"]["allow"][0], "Read");
+        assert_eq!(doc["env"]["KEEP"], "1");
+        for key in [
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+        ] {
+            assert!(doc["env"].get(key).is_none(), "{key} 应被清");
+        }
+        assert!(doc.get("apiKeyHelper").is_none());
+    }
+
+    /// 非平凡快照（捕获/全文编辑过、带 env 之外的顶层键）维持整文件替换语义。
+    #[test]
+    fn nontrivial_snapshot_still_replaces_whole_file() {
+        let (home, context) = test_context();
+        let settings = home.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings,
+            r#"{"permissions":{"allow":["Read"]},"env":{"ANTHROPIC_AUTH_TOKEN":"stale","KEEP":"1"}}"#,
+        )
+        .unwrap();
+        let raw = r#"{"model":"opus","env":{"ANTHROPIC_BASE_URL":"https://relay.example","ANTHROPIC_AUTH_TOKEN":"tok"}}"#;
+        let created = context
+            .claude_save(
+                None,
+                ClaudeProfileInput {
+                    name: "捕获".into(),
+                    raw_settings: Some(raw.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        context.claude_apply(&created.id).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(home.path().join(".claude/settings.json")).unwrap(),
+            raw
+        );
+    }
+
+    /// 存量行（无 raw_settings）走 merge：token 按 kind 落键（对齐前端 patchEnvFields），
+    /// 另一形态的手写键撤下，不留两个 token 键并存。
+    #[test]
+    fn merge_path_token_key_follows_kind_and_retracts_other_form() {
+        let (home, context) = test_context();
+        let settings = home.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings,
+            r#"{"env":{"ANTHROPIC_AUTH_TOKEN":"old","ANTHROPIC_API_KEY":"stale"}}"#,
+        )
+        .unwrap();
+
+        let relay = context
+            .database
+            .insert_claude_profile(
+                &draft("中转", Some("https://relay.example"), Some("tok"), None),
+                "1",
+            )
+            .unwrap();
+        context.claude_apply(&relay.id).unwrap();
+        let doc = read_settings(&home);
+        assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "tok");
+        assert!(doc["env"].get("ANTHROPIC_API_KEY").is_none());
+
+        let official = context
+            .database
+            .insert_claude_profile(
+                &ClaudeProfileInput {
+                    kind: Some("anthropic".into()),
+                    ..draft("官方", Some("https://official.example"), Some("key"), None)
+                },
+                "2",
+            )
+            .unwrap();
+        context.claude_apply(&official.id).unwrap();
+        let doc = read_settings(&home);
+        assert_eq!(doc["env"]["ANTHROPIC_API_KEY"], "key");
+        assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+    }
+
+    /// 名称/描述接入与 Codex 侧相同的长度校验：>50 字节名字、>200 字符描述直接拒绝。
+    #[test]
+    fn save_rejects_overlong_name_and_description() {
+        let (_home, context) = test_context();
+        assert!(context
+            .claude_save(None, draft(&"名".repeat(51), None, None, None))
+            .is_err());
+        assert!(context
+            .claude_save(
+                None,
+                ClaudeProfileInput {
+                    description: Some("述".repeat(201)),
+                    ..draft("A", None, None, None)
+                }
+            )
+            .is_err());
     }
 
     #[test]
@@ -2368,7 +2568,11 @@ API_KEY = "secret"
             .into_iter()
             .map(|profile| profile.id)
             .collect();
-        assert_eq!(order, vec![b.id, a.id, copy.id]);
+        assert_eq!(order, vec![b.id, a.id.clone(), copy.id]);
+
+        // 撞名追加序号从 copy 2 起（与 Codex duplicate_profile 共用 unique_copy_name）
+        let copy2 = context.claude_duplicate(&a.id).unwrap();
+        assert_eq!(copy2.name, "A copy 2");
     }
 
     #[test]

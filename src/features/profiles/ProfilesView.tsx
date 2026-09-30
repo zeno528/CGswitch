@@ -1,4 +1,4 @@
-import { Camera, GripVertical, Layers2, Play, Plus, RefreshCw } from "lucide-react";
+import { Camera, Layers2, Play, Plus, RefreshCw } from "lucide-react";
 import { DndContext, DragOverlay, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
@@ -12,7 +12,7 @@ import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
 import type { AppState, ProfileBalanceInfo, ProfileDetail, ProfileSummary } from "../../types";
-import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent, profileConnectionGate } from "./ProfileCard";
+import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, profileConnectionGate } from "./ProfileCard";
 import ProfileEdit from "./ProfileEdit";
 
 interface ProfilesViewProps {
@@ -33,12 +33,8 @@ export function codexActionFor(running: boolean) {
 function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
   const { t } = useTranslation("profiles");
   const connection = profileConnectionGate(profile, t);
-  const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
   return (
-    <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
-      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
-        <GripVertical className="h-4 w-4" strokeWidth={2} />
-      </span>
+    <ProfileDragPreviewShell width={width} height={height} active={active}>
       <ProfileCardContent
         profile={profile}
         balanceInfos={balanceInfos}
@@ -47,7 +43,7 @@ function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos
         onOpenAdmin={onOpenAdmin}
       />
       <ProfileCardActions active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
-    </div>
+    </ProfileDragPreviewShell>
   );
 }
 

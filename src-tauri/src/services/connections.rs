@@ -300,7 +300,7 @@ pub(crate) struct MiniMaxModelRemains {
 /// 缓存条目：键 = 检测到的代理地址，值 = 按它构建的 Client。
 type CachedHttpclient = (Option<String>, reqwest::Client);
 
-fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
+pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient>>> =
         std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(None));
@@ -316,7 +316,10 @@ fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8));
     if let Some(url) = &proxy {
         let parsed = reqwest::Proxy::all(url)
-            .map_err(|error| app_err!("系统代理地址无效 {url}: {error}"))?;
+            .map_err(|error| app_err!("系统代理地址无效 {url}: {error}"))?
+            // 环回地址不出代理：本机回环服务（本地连通测试 fixture 等）必须直连，
+            // 交给系统代理转发不可靠（代理可能拒绝环回目标）也污染代理访问日志。
+            .no_proxy(reqwest::NoProxy::from_string("localhost,127.0.0.1,::1"));
         builder = builder.proxy(parsed);
     }
     let client = builder
@@ -753,6 +756,17 @@ async fn query_minimax_balance(
         },
     )
     .await
+}
+
+/// 余额/用量查询的厂商默认端点：配置里 base_url 缺失或留空时回退到这里。
+/// 两处调用方都已把 provider 限定在 deepseek/minimax（/ZAI）集合内，其余值不可达。
+fn provider_default_balance_base(provider: &str) -> &'static str {
+    match provider {
+        "deepseek" => "https://api.deepseek.com",
+        "minimax" => "https://api.minimaxi.com/v1",
+        "ZAI" => "https://open.bigmodel.cn/api/v1",
+        _ => unreachable!("调用方已限定 provider 集合"),
+    }
 }
 
 async fn query_supported_provider_balance(
@@ -1438,12 +1452,7 @@ impl AppContext {
             .base_url
             .as_deref()
             .filter(|value| !value.trim().is_empty());
-        let default_base = match provider {
-            "deepseek" => "https://api.deepseek.com",
-            "minimax" => "https://api.minimaxi.com/v1",
-            "ZAI" => "https://open.bigmodel.cn/api/v1",
-            _ => unreachable!(),
-        };
+        let default_base = provider_default_balance_base(provider);
         query_supported_provider_balance(provider, base.unwrap_or(default_base), &api_key).await
     }
 
@@ -1459,11 +1468,7 @@ impl AppContext {
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| app_err!("该供应商没有配置 API Key，无法查询余额/用量"))?;
         let base = claude_balance_base(kind, profile.base_url.as_deref());
-        let default_base = match kind {
-            "deepseek" => "https://api.deepseek.com",
-            "minimax" => "https://api.minimaxi.com/v1",
-            _ => unreachable!(),
-        };
+        let default_base = provider_default_balance_base(kind);
         query_supported_provider_balance(
             kind,
             if base.is_empty() { default_base } else { &base },

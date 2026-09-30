@@ -85,6 +85,18 @@ pub(super) fn normalize_auth_override(text: Option<&str>) -> Option<String> {
     (!is_empty_object).then(|| text.to_string())
 }
 
+/// 复制命名的共享规则（Codex 与 Claude 的 duplicate 共用）：base 加 ` copy` 后缀，
+/// 撞名（忽略 ASCII 大小写）追加序号，从 `copy 2` 起计；base 由调用方先截 45 字符。
+pub(super) fn unique_copy_name(base: &str, is_taken: impl Fn(&str) -> bool) -> String {
+    let mut candidate = format!("{base} copy");
+    let mut counter = 2;
+    while is_taken(&candidate) {
+        candidate = format!("{base} copy {counter}");
+        counter += 1;
+    }
+    candidate
+}
+
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

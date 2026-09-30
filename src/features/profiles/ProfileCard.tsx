@@ -1,5 +1,5 @@
-import { Check, Copy, Gauge, Globe, Wifi } from "lucide-react";
-import { useState } from "react";
+import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { api } from "../../api";
@@ -89,15 +89,24 @@ export function ProfileCardContent({
   );
 }
 
-/** 卡片测试连通按钮的门控与悬停文案：缺什么报什么，其余一律“测试连通性”。
+/** 卡片测试连通按钮的通用门控与悬停文案：缺什么报什么，其余一律 ready 文案。
  *  Codex 卡片、拖拽预览与 Claude 卡片共用同一判定，避免按钮行各写一套。 */
+export function connectionGate(hasBaseUrl: boolean, hasKey: boolean, titles: { ready: string; missingEndpoint: string; missingKey: string }) {
+  const disabled = !hasBaseUrl || !hasKey;
+  return {
+    disabled,
+    title: !disabled ? titles.ready : !hasBaseUrl ? titles.missingEndpoint : titles.missingKey,
+  };
+}
+
+/** Codex 侧壳：官方订阅（无第三方 provider）不做门控；第三方供应商映射到通用判定。 */
 export function profileConnectionGate(profile: ProfileSummary, t: TFunction<"profiles">) {
-  const disabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;
-  const title = !profile.provider || (profile.has_base_url && profile.has_key)
-    ? t("connection.test")
-    : !profile.has_base_url ? t("connection.missingApiEndpointWarning")
-      : t("connection.missingApiKeyWarning");
-  return { disabled, title };
+  if (!profile.provider) return { disabled: false, title: t("connection.test") };
+  return connectionGate(profile.has_base_url, profile.has_key, {
+    ready: t("connection.test"),
+    missingEndpoint: t("connection.missingApiEndpointWarning"),
+    missingKey: t("connection.missingApiKeyWarning"),
+  });
 }
 
 interface ProfileCardActionsProps {
@@ -122,6 +131,19 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, co
       <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:bg-(--profile-chip-bg) hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
       <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:bg-(--profile-chip-bg) enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || busy || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
       <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
+    </div>
+  );
+}
+
+/** 拖拽浮层共享外壳：源卡片几何 + 拖拽把手，内容行与操作行由调用方经 children 给。 */
+export function ProfileDragPreviewShell({ width, height, active, children }: { width: number | null; height: number | null; active: boolean; children: ReactNode }) {
+  const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
+  return (
+    <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
+      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
+        <GripVertical className="h-4 w-4" strokeWidth={2} />
+      </span>
+      {children}
     </div>
   );
 }

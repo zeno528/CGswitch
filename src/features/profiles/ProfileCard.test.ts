@@ -1,7 +1,10 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { TFunction } from "i18next";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
+import type { ProfileSummary } from "../../types";
+import { connectionGate, profileConnectionGate } from "./ProfileCard";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const hookSource = readFileSync(new URL("./useProfileBalance.ts", import.meta.url), "utf8");
@@ -91,16 +94,24 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain("group-focus-within:");
   });
 
-  it("仅在端点或 API Key 缺失时禁用连通测试", () => {
-    // 门控抽到 profileConnectionGate（与拖拽预览、Claude 卡片共用同一判定）
-    expect(source).toContain("const disabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;");
-    expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
+  it("仅在端点或 API Key 缺失时禁用连通测试，缺什么报什么", () => {
+    // 门控抽到共享 connectionGate（Codex 卡片、拖拽预览与 Claude 卡片共用同一判定）
+    const titles = { ready: "ready", missingEndpoint: "no-endpoint", missingKey: "no-key" };
+    expect(connectionGate(true, true, titles)).toEqual({ disabled: false, title: "ready" });
+    expect(connectionGate(false, true, titles)).toEqual({ disabled: true, title: "no-endpoint" });
+    expect(connectionGate(true, false, titles)).toEqual({ disabled: true, title: "no-key" });
+    expect(connectionGate(false, false, titles)).toEqual({ disabled: true, title: "no-endpoint" });
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
 
   it("订阅与普通供应商共用同一套连通性悬停文案", () => {
-    // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案
-    expect(source).toContain("const title = !profile.provider || (profile.has_base_url && profile.has_key)");
+    // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案；
+    // 无 provider 的官方订阅永不禁用，第三方供应商才走缺什么报什么
+    const t = ((key: string) => key) as unknown as TFunction<"profiles">;
+    expect(profileConnectionGate({ provider: null } as ProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: true } as ProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: false, has_key: true } as ProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiEndpointWarning" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: false } as ProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiKeyWarning" });
     expect(source).not.toContain("connection.testSubscription");
   });
 

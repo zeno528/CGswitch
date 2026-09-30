@@ -71,6 +71,11 @@ describe("MCP 操作入口", () => {
     expect(viewSource).toContain("if (toolsLoading[name])");
   });
 
+  it("禁用的服务器同步禁用测试连通按钮（后端 probe 对禁用条目直接报错）", () => {
+    expect(viewSource).toContain("disabled={probing || server.enabled === false}");
+    expect(viewSource).toContain("list.testConnectionDisabled");
+  });
+
   it("列表按类型分组（stdio → http → unknown）优先、组内按名称", () => {
     expect(viewSource).toContain("orderedServers.map((server) => (");
     const fixture = [

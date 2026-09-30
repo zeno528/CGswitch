@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
+import { DiagnosticsChip } from "../../components/DiagnosticsChip";
 import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 
@@ -106,11 +107,11 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
               </button>
             </div>
             <ConfigTextEditor ref={editorRef} value={jsonText} language="json" minLines={12} readOnly={!initialized} placeholder={t("claude.jsonPlaceholder")} onChange={setJsonText} onDiagnostics={setDiagnostics} />
-            {diagnostics.count > 0 ? <p className="mt-2 text-xs chip-danger">{diagnostics.count} JSON error{diagnostics.count === 1 ? "" : "s"}</p> : null}
           </div>
         </div>
       </div>
       <div className="apple-edit-toolbar apple-edit-toolbar--footer">
+        <DiagnosticsChip diagnostics={diagnostics} onFocusFirst={() => editorRef.current?.focusFirstDiagnostic()} />
         <button type="button" className="apple-action-button" onClick={onBack}>{t("claude.cancel")}</button>
         <button type="button" className="apple-action-button app-button--primary" disabled={saving || !initialized} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("claude.saving") : t("claude.save")}</button>
       </div>

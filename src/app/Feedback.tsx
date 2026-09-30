@@ -2,7 +2,7 @@ import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import * as Toast from "@radix-ui/react-toast";
 import i18next from "i18next";
 import { Check, Info, Trash2, TriangleAlert, X } from "lucide-react";
-import { createContext, useCallback, useContext, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 type ToastTone = "success" | "error" | "warning" | "info";
@@ -85,14 +85,16 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
 
   const [toastExpanded, setToastExpanded] = useState(false);
 
-  const value: FeedbackContextValue = {
+  // context value 必须引用稳定：toast 出现/消失只动 toasts state，不能反过来让
+  // 依赖 useFeedback() 的 effect（编辑页加载、更新检查等）跟着重跑。
+  const value = useMemo<FeedbackContextValue>(() => ({
     showToast,
     success: (message) => showToast("success", message),
     error: (message) => showToast("error", message),
     warning: (message) => showToast("warning", message),
     info: (message) => showToast("info", message),
     confirm,
-  };
+  }), [showToast, confirm]);
 
   return (
     <FeedbackContext.Provider value={value}>

@@ -1,7 +1,6 @@
-import { Camera, GripVertical, Layers2, LayoutTemplate, Plus } from "lucide-react";
+import { Camera, Layers2, LayoutTemplate, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { DndContext, DragOverlay, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
@@ -11,7 +10,7 @@ import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import SortableCard from "../../components/SortableCard";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
-import { ProfileCardActions, ProfileCardContent, getCachedProfileBalance, getCachedProfileBalanceError } from "../profiles/ProfileCard";
+import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, connectionGate, getCachedProfileBalance, getCachedProfileBalanceError } from "../profiles/ProfileCard";
 import { useProfileBalance } from "../profiles/useProfileBalance";
 import { claudeBalanceQueryKinds } from "../../presets";
 import ClaudeProfileEdit from "./ClaudeProfileEdit";
@@ -40,16 +39,10 @@ function ClaudeDragPreview({ profile, width, height, active, busy, balanceCache 
   const balance = getCachedProfileBalance(profile.id, balanceCache[profile.id] ?? null);
   const balanceError = getCachedProfileBalanceError(profile.id);
   return (
-    <div
-      className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover"}`}
-      style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}
-    >
-      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
-        <GripVertical className="h-4 w-4" strokeWidth={2} />
-      </span>
+    <ProfileDragPreviewShell width={width} height={height} active={active}>
       <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance ? [balance] : []} balanceError={balanceError} balanceRefreshing={false} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} />
       <ProfileCardActions active={active} busy={busy} testing={false} dragging connectionDisabled={!hasCredential} connectionTitle={tProfiles("connection.test")} />
-    </div>
+    </ProfileDragPreviewShell>
   );
 }
 
@@ -83,7 +76,11 @@ function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activati
     cachedBalance: balanceCache[profile.id],
     source: "claude",
   });
-  const connection = profileConnectionGate(profile, tClaude);
+  const connection = connectionGate(Boolean(profile.base_url), profile.has_token, {
+    ready: tClaude("testConnection"),
+    missingEndpoint: tClaude("checkProviderFields"),
+    missingKey: tClaude("checkProviderFields"),
+  });
   return (
     <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onEdit} />
@@ -305,10 +302,4 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
       {templateOpen ? <ClaudeCommonTemplateDialog onClose={() => setTemplateOpen(false)} /> : null}
     </section>
   );
-}
-
-// 卡片测试连通的门控：地址与 Token 都已设置才可测（has_token 由后端摘要提供）
-function profileConnectionGate(profile: ClaudeProfileSummary, t: TFunction<"claude">) {
-  const disabled = !profile.base_url || !profile.has_token;
-  return { disabled, title: disabled ? t("checkProviderFields") : t("testConnection") };
 }

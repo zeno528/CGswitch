@@ -17,7 +17,7 @@ pub(super) fn validated_name(name: &str) -> AppResult<String> {
     Ok(name.to_string())
 }
 
-fn validated_description(description: Option<&str>) -> AppResult<Option<String>> {
+pub(super) fn validated_description(description: Option<&str>) -> AppResult<Option<String>> {
     let description = description.map(str::trim).filter(|text| !text.is_empty());
     if description.is_some_and(|text| text.chars().count() > 200) {
         return Err(app_err!("供应商描述不能超过 200 个字符"));
@@ -442,15 +442,11 @@ impl AppContext {
             .position(|profile| profile.id == id)
             .ok_or_else(|| app_err!("供应商配置不存在"))?;
         let base: String = stored.name.trim().chars().take(45).collect();
-        let mut candidate = format!("{base} copy");
-        let mut counter = 2;
-        while profiles
-            .iter()
-            .any(|profile| profile.name.eq_ignore_ascii_case(&candidate))
-        {
-            candidate = format!("{base} copy {counter}");
-            counter += 1;
-        }
+        let candidate = super::unique_copy_name(&base, |name| {
+            profiles
+                .iter()
+                .any(|profile| profile.name.eq_ignore_ascii_case(name))
+        });
         let timestamp = now_ms().to_string();
         let summary = self
             .database

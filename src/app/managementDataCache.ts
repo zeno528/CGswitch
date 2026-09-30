@@ -197,6 +197,10 @@ export function setMcpServersCache(items: McpServerSpec[]): void {
   mcpServers.set(items);
 }
 
+export function setClaudeMcpServersCache(items: McpServerSpec[]): void {
+  claudeMcpServers.set(items);
+}
+
 export function loadClaudeMcpServers(force = false): Promise<McpServerSpec[]> {
   return claudeMcpServers.load(force);
 }
