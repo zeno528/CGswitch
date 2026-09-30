@@ -92,7 +92,8 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).not.toContain("installingHere");
     expect(providerSource).toContain("const [confirming, setConfirming] = useState(false);");
     expect(providerSource).toContain("onClick={() => setConfirming(true)}");
-    expect(providerSource).not.toContain("onMouseEnter");
+    // 弹窗只允许点击触发；onMouseEnter 仅用于侧栏折叠态的飞出气泡 arm，不得承担开弹窗
+    expect(providerSource).not.toContain("onMouseEnter={() => setConfirming");
     expect(providerSource).toContain('aria-haspopup="dialog"');
   });
 
@@ -111,9 +112,9 @@ describe("AppUpdateProvider", () => {
     expect(appShellSource).toContain("update-notice--sidebar");
     expect(profilesSource).not.toContain("<UpdateNotice />");
     expect(profilesSource).toContain("provider-page-brand");
-    expect(providerSource).not.toContain("apple-sidebar-label");
-    expect(providerSource).toContain('className="update-notice-trigger"');
-    expect(providerSource).toContain('h-7 w-7');
-    expect(providerSource).toContain('className="setting-title update-notice-label"');
+    expect(providerSource).toContain('className="apple-sidebar-nav-button update-notice-trigger"');
+    expect(providerSource).toContain('className="apple-sidebar-label"');
+    expect(providerSource).toContain("sidebarCollapsed && sidebarFlyoutArmed");
+    expect(providerSource).toContain("w-[var(--sidebar-icon-size)]");
   });
 });

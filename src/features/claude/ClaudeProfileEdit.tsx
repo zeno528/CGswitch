@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { AppSwitch } from "../../components/AppSwitch";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import EndpointField from "../../components/EndpointField";
 import PresetGrid from "../../components/PresetGrid";
 import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
-import { claudePresets, claudePresetByKind } from "../../presets";
+import { claudeBalanceQueryKinds, claudePresets, claudePresetByKind } from "../../presets";
 import ProfileIconEdit from "../profiles/ProfileIconEdit";
 import { buildSettingsText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras, type ClaudeModelDisplayKey, type ClaudeModelDisplayNames, type ClaudeModelMappingKey, type ClaudeModelMappings } from "./profileEnvText";
 import type { ClaudeProfileDetail, ClaudeProfileSummary } from "../../types";
@@ -63,6 +64,8 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   const [adminUrl, setAdminUrl] = useState(() => initialDetail?.admin_url ?? "");
   const [kind, setKind] = useState(() => initialDetail?.kind ?? null);
   const [presetKind, setPresetKind] = useState(create ? "custom" : "");
+  const [showBalance, setShowBalance] = useState(() => Boolean(initialDetail?.show_balance ?? profile?.show_balance));
+  const [savingBalance, setSavingBalance] = useState(false);
   const [saving, setSaving] = useState(false);
   // 图标编辑：复用 Codex 的铅笔角标 + ProfileIconEdit 选择页，立即落库（create 态只记本地）
   const [pickingIcon, setPickingIcon] = useState(false);
@@ -87,6 +90,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     [create, kind, presetKind],
   );
   const presetEndpoints = selectedPreset?.endpoints ?? null;
+  const supportsBalance = claudeBalanceQueryKinds.has(create ? presetKind : kind ?? "");
 
   const updateModelMapping = (key: ClaudeModelMappingKey, value: string) => {
     setModelMappings((current) => current[key] === value ? current : { ...current, [key]: value });
@@ -137,6 +141,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     setAdminUrl(preset.admin_url ?? "");
     // 自定义不记 kind：编辑态端点档随 URL 自由填写
     setKind(preset.kind === "custom" ? null : preset.kind);
+    setShowBalance(claudeBalanceQueryKinds.has(preset.kind));
     setSelectedIcon(preset.icon);
   };
 
@@ -232,6 +237,22 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     setEnvText((current) => patchGitAttribution(current, enabled));
   };
 
+  const toggleBalance = async (enabled: boolean) => {
+    if (savingBalance) return;
+    setShowBalance(enabled);
+    if (create || !profile) return;
+    setSavingBalance(true);
+    try {
+      await api.claudeSetProfileShowBalance(profile.id, enabled);
+      onChanged();
+    } catch (error) {
+      setShowBalance(!enabled);
+      feedback.error(String(error));
+    } finally {
+      setSavingBalance(false);
+    }
+  };
+
   const save = async () => {
     if (saving || !name.trim()) return;
     // 非法 JSON 不落库：托管键以外的内容不会被静默丢弃
@@ -255,6 +276,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
         extraEnv: extras,
         rawSettings: envText,
         icon: selectedIcon,
+        showBalance,
       });
       feedback.success(create ? tProfiles("edit.providerAdded") : tProfiles("edit.providerUpdated"));
       onChanged();
@@ -353,6 +375,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
               </div>
               <input className="app-input" placeholder={t("adminUrlPlaceholder")} value={adminUrl} onChange={(event) => setAdminUrl(event.target.value)} />
             </div>
+            {supportsBalance ? <div className="mt-4 flex min-h-[var(--input-min-height)] items-center justify-between gap-4"><div className="min-w-0"><div className="setting-title">{tProfiles("edit.balanceUsage")}</div><div className="setting-description mt-0.5">{tProfiles("edit.balanceAutoRefresh")}</div></div><AppSwitch checked={showBalance} disabled={saving || savingBalance} label={tProfiles("edit.balanceUsage")} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>
           <div className="apple-panel-section">
             <ProviderModelFields
@@ -394,8 +417,8 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                       <span className="whitespace-nowrap font-medium">{t("advanced.autoCompactLabel")}</span>
                     </label>
                     <span className="editor-ghost-group__separator" aria-hidden="true" />
-                    <label className={`editor-ghost ${autoCompactDisabled ? "opacity-40 pointer-events-none" : ""}`} title={t("advanced.compactWindowTitle")}>
-                      <span className="whitespace-nowrap">{t("advanced.compactWindowLabel")}</span>
+                    <label className={`editor-ghost ${autoCompactDisabled ? "opacity-40 pointer-events-none" : ""}`} title={t("advanced.compactThresholdTitle")}>
+                      <span className="whitespace-nowrap">{t("advanced.compactThresholdLabel")}</span>
                       <input className="app-input app-input--compact compact-token-input h-6 text-center" type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value)} />
                     </label>
                   </div>

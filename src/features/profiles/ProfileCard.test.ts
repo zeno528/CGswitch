@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
+const hookSource = readFileSync(new URL("./useProfileBalance.ts", import.meta.url), "utf8");
 const sortableCardSource = readFileSync(new URL("../../components/SortableCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
@@ -101,24 +102,26 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {
-    // 动效只由点击回调开关，静默路径（挂载/聚焦/轮询）不触发
-    expect(source).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
+    // 动效只由点击回调开关，静默路径（挂载/聚焦/轮询）不触发；刷新逻辑抽到 useProfileBalance
+    expect(hookSource).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
     expect(source).toContain("{balanceRefreshing ? <LoadingSpinner size=\"sm\" /> : <Gauge");
     expect(source).toContain("aria-busy={balanceRefreshing}");
-    expect(source).toContain("setBalanceRefreshing(true);");
-    expect(source).toContain("void fetchBalance(manual).finally(() => setBalanceRefreshing(false));");
+    expect(hookSource).toContain("setBalanceRefreshing(true);");
+    expect(hookSource).toContain("void fetchBalance(manual).finally(() => setBalanceRefreshing(false));");
     expect(authQuotaErrorKind("refresh_token 被服务端拒绝，该账号需要重新登录")).toBe("auth_expired"); // i18n-exempt: Backend error fixture.
     expect(authQuotaErrorKind("Network request timed out")).toBe("query_failed");
-    expect(source).toContain('feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));');
+    expect(hookSource).toContain('feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));');
     // 单飞去重把在途 promise 交回调用方：指示器跟随真正落地的查询，不留真空期
-    expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
+    expect(hookSource).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });
 
   it("静默额度刷新只在冷启动窗口内延后，其余场景零等待", () => {
     // 延迟的唯一理由是"别跟首屏抢资源"；窗口已经起来之后，切页和聚焦都不该再等。
-    // 两条路各自独立：冷启动走 900/1200，日常走 0（setTimeout 立即宏任务）
-    expect(source).toContain("window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);");
+    // 两条路各自独立：冷启动走 900/1200，日常走 0（setTimeout 立即宏任务）；逻辑在 useProfileBalance
+    expect(hookSource).toContain("window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);");
     expect(source).not.toContain("deferBalanceRef");
     expect(source).not.toContain("lastSeenEpoch");
+    expect(hookSource).not.toContain("deferBalanceRef");
+    expect(hookSource).not.toContain("lastSeenEpoch");
   });
 });

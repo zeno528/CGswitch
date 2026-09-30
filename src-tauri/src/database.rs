@@ -137,6 +137,9 @@ fn migrations() -> Migrations<'static> {
              ALTER TABLE mcp_servers ADD COLUMN claude_enabled INTEGER NOT NULL DEFAULT 1;
              ALTER TABLE mcp_servers DROP COLUMN global_enabled",
         ),
+        // Claude 供应商用量条开关。迁移只能追加在末尾：插队会推后后续迁移的序号，
+        // 让已应用过它们的存量库重放旧迁移（duplicate column 崩溃）。
+        M::up("ALTER TABLE claude_profiles ADD COLUMN show_balance INTEGER NOT NULL DEFAULT 0"),
     ])
 }
 
@@ -718,8 +721,8 @@ impl Database {
         connection
             .query_row(
                 &format!(
-                    "INSERT INTO claude_profiles(id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, created_at, updated_at, sort_order)
-                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13,
+                    "INSERT INTO claude_profiles(id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, show_balance, created_at, updated_at, sort_order)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14,
                             (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM claude_profiles))
                      RETURNING {CLAUDE_PROFILE_COLUMNS}"
                 ),
@@ -739,6 +742,7 @@ impl Database {
                     &input.extra_env,
                     &input.raw_settings,
                     &input.icon,
+                    input.show_balance,
                     timestamp
                 ],
                 claude_profile_from_row,
@@ -756,7 +760,7 @@ impl Database {
         connection
             .query_row(
                 &format!(
-                    "UPDATE claude_profiles SET name=?2, base_url=?3, auth_token=?4, model=?5, description=?6, fetched_models=?7, kind=?8, admin_url=?9, extra_env=?10, raw_settings=?11, icon=?12, updated_at=?13 WHERE id=?1
+                    "UPDATE claude_profiles SET name=?2, base_url=?3, auth_token=?4, model=?5, description=?6, fetched_models=?7, kind=?8, admin_url=?9, extra_env=?10, raw_settings=?11, icon=?12, show_balance=?13, updated_at=?14 WHERE id=?1
                      RETURNING {CLAUDE_PROFILE_COLUMNS}"
                 ),
                 params![
@@ -775,6 +779,7 @@ impl Database {
                     &input.extra_env,
                     &input.raw_settings,
                     &input.icon,
+                    input.show_balance,
                     timestamp
                 ],
                 claude_profile_from_row,
@@ -827,6 +832,25 @@ impl Database {
                 params![id, icon, timestamp],
             )
             .map_err(|error| app_err!("无法更新 Claude 供应商配置图标: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("Claude 供应商配置不存在"));
+        }
+        Ok(())
+    }
+
+    pub fn set_claude_profile_show_balance(
+        &self,
+        id: &str,
+        enabled: bool,
+        timestamp: &str,
+    ) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute(
+                "UPDATE claude_profiles SET show_balance=?2, updated_at=?3 WHERE id=?1",
+                params![id, enabled, timestamp],
+            )
+            .map_err(|error| app_err!("无法保存 Claude 用量开关: {error}"))?;
         if changed == 0 {
             return Err(app_err!("Claude 供应商配置不存在"));
         }
@@ -1174,6 +1198,7 @@ pub struct StoredClaudeProfile {
     pub raw_settings: Option<String>,
     /// 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。
     pub icon: Option<String>,
+    pub show_balance: bool,
     pub created_at: String,
     pub updated_at: String,
     /// 卡片排序（拖拽持久化；同序按 created_at）。
@@ -1181,7 +1206,7 @@ pub struct StoredClaudeProfile {
 }
 
 const CLAUDE_PROFILE_COLUMNS: &str =
-    "id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, created_at, updated_at, sort_order";
+    "id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, show_balance, created_at, updated_at, sort_order";
 
 fn claude_profile_from_row(row: &rusqlite::Row) -> rusqlite::Result<StoredClaudeProfile> {
     Ok(StoredClaudeProfile {
@@ -1197,9 +1222,10 @@ fn claude_profile_from_row(row: &rusqlite::Row) -> rusqlite::Result<StoredClaude
         extra_env: row.get(9)?,
         raw_settings: row.get(10)?,
         icon: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
-        sort_order: row.get(14)?,
+        show_balance: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+        sort_order: row.get(15)?,
     })
 }
 
@@ -1409,6 +1435,7 @@ mod tests {
             "icon",
             "sort_order",
             "raw_settings",
+            "show_balance",
         ] {
             assert!(
                 columns.iter().any(|name| name == column),
@@ -1432,6 +1459,51 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stale, 0);
+    }
+
+    /// 迁移只能追加在列表末尾：新迁移插队到已发布槽位之前，会推后后续迁移的序号，
+    /// 让已应用过它们的存量库（user_version 停留在插队前）按新序号重放旧迁移而崩溃。
+    /// 本测试钉住 MCP 拆分迁移边界：v16 库升级到最新只允许追加新列，不得重放旧迁移。
+    #[test]
+    fn migration_from_mcp_split_database_only_appends_new_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 16).unwrap();
+            let column_exists = |table: &str, column: &str| -> bool {
+                connection
+                    .query_row(
+                        &format!(
+                            "SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'"
+                        ),
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map(|count| count > 0)
+                    .unwrap()
+            };
+            // v16 = MCP 拆分迁移刚应用完：codex/claude 开关在、global_enabled 已移除
+            assert!(column_exists("mcp_servers", "codex_enabled"));
+            assert!(!column_exists("mcp_servers", "global_enabled"));
+            assert!(!column_exists("claude_profiles", "show_balance"));
+        }
+
+        let db = Database::open(&paths).unwrap();
+        let connection = db.lock().unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 17);
+        let show_balance: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(show_balance, 1);
     }
 
     #[test]

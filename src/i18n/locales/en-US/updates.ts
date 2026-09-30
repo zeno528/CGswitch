@@ -2,7 +2,7 @@
 export default {
   notice: {
     title: "New version available: v{{version}}",
-    available: "New version available",
+    available: "Update available",
     updateNow: "Restart to update",
     later: "Later",
     installing: "Downloading…",

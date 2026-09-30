@@ -463,7 +463,7 @@ export default function AppShell() {
                 </div>
               ))}
             </nav>
-            <UpdateNotice className="update-notice--sidebar" />
+            <UpdateNotice className="update-notice--sidebar" sidebarCollapsed={sidebar.sidebarCollapsed} sidebarFlyoutArmed={sidebar.sidebarFlyoutArmed} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)} />
           </aside>
 
           <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
@@ -486,7 +486,7 @@ export default function AppShell() {
               ) : view === "skills" ? (
                 <SkillsView activationEpoch={activationEpoch} />
               ) : view === "claude" ? (
-                <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} />
+                <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />
               ) : view === "accounts" ? (
                 <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (

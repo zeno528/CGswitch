@@ -409,6 +409,10 @@ pub struct ClaudeProfileSummary {
     pub model: Option<String>,
     pub description: Option<String>,
     pub icon: Option<String>,
+    pub admin_url: Option<String>,
+    pub kind: Option<String>,
+    /// Whether usage is shown and refreshed on the Claude provider card.
+    pub show_balance: bool,
     pub updated_at: String,
 }
 
@@ -431,6 +435,7 @@ pub struct ClaudeProfileDetail {
     pub raw_settings: Option<String>,
     /// 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。
     pub icon: Option<String>,
+    pub show_balance: bool,
     pub updated_at: String,
 }
 
@@ -448,4 +453,5 @@ pub struct ClaudeProfileInput {
     pub extra_env: Option<String>,
     pub raw_settings: Option<String>,
     pub icon: Option<String>,
+    pub show_balance: bool,
 }

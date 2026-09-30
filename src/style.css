@@ -876,20 +876,6 @@ body.drag-active * {
   position: relative;
 }
 
-.update-notice-trigger {
-  display: inline-flex;
-  min-width: var(--icon-button-size);
-  min-height: var(--toolbar-control-height);
-  align-items: center;
-  gap: 0.375rem;
-  border-radius: 999px;
-  padding-inline: 0.25rem;
-}
-
-.update-notice-label {
-  font-weight: 550;
-}
-
 .update-notice-trigger__icon {
   transition: transform var(--motion-fast) ease-out;
 }
@@ -927,29 +913,6 @@ body.drag-active * {
   margin-top: auto;
   border-top: 1px solid var(--panel-border);
   padding: 0.75rem 0.375rem;
-}
-
-.update-notice--sidebar .update-notice-trigger {
-  width: 100%;
-  justify-content: flex-start;
-  min-height: var(--sidebar-nav-height);
-  gap: 0.25rem;
-  padding-inline: var(--sidebar-nav-padding);
-}
-
-.update-notice--sidebar .update-notice-label {
-  white-space: nowrap;
-}
-
-.apple-sidebar--collapsed .update-notice--sidebar .update-notice-trigger {
-  justify-content: center;
-  gap: 0;
-}
-
-.apple-sidebar--collapsed .update-notice--sidebar .update-notice-label {
-  max-width: 0;
-  overflow: hidden;
-  opacity: 0;
 }
 
 /* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。

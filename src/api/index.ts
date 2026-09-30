@@ -94,6 +94,8 @@ export const api = {
     call<ProfileConnectionResult>("test_provider_connection", { baseUrl, apiKey }),
   getProfileBalance: (id: string) =>
     call<ProfileBalance>("get_profile_balance", { id }),
+  getClaudeProfileBalance: (id: string) =>
+    call<ProfileBalance>("get_claude_profile_balance", { id }),
   exportDatabase: () => call<string>("export_database"),
   exportDatabaseTo: (directory: string) => call<string>("export_database_to", { directory }),
   importDatabase: (path: string) => call<void>("import_database", { path }),
@@ -135,10 +137,11 @@ export const api = {
   claudeListProfiles: () => call<ClaudeProfileSummary[]>("claude_list_profiles"),
   claudeGetProfile: (id: string) => call<ClaudeProfileDetail>("claude_get_profile", { id }),
   claudeCaptureProfile: (name: string) => call<ClaudeProfileDetail>("claude_capture_profile", { name }),
-  claudeSaveProfile: (input: { id?: string; name: string; baseUrl?: string | null; authToken?: string | null; model?: string | null; description?: string | null; fetchedModels?: string[] | null; kind?: string | null; adminUrl?: string | null; extraEnv?: string | null; rawSettings?: string | null; icon?: string | null }) =>
+  claudeSaveProfile: (input: { id?: string; name: string; baseUrl?: string | null; authToken?: string | null; model?: string | null; description?: string | null; fetchedModels?: string[] | null; kind?: string | null; adminUrl?: string | null; extraEnv?: string | null; rawSettings?: string | null; icon?: string | null; showBalance: boolean }) =>
     call<ClaudeProfileDetail>("claude_save_profile", input),
   claudeFetchModels: (baseUrl: string, authToken: string) => call<string[]>("claude_fetch_models", { baseUrl, authToken }),
   claudeSetProfileIcon: (id: string, icon: string | null) => call<void>("claude_set_profile_icon", { id, icon }),
+  claudeSetProfileShowBalance: (id: string, enabled: boolean) => call<void>("claude_set_profile_show_balance", { id, enabled }),
   claudeReorderProfiles: (ids: string[]) => call<void>("claude_reorder_profiles", { ids }),
   claudeDuplicateProfile: (id: string) => call<ClaudeProfileDetail>("claude_duplicate_profile", { id }),
   claudeTestProfile: (id: string) => call<number>("claude_test_profile", { id }),

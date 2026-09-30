@@ -90,7 +90,17 @@ export function AppUpdateProvider({ enabled, ready = true, children }: { enabled
 }
 
 /** 状态栏更新图标：点击直接打开更新日志确认弹窗（先看日志，确认后才安装）。 */
-export function UpdateNotice({ className = "" }: { className?: string } = {}) {
+export function UpdateNotice({
+  className = "",
+  sidebarCollapsed = false,
+  sidebarFlyoutArmed = false,
+  onMouseEnter,
+}: {
+  className?: string;
+  sidebarCollapsed?: boolean;
+  sidebarFlyoutArmed?: boolean;
+  onMouseEnter?: () => void;
+} = {}) {
   const { update } = useAppUpdate();
   const { t } = useTranslation("updates");
   const [confirming, setConfirming] = useState(false);
@@ -99,19 +109,22 @@ export function UpdateNotice({ className = "" }: { className?: string } = {}) {
   }, [update]);
   if (!update) return null;
   return (
-    <div className={`update-notice ${className}`.trim()}>
+    <div className={`update-notice ${className}`.trim()} onMouseEnter={onMouseEnter}>
       <button
         type="button"
-        className="update-notice-trigger"
+        className="apple-sidebar-nav-button update-notice-trigger"
         aria-label={t("notice.title", { version: update.version })}
         aria-expanded={confirming}
         aria-haspopup="dialog"
         onClick={() => setConfirming(true)}
       >
-        <span className="update-notice-trigger__icon grid h-7 w-7 place-items-center rounded-full bg-success text-[var(--text-primary)]">
-          <Download className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+        <span className="relative flex shrink-0">
+          <span className="update-notice-trigger__icon grid h-[var(--sidebar-icon-size)] w-[var(--sidebar-icon-size)] shrink-0 place-items-center rounded-full bg-success text-[var(--text-primary)]">
+            <Download className="!h-3.5 !w-3.5" strokeWidth={2.5} aria-hidden="true" />
+          </span>
         </span>
-        <span className="setting-title update-notice-label">{t("notice.available")}</span>
+        <span className="apple-sidebar-label" aria-hidden={sidebarCollapsed}>{t("notice.available")}</span>
+        {sidebarCollapsed && sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("notice.available")}</span> : null}
       </button>
       <UpdateNotesDialog open={confirming} onOpenChange={setConfirming} />
     </div>

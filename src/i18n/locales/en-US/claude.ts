@@ -25,8 +25,8 @@ export default {
   advanced: {
     autoCompactLabel: "Auto-compact context",
     autoCompactTitle: "When off, sets DISABLE_AUTO_COMPACT=1 and stops automatic compaction; continuing may reach the context limit. Manual /compact remains available.",
-    compactWindowLabel: "Compact window",
-    compactWindowTitle: "Claude Code auto-compact window, from 100000 to 1000000 tokens; leave empty for the model default.",
+    compactThresholdLabel: "Compaction threshold",
+    compactThresholdTitle: "Token threshold for Claude Code auto-compaction, from 100000 to 1000000; leave empty for the model default.",
     compactWindowPlaceholder: "Default",
     attributionLabel: "Hide system prompt attribution block",
     attributionTitle: "Sets CLAUDE_CODE_ATTRIBUTION_HEADER=0 to omit the client version and prompt fingerprint attribution block from the system prompt; it does not change Git commit attribution.",
@@ -43,7 +43,6 @@ export default {
   endpointGlobal: "Global",
   empty: "No provider configs yet. Add a provider or save the current config as a snapshot.",
   captureDescription: "Save the current Claude Code provider config as a snapshot.",
-  noBaseUrl: "No API URL set",
   apply: "Apply",
   applyAria: "Apply {{name}}",
   edit: "Edit",

@@ -226,6 +226,7 @@ const webClaudeProfiles: ClaudeProfileDetail[] = [
       ANTHROPIC_MODEL: "glm-5.3[1m]",
     } }, null, 2),
     icon: "zhipu",
+    show_balance: false,
     sort_order: 0,
     updated_at: "1700000000000",
   },
@@ -949,6 +950,15 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         latency_ms: 210,
       } as T;
     }
+    case "get_claude_profile_balance": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      if (profile.kind !== "deepseek" && profile.kind !== "minimax") throw new Error("该 Claude 供应商不支持用量查询");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return profile.kind === "minimax"
+        ? { is_available: true, balance_infos: [{ currency: "", total_balance: "", usage_percent: 15, usage_reset: "2h23m", usage_label: "5小时", weekly_usage_percent: 4, weekly_reset: "5d21h", weekly_label: "7天" }], latency_ms: 210 } as T
+        : { is_available: true, balance_infos: [{ currency: "CNY", total_balance: "110.00", usage_percent: null, usage_reset: null, weekly_usage_percent: null, weekly_reset: null }], latency_ms: 210 } as T;
+    }
     case "export_database": {
       const name = databaseBackupName();
       webBackups.unshift({ name, size_bytes: 20480, created_at: Math.floor(Date.now() / 1000) });
@@ -1124,6 +1134,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         model: profile.model,
         description: profile.description,
         icon: profile.icon,
+        admin_url: profile.admin_url,
+        kind: profile.kind,
+        show_balance: profile.show_balance,
         updated_at: profile.updated_at,
       })) as T;
     case "claude_get_profile": {
@@ -1153,6 +1166,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           ANTHROPIC_MODEL: "example-model",
         } }, null, 2),
         icon: null,
+        show_balance: false,
         sort_order: webClaudeProfiles.length,
         updated_at: timestamp,
       };
@@ -1161,7 +1175,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "claude_save_profile": {
       const timestamp = String(Date.now());
-      const base = { name: String(args?.name ?? "").trim(), base_url: (args?.baseUrl as string | null) ?? null, auth_token: (args?.authToken as string | null) ?? null, model: (args?.model as string | null) ?? null, description: (args?.description as string | null) ?? null, fetched_models: (args?.fetchedModels as string[] | null) ?? [], kind: (args?.kind as string | null) ?? null, admin_url: (args?.adminUrl as string | null) ?? null, extra_env: (args?.extraEnv as string | null) ?? null, raw_settings: (args?.rawSettings as string | null) ?? null, icon: (args?.icon as string | null) ?? null };
+      const base = { name: String(args?.name ?? "").trim(), base_url: (args?.baseUrl as string | null) ?? null, auth_token: (args?.authToken as string | null) ?? null, model: (args?.model as string | null) ?? null, description: (args?.description as string | null) ?? null, fetched_models: (args?.fetchedModels as string[] | null) ?? [], kind: (args?.kind as string | null) ?? null, admin_url: (args?.adminUrl as string | null) ?? null, extra_env: (args?.extraEnv as string | null) ?? null, raw_settings: (args?.rawSettings as string | null) ?? null, icon: (args?.icon as string | null) ?? null, show_balance: Boolean(args?.showBalance) };
       if (!base.name) throw new Error("配置名称不能为空");
       if (base.raw_settings !== null) {
         const settings = JSON.parse(base.raw_settings) as Record<string, unknown>;
@@ -1189,6 +1203,13 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webClaudeProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("Claude 供应商配置不存在");
       profile.icon = (args?.icon as string | null) ?? null;
+      return undefined as T;
+    }
+    case "claude_set_profile_show_balance": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      profile.show_balance = Boolean(args?.enabled);
+      profile.updated_at = String(Date.now());
       return undefined as T;
     }
     case "claude_reorder_profiles": {

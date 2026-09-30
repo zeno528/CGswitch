@@ -230,7 +230,6 @@ describe("AppShell 布局", () => {
 
   it("让标题栏药丸共用统一高度", () => {
     expect(styles).toContain("--toolbar-control-height: calc(var(--control-height) + 2px);");
-    expect(styles).toContain(".update-notice-trigger {\n  display: inline-flex;\n  min-width: var(--icon-button-size);\n  min-height: var(--toolbar-control-height);");
     expect(styles).toContain(".codex-status-control {\n  display: inline-flex;\n  height: var(--toolbar-control-height);");
     expect(styles).toContain(".apple-action-button {\n  align-items: center;");
     expect(styles).toContain("height: var(--toolbar-control-height);");

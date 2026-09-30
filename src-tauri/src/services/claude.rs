@@ -39,6 +39,9 @@ fn summary(profile: &StoredClaudeProfile) -> ClaudeProfileSummary {
         model: profile.model.clone(),
         description: profile.description.clone(),
         icon: profile.icon.clone(),
+        admin_url: profile.admin_url.clone(),
+        kind: profile.kind.clone(),
+        show_balance: profile.show_balance,
         updated_at: profile.updated_at.clone(),
     }
 }
@@ -61,6 +64,7 @@ fn detail(profile: StoredClaudeProfile) -> ClaudeProfileDetail {
         extra_env: profile.extra_env,
         raw_settings: profile.raw_settings,
         icon: profile.icon,
+        show_balance: profile.show_balance,
         updated_at: profile.updated_at,
     }
 }
@@ -650,6 +654,11 @@ impl AppContext {
             .set_claude_profile_icon(id, icon.as_deref(), &now_ms().to_string())
     }
 
+    pub fn claude_set_show_balance(&self, id: &str, enabled: bool) -> AppResult<()> {
+        self.database
+            .set_claude_profile_show_balance(id, enabled, &now_ms().to_string())
+    }
+
     pub fn claude_reorder(&self, ids: &[String]) -> AppResult<()> {
         self.database
             .reorder_claude_profiles(ids, &now_ms().to_string())
@@ -706,6 +715,7 @@ impl AppContext {
                 extra_env: stored.extra_env.clone(),
                 raw_settings: stored.raw_settings.clone(),
                 icon: stored.icon.clone(),
+                show_balance: stored.show_balance,
             },
             &timestamp,
         )?;

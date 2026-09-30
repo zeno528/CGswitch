@@ -755,6 +755,45 @@ async fn query_minimax_balance(
     .await
 }
 
+async fn query_supported_provider_balance(
+    provider: &str,
+    base: &str,
+    api_key: &str,
+) -> AppResult<ProfileBalance> {
+    let (client, _proxy) = http_client()?;
+    let start = std::time::Instant::now();
+    match provider {
+        "deepseek" => query_deepseek_balance(&client, base, api_key, start).await,
+        "minimax" => query_minimax_balance(&client, base, api_key, start).await,
+        "ZAI" => query_zhipu_usage(&client, base, api_key, start).await,
+        _ => Err(app_err!("该供应商不支持余额/用量查询")),
+    }
+}
+
+fn claude_balance_base(kind: &str, base_url: Option<&str>) -> String {
+    let base = base_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .trim_end_matches('/');
+    if base.is_empty() {
+        return String::new();
+    }
+    let base = base.strip_suffix("/anthropic").unwrap_or(base);
+    match kind {
+        "deepseek" => base.to_string(),
+        "minimax" => {
+            let base = if base.ends_with("/v1") {
+                base.to_string()
+            } else {
+                format!("{base}/v1")
+            };
+            base.replacen("https://api.minimax.cn", "https://api.minimaxi.com", 1)
+        }
+        _ => String::new(),
+    }
+}
+
 fn zhipu_number(value: &serde_json::Value, key: &str) -> Option<f64> {
     value
         .get(key)
@@ -1395,42 +1434,42 @@ impl AppContext {
         let detail = parse_provider_detail(body)?;
         let api_key = stored_provider_api_key(payload)
             .ok_or_else(|| app_err!("该供应商没有配置 API Key，无法查询余额/用量"))?;
-        let (client, _proxy) = http_client()?;
-        let start = std::time::Instant::now();
         let base = detail
             .base_url
             .as_deref()
             .filter(|value| !value.trim().is_empty());
-        match provider {
-            "deepseek" => {
-                query_deepseek_balance(
-                    &client,
-                    base.unwrap_or("https://api.deepseek.com"),
-                    &api_key,
-                    start,
-                )
-                .await
-            }
-            "minimax" => {
-                query_minimax_balance(
-                    &client,
-                    base.unwrap_or("https://api.minimaxi.com/v1"),
-                    &api_key,
-                    start,
-                )
-                .await
-            }
-            "ZAI" => {
-                query_zhipu_usage(
-                    &client,
-                    base.unwrap_or("https://open.bigmodel.cn/api/v1"),
-                    &api_key,
-                    start,
-                )
-                .await
-            }
+        let default_base = match provider {
+            "deepseek" => "https://api.deepseek.com",
+            "minimax" => "https://api.minimaxi.com/v1",
+            "ZAI" => "https://open.bigmodel.cn/api/v1",
             _ => unreachable!(),
+        };
+        query_supported_provider_balance(provider, base.unwrap_or(default_base), &api_key).await
+    }
+
+    pub async fn get_claude_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
+        let profile = self.database.claude_profile(id)?;
+        let kind = profile.kind.as_deref().unwrap_or_default();
+        if kind != "deepseek" && kind != "minimax" {
+            return Err(app_err!("该 Claude 供应商不支持用量查询"));
         }
+        let api_key = profile
+            .auth_token
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| app_err!("该供应商没有配置 API Key，无法查询余额/用量"))?;
+        let base = claude_balance_base(kind, profile.base_url.as_deref());
+        let default_base = match kind {
+            "deepseek" => "https://api.deepseek.com",
+            "minimax" => "https://api.minimaxi.com/v1",
+            _ => unreachable!(),
+        };
+        query_supported_provider_balance(
+            kind,
+            if base.is_empty() { default_base } else { &base },
+            api_key,
+        )
+        .await
     }
 
     /// 供应商级余额缓存：上次成功查询结果写入 ~/.cgswitch/balance-cache.json，

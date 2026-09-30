@@ -25,8 +25,8 @@ export default {
   advanced: {
     autoCompactLabel: "自动压缩上下文",
     autoCompactTitle: "关闭后设置 DISABLE_AUTO_COMPACT=1，不再自动压缩，继续对话可能达到上下文上限；手动 /compact 仍可用。",
-    compactWindowLabel: "压缩窗口",
-    compactWindowTitle: "Claude Code 自动压缩窗口，范围 100000–1000000 token；留空使用模型默认值。",
+    compactThresholdLabel: "压缩阈值",
+    compactThresholdTitle: "Claude Code 自动压缩上下文的 Token 阈值，范围 100000–1000000；留空使用模型默认值。",
     compactWindowPlaceholder: "默认",
     attributionLabel: "隐藏系统提示归属块",
     attributionTitle: "设置 CLAUDE_CODE_ATTRIBUTION_HEADER=0，从系统提示开头省略客户端版本和提示指纹组成的归属块；不影响 Git 提交署名。",
@@ -43,7 +43,6 @@ export default {
   endpointGlobal: "全球",
   empty: "还没有供应商配置。可添加供应商，或保存当前配置快照。",
   captureDescription: "将当前 Claude Code 供应商配置保存为快照。",
-  noBaseUrl: "未设置 API 地址",
   apply: "应用",
   applyAria: "应用 {{name}}",
   edit: "编辑",

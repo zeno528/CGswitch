@@ -182,6 +182,7 @@ pub fn claude_save_profile(
     extra_env: Option<String>,
     raw_settings: Option<String>,
     icon: Option<String>,
+    show_balance: bool,
     state: State<'_, AppContext>,
 ) -> AppResult<ClaudeProfileDetail> {
     state.claude_save(
@@ -198,6 +199,7 @@ pub fn claude_save_profile(
             extra_env,
             raw_settings,
             icon,
+            show_balance,
         },
     )
 }
@@ -209,6 +211,15 @@ pub fn claude_set_profile_icon(
     state: State<'_, AppContext>,
 ) -> AppResult<()> {
     state.claude_set_icon(&id, icon)
+}
+
+#[tauri::command]
+pub fn claude_set_profile_show_balance(
+    id: String,
+    enabled: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_set_show_balance(&id, enabled)
 }
 
 #[tauri::command]
@@ -461,6 +472,14 @@ pub async fn get_profile_balance(
     oauth: State<'_, CodexOAuthState>,
 ) -> AppResult<ProfileBalance> {
     state.get_profile_balance(&id, &oauth.0).await
+}
+
+#[tauri::command]
+pub async fn get_claude_profile_balance(
+    id: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ProfileBalance> {
+    state.get_claude_profile_balance(&id).await
 }
 
 #[tauri::command]

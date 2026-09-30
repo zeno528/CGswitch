@@ -268,6 +268,9 @@ export interface ClaudeProfileSummary {
   model: string | null;
   description: string | null;
   icon: string | null;
+  admin_url: string | null;
+  kind: string | null;
+  show_balance: boolean;
   updated_at: string;
 }
 
@@ -288,6 +291,7 @@ export interface ClaudeProfileDetail {
   raw_settings: string | null;
   /** 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。 */
   icon: string | null;
+  show_balance: boolean;
   updated_at: string;
   /** 卡片排序（拖拽持久化）。 */
   sort_order: number;

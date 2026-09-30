@@ -36,6 +36,9 @@ export interface BuiltinPreset {
 /** 支持余额/用量查询的供应商（以 provider_id 键控）；加供应商时在这里加一行即可 */
 export const balanceQueryProviders = new Set(["deepseek", "minimax", "ZAI"]);
 
+/** Claude providers with the same supported usage endpoints. */
+export const claudeBalanceQueryKinds = new Set(["deepseek", "minimax"]);
+
 /** 文案使用“用量”的供应商；DeepSeek 保持“余额”，ChatGPT 额度单独处理。 */
 export const usageQueryProviders = new Set(["minimax", "ZAI"]);
 
