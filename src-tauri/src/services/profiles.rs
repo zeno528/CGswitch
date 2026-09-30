@@ -2,6 +2,7 @@ use super::profile_config::{
     is_builtin_placeholder, parse_provider_detail, profile_config_fragment,
     write_live_provider_update,
 };
+use super::sync;
 use super::{
     app_err, atomic_write, backup_file, builtin, codex_config, codex_process,
     normalize_auth_override, now_ms, parse_external_auth_json, profile_summary, read_optional_text,
@@ -60,11 +61,17 @@ fn profile_subject(summary: &ProfileSummary) -> String {
 
 impl AppContext {
     pub fn get_state(&self) -> AppResult<AppState> {
-        // 刷新/窗口激活等显式时机：外部改过 live 就把激活供应商快照同步回数据库（有差异才写）
+        // 被动回写统一走时机层（StateRefresh 覆盖启动预发/窗口激活/页内刷新）；
+        // 已解析的 live 文档直接复用，不在启动路径二次读盘；
+        // 操作锁被切换/应用占用时本轮跳过，下一轮激活自愈
         let live = self.live_document();
-        if let Some(document) = live.as_ref() {
-            let _ = self.sync_active_profile_document(document);
-        }
+        sync::registry().harvest_passive(
+            self,
+            &sync::SyncTrigger::StateRefresh,
+            sync::SyncMaterial {
+                codex_document: live.as_ref(),
+            },
+        );
         let settings = self.settings()?;
         let profiles = self.database.profiles()?;
         // 激活状态只来自手动应用（显式状态或应用事件），不做 live 配置推断，
@@ -194,9 +201,13 @@ impl AppContext {
         let timestamp = now_ms().to_string();
         let summary = self.database.insert_profile(&name, &payload, &timestamp)?;
         // 捕获只保存快照；保留当前激活供应商，并把它在 live 中的累计改动同步回快照。
-        if let Some(document) = self.live_document() {
-            self.sync_active_profile_document(&document)?;
-        }
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::AfterCapture {
+                client: sync::ClientId::Codex,
+            },
+            sync::SyncMaterial::default(),
+        )?;
         self.database.record_event(
             Some(&summary.id),
             "capture",
@@ -425,12 +436,16 @@ impl AppContext {
     /// 完整复制供应商（配置、关联文件、图标、账号绑定），新供应商名加 `copy` 后缀，同名时追加序号。
     pub fn duplicate_profile(&self, id: &str) -> AppResult<ProfileSummary> {
         // 使用中的供应商：先把 live 的 config/models.json 改动同步回快照，副本取到最新状态
+        // （门控在执行体内部：目标不是激活配置时直接跳过）
         let active = self.is_active_profile(id)?;
-        if active {
-            if let Some(document) = self.live_document() {
-                let _ = self.sync_active_profile_document(&document);
-            }
-        }
+        let _ = sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProfileClone {
+                client: sync::ClientId::Codex,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        );
         let mut stored = self.database.profile(id)?;
         stored.payload.raw_auth = normalize_auth_override(stored.payload.raw_auth.as_deref());
         // 使用中的第三方供应商：快照没单独保存 auth 时连当前 live auth.json 一起复制，
@@ -486,11 +501,14 @@ impl AppContext {
 
     pub fn get_profile(&self, id: &str) -> AppResult<ProfileDetail> {
         // 打开激活供应商的编辑页：先把外部改动同步回数据库快照
-        if self.is_active_profile(id)? {
-            if let Some(document) = self.live_document() {
-                let _ = self.sync_active_profile_document(&document);
-            }
-        }
+        let _ = sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProfileRead {
+                client: sync::ClientId::Codex,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        );
         let stored = self.database.profile(id)?;
         let payload = &stored.payload;
         let active = self.is_active_profile(id)?;

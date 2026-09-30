@@ -32,6 +32,7 @@ pub(crate) mod profile_config;
 mod profiles;
 mod settings;
 mod storage;
+pub(crate) mod sync;
 
 pub use claude::{fetch_claude_models, probe_claude_messages_reachable};
 pub use connections::{test_provider_connection, ProfileBalance, ProfileConnectionResult};

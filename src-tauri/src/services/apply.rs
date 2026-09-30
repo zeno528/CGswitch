@@ -1,4 +1,5 @@
 use super::profile_config::{is_builtin_placeholder, provider_api_key};
+use super::sync;
 use super::{
     app_err, atomic_write, backup_file, builtin, codex_config, normalize_auth_override, now_ms,
     parse_external_auth_json, read_optional_text, AppContext, AppResult, AuthSource, Path, PathBuf,
@@ -61,7 +62,16 @@ impl AppContext {
         let mut document = codex_config::parse_document(&original)?;
 
         // 切换前把当前 live 配置回写进正在生效的供应商，使供应商跟随使用中的累计更新
-        self.autosync_active_profile(id, &document)?;
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeLiveOverwrite {
+                client: sync::ClientId::Codex,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial {
+                codex_document: Some(&document),
+            },
+        )?;
 
         let profile = self.database.profile(id)?;
         let profile_kind = profile.kind;
@@ -407,21 +417,5 @@ impl AppContext {
             return Ok(false);
         }
         Ok(true)
-    }
-
-    pub(super) fn autosync_active_profile(
-        &self,
-        target_id: &str,
-        document: &toml_edit::DocumentMut,
-    ) -> AppResult<()> {
-        // 只回写手动应用过的供应商，不做 live 配置推断
-        let Some(active_id) = self.active_profile_state()? else {
-            return Ok(());
-        };
-        if active_id == target_id {
-            return Ok(());
-        }
-        self.sync_active_profile_document(document)?;
-        Ok(())
     }
 }

@@ -13,6 +13,7 @@ use serde_json::{Map, Value};
 
 use super::model_fetch::{ends_with_version_segment, redact, truncate_body, FETCH_TIMEOUT_SECS};
 use super::plugins::SkillTool;
+use super::sync;
 use super::AppContext;
 use crate::codex::config as codex_config;
 use crate::database::StoredClaudeProfile;
@@ -710,7 +711,7 @@ impl AppContext {
     /// 外部改过 ~/.claude/settings.json 时，把 live 全文与托管字段回写进激活快照
     /// （对齐 Codex 的 sync_active_profile_document）：无激活/读不了/解析失败/无差异
     /// 一律不写库，外部损坏绝不覆盖最后一次有效快照。
-    fn sync_active_claude_settings(&self) -> AppResult<bool> {
+    pub(super) fn sync_active_claude_settings(&self) -> AppResult<bool> {
         let Some(id) = self.database.active_claude_profile()? else {
             return Ok(false);
         };
@@ -759,9 +760,14 @@ impl AppContext {
 
     pub fn claude_get(&self, id: &str) -> AppResult<ClaudeProfileDetail> {
         // 打开激活供应商的编辑页：先把外部改动同步回数据库快照
-        if self.database.active_claude_profile()?.as_deref() == Some(id) {
-            let _ = self.sync_active_claude_settings();
-        }
+        let _ = sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProfileRead {
+                client: sync::ClientId::Claude,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        );
         let mut stored = self.database.claude_profile(id)?;
         if stored.raw_settings.is_none() {
             if let Ok(raw) = std::fs::read_to_string(self.claude_settings_path()) {
@@ -777,14 +783,23 @@ impl AppContext {
     pub fn claude_capture(&self, name: &str) -> AppResult<ClaudeProfileDetail> {
         let text = std::fs::read_to_string(self.claude_settings_path())
             .map_err(|error| app_err!("读取 Claude settings.json 失败: {error}"))?;
-        self.claude_save(
+        let detail = self.claude_save(
             None,
             ClaudeProfileInput {
                 name: name.to_string(),
                 raw_settings: Some(text),
                 ..Default::default()
             },
-        )
+        )?;
+        // 捕获后把外部改动收敛回激活快照（对齐 Codex capture 语义）
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::AfterCapture {
+                client: sync::ClientId::Claude,
+            },
+            sync::SyncMaterial::default(),
+        )?;
+        Ok(detail)
     }
 
     /// 新增或更新；更新的是激活中的配置时，立即重写 live settings.json（对齐 Codex 侧编辑即生效的语义）。
@@ -893,6 +908,15 @@ impl AppContext {
 
     /// 完整复制配置（列值、图标、附加 env），新名称加 `copy` 后缀、同名追加序号，插到源卡片后面（对齐 Codex duplicate_profile）。
     pub fn claude_duplicate(&self, id: &str) -> AppResult<ClaudeProfileDetail> {
+        // 使用中的供应商：先把 live 的外部改动同步回快照，副本取到最新状态（对齐 Codex duplicate）
+        let _ = sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProfileClone {
+                client: sync::ClientId::Claude,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        );
         let stored = self.database.claude_profile(id)?;
         let profiles = self.database.claude_profiles()?;
         let source_index = profiles
@@ -957,6 +981,15 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
+        // 覆盖 live 前先把旧激活快照同步到现场，外部改动不随切换丢失（对齐 Codex autosync；自切跳过）
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeLiveOverwrite {
+                client: sync::ClientId::Claude,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        )?;
         let stored = self.database.claude_profile(id)?;
         // 上一家激活配置的附加键一并撤下：托管键之外也不残留
         let stale_extra_keys = match self.database.active_claude_profile()? {
@@ -2270,6 +2303,55 @@ API_KEY = "secret"
             Some(stored.id.as_str())
         );
         assert_eq!(context.database.claude_profiles().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn apply_preserves_external_drift_into_previous_active_snapshot() {
+        let (_home, context) = test_context();
+        let a = context
+            .claude_save(
+                None,
+                draft("A", Some("https://a.example"), Some("tok-a"), None),
+            )
+            .unwrap();
+        let b = context
+            .claude_save(
+                None,
+                draft("B", Some("https://b.example"), Some("tok-b"), None),
+            )
+            .unwrap();
+        context.claude_apply(&a.id).unwrap();
+        // 外部改写 live（换中转与 token）：切换到 B 后这些改动必须保进 A 的快照（缺口 C1）
+        std::fs::write(
+            context.claude_settings_path(),
+            r#"{"env":{"ANTHROPIC_BASE_URL":"https://drift.example","ANTHROPIC_AUTH_TOKEN":"drift-tok"}}"#,
+        )
+        .unwrap();
+        context.claude_apply(&b.id).unwrap();
+        let stored = context.database.claude_profile(&a.id).unwrap();
+        assert_eq!(stored.base_url.as_deref(), Some("https://drift.example"));
+        assert_eq!(stored.auth_token.as_deref(), Some("drift-tok"));
+    }
+
+    #[test]
+    fn duplicate_takes_latest_live_snapshot_for_active_profile() {
+        let (_home, context) = test_context();
+        let a = context
+            .claude_save(
+                None,
+                draft("A", Some("https://a.example"), Some("tok-a"), None),
+            )
+            .unwrap();
+        context.claude_apply(&a.id).unwrap();
+        // 外部改写 live 后复制使用中的配置：副本必须取到最新状态（缺口 C3）
+        std::fs::write(
+            context.claude_settings_path(),
+            r#"{"env":{"ANTHROPIC_BASE_URL":"https://drift.example","ANTHROPIC_AUTH_TOKEN":"drift-tok"}}"#,
+        )
+        .unwrap();
+        let copy = context.claude_duplicate(&a.id).unwrap();
+        assert_eq!(copy.base_url.as_deref(), Some("https://drift.example"));
+        assert_eq!(copy.auth_token.as_deref(), Some("drift-tok"));
     }
 
     #[test]

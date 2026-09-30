@@ -6,6 +6,8 @@ use crate::auth::codex_oauth::{CodexOAuthManager, ExternalCodexAuth};
 
 impl AppContext {
     /// 在切换或刷新前吸收 Codex 运行中产生的同账号 OAuth auth.json。
+    /// B 类引擎自有钩子：异步路径、管理器由调用方持有，不走时机枚举，
+    /// 新客户端若有凭证类文件必须实现等价的新鲜度判定（见 services/sync 模块注释）。
     pub async fn sync_live_oauth_auth(&self, oauth: &CodexOAuthManager) -> AppResult<()> {
         let Some(text) = read_optional_text(&self.paths.codex_home.join("auth.json")) else {
             return Ok(());
