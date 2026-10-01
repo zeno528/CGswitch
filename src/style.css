@@ -1049,7 +1049,7 @@ body.drag-active * {
   overflow-y: auto;
   padding-left: var(--gap-main);
   padding-right: calc(var(--gap-main) - 8px);
-  padding-bottom: 1rem;
+  padding-bottom: var(--gap-section);
   padding-top: var(--gap-page);
   position: relative;
   scrollbar-gutter: stable;
@@ -1078,6 +1078,12 @@ body.drag-active * {
 .apple-edit-surface.apple-panel-section,
 .apple-edit-surface > .apple-panel-section:first-child {
   padding-top: 0;
+}
+
+/* 编辑正文末尾的留白由 apple-edit-content 统一承担，分区不再叠加下内边距。 */
+.apple-edit-surface.apple-panel-section,
+.apple-edit-surface > .apple-panel-section:last-child {
+  padding-bottom: 0;
 }
 
 /* 结构性防呆：首卡片间距只来自上方 padding-top（--gap-page），任何首子元素

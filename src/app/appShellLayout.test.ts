@@ -299,6 +299,14 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("padding-top: var(--gap-page);");
   });
 
+  it("编辑正文末尾只保留滚动容器的共享留白", () => {
+    const contentRule = styles.match(/\.apple-edit-content \{([^}]+)\}/)?.[1];
+    expect(styles).toContain("--gap-section: 1rem;");
+    expect(contentRule).toContain("padding-bottom: var(--gap-section);");
+    const lastSectionRule = styles.match(/\.apple-edit-surface\.apple-panel-section,\n\.apple-edit-surface > \.apple-panel-section:last-child \{([^}]+)\}/)?.[1];
+    expect(lastSectionRule).toContain("padding-bottom: 0;");
+  });
+
   it("让配置卡片与独立列表卡片复用全局描边", () => {
     expect(styles).toContain("--card-edge-shadow: 0 0 0 0.5px var(--panel-border);");
     expect(styles).toContain(".panel,\n.apple-group,\n.apple-list-row,\n.apple-editor-surface {\n  box-shadow: var(--card-edge-shadow);");
