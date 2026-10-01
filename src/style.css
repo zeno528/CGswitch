@@ -83,6 +83,8 @@
   --input-min-height: calc(1.6em + 1rem + 2px);
   /* 弹窗沿用原限高；编辑页由共享编辑器按正文可用高度覆盖。 */
   --editor-max-height: min(34rem, 60vh);
+  /* Skill 内容预览与通用模板编辑器共用随窗口变化的高度预算。 */
+  --dialog-preview-height: 60vh;
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
@@ -1847,14 +1849,15 @@ button:focus-visible {
   width: min(460px, calc(100vw - 2rem));
 }
 
-/* 内容预览弹窗（Skill 的 SKILL.md 等 Markdown 正文）：比标准弹窗宽一档，长行代码少折行 */
+/* Skill 内容预览：以窗口宽度的 61.8% 为参考，在 600～680px 间自适应，小窗口保留边距。 */
 .app-dialog-content--wide {
-  width: min(600px, calc(100vw - 2rem));
+  width: min(clamp(600px, 61.8vw, 680px), calc(100vw - 2rem));
 }
 
-/* Claude 通用模板编辑：为完整 JSON 内容留出横向空间。 */
+/* Claude 通用模板编辑：宽度在 720～900px 间随窗口变化，小窗口仍保留两侧边距。 */
 .claude-template-dialog {
-  width: min(720px, calc(100vw - 2rem));
+  width: min(clamp(720px, 70vw, 900px), calc(100vw - 2rem));
+  --editor-max-height: var(--dialog-preview-height);
 }
 
 .app-dialog-content--confirm .app-dialog-description {
@@ -2905,21 +2908,38 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .cm-editor .cm-line,
 .cm-editor .cm-gutterElement {
   font-family: var(--font-mono) !important;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.6;
 }
 
-/* 横向滚动走原生滚动条（全局 webkit 细滚动条样式自动生效）；行号栏是 sticky 层，
+/* 横向滚动走原生滚动条；行号栏是 sticky 层，
    代码从其下穿过，不透明背景见下方 gutter 规则。 */
 .cm-editor .cm-scroller { overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; }
 
-/* 编辑器滚动条只在编辑器悬停或获得焦点时显现，保留滚动能力和原有占位。 */
-.apple-editor-shell:not(:hover):not(:focus-within) .cm-scroller {
-  scrollbar-color: transparent transparent;
+/* 配置编辑器共用较宽的小圆角滚动条；auto 让 webkit 尺寸生效，颜色沿用全局主题。 */
+.apple-editor-shell .cm-scroller {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
 }
 
-.apple-editor-shell:not(:hover):not(:focus-within) .cm-scroller::-webkit-scrollbar-thumb {
+.apple-editor-shell .cm-scroller::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.apple-editor-shell .cm-scroller::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+}
+
+.apple-editor-shell .cm-scroller::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 编辑器滚动条随鼠标移入/移出显隐，不受拖动后的焦点影响，保留滚动能力和原有占位。 */
+.apple-editor-shell:not(:hover) .cm-scroller::-webkit-scrollbar-thumb {
   background: transparent;
 }
 
