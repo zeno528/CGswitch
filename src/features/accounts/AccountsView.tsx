@@ -1,5 +1,5 @@
 import { CircleAlert, CreditCard, LogIn, Plus, RefreshCw, ShieldCheck } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { authQuotaCacheKey, authQuotaErrorKind, clearAuthQuotaError, getAuthQuotaBalance, getAuthQuotaError, getVisibleAuthQuota, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
@@ -43,6 +43,16 @@ function localTimeZone(language: string) {
 
 const quotaProgressAnimationDuration = 1000;
 
+export function animateQuotaProgress(fill: HTMLSpanElement, startScale: number, endScale: number) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // 显式关键帧不依赖重挂载元素的 CSS 起始样式，增长和缩短走同一条动画路径。
+  const animation = fill.animate([
+    { transform: `scaleX(${startScale})` },
+    { transform: `scaleX(${endScale})` },
+  ], { duration: quotaProgressAnimationDuration, easing: "cubic-bezier(0.645, 0.045, 0.355, 1)" });
+  return () => animation.cancel();
+}
+
 function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loading, animationRevision, animationFromRemaining }: { label: string; usedPercent: number; resetAt?: number | null; resetIn?: string | null; onRefresh?: () => void; loading?: boolean; animationRevision: number; animationFromRemaining?: number }) {
   const { t, i18n } = useTranslation("settings");
   // 窗口标签的文案在 profiles 命名空间，另取一个对应的 t
@@ -59,21 +69,11 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   const reset = resetAt == null ? null : <>{t("account.resetTime", { time: formatShortLocalTime(resetAt, i18n.language) })}{resetIn ? t("account.resetCountdown", { time: resetIn }) : null}</>;
   const fillRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const fill = fillRef.current;
     if (!fill || animationRevision === 0) return;
-    // key={animationRevision} 让元素带 scaleX(animationStartScale) 重挂载；先禁过渡固定起点，
-    // 再以 CSS transition 过渡到目标值（ECharts 同款 cubic-in-out 缓动）。
-    fill.style.transition = "none";
-    fill.style.transform = `scaleX(${animationStartScale})`;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      fill.style.transform = `scaleX(${animationEndScale})`;
-      return;
-    }
-    void fill.getBoundingClientRect();
-    fill.style.transition = `transform ${quotaProgressAnimationDuration}ms cubic-bezier(0.645, 0.045, 0.355, 1)`;
-    fill.style.transform = `scaleX(${animationEndScale})`;
-  }, [animationRevision]);
+    return animateQuotaProgress(fill, animationStartScale, animationEndScale);
+  }, [animationRevision, animationStartScale, animationEndScale]);
 
   return <div className="min-w-0 space-y-2 text-xs">
     <div className="min-w-0">
@@ -87,7 +87,7 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
       {reset ? <div className="meta-xs mt-0.5 muted">{reset}</div> : null}
     </div>
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/6 dark:bg-white/8" role="progressbar" aria-label={t("account.remainingAria", { title })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
-      <span ref={fillRef} key={animationRevision} className={`origin-left block h-full rounded-full ${fillClass}`} style={{ width: `${animationRevision ? animationMax : remaining}%`, transform: animationRevision ? `scaleX(${animationStartScale})` : undefined }} />
+      <span ref={fillRef} key={animationRevision} className={`origin-left block h-full rounded-full ${fillClass}`} style={{ width: `${animationRevision ? animationMax : remaining}%`, transform: animationRevision ? `scaleX(${animationEndScale})` : undefined }} />
     </div>
   </div>;
 }

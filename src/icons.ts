@@ -24,6 +24,8 @@ const LABELS: Record<string, string> = {
   get "xiaomi-mimo"() { return i18next.t("preset.mimo"); },
   get hunyuan() { return i18next.t("providerName.hunyuan"); },
   get volcengine() { return i18next.t("providerName.volcengine"); },
+  tencentcloud: "Tencent Cloud",
+  "siliconcloud-siliconflow": "SiliconFlow",
   anthropic: "Anthropic",
   claude: "Claude",
 };

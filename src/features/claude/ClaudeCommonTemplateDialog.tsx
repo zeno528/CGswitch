@@ -5,7 +5,7 @@ import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { AppDialog } from "../../components/AppDialog";
 import ConfigTextEditor from "../../components/ConfigTextEditor";
-import { extractClaudeCommonSettings } from "./profileEnvText";
+import { extractClaudeCommonSettings, formatJsonText } from "./profileEnvText";
 
 /** 列表管理与编辑页提取共用；只在打开时读取模板。 */
 export default function ClaudeCommonTemplateDialog({ sourceText, onClose }: {
@@ -65,21 +65,16 @@ export default function ClaudeCommonTemplateDialog({ sourceText, onClose }: {
     }
   };
 
-  // 与编辑页 settings.json 同一套排版：JSON.parse + stringify 本地格式化
+  // 排版逻辑与编辑页 settings.json 共用 formatJsonText，只有提示标签是本弹窗自己的
   const format = () => {
-    if (!text.trim()) {
-      feedback.warning(tProfiles("edit.formatEmpty"));
-      return;
-    }
-    try {
-      const formatted = JSON.stringify(JSON.parse(text), null, 2);
-      if (formatted === text) feedback.info(tProfiles("edit.formatNoChange", { label: t("commonTemplate.title") }));
-      else {
-        setText(formatted);
-        feedback.success(tProfiles("edit.formatSuccess", { label: t("commonTemplate.title") }));
-      }
-    } catch (error) {
-      feedback.error(tProfiles("edit.formatFailed", { error: String(error) }));
+    const label = t("commonTemplate.title");
+    const outcome = formatJsonText(text);
+    if (outcome.status === "empty") feedback.warning(tProfiles("edit.formatEmpty"));
+    else if (outcome.status === "failed") feedback.error(tProfiles("edit.formatFailed", { error: outcome.error }));
+    else if (outcome.status === "unchanged") feedback.info(tProfiles("edit.formatNoChange", { label }));
+    else {
+      setText(outcome.text);
+      feedback.success(tProfiles("edit.formatSuccess", { label }));
     }
   };
 

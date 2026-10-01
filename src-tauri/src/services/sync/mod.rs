@@ -15,6 +15,18 @@ pub enum ClientId {
     Claude,
 }
 
+impl ClientId {
+    /// 日志里用的产品名。`{:?}` 打出来的是内部枚举名 `Claude`，
+    /// 对着日志排查的人不直观——统一用产品名 `Claude Code` / `Codex`。
+    /// 返回值带空格，落日志时按仓库规范用 `{:?}` 编码。
+    pub(super) fn label(&self) -> &'static str {
+        match self {
+            Self::Codex => "Codex",
+            Self::Claude => "Claude Code",
+        }
+    }
+}
+
 /// 回写时机。被动时机（StateRefresh）遍历全部注册执行体；其余时机只作用于 `client` 指定的执行体。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SyncTrigger {
@@ -57,30 +69,146 @@ pub struct SyncMaterial<'a> {
     pub codex_document: Option<&'a toml_edit::DocumentMut>,
 }
 
+/// 回写结局的种类：把"没写库"拆成具体守卫，排查时不必再靠排除法反推是哪一道拦的。
+/// 各情形的语义与返回规约只在 `ClientSync` 的守卫契约表里讲一遍，不在此重复。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncKind {
+    Wrote,
+    NoActiveProfile,
+    TargetMismatch,
+    Unchanged,
+    LiveAbsent,
+    LiveUnreadable,
+    LiveParseError,
+    WriteFailed,
+}
+
+impl SyncKind {
+    /// logfmt 的 reason 取值，机器定位靠它、不靠 msg 文案。
+    fn reason(&self) -> &'static str {
+        match self {
+            Self::Wrote => "wrote",
+            Self::NoActiveProfile => "no_active",
+            Self::TargetMismatch => "target_mismatch",
+            Self::Unchanged => "unchanged",
+            Self::LiveAbsent => "live_absent",
+            Self::LiveUnreadable => "live_unreadable",
+            Self::LiveParseError => "live_parse_error",
+            Self::WriteFailed => "write_failed",
+        }
+    }
+
+    /// 失败结局的 failure_kind；None 表示常态跳过（日志走 Debug 而非 Warn）。
+    /// "哪些算失败、日志里叫什么"只在这一处枚举，新增失败变体时同步补这里。
+    fn failure_kind(&self) -> Option<&'static str> {
+        match self {
+            Self::LiveUnreadable => Some("io_error"),
+            Self::LiveParseError => Some("parse_error"),
+            Self::WriteFailed => Some("internal"),
+            _ => None,
+        }
+    }
+
+    /// 人看的短结论：机器读 reason，msg 不重复承载事实。
+    fn message(&self) -> &'static str {
+        match self {
+            Self::Wrote => "已回写",
+            Self::NoActiveProfile => "无激活配置",
+            Self::TargetMismatch => "目标非激活配置",
+            Self::Unchanged => "无变化",
+            Self::LiveAbsent => "live 不存在",
+            Self::LiveUnreadable => "live 读不了",
+            Self::LiveParseError => "live 解析失败，未回写",
+            Self::WriteFailed => "写库失败",
+        }
+    }
+}
+
+/// 一次回写的结局：种类 + 涉及的配置名。
+/// 配置名取自本轮已经读出来的那一行 profile（构造 input 时已 clone 过），不额外查库，
+/// 因此加进日志不影响冷启动预算。无激活/与本轮无关时没有配置可指，`profile` 为 None。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncOutcome {
+    pub kind: SyncKind,
+    pub profile: Option<String>,
+}
+
+impl SyncOutcome {
+    /// 本轮没落到具体配置：无激活 / 目标非激活 / live 都不存在。
+    pub(super) fn bare(kind: SyncKind) -> Self {
+        Self {
+            kind,
+            profile: None,
+        }
+    }
+
+    /// 本轮确实对着某个配置做的判断，名字一并带出去供日志定位。
+    pub(super) fn of(kind: SyncKind, profile: &str) -> Self {
+        Self {
+            kind,
+            profile: Some(profile.to_string()),
+        }
+    }
+}
+
 /// 每客户端执行体。新客户端只需实现这一个 trait。
+///
+/// ## 新客户端必须遵守的四道守卫
+///
+/// 回写的安全底线是：**外部损坏的内容绝不能覆盖库内最后一次有效快照**。
+/// 实现 `sync` 时必须逐条落到具体 `SyncKind`，不许沉默地返回"没写"：
+///
+/// | 情形 | 返回 |
+/// |---|---|
+/// | 没有激活配置（此时**不要读 live**，冷启动预算） | `bare(NoActiveProfile)` |
+/// | 时机目标不是激活配置（切到自身 / 读的非激活项） | `bare(TargetMismatch)` |
+/// | live 文件不存在（首次运行等正常态） | `of(LiveAbsent, name)` |
+/// | live 存在但读不了（权限、被占用） | `of(LiveUnreadable, name)` |
+/// | live 解析失败（被外部改坏） | `of(LiveParseError, name)` |
+/// | live 与库内一致 | `of(Unchanged, name)` |
+/// | 内容确实不同且已写库 | `of(Wrote, name)` |
+/// | 写库失败（Codex 侧已由 `record_event` 落事件，这里只补可观测性） | `of(WriteFailed, name)` |
+///
+/// 前三种 `bare` 之外都必须带出配置名，否则日志里只剩"没回写"，看不出是谁。
+///
+/// `LiveAbsent` 与 `LiveUnreadable` 必须分开：前者是正常态（不该报警），
+/// 后者是故障（该报 Warn）。`read_to_string(...).ok()` 这类写法会把两者
+/// 混成一坨，正是当初回写被静默吞掉的原因。
+///
+/// 判定"一致"的条件由各客户端自己定（Codex 比整个 payload 结构相等，
+/// Claude 比 base_url/token/model + 全文），不要求统一；**但读取激活行一律用
+/// 主键点查，不要全表拉取再 find**。
+///
+/// 新增客户端后请照 `claude.rs` 的 `corrupted_live_settings_report_parse_error_and_keep_last_valid_snapshot`
+/// 补一个同形状的回归测试：破坏 live → 断言 `LiveParseError` → 断言快照没被覆盖。
 pub trait ClientSync: Send + Sync {
     fn id(&self) -> ClientId;
 
     /// 显式声明响应哪些时机。不响应必须写出来，不允许沉默。
     fn supports(&self, trigger: &SyncTrigger) -> bool;
 
-    /// 执行回写，返回是否真的写了库。实现方必须自行完成四道基础守卫
-    /// （无激活 / live 读不了 / 解析失败绝不覆盖最后有效快照 / 无差异不写）。
+    /// 执行回写。守卫语义见上方契约表：四种跳过必须可辨，失败必须能被日志定位。
     fn sync(
         &self,
         ctx: &AppContext,
         trigger: &SyncTrigger,
         material: SyncMaterial<'_>,
-    ) -> AppResult<bool>;
+    ) -> AppResult<SyncOutcome>;
 }
 
 /// 宽松读路径：调用方已解析的文档优先，否则自行读取 live。
-fn sync_loose(ctx: &AppContext, document: Option<&toml_edit::DocumentMut>) -> AppResult<bool> {
+/// 严格读（`live_document_checked`）而非 `.ok()` 吞错误：解析失败要能落到
+/// `LiveParseError` 走 Warn，否则 Codex 侧会重演 Claude 这次的"静默不回写"。
+fn sync_loose(
+    ctx: &AppContext,
+    document: Option<&toml_edit::DocumentMut>,
+) -> AppResult<SyncOutcome> {
     match document {
         Some(document) => ctx.sync_active_profile_document(document),
-        None => match ctx.live_document() {
-            Some(document) => ctx.sync_active_profile_document(&document),
-            None => Ok(false),
+        None => match ctx.live_document_checked() {
+            Ok(Some(document)) => ctx.sync_active_profile_document(&document),
+            Ok(None) => Ok(SyncOutcome::bare(SyncKind::LiveAbsent)),
+            Err(_) => Ok(SyncOutcome::bare(SyncKind::LiveParseError)),
         },
     }
 }
@@ -102,16 +230,16 @@ impl ClientSync for CodexSyncBody {
         ctx: &AppContext,
         trigger: &SyncTrigger,
         material: SyncMaterial<'_>,
-    ) -> AppResult<bool> {
+    ) -> AppResult<SyncOutcome> {
         match trigger {
             // 覆盖 live 前（原 autosync_active_profile）：无激活 / 自切不做无意义写；
             // 错误向上传播——切换失败优先于覆盖 live。
             SyncTrigger::BeforeLiveOverwrite { target_id, .. } => {
                 let Some(active_id) = ctx.active_profile_state()? else {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::NoActiveProfile));
                 };
                 if active_id == *target_id {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::TargetMismatch));
                 }
                 sync_loose(ctx, material.codex_document)
             }
@@ -119,26 +247,28 @@ impl ClientSync for CodexSyncBody {
             SyncTrigger::BeforeProfileRead { target_id, .. }
             | SyncTrigger::BeforeProfileClone { target_id, .. } => {
                 if ctx.active_profile_state()?.as_deref() != Some(target_id.as_str()) {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::TargetMismatch));
                 }
                 sync_loose(ctx, material.codex_document)
             }
-            // 拉起进程前：严格读 live，读不了/解析失败只记日志不拦——Codex 自己会报错；
-            // 刻意不带 error 正文：解析报错会内嵌出错那一行的原文，可能是密钥。
+            // 拉起进程前：严格读 live，读不了/解析失败只记日志不拦——Codex 自己会报错。
+            // 这条 Warn 说的是"Codex 起不来"这个产品影响，与 harvest 的回写结局是
+            // 两件事，故不合并；且刻意不带 error 正文：toml_edit 的解析报错会内嵌
+            // 出错那一行的原文，可能是密钥。
             SyncTrigger::BeforeProcessStart { .. } => match ctx.live_document_checked() {
                 Ok(Some(document)) => ctx.sync_active_profile_document(&document),
-                Ok(None) => Ok(false),
+                Ok(None) => Ok(SyncOutcome::bare(SyncKind::LiveAbsent)),
                 Err(_) => {
                     tauri_plugin_log::log::warn!(
                             "[app.config.parse] outcome=failure failure_kind=parse_error msg=\"config.toml 无法读取或解析，Codex 可能无法启动\""
                         );
-                    Ok(false)
+                    Ok(SyncOutcome::bare(SyncKind::LiveParseError))
                 }
             },
             // 被动刷新与捕获后：无激活直接跳过且不读 live 文件（冷启动预算）
             SyncTrigger::StateRefresh | SyncTrigger::AfterCapture { .. } => {
                 if ctx.active_profile_state()?.is_none() {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::NoActiveProfile));
                 }
                 sync_loose(ctx, material.codex_document)
             }
@@ -166,15 +296,15 @@ impl ClientSync for ClaudeSyncBody {
         ctx: &AppContext,
         trigger: &SyncTrigger,
         _material: SyncMaterial<'_>,
-    ) -> AppResult<bool> {
+    ) -> AppResult<SyncOutcome> {
         match trigger {
             // 覆盖 live 前：无激活 / 自切跳过，其余先把旧激活快照同步到现场（缺口 C1）
             SyncTrigger::BeforeLiveOverwrite { target_id, .. } => {
                 let Some(active) = ctx.database.active_claude_profile()? else {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::NoActiveProfile));
                 };
                 if active == *target_id {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::TargetMismatch));
                 }
                 ctx.sync_active_claude_settings()
             }
@@ -182,19 +312,21 @@ impl ClientSync for ClaudeSyncBody {
             SyncTrigger::BeforeProfileRead { target_id, .. }
             | SyncTrigger::BeforeProfileClone { target_id, .. } => {
                 if ctx.database.active_claude_profile()?.as_deref() != Some(target_id.as_str()) {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::TargetMismatch));
                 }
                 ctx.sync_active_claude_settings()
             }
             // 被动刷新与捕获后：无激活直接跳过且不读 live 文件（冷启动预算）
             SyncTrigger::StateRefresh | SyncTrigger::AfterCapture { .. } => {
                 if ctx.database.active_claude_profile()?.is_none() {
-                    return Ok(false);
+                    return Ok(SyncOutcome::bare(SyncKind::NoActiveProfile));
                 }
                 ctx.sync_active_claude_settings()
             }
             // Claude 无需重启进程，无人构造此时机；保守按 no-op 处理
-            SyncTrigger::BeforeProcessStart { .. } => Ok(false),
+            SyncTrigger::BeforeProcessStart { .. } => {
+                Ok(SyncOutcome::bare(SyncKind::TargetMismatch))
+            }
         }
     }
 }
@@ -224,13 +356,29 @@ impl SyncRegistry {
             .filter(|body| trigger.is_passive() || body.id() == trigger.client())
             .filter(|body| body.supports(trigger))
         {
-            let synced = body.sync(ctx, trigger, material)?;
-            tauri_plugin_log::log::debug!(
-                "[sync.harvest] client={:?} trigger={:?} synced={} msg=\"回写结果\"",
-                body.id(),
-                trigger,
-                synced
-            );
+            let outcome = body.sync(ctx, trigger, material)?;
+            // 回写结局的唯一日志出口：常态跳过只打 Debug（release 自动消失），
+            // 外部损坏/真失败各留一条 Warn，排查不必再靠排除法反推是哪道守卫拦的。
+            // profile 是本轮实际判断的那个配置；无激活/与本轮无关时打 "-" 占位。
+            let kind = outcome.kind;
+            let profile = outcome.profile.as_deref().unwrap_or("-");
+            if let Some(failure_kind) = kind.failure_kind() {
+                tauri_plugin_log::log::warn!(
+                    "[sync.harvest] client={:?} profile={profile:?} trigger={:?} outcome=failure failure_kind={failure_kind} reason={} msg=\"{}\"",
+                    body.id().label(),
+                    trigger,
+                    kind.reason(),
+                    kind.message()
+                );
+            } else {
+                tauri_plugin_log::log::debug!(
+                    "[sync.harvest] client={:?} profile={profile:?} trigger={:?} outcome=success reason={} msg=\"{}\"",
+                    body.id().label(),
+                    trigger,
+                    kind.reason(),
+                    kind.message()
+                );
+            }
         }
         let elapsed_ms = started.elapsed().as_millis();
         if elapsed_ms > 50 {
@@ -319,6 +467,14 @@ mod tests {
             &SyncTrigger::StateRefresh,
             SyncMaterial::default(),
         );
+    }
+
+    /// 日志里的客户端名必须用产品名而不是内部枚举名：
+    /// 排查时看的是 "Claude Code" / "Codex"，不是 Debug 打出来的 "Claude"。
+    #[test]
+    fn client_log_label_uses_product_name() {
+        assert_eq!(ClientId::Codex.label(), "Codex");
+        assert_eq!(ClientId::Claude.label(), "Claude Code");
     }
 
     #[test]

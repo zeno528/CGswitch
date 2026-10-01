@@ -13,7 +13,7 @@ import { claudeBalanceQueryKinds, claudePresets, claudePresetByKind } from "../.
 import ProfileIconEdit from "../profiles/ProfileIconEdit";
 import ClaudeCommonTemplateDialog from "./ClaudeCommonTemplateDialog";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings, patchBypassPermissions } from "./profileEnvText";
-import { buildSettingsText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras, type ClaudeModelDisplayKey, type ClaudeModelDisplayNames, type ClaudeModelMappingKey, type ClaudeModelMappings } from "./profileEnvText";
+import { buildSettingsText, emptyModelMappings, formatJsonText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras, type ClaudeModelDisplayKey, type ClaudeModelDisplayNames, type ClaudeModelMappingKey, type ClaudeModelMappings } from "./profileEnvText";
 import type { ClaudeProfileDetail, ClaudeProfileSummary } from "../../types";
 
 function sameModelMappings(left: ClaudeModelMappings, right: ClaudeModelMappings) {
@@ -55,6 +55,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
       auth_token: initialDetail?.auth_token ?? null,
       model: initialDetail?.model ?? null,
       extra_env: initialDetail?.extra_env ?? null,
+      kind: initialDetail?.kind ?? null,
     }),
     [create, initialDetail],
   );
@@ -171,15 +172,19 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   const selectPreset = (nextKind: string) => {
     const preset = claudePresets.find((item) => item.kind === nextKind);
     if (!preset) return;
+    const nextModelMappings = emptyModelMappings();
     setPresetKind(preset.kind);
     setName(preset.kind === "custom" ? "" : preset.name);
     setBaseUrl(preset.base_url);
     setAuthToken("");
-    setEnvText((current) => patchEnvFields(patchEnvValue(current, "ANTHROPIC_API_KEY", null), {
-      baseUrl: preset.base_url, authToken: "", model: preset.model,
-    }, preset.kind));
+    setEnvText((current) => {
+      const next = patchEnvFields(patchEnvValue(current, "ANTHROPIC_API_KEY", null), {
+        baseUrl: preset.base_url, authToken: "", model: preset.model,
+      }, preset.kind);
+      return patchModelMappings(next, nextModelMappings);
+    });
     setFetchedModels([]);
-    updateModelMapping("ANTHROPIC_MODEL", setOneMillionModelSuffix(preset.model, hasOneMillionModelSuffix(preset.model)));
+    setModelMappings(nextModelMappings);
     setAdminUrl(preset.admin_url ?? "");
     // 自定义不记 kind：编辑态端点档随 URL 自由填写
     setKind(preset.kind === "custom" ? null : preset.kind);
@@ -247,21 +252,16 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     }
   };
 
-  // 附加 env 排版：JSON.parse + stringify 本地格式化（对齐 Codex models/auth tab 的格式化按钮）
+  // 附加 env 排版：与通用模板弹窗共用 formatJsonText（提示里的标签固定是 settings.json）
   const formatEnv = () => {
-    if (!envText.trim()) {
-      feedback.warning(tProfiles("edit.formatEmpty"));
-      return;
-    }
-    try {
-      const formatted = JSON.stringify(JSON.parse(envText), null, 2);
-      if (formatted === envText) feedback.info(tProfiles("edit.formatNoChange", { label: "settings.json" }));
-      else {
-        setEnvText(formatted);
-        feedback.success(tProfiles("edit.formatSuccess", { label: "settings.json" }));
-      }
-    } catch (error) {
-      feedback.error(tProfiles("edit.formatFailed", { error: String(error) }));
+    const label = "settings.json";
+    const outcome = formatJsonText(envText);
+    if (outcome.status === "empty") feedback.warning(tProfiles("edit.formatEmpty"));
+    else if (outcome.status === "failed") feedback.error(tProfiles("edit.formatFailed", { error: outcome.error }));
+    else if (outcome.status === "unchanged") feedback.info(tProfiles("edit.formatNoChange", { label }));
+    else {
+      setEnvText(outcome.text);
+      feedback.success(tProfiles("edit.formatSuccess", { label }));
     }
   };
 

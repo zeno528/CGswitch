@@ -1,7 +1,7 @@
-/** 完整 settings.json 编辑器 ↔ 表单三托管键的双向同步。 */
+/** 完整 settings.json 编辑器 ↔ 表单托管键的双向同步。 */
 
 /** CGswitch 托管的 env 键：编辑器里可见、与表单双向绑定；应用时由后端写入 settings.json。 */
-export const CLAUDE_MANAGED_ENV_KEYS = ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"] as const;
+export const CLAUDE_MANAGED_ENV_KEYS = ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"] as const;
 
 export interface ClaudeEnvFields {
   baseUrl: string;
@@ -15,6 +15,7 @@ export const CLAUDE_MODEL_MAPPING_KEYS = [
   // 表单不展示：v2.1.236 才新增，且填了 ANTHROPIC_MODEL 时永远轮不到它。仍留在托管列表里，
   // 已有配置里的这个键才会被原样读回、写回（删行不删数据，回滚只需把行加回表单）
   "ANTHROPIC_DEFAULT_MODEL",
+  "ANTHROPIC_SMALL_FAST_MODEL",
   "ANTHROPIC_DEFAULT_FABLE_MODEL",
   "ANTHROPIC_DEFAULT_OPUS_MODEL",
   "ANTHROPIC_DEFAULT_SONNET_MODEL",
@@ -65,6 +66,11 @@ export function setOneMillionModelSuffix(value: string, enabled: boolean) {
 }
 
 const MANAGED_KEY_SET = new Set<string>(CLAUDE_MANAGED_ENV_KEYS);
+const CLAUDE_API_KEY_KINDS = new Set(["anthropic", "kimi-code", "siliconflow"]);
+
+function usesClaudeApiKey(kind?: string | null) {
+  return kind != null && CLAUDE_API_KEY_KINDS.has(kind);
+}
 
 function parseSettingsObject(text: string): Record<string, unknown> | null {
   try {
@@ -73,6 +79,24 @@ function parseSettingsObject(text: string): Record<string, unknown> | null {
     return value as Record<string, unknown>;
   } catch {
     return null;
+  }
+}
+
+/** 本地 JSON 排版的结果：只判状态，提示文案与写回由调用方自己接（各界面标签不同）。 */
+export type FormatJsonOutcome =
+  | { status: "empty" }
+  | { status: "unchanged" }
+  | { status: "formatted"; text: string }
+  | { status: "failed"; error: string };
+
+/** 排版按钮的共同逻辑：空文本、无法解析、已排好、需要写回这四种结局。 */
+export function formatJsonText(text: string): FormatJsonOutcome {
+  if (!text.trim()) return { status: "empty" };
+  try {
+    const formatted = JSON.stringify(JSON.parse(text), null, 2);
+    return formatted === text ? { status: "unchanged" } : { status: "formatted", text: formatted };
+  } catch (error) {
+    return { status: "failed", error: String(error) };
   }
 }
 
@@ -175,7 +199,7 @@ export function patchGitAttribution(text: string, disabled: boolean) {
   return JSON.stringify(settings, null, 2);
 }
 
-function emptyModelMappings(): ClaudeModelMappings {
+export function emptyModelMappings(): ClaudeModelMappings {
   return Object.fromEntries(CLAUDE_MODEL_MAPPING_KEYS.map((key) => [key, ""])) as ClaudeModelMappings;
 }
 
@@ -242,18 +266,19 @@ export function patchModelDisplayNames(text: string, names: ClaudeModelDisplayNa
 }
 
 /** 旧配置没有全文时，只能从已保存的 env 字段构造兼容视图。 */
-export function buildSettingsText(detail: { raw_settings: string | null; base_url: string | null; auth_token: string | null; model: string | null; extra_env: string | null }): string {
+export function buildSettingsText(detail: { raw_settings: string | null; base_url: string | null; auth_token: string | null; model: string | null; extra_env: string | null; kind?: string | null }): string {
   if (detail.raw_settings !== null) return detail.raw_settings;
   const env: Record<string, unknown> = parseSettingsObject(detail.extra_env ?? "") ?? {};
   const managed: [string, string | null][] = [
     ["ANTHROPIC_BASE_URL", detail.base_url],
-    ["ANTHROPIC_AUTH_TOKEN", detail.auth_token],
+    [usesClaudeApiKey(detail.kind) ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN", detail.auth_token],
     ["ANTHROPIC_MODEL", detail.model],
   ];
   for (const [key, value] of managed) {
     if (value) env[key] = value;
     else delete env[key];
   }
+  if (detail.kind === "openrouter") env.ANTHROPIC_API_KEY = "";
   return JSON.stringify({ env }, null, 2);
 }
 
@@ -267,7 +292,7 @@ export function readEnvFields(text: string, kind?: string | null): ClaudeEnvFiel
   const value = (key: string) => (typeof fields[key] === "string" ? (fields[key] as string) : "");
   return {
     baseUrl: value("ANTHROPIC_BASE_URL"),
-    authToken: kind === "anthropic" ? value("ANTHROPIC_API_KEY") || value("ANTHROPIC_AUTH_TOKEN") : value("ANTHROPIC_AUTH_TOKEN"),
+    authToken: usesClaudeApiKey(kind) ? value("ANTHROPIC_API_KEY") || value("ANTHROPIC_AUTH_TOKEN") : value("ANTHROPIC_AUTH_TOKEN"),
     model: value("ANTHROPIC_MODEL"),
   };
 }
@@ -281,14 +306,17 @@ export function patchEnvFields(text: string, fields: ClaudeEnvFields, kind?: str
   const env = { ...currentEnv } as Record<string, unknown>;
   const managed: [string, string][] = [
     ["ANTHROPIC_BASE_URL", fields.baseUrl.trim()],
-    [kind === "anthropic" ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN", fields.authToken.trim()],
+    [usesClaudeApiKey(kind) ? "ANTHROPIC_API_KEY" : "ANTHROPIC_AUTH_TOKEN", fields.authToken.trim()],
     ["ANTHROPIC_MODEL", fields.model.trim()],
   ];
   for (const [key, value] of managed) {
     if (value) env[key] = value;
     else delete env[key];
   }
-  if (kind === "anthropic") delete env.ANTHROPIC_AUTH_TOKEN;
+  if (usesClaudeApiKey(kind)) delete env.ANTHROPIC_AUTH_TOKEN;
+  // OpenRouter 等网关要求保留空的 ANTHROPIC_API_KEY，避免回退官方鉴权；后端 apply 同步硬编码此规则。
+  else if (kind === "openrouter") env.ANTHROPIC_API_KEY = "";
+  else delete env.ANTHROPIC_API_KEY;
   const hadHelper = kind === "claude-account" && Object.prototype.hasOwnProperty.call(settings, "apiKeyHelper");
   if (kind === "claude-account") {
     for (const key of ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY", "ANTHROPIC_PROFILE", "ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID"]) delete env[key];

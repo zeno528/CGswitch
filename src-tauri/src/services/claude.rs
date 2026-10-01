@@ -24,13 +24,17 @@ use crate::paths::now_ms;
 
 /// CGswitch 托管的 env 键：应用/切换前先整体移除再写入，永不残留上一家的配置。
 /// token 在 live 里有两个形态键（AUTH_TOKEN 与 API_KEY），都属于托管、切换时一并撤下；
-/// 写回哪个由 kind 决定（anthropic 落 API_KEY、其余落 AUTH_TOKEN），用户手写的另一形态不残留。
+/// 写回哪个由 kind 决定（anthropic、kimi-code、siliconflow 落 API_KEY，其余落 AUTH_TOKEN），用户手写的另一形态不残留。
 const MANAGED_ENV_KEYS: [&str; 4] = [
     "ANTHROPIC_BASE_URL",
     "ANTHROPIC_AUTH_TOKEN",
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_MODEL",
 ];
+
+fn uses_api_key(kind: Option<&str>) -> bool {
+    matches!(kind, Some("anthropic" | "kimi-code" | "siliconflow"))
+}
 
 fn summary(profile: &StoredClaudeProfile) -> ClaudeProfileSummary {
     ClaudeProfileSummary {
@@ -395,18 +399,28 @@ pub(super) fn claude_entry_to_spec(name: &str, value: &Value) -> AppResult<McpSe
     })
 }
 
-pub(super) fn read_claude_mcp_document(paths: &crate::paths::AppPaths) -> AppResult<Value> {
-    let path = paths.claude_mcp_config();
-    let document = match std::fs::read_to_string(&path) {
-        Ok(text) if text.trim().is_empty() => Ok(Value::Object(Map::new())),
-        Ok(text) => serde_json::from_str(&text)
-            .map_err(|error| app_err!(".claude.json 不是有效 JSON，拒绝写入: {error}")),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Value::Object(Map::new())),
-        Err(error) => Err(app_err!("无法读取 {}: {error}", path.display())),
-    }?;
-    if !document.is_object() {
-        return Err(app_err!(".claude.json 顶层不是对象，拒绝读写"));
+/// 读一个顶层必须是 JSON 对象的 Claude Code 配置文件（label 供报错文案用）。
+/// 文件不存在或为空按空对象继续；内容不是合法 JSON、顶层不是对象一律报错，
+/// 宁可让操作失败也不拿半截内容覆盖用户手改的现场。
+fn read_json_object(path: &std::path::Path, label: &str) -> AppResult<Value> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) if text.trim().is_empty() => return Ok(Value::Object(Map::new())),
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(Value::Object(Map::new()));
+        }
+        Err(error) => return Err(app_err!("无法读取 {}: {error}", path.display())),
+    };
+    let value: Value = serde_json::from_str(&text)
+        .map_err(|error| app_err!("{label} 不是有效 JSON，拒绝写入: {error}"))?;
+    if !value.is_object() {
+        return Err(app_err!("{label} 顶层不是对象，拒绝写入"));
     }
+    Ok(value)
+}
+
+pub(super) fn read_claude_mcp_document(paths: &crate::paths::AppPaths) -> AppResult<Value> {
+    let document = read_json_object(&paths.claude_mcp_config(), ".claude.json")?;
     if document
         .get("mcpServers")
         .is_some_and(|servers| !servers.is_object())
@@ -711,15 +725,31 @@ impl AppContext {
     /// 外部改过 ~/.claude/settings.json 时，把 live 全文与托管字段回写进激活快照
     /// （对齐 Codex 的 sync_active_profile_document）：无激活/读不了/解析失败/无差异
     /// 一律不写库，外部损坏绝不覆盖最后一次有效快照。
-    pub(super) fn sync_active_claude_settings(&self) -> AppResult<bool> {
+    /// 每道守卫都返回具体结局，不允许沉默地"没写"——否则外部把文件改坏时，
+    /// 用户只看到"没回写"却无从判断是哪一道拦的。
+    pub(super) fn sync_active_claude_settings(&self) -> AppResult<sync::SyncOutcome> {
         let Some(id) = self.database.active_claude_profile()? else {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
+        // 刚拿到激活 id 却读不出这一行，与"没有激活配置"在本轮不可区分：没有可同步的对象。
         let Ok(stored) = self.database.claude_profile(&id) else {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
-        let Ok(raw) = std::fs::read_to_string(self.claude_settings_path()) else {
-            return Ok(false);
+        // 文件不存在是首次运行等正常态；存在却读不了（权限/占用）才是故障，两者不该同一条日志。
+        let raw = match std::fs::read_to_string(self.claude_settings_path()) {
+            Ok(raw) => raw,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(sync::SyncOutcome::of(
+                    sync::SyncKind::LiveAbsent,
+                    &stored.name,
+                ));
+            }
+            Err(_) => {
+                return Ok(sync::SyncOutcome::of(
+                    sync::SyncKind::LiveUnreadable,
+                    &stored.name,
+                ));
+            }
         };
         let mut live = ClaudeProfileInput {
             // 供应商元数据不属于 live 文件，同步时保留
@@ -735,8 +765,20 @@ impl AppContext {
                 .and_then(|text| serde_json::from_str(text).ok()),
             ..Default::default()
         };
-        if read_raw_settings(&raw, &mut live).is_err() {
-            return Ok(false);
+        if let Err(error) = read_raw_settings(&raw, &mut live) {
+            // serde_json 的报错只含行列、不含原文（与 toml_edit 不同），
+            // 因此可以安全落日志定位到具体行；harvest 那条 Warn 讲"为什么没回写"，
+            // 这条讲"坏在哪一行"，两件事不重复。外部动态文本统一按 {:?} 编码并截断。
+            let brief: String = error.0.chars().take(120).collect();
+            tauri_plugin_log::log::warn!(
+                "[sync.claude.parse] client={:?} profile={:?} outcome=failure failure_kind=parse_error error={brief:?} msg=\"settings.json 不是有效 JSON\"",
+                sync::ClientId::Claude.label(),
+                stored.name
+            );
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::LiveParseError,
+                &stored.name,
+            ));
         }
         let unchanged = live.base_url == stored.base_url
             && live.auth_token == stored.auth_token
@@ -750,12 +792,15 @@ impl AppContext {
                 _ => false,
             };
         if unchanged {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::Unchanged,
+                &stored.name,
+            ));
         }
         live.raw_settings = Some(raw);
         self.database
             .update_claude_profile(&id, &live, &now_ms().to_string(), |_| Ok(()))?;
-        Ok(true)
+        Ok(sync::SyncOutcome::of(sync::SyncKind::Wrote, &stored.name))
     }
 
     pub fn claude_get(&self, id: &str) -> AppResult<ClaudeProfileDetail> {
@@ -1070,19 +1115,7 @@ impl AppContext {
                 return atomic_write(&path, raw.as_bytes());
             }
         }
-        let mut document: Value = match std::fs::read_to_string(&path) {
-            Ok(text) if text.trim().is_empty() => Value::Object(serde_json::Map::new()),
-            Ok(text) => {
-                let value: Value = serde_json::from_str(&text)
-                    .map_err(|error| app_err!("settings.json 不是有效 JSON，拒绝写入: {error}"))?;
-                if !value.is_object() {
-                    return Err(app_err!("settings.json 顶层不是对象，拒绝写入"));
-                }
-                value
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Value::Object(Map::new()),
-            Err(error) => return Err(app_err!("无法读取 {}: {error}", path.display())),
-        };
+        let mut document = read_json_object(&path, "settings.json")?;
         {
             let object = document.as_object_mut().expect("顶层已校验为对象");
             let env = object
@@ -1104,7 +1137,7 @@ impl AppContext {
                 for (key, value) in [
                     ("ANTHROPIC_BASE_URL", profile.base_url.as_deref()),
                     (
-                        if profile.kind.as_deref() == Some("anthropic") {
+                        if uses_api_key(profile.kind.as_deref()) {
                             "ANTHROPIC_API_KEY"
                         } else {
                             "ANTHROPIC_AUTH_TOKEN"
@@ -1116,6 +1149,12 @@ impl AppContext {
                     if let Some(text) = value.filter(|text| !text.trim().is_empty()) {
                         env.insert(key.to_string(), Value::String(text.to_string()));
                     }
+                }
+                if profile.kind.as_deref() == Some("openrouter") {
+                    env.insert(
+                        "ANTHROPIC_API_KEY".to_string(),
+                        Value::String(String::new()),
+                    );
                 }
                 // 附加 env 在保存时已校验为对象；手改数据库的坏值在此静默跳过
                 if let Some(Ok(Value::Object(extra))) = profile
@@ -1229,6 +1268,7 @@ pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<
 /// 但对话路径必然存在；未知模型名会被服务端自动映射或以 4xx 拒绝，均证明端点可达。
 /// 401/403 报凭证错误、404 报非 Anthropic 兼容面，其余任何 HTTP 响应都算连通，回传耗时毫秒。
 pub async fn probe_claude_messages_reachable(trimmed: &str, auth_token: &str) -> AppResult<u64> {
+    let trimmed = trimmed.trim().trim_end_matches('/');
     if trimmed.is_empty() {
         return Err(app_err!("API 端点为空"));
     }
@@ -1683,13 +1723,15 @@ mod tests {
     }
 
     /// 连通判活的真源是真实调用路径 /v1/messages：厂商兼容面可以没有 /models，但对话路径必然存在。
+    /// base 带尾斜杠时必须先归一再拼路径，否则会打成 `//v1/messages`。
+    /// 错误路径回 404（属失败态）而非 500（属连通态），确保去掉归一化后本用例会真的失败。
     #[tokio::test]
     async fn probe_reachable_when_messages_route_exists() {
         let base = spawn_local_http(|method, path| match (method, path) {
             ("POST", "/v1/messages") => (200, "{}".into()),
-            _ => (500, "{}".into()),
+            _ => (404, "{}".into()),
         });
-        probe_claude_messages_reachable(&base, "token-1")
+        probe_claude_messages_reachable(&format!("{base}/"), "token-1")
             .await
             .unwrap();
     }
@@ -2534,6 +2576,46 @@ API_KEY = "secret"
         let doc = read_settings(&home);
         assert_eq!(doc["env"]["ANTHROPIC_API_KEY"], "key");
         assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+
+        let kimi = context
+            .database
+            .insert_claude_profile(
+                &ClaudeProfileInput {
+                    kind: Some("kimi-code".into()),
+                    ..draft(
+                        "Kimi Code",
+                        Some("https://kimi.example"),
+                        Some("kimi-key"),
+                        None,
+                    )
+                },
+                "3",
+            )
+            .unwrap();
+        context.claude_apply(&kimi.id).unwrap();
+        let doc = read_settings(&home);
+        assert_eq!(doc["env"]["ANTHROPIC_API_KEY"], "kimi-key");
+        assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+
+        let openrouter = context
+            .database
+            .insert_claude_profile(
+                &ClaudeProfileInput {
+                    kind: Some("openrouter".into()),
+                    ..draft(
+                        "OpenRouter",
+                        Some("https://openrouter.example"),
+                        Some("router-key"),
+                        None,
+                    )
+                },
+                "4",
+            )
+            .unwrap();
+        context.claude_apply(&openrouter.id).unwrap();
+        let doc = read_settings(&home);
+        assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "router-key");
+        assert_eq!(doc["env"]["ANTHROPIC_API_KEY"], "");
     }
 
     /// 名称/描述接入与 Codex 侧相同的长度校验：>50 字节名字、>200 字符描述直接拒绝。
@@ -2713,5 +2795,98 @@ API_KEY = "secret"
             )
             .unwrap();
         assert_eq!(stored.extra_env, None);
+    }
+
+    /// live 被外部改坏时，回写必须报出 LiveParseError 这道具体守卫，
+    /// 且绝不覆盖最后一次有效快照。
+    /// 真实事故：settings.json 里数组闭合后多一个悬空逗号（删 hook 忘了删分隔逗号），
+    /// 旧实现只返回 false，日志只有 `synced=false`，四道守卫无法区分，排查只能靠排除法。
+    #[test]
+    fn corrupted_live_settings_report_parse_error_and_keep_last_valid_snapshot() {
+        let (_home, context) = test_context();
+        let profile = context
+            .database
+            .insert_claude_profile(
+                &draft("Provider", Some("https://api.example"), Some("key"), None),
+                "1",
+            )
+            .unwrap();
+        context.claude_apply(&profile.id).unwrap();
+
+        // 正常外部漂移：应当收敛进快照
+        let drifted = r#"{"env":{"ANTHROPIC_BASE_URL":"https://drift.example","ANTHROPIC_AUTH_TOKEN":"drift"}}"#;
+        std::fs::write(context.claude_settings_path(), drifted).unwrap();
+        let outcome = context.sync_active_claude_settings().unwrap();
+        assert_eq!(outcome.kind, sync::SyncKind::Wrote);
+        // 结局必须带出配置名，否则日志里只剩"没回写"，看不出是谁
+        assert_eq!(outcome.profile.as_deref(), Some("Provider"));
+        let last_valid = context
+            .database
+            .claude_profile(&profile.id)
+            .unwrap()
+            .raw_settings
+            .clone();
+
+        // 外部把 live 改坏：对象闭合后多一个逗号，JSON 非法
+        std::fs::write(
+            context.claude_settings_path(),
+            r#"{"env":{"ANTHROPIC_BASE_URL":"https://drift.example"},"hooks":{"Stop":[]},}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            context.sync_active_claude_settings().unwrap().kind,
+            sync::SyncKind::LiveParseError
+        );
+        // 损坏绝不覆盖最后一次有效快照
+        assert_eq!(
+            context
+                .database
+                .claude_profile(&profile.id)
+                .unwrap()
+                .raw_settings,
+            last_valid
+        );
+
+        // 修好后同一守卫放行，回写链路自愈
+        std::fs::write(context.claude_settings_path(), drifted).unwrap();
+        assert_eq!(
+            context.sync_active_claude_settings().unwrap().kind,
+            sync::SyncKind::Unchanged
+        );
+    }
+
+    /// 四道守卫各自可辨：无激活 / live 不存在 / 解析失败 / 无差异，
+    /// 不允许它们塌缩成同一个"没写"。
+    #[test]
+    fn sync_guards_are_distinguishable() {
+        let (_home, context) = test_context();
+        // 无激活
+        assert_eq!(
+            context.sync_active_claude_settings().unwrap().kind,
+            sync::SyncKind::NoActiveProfile
+        );
+        // live 不存在是正常态，不该与"存在但读不了"混为一谈
+        let profile = context
+            .database
+            .insert_claude_profile(
+                &draft("Provider", Some("https://api.example"), Some("key"), None),
+                "1",
+            )
+            .unwrap();
+        context.claude_apply(&profile.id).unwrap();
+        let applied = std::fs::read_to_string(context.claude_settings_path()).unwrap();
+        std::fs::remove_file(context.claude_settings_path()).unwrap();
+        assert_eq!(
+            context.sync_active_claude_settings().unwrap().kind,
+            sync::SyncKind::LiveAbsent
+        );
+        // live 回到 apply 时的内容：首次可能因落盘文本与快照不完全一致而写一次，
+        // 紧接着再收割必须幂等收敛到 Unchanged。
+        std::fs::write(context.claude_settings_path(), &applied).unwrap();
+        context.sync_active_claude_settings().unwrap();
+        assert_eq!(
+            context.sync_active_claude_settings().unwrap().kind,
+            sync::SyncKind::Unchanged
+        );
     }
 }

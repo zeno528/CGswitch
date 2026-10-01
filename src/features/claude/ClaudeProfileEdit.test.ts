@@ -15,7 +15,9 @@ describe("通用模板弹窗编辑器工具条", () => {
     // 两个按钮都在附属条里（源码顺序：附属条 → 清空 → 格式化 → 底部动作区）
     expect(templateDialogSource.indexOf("clearFile")).toBeGreaterThan(templateDialogSource.indexOf("editor-attach-bar"));
     expect(templateDialogSource.indexOf("editor-ghost--format")).toBeGreaterThan(templateDialogSource.indexOf("clearFile"));
-    expect(templateDialogSource).toContain("JSON.stringify(JSON.parse(text), null, 2)");
+    // 排版逻辑已提进共用的 formatJsonText，弹窗直接复用（行为由 profileEnvText.test.ts 覆盖）
+    expect(templateDialogSource).toContain('import { extractClaudeCommonSettings, formatJsonText } from "./profileEnvText";');
+    expect(templateDialogSource).toContain("formatJsonText(text)");
   });
 });
 
@@ -43,6 +45,11 @@ describe("Claude 新建配置隔离", () => {
   it("一键设置批量填充模型并保留各行的 1M 声明", () => {
     expect(editSource).toContain("onApplyModel={applyModelToMappings}");
     expect(editSource).toContain("setOneMillionModelSuffix(selected, hasOneMillionModelSuffix(current[key]))");
+  });
+
+  it("选择 Claude Code 预设时清空模型映射", () => {
+    expect(editSource).toContain("const nextModelMappings = emptyModelMappings()");
+    expect(editSource).toContain("return patchModelMappings(next, nextModelMappings)");
   });
 
   it("官网地址沿用供应商页的全局文案和行内按钮", () => {

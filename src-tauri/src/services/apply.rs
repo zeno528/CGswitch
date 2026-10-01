@@ -329,21 +329,17 @@ impl AppContext {
     pub(super) fn sync_active_profile_document(
         &self,
         document: &toml_edit::DocumentMut,
-    ) -> AppResult<bool> {
+    ) -> AppResult<sync::SyncOutcome> {
         let Some(active_id) = self.active_profile_state()? else {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
-        let Some(profile) = self
-            .database
-            .profiles()?
-            .iter()
-            .find(|profile| profile.id == active_id)
-            .cloned()
-        else {
-            return Ok(false);
+        // 按 id 点查，不要全表拉出来再 find：每行 payload 都带着完整 config.toml 文本，
+        // 供应商一多这就是同步路径上最贵的一步。读不到等同于"没有可同步的对象"。
+        let Ok(profile) = self.database.profile(&active_id) else {
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
         let Ok(mut live) = codex_config::capture_from_document(document) else {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::LiveParseError));
         };
         let auth_source = profile
             .payload
@@ -401,7 +397,10 @@ impl AppContext {
             &document.to_string(),
         )?);
         if live == profile.payload {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::Unchanged,
+                &profile.name,
+            ));
         }
         if let Err(error) =
             self.database
@@ -414,8 +413,11 @@ impl AppContext {
                 Some(&error.0),
                 &now_ms().to_string(),
             );
-            return Ok(false);
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::WriteFailed,
+                &profile.name,
+            ));
         }
-        Ok(true)
+        Ok(sync::SyncOutcome::of(sync::SyncKind::Wrote, &profile.name))
     }
 }

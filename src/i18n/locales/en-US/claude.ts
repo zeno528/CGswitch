@@ -68,7 +68,7 @@ export default {
   captureDescription: "Save the current Claude Code provider config as a snapshot.",
   appliedToast: "Applied to Claude Code",
   baseUrlLabel: "API URL",
-  baseUrlPlaceholder: "https://open.bigmodel.cn/api/anthropic",
+  baseUrlPlaceholder: "https://api.example.com/anthropic",
   testConnection: "Test connection",
   checkProviderFields: "Fill in the URL and token first",
   connectionOk: "Connected{{latency}}",
@@ -78,7 +78,7 @@ export default {
   modelsFetched: "Fetched {{count}} models",
   noModelsReturned: "This endpoint has no model list — use the preset model or type one manually",
   fetchFailed: "Failed to fetch models: {{error}}",
-  adminUrlPlaceholder: "https://open.bigmodel.cn",
+  adminUrlPlaceholder: "https://console.example.com (optional)",
   envPlaceholder: "The complete settings.json file; provider fields in env sync with the form above.",
   envInvalid: "settings.json must be a JSON object with string values in env",
 } as const;

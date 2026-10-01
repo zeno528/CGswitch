@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { patchBypassPermissions } from "./profileEnvText";
 import { CLAUDE_MANAGED_ENV_KEYS, CLAUDE_MODEL_MAPPING_KEYS, CLAUDE_MODEL_DISPLAY_KEYS, extractClaudeCommonSettings, fillClaudeCommonSettings } from "./profileEnvText";
-import { buildSettingsText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras } from "./profileEnvText";
+import { buildSettingsText, formatJsonText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras } from "./profileEnvText";
+
+describe("排版按钮的四种结局", () => {
+  it("空文本、坏 JSON、已排好、需要写回各自可辨", () => {
+    expect(formatJsonText("   ").status).toBe("empty");
+    expect(formatJsonText("{oops").status).toBe("failed");
+    expect(formatJsonText('{\n  "a": 1\n}').status).toBe("unchanged");
+    expect(formatJsonText('{"a":1}')).toEqual({ status: "formatted", text: '{\n  "a": 1\n}' });
+  });
+});
 
 describe("Claude 通用模板", () => {
   it("默认权限模式不进入模板，权限规则和组织限制仍保留", () => {
@@ -178,6 +187,38 @@ describe("settings.json 全文与表单同步", () => {
       env: { ANTHROPIC_BASE_URL: "https://b.example", ANTHROPIC_AUTH_TOKEN: "tok", CUSTOM: "keep" },
     });
     expect(readEnvFields(patched)).toEqual({ baseUrl: "https://b.example", authToken: "tok", model: "" });
+  });
+
+  it("按 Claude Code 模板切换 API_KEY、AUTH_TOKEN 与 OpenRouter 空 API_KEY", () => {
+    const fields = { baseUrl: "https://provider.example", authToken: "tok", model: "model" };
+    for (const kind of ["kimi-code", "siliconflow"]) {
+      const patched = patchEnvFields('{"env":{"ANTHROPIC_AUTH_TOKEN":"stale"}}', fields, kind);
+      expect(JSON.parse(patched).env).toMatchObject({ ANTHROPIC_API_KEY: "tok" });
+      expect(JSON.parse(patched).env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    }
+    const token = patchEnvFields('{"env":{"ANTHROPIC_API_KEY":"stale"}}', fields, "qwen-coding-plan");
+    expect(JSON.parse(token).env).toMatchObject({ ANTHROPIC_AUTH_TOKEN: "tok" });
+    expect(JSON.parse(token).env.ANTHROPIC_API_KEY).toBeUndefined();
+    const openrouter = patchEnvFields("{}", fields, "openrouter");
+    expect(JSON.parse(openrouter).env.ANTHROPIC_API_KEY).toBe("");
+    expect(splitEnvExtras(openrouter)).toBeNull();
+  });
+
+  it("预设模型映射与表单字段一起同步后保持稳定", () => {
+    const mappings = readModelMappings(JSON.stringify({ env: {
+      ANTHROPIC_MODEL: "LongCat-2.5-Preview",
+      ANTHROPIC_DEFAULT_FABLE_MODEL: "LongCat-2.5-Preview",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "LongCat-2.5-Preview",
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "LongCat-2.5-Preview",
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: "LongCat-2.5-Preview",
+      CLAUDE_CODE_SUBAGENT_MODEL: "LongCat-2.5-Preview",
+    } }));
+    const initial = patchEnvFields("{}", { baseUrl: "https://api.longcat.chat/anthropic", authToken: "", model: "LongCat-2.5-Preview" }, "longcat");
+    const withMappings = patchModelMappings(initial, mappings);
+    const fields = readEnvFields(withMappings, "longcat");
+    expect(fields).not.toBeNull();
+    const resynced = patchModelMappings(patchEnvFields(withMappings, fields!, "longcat"), mappings);
+    expect(resynced).toBe(withMappings);
   });
 
   it("旧快照构造完整文件，保存拒绝无效 env", () => {

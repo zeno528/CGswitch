@@ -52,6 +52,12 @@ export default {
     mimo: "Xiaomi MiMo",
     qianfan: "Baidu Qianfan",
     xai: "xAI (Grok)",
+    kimiCode: "Kimi Code",
+    qwenCodingPlan: "Alibaba Cloud Bailian Coding Plan",
+    tencentTokenPlan: "Tencent Cloud General Token Plan",
+    qianfanCodingPlan: "Baidu Qianfan Coding Plan",
+    siliconflow: "SiliconFlow",
+    longcat: "LongCat",
   },
   providerName: {
     hunyuan: "Tencent Hunyuan",

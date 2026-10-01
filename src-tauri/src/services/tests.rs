@@ -1044,6 +1044,70 @@ fn sync_active_profile_from_live_persists_external_mcp_changes() {
 }
 
 #[test]
+fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"gpt-5.6\"\n").unwrap();
+
+    let context = AppContext::new(paths).unwrap();
+    let profile = context.capture_profile("A").unwrap();
+    context.apply_profile(&profile.id).unwrap();
+
+    // 正常外部漂移：应当收敛
+    std::fs::write(context.paths.codex_config(), "model = \"gpt-5.7\"\n").unwrap();
+    let document = context.live_document().unwrap();
+    let outcome = context.sync_active_profile_document(&document).unwrap();
+    assert_eq!(outcome.kind, crate::services::sync::SyncKind::Wrote);
+    // 结局必须带出配置名，否则日志里只剩"没回写"，看不出是谁
+    assert_eq!(outcome.profile.as_deref(), Some("A"));
+    let last_valid = context
+        .database
+        .profile(&profile.id)
+        .unwrap()
+        .payload
+        .raw_config
+        .clone();
+
+    // 外部把 live 改坏：残缺的 TOML，严格读必须拒绝它
+    std::fs::write(context.paths.codex_config(), "model = \n").unwrap();
+    assert!(context.live_document_checked().is_err());
+
+    // 走真实被动收割（get_state 同一条路径）：损坏内容不得覆盖最后一次有效快照
+    crate::services::sync::registry().harvest_passive(
+        &context,
+        &crate::services::sync::SyncTrigger::StateRefresh,
+        crate::services::sync::SyncMaterial::default(),
+    );
+    assert_eq!(
+        context
+            .database
+            .profile(&profile.id)
+            .unwrap()
+            .payload
+            .raw_config,
+        last_valid
+    );
+
+    // 修好后同一路径自愈
+    std::fs::write(context.paths.codex_config(), "model = \"gpt-5.8\"\n").unwrap();
+    crate::services::sync::registry().harvest_passive(
+        &context,
+        &crate::services::sync::SyncTrigger::StateRefresh,
+        crate::services::sync::SyncMaterial::default(),
+    );
+    assert!(context
+        .database
+        .profile(&profile.id)
+        .unwrap()
+        .payload
+        .raw_config
+        .as_deref()
+        .is_some_and(|text| text.contains("gpt-5.8")));
+}
+
+#[test]
 fn only_exposed_paths_can_be_opened() {
     let home = tempfile::tempdir().unwrap();
     let context = AppContext::new(crate::paths::from_home(home.path()).unwrap()).unwrap();

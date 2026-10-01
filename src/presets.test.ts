@@ -160,3 +160,23 @@ describe("builtinPresets 双区域端点档", () => {
     expect(doubao?.provider).toBe("volcengine-coding-plan");
   });
 });
+
+describe("claudePresets Claude Code 模板", () => {
+  it("只预填接入信息，不预填 Claude 模型", () => {
+    const expected: Record<string, string> = {
+      "qwen-coding-plan": "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+      "tencent-token-plan": "https://api.lkeap.cloud.tencent.com/plan/anthropic",
+      longcat: "https://api.longcat.chat/anthropic",
+      "kimi-code": "https://api.kimi.com/coding/",
+      siliconflow: "https://api.siliconflow.cn/",
+      "qianfan-coding-plan": "https://qianfan.cloud.baidu.com/api/coding",
+    };
+    for (const [kind, baseUrl] of Object.entries(expected)) {
+      const preset = claudePresets.find((item) => item.kind === kind);
+      expect(preset, `缺少 Claude Code 模板 ${kind}`).toBeDefined();
+      expect(preset).toMatchObject({ base_url: baseUrl });
+    }
+    // 全量兜底：所有 Claude 模板一律不带默认模型
+    expect(claudePresets.every((preset) => preset.model === "")).toBe(true);
+  });
+});

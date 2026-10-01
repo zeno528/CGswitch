@@ -17,7 +17,7 @@ import ClaudeProfilesView from "../features/claude/ClaudeProfilesView";
 import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
 import { AppUpdateProvider, UpdateNotice } from "../features/updates/AppUpdateProvider";
-import { setupI18n } from "../i18n";
+import { setupI18n, type resources } from "../i18n";
 import type { AppState } from "../types";
 import { switchProfileFromTray } from "./traySwitch";
 
@@ -39,18 +39,8 @@ const checkMcpDiff = () =>
 const PAGE_ENTER_TARGET =
   ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
 
-/// 侧栏条目/分组标题的文案 key（common/nav 资源）：本列表是唯一使用方，新增导航项时同步扩这里。
-type SidebarLabelKey =
-  | "nav.providers"
-  | "nav.mcp"
-  | "nav.plugins"
-  | "nav.accounts"
-  | "nav.skills"
-  | "nav.settings"
-  | "nav.claudeProviders"
-  | "nav.groupCodex"
-  | "nav.groupClaude"
-  | "nav.groupCommon";
+/// 侧栏条目/分组标题的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
+type SidebarLabelKey = `nav.${keyof (typeof resources)["zh-CN"]["common"]["nav"]}`;
 
 /// 页面进场动画：沿原 cubic-bezier(0.16,1,0.35,1) 曲线做 8px 上浮，但位移逐帧量化到整设备像素。
 /// Chromium 渲染合成变换时本就按整设备像素取样：曲线尾段的亚像素爬行不会产生更细腻的运动，

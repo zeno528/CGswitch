@@ -51,6 +51,12 @@ export default {
     mimo: "小米 MiMo",
     qianfan: "百度千帆",
     xai: "xAI（Grok）",
+    kimiCode: "Kimi Code",
+    qwenCodingPlan: "阿里云百炼 Coding Plan",
+    tencentTokenPlan: "腾讯云通用 Token Plan",
+    qianfanCodingPlan: "百度千帆 Coding Plan",
+    siliconflow: "SiliconFlow",
+    longcat: "LongCat",
   },
   providerName: {
     hunyuan: "腾讯混元",

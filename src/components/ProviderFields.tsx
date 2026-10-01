@@ -137,6 +137,13 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
   };
 }) {
   if (mappingFields) {
+    // 去重后的模型下拉项只依赖 models：建一次给每一行用，别在 map 里重建。
+    const optionsByLabel = new Map<string, string>();
+    for (const item of models) {
+      const label = displayModelLabel(item);
+      if (!optionsByLabel.has(label)) optionsByLabel.set(label, item);
+    }
+    const modelOptions = [...optionsByLabel].map(([label, value]) => ({ label, value }));
     return (
       <div>
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
@@ -180,13 +187,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
             <span className="meta-xs muted whitespace-nowrap text-center font-medium">{labels.oneMillionColumn ?? labels.oneMillion}</span>
           </div>
           {mappingFields.map((field) => {
-            const optionsByLabel = new Map<string, string>();
-            for (const item of models) {
-              const label = displayModelLabel(item);
-              if (!optionsByLabel.has(label)) optionsByLabel.set(label, item);
-            }
-            const options = [...optionsByLabel].map(([label, value]) => ({ label, value }));
-            const selected = options.find((option) => option.label === displayModelLabel(field.value.trim()))?.value ?? null;
+            const selected = modelOptions.find((option) => option.label === displayModelLabel(field.value.trim()))?.value ?? null;
             return (
               <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_4.5rem] sm:items-center">
                 <div className="flex min-w-0 items-center">
@@ -203,7 +204,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
                 <input className="app-input app-input--compact min-w-0" aria-label={`${field.label} ${labels.requestModel ?? labels.model}`} title={field.hint} value={displayModelLabel(field.value)} onChange={(event) => field.onChange(event.target.value)} />
                 <AppSelect
                   value={selected}
-                  options={options}
+                  options={modelOptions}
                   onChange={field.onChange}
                   placeholder={models.length ? labels.select : labels.fetchFirst}
                   disabled={disabled}

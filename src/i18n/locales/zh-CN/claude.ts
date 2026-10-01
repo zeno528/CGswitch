@@ -68,7 +68,7 @@ export default {
   captureDescription: "将当前 Claude Code 供应商配置保存为快照。",
   appliedToast: "已应用到 Claude Code",
   baseUrlLabel: "API 地址",
-  baseUrlPlaceholder: "https://open.bigmodel.cn/api/anthropic",
+  baseUrlPlaceholder: "https://api.example.com/anthropic",
   testConnection: "测试连通",
   checkProviderFields: "请先填写地址与 Token",
   connectionOk: "连接成功{{latency}}",
@@ -78,7 +78,7 @@ export default {
   modelsFetched: "已获取 {{count}} 个模型",
   noModelsReturned: "端点未提供模型列表，可使用预设模型或手动填写",
   fetchFailed: "获取模型列表失败：{{error}}",
-  adminUrlPlaceholder: "https://open.bigmodel.cn",
+  adminUrlPlaceholder: "https://console.example.com（可选）",
   envPlaceholder: "完整的 settings.json 内容；env 中的供应商字段与上方表单双向同步。",
   envInvalid: "settings.json 必须是有效的 JSON 对象，env 中的值必须是字符串",
 } as const;

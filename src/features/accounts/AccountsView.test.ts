@@ -1,9 +1,38 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { expiryColorClass, isOAuthLoginExpiredError } from "./AccountsView";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { animateQuotaProgress, expiryColorClass, isOAuthLoginExpiredError } from "./AccountsView";
 
 const source = readFileSync(new URL("./AccountsView.tsx", import.meta.url), "utf8");
+
+describe("Quota progress animation", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([[0, 1], [0.5, 1], [1, 0.5], [1, 0], [1, 1]])(
+    "plays explicit keyframes from scale %s to %s and cancels on cleanup",
+    (startScale, endScale) => {
+      vi.stubGlobal("window", { matchMedia: () => ({ matches: false }) });
+      const cancel = vi.fn();
+      const animate = vi.fn(() => ({ cancel }));
+      const cleanup = animateQuotaProgress({ animate } as unknown as HTMLSpanElement, startScale, endScale);
+
+      expect(animate).toHaveBeenCalledExactlyOnceWith([
+        { transform: `scaleX(${startScale})` },
+        { transform: `scaleX(${endScale})` },
+      ], { duration: 1000, easing: "cubic-bezier(0.645, 0.045, 0.355, 1)" });
+      cleanup?.();
+      expect(cancel).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("respects reduced motion and leaves the rendered end value intact", () => {
+    vi.stubGlobal("window", { matchMedia: () => ({ matches: true }) });
+    const animate = vi.fn();
+    expect(animateQuotaProgress({ animate } as unknown as HTMLSpanElement, 1, 0.5)).toBeUndefined();
+    expect(animate).not.toHaveBeenCalled();
+    expect(source).toContain('transform: animationRevision ? `scaleX(${animationEndScale})` : undefined');
+  });
+});
 
 describe("OAuth account quota recovery", () => {
   it("续期日和重置次数共用临期颜色", () => {
