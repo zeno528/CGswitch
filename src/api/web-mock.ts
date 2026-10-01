@@ -660,6 +660,7 @@ function renderMcpFragmentWeb(spec: McpServerSpec): string {
   if (spec.bearer_token_env_var) {
     lines.push(`bearer_token_env_var = "${spec.bearer_token_env_var}"`);
   }
+  if (spec.enabled !== null) lines.push(`enabled = ${spec.enabled}`);
   const env = Object.entries(spec.env);
   if (env.length) {
     lines.push(`[mcp_servers.${spec.name}.env]`);
@@ -1541,7 +1542,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "get_mcp_section_toml": {
       // 创建表单预填用：把 mock 列表渲染成 config.toml 片段
-      return webMcpServers.map(renderMcpFragmentWeb).join("\n") as T;
+      return webMcpServers.map((server) => renderMcpFragmentWeb({ ...server, enabled: null })).join("\n") as T;
     }
     case "restore_mcp_from_database":
       return webMcpServers.length as T;
@@ -1595,10 +1596,12 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     //    未建模键与注释不保留；真实保真逻辑在 Rust 侧 toml_edit）——
     case "get_mcp_server_toml": {
       const server = webMcpServers.find((item) => item.name === args?.name);
-      return (server ? renderMcpFragmentWeb(server) : null) as unknown as T;
+      return (server ? renderMcpFragmentWeb({ ...server, enabled: null }) : null) as unknown as T;
     }
-    case "patch_mcp_fragment":
-      return renderMcpFragmentWeb(args?.spec as McpServerSpec) as unknown as T;
+    case "patch_mcp_fragment": {
+      const source = await webInvoke<McpServerSpec>("parse_mcp_fragment", { toml: args?.toml });
+      return renderMcpFragmentWeb({ ...args?.spec as McpServerSpec, enabled: source.enabled }) as unknown as T;
+    }
     case "parse_mcp_fragment": {
       const text = String(args?.toml ?? "");
       const spec: McpServerSpec = {
@@ -1638,6 +1641,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           if (envMatch) spec.env[envMatch[1]] = envMatch[2];
           continue;
         }
+        const enabled = /^enabled\s*=\s*(true|false)(?:\s*#.*)?$/.exec(line);
+        if (enabled) { spec.enabled = enabled[1] === "true"; continue; }
         const match = /^(command|url|bearer_token_env_var|args)\s*=\s*(.+)$/.exec(line);
         if (!match) continue;
         const value = match[2].trim();

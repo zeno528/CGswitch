@@ -877,6 +877,9 @@ pub fn get_mcp_server_toml(
 /// MCP 编辑页实时同步：把表单建模字段写进单服务器片段（表单 → 编辑器）。
 #[tauri::command]
 pub fn patch_mcp_fragment(toml: String, spec: McpServerSpec) -> AppResult<String> {
+    let mut spec = spec;
+    // 表单的 enabled 是应用开关状态；原生 enabled 只由配置源码管理。
+    spec.enabled = codex_config::parse_mcp_fragment(&toml).map_or(None, |source| source.enabled);
     codex_config::patch_mcp_fragment(&toml, &spec)
 }
 
@@ -1198,6 +1201,34 @@ pub fn open_path(path: String, state: State<'_, AppContext>) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_editor_patch_preserves_source_enabled_instead_of_app_toggle() {
+        for (native, toggle) in [
+            (None, Some(false)),
+            (Some(false), None),
+            (Some(true), Some(false)),
+        ] {
+            let mut source =
+                "[mcp_servers.fixture]\nurl = \"https://example.test/mcp\"\n".to_string();
+            if let Some(enabled) = native {
+                source.push_str(&format!("enabled = {enabled}\n"));
+            }
+            let mut spec = codex_config::parse_mcp_fragment(&source).unwrap();
+            spec.enabled = toggle;
+            spec.url = Some("https://example.test/updated".to_string());
+            let patched = patch_mcp_fragment(source, spec).unwrap();
+            let parsed = codex_config::parse_mcp_fragment(&patched).unwrap();
+            assert_eq!(parsed.enabled, native, "{patched}");
+            assert_eq!(parsed.url.as_deref(), Some("https://example.test/updated"));
+        }
+        let spec = codex_config::parse_mcp_fragment(
+            "[mcp_servers.fixture]\nurl = \"https://example.test/mcp\"\n",
+        )
+        .unwrap();
+        assert!(patch_mcp_fragment(String::new(), spec).is_ok());
+        assert!(patch_mcp_fragment("[invalid".to_string(), McpServerSpec::default()).is_err());
+    }
 
     #[test]
     fn cached_auth_failure_allows_same_account_fallback_but_not_network_or_region_errors() {

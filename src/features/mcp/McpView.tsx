@@ -311,6 +311,7 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
           <button
             type="button"
             className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={server.enabled === false}
             title={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
             aria-label={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
             onClick={() => onToggleTools(server)}

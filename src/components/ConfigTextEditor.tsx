@@ -158,6 +158,7 @@ const diagnosticLineDecorationsField = StateField.define<ReturnType<typeof diagn
 
 export interface ConfigTextEditorHandle {
   focusFirstDiagnostic: () => void;
+  revealField: (text: string, field: string) => void;
 }
 
 /**
@@ -205,12 +206,31 @@ export function computeTextChange(current: string, next: string) {
   return { from, to: currentTo, insert: next.slice(from, nextTo) };
 }
 
+/** 从实际变更所在行向后定位字段，跳过前面同名字段和注释。 */
+export function findConfigFieldPosition(text: string, field: string, from: number): number | null {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^[\\t ]*(?:"${escaped}"|'${escaped}'|${escaped})[\\t ]*[:=]`, "m");
+  const start = from === 0 ? 0 : text.lastIndexOf("\n", from - 1) + 1;
+  const match = pattern.exec(text.slice(start));
+  return match ? start + match.index + match[0].search(/\S/) : null;
+}
+
 // canvas 文本测量上下文只读共享：多个编辑器、多次显隐重挂复用，不随 effect 重建
 let measureContext: CanvasRenderingContext2D | null | undefined;
 
 /// 长文档按视口虚拟化，渲染宽度 ≠ 全文宽度：按 canvas 测量预设 contentDOM 的
 /// min-width，原生横向滚动条才能滚到最后一列（tab 展开宽度也要计入）。
-function syncContentWidth(editor: EditorView) {
+function syncEditorLayout(editor: EditorView) {
+  const shell = editor.dom.closest<HTMLElement>(".apple-editor-shell");
+  const section = shell?.closest<HTMLElement>(".apple-panel-section");
+  const content = shell?.closest<HTMLElement>(".apple-edit-content");
+  if (shell && section && content) {
+    // 滚到底后，分区顶部保持原位；窗口新增高度全部用于代码区，不挤动页面滚动位置。
+    const chromeHeight = shell.getBoundingClientRect().top - section.getBoundingClientRect().top;
+    const bottomGap = parseFloat(getComputedStyle(content).paddingBottom);
+    const reservedHeight = window.innerHeight - content.clientHeight + chromeHeight + bottomGap;
+    shell.style.setProperty("--editor-max-height", `max(0px, calc(100vh - ${reservedHeight}px))`);
+  }
   // 语法树预热：CM 初始化只解析前 3000 字符，其余在空闲时补，快速滚动会先跑到未解析区间（无高亮）
   forceParsing(editor, editor.state.doc.length, 200);
   if (measureContext === undefined) measureContext = document.createElement("canvas").getContext("2d");
@@ -258,6 +278,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const onDiagnosticsRef = useRef(onDiagnostics);
   const lastSummary = useRef<EditorDiagnosticSummary | null>(null);
   const syncingValueRef = useRef(false);
+  const pendingRevealRef = useRef<{ text: string; field: string } | null>(null);
   const editingCompartment = useRef(new Compartment());
   const indentUnitCompartment = useRef(new Compartment());
   const appliedIndentUnitRef = useRef<string | null>(null);
@@ -265,7 +286,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const destroyCheckRef = useRef(0);
   const destroyedRef = useRef(false);
   const creationDepsRef = useRef<readonly unknown[] | null>(null);
-  const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, min(34rem, 60vh))`;
+  const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, var(--editor-max-height))`;
 
   valueRef.current = value;
   onChangeRef.current = onChange;
@@ -273,7 +294,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
 
   const scheduleContentWidthSync = (editor: EditorView) => {
     cancelAnimationFrame(syncFrameRef.current);
-    syncFrameRef.current = requestAnimationFrame(() => syncContentWidth(editor));
+    syncFrameRef.current = requestAnimationFrame(() => syncEditorLayout(editor));
   };
 
   useEffect(() => {
@@ -283,6 +304,9 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   }, []);
 
   useImperativeHandle(ref, () => ({
+    revealField: (text, field) => {
+      pendingRevealRef.current = viewRef.current?.state.doc.toString() !== text ? { text, field } : null;
+    },
     focusFirstDiagnostic: () => {
       const view = viewRef.current;
       if (!view) return;
@@ -309,6 +333,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   useLayoutEffect(() => {
     const parent = hostRef.current;
     if (!parent) return;
+    const scrollContent = parent.closest(".apple-edit-content");
 
     const reportDiagnostics = (view: EditorView) => {
       let count = 0;
@@ -351,6 +376,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       scheduleContentWidthSync(alive);
       const reattachedObserver = new ResizeObserver(() => scheduleContentWidthSync(alive));
       reattachedObserver.observe(alive.dom);
+      if (scrollContent) reattachedObserver.observe(scrollContent);
       return () => detachEditor(alive, reattachedObserver);
     }
     if (alive) {
@@ -406,7 +432,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     creationDepsRef.current = creationDeps;
     const resizeObserver = new ResizeObserver(() => scheduleContentWidthSync(editor));
     resizeObserver.observe(editor.dom);
-    syncContentWidth(editor);
+    if (scrollContent) resizeObserver.observe(scrollContent);
+    syncEditorLayout(editor);
     reportDiagnostics(editor);
 
     return () => detachEditor(editor, resizeObserver);
@@ -426,6 +453,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   useEffect(() => {
     const editor = viewRef.current;
     if (!editor) return;
+    const reveal = pendingRevealRef.current;
+    pendingRevealRef.current = null;
     // 外部灌入的内容可能换了缩进风格（如异步详情晚于编辑器挂载），重探并热重配参考线
     const nextIndentUnit = detectIndentUnit(value);
     if (nextIndentUnit !== appliedIndentUnitRef.current) {
@@ -435,6 +464,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       });
     }
     if (editor.state.doc.toString() === value) return;
+    const change = computeTextChange(editor.state.doc.toString(), value);
+    const revealPosition = reveal?.text === value ? findConfigFieldPosition(value, reveal.field, change.from) : null;
     const previousScrollTop = editor.scrollDOM.scrollTop;
     const previousScrollLeft = editor.scrollDOM.scrollLeft;
     let restoreFrame = 0;
@@ -444,9 +475,13 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     };
     syncingValueRef.current = true;
     try {
-      editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });
-      restoreScrollPosition();
-      restoreFrame = requestAnimationFrame(restoreScrollPosition);
+      editor.dispatch({ changes: change });
+      if (revealPosition !== null) {
+        editor.dispatch({ selection: { anchor: revealPosition }, scrollIntoView: true });
+      } else {
+        restoreScrollPosition();
+        restoreFrame = requestAnimationFrame(restoreScrollPosition);
+      }
     } finally {
       syncingValueRef.current = false;
     }

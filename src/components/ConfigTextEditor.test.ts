@@ -3,7 +3,8 @@ import profileEditSource from "../features/profiles/ProfileEdit.tsx?raw";
 import editorSource from "./ConfigTextEditor.tsx?raw";
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { collectJsonDiagnostics, computeTextChange } from "./ConfigTextEditor";
+import { collectJsonDiagnostics, computeTextChange, findConfigFieldPosition } from "./ConfigTextEditor";
+import { patchEnvValue } from "../features/claude/profileEnvText";
 
 describe("ConfigTextEditor runtime", () => {
   it("uses the native CodeMirror runtime instead of a duplicate wrapper runtime", () => {
@@ -33,6 +34,16 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain("JSON.parse(text)");
   });
 
+  it("编辑页按正文可用高度伸展，初次挂载和保活复显均监听正文尺寸", () => {
+    expect(editorSource).toContain('const scrollContent = parent.closest(".apple-edit-content");');
+    expect(editorSource).toContain("if (scrollContent) resizeObserver.observe(scrollContent);");
+    expect(editorSource).toContain("if (scrollContent) reattachedObserver.observe(scrollContent);");
+    expect(editorSource).toContain("window.innerHeight - content.clientHeight + chromeHeight + bottomGap");
+    expect(editorSource).toContain('shell.style.setProperty("--editor-max-height",');
+    expect(editorSource).toContain("max(0px, calc(100vh - ${reservedHeight}px))");
+    expect(editorSource).toContain("px, var(--editor-max-height))");
+  });
+
   it("主题判定取当下 DOM 真值：Activity 隐藏期切主题后复显不会挂回配色过期的实例", () => {
     // 隐藏期 effects 被拆掉，setDark 不会跑；判等与 oneDark 都必须用 DOM 现读值
     expect(editorSource).toContain('const currentDark = document.documentElement.classList.contains("dark")');
@@ -54,7 +65,32 @@ describe("ConfigTextEditor runtime", () => {
       to: current.length,
       insert: "respect_system_proxy = true\n",
     });
-    expect(editorSource).toContain("editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });");
+    expect(editorSource).toContain("const change = computeTextChange(editor.state.doc.toString(), value);");
+    expect(editorSource).toContain("editor.dispatch({ changes: change });");
+  });
+
+  it("定位新写入字段，跳过注释和变更前的同名字段", () => {
+    const current = '# experimental_mode = true\n[other]\nexperimental_mode = true\n[features.context_management]\nexperimental_mode = false\n';
+    const next = current.replace("experimental_mode = false", "experimental_mode = true");
+    const change = computeTextChange(current, next);
+    expect(findConfigFieldPosition(next, "experimental_mode", change.from)).toBe(next.lastIndexOf("experimental_mode"));
+    expect(findConfigFieldPosition('# respect_system_proxy = true\n', "respect_system_proxy", 0)).toBeNull();
+    expect(findConfigFieldPosition('"a.b" = true\naXb = false\n', "a.b", 0)).toBe(0);
+  });
+
+  it("Claude 工具栏写入重排 JSON 后定位实际 env 字段", () => {
+    const current = '{"env":{"UNRELATED":"keep"}}';
+    const next = patchEnvValue(current, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+    const change = computeTextChange(current, next);
+    expect(findConfigFieldPosition(next, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", change.from)).toBe(next.indexOf('"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"'));
+    expect(findConfigFieldPosition(next, "MISSING_FIELD", change.from)).toBeNull();
+  });
+
+  it("只对成功写入的对应文本定位，其他外部更新继续恢复滚动且不抢输入焦点", () => {
+    expect(editorSource).toContain("const reveal = pendingRevealRef.current;\n    pendingRevealRef.current = null;");
+    expect(editorSource).toContain("reveal?.text === value ? findConfigFieldPosition(value, reveal.field, change.from) : null");
+    expect(editorSource).toContain("editor.dispatch({ selection: { anchor: revealPosition }, scrollIntoView: true });");
+    expect(editorSource).toContain("} else {\n        restoreScrollPosition();\n        restoreFrame = requestAnimationFrame(restoreScrollPosition);");
   });
 
   it("横向滚动走原生滚动条：行号栏 sticky 固定，不再自绘同步滚动条", () => {
@@ -68,7 +104,7 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain('document.createElement("canvas").getContext("2d")');
     expect(editorSource).toContain("editor.state.doc.lines; number += 1");
     expect(editorSource).toContain("editor.contentDOM.style.minWidth");
-    expect(editorSource).toContain("syncContentWidth(editor);");
+    expect(editorSource).toContain("syncEditorLayout(editor);");
   });
 
   it("页面保活复显时编辑器实例原样重挂，不销毁重建（切页不闪编辑器、滚动不丢）", () => {

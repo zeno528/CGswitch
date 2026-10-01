@@ -8,6 +8,7 @@ import { DiagnosticsChip } from "../../components/DiagnosticsChip";
 import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 import McpConnectionForm, { TimeoutInput } from "./McpConnectionForm";
+import { McpSourceLabel } from "./McpSourceLabel";
 import { patchClaudeMcpForm, readClaudeMcpForm, type ClaudeMcpForm } from "./mcpFormData";
 
 interface ClaudeMcpEditProps {
@@ -23,6 +24,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
   const { t } = useTranslation("mcp");
   const [name, setName] = useState(server?.name ?? "");
   const [jsonText, setJsonText] = useState("{\n  \"type\": \"stdio\",\n  \"command\": \"\"\n}");
+  const [initialJson, setInitialJson] = useState(jsonText);
   const [form, setForm] = useState(() => readClaudeMcpForm(jsonText));
   const [formValid, setFormValid] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
     let cancelled = false;
     void api.getClaudeMcpServerJson(server.name).then((value) => {
       if (cancelled) return;
-      if (value) editJson(value);
+      if (value) { setInitialJson(value); editJson(value); }
       setInitialized(true);
     }).catch((error) => feedback.error(String(error)));
     return () => { cancelled = true; };
@@ -147,7 +149,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
           />
           <div className="apple-panel-section">
             <div className="mb-1.5 flex min-h-8 items-center justify-between gap-2">
-              <div className="field-label">{t("edit.jsonSource")}</div>
+              <McpSourceLabel label={t("edit.jsonSource")} value={jsonText} initialValue={initialJson} initialized={initialized} />
               <button type="button" className="editor-ghost editor-ghost--format shrink-0" disabled={formatting || saving || !initialized} onClick={formatJson}>
                 <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>

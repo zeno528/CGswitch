@@ -28,7 +28,7 @@ export default {
     customOption: "Adds one custom entry at the bottom of the /model picker without replacing built-in aliases",
   },
   mappingTitle: "Model mapping",
-  mappingDescription: "Request models are sent to the gateway; 1M marks million-token context.",
+  mappingDescription: "Request models are used for actual calls; selecting 1M enables a million-token context window, requiring support from both the model and provider.",
   quickSet: "Quick set",
   modelRoleLabel: "Model role",
   displayNameLabel: "Display name",

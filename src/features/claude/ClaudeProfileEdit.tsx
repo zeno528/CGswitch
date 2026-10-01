@@ -266,11 +266,15 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   };
 
   const updateEnvValue = (key: string, value: string | null, fallbackSettingsKey?: string) => {
-    setEnvText((current) => patchEnvValue(current, key, value, fallbackSettingsKey));
+    const next = patchEnvValue(envText, key, value, fallbackSettingsKey);
+    if (value?.trim()) editorRef.current?.revealField(next, key);
+    setEnvText(next);
   };
 
   const toggleGitAttribution = (enabled: boolean) => {
-    setEnvText((current) => patchGitAttribution(current, enabled));
+    const next = patchGitAttribution(envText, enabled);
+    if (enabled) editorRef.current?.revealField(next, "commit");
+    setEnvText(next);
   };
 
   const toggleBalance = async (enabled: boolean) => {
@@ -468,14 +472,14 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                 <div className="editor-attach-bar flex-nowrap! items-start!">
                   <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                     <div className="editor-ghost-group pl-1">
-                      <label className={`editor-ghost ${!autoCompactDisabled ? "on" : ""}`} title={t("advanced.autoCompactTitle")}>
+                      <label className="editor-ghost" title={t("advanced.autoCompactTitle")}>
                         <input type="checkbox" checked={!autoCompactDisabled} onChange={(event) => updateEnvValue("DISABLE_AUTO_COMPACT", event.target.checked ? null : "1", "autoCompactEnabled")} />
                         <span className="whitespace-nowrap font-medium">{t("advanced.autoCompactLabel")}</span>
                       </label>
                       <span className="editor-ghost-group__separator" aria-hidden="true" />
                       <label className={`editor-ghost ${autoCompactDisabled ? "opacity-40 pointer-events-none" : ""}`} title={t("advanced.compactThresholdTitle")}>
                         <span className="whitespace-nowrap">{t("advanced.compactThresholdLabel")}</span>
-                        <input className="app-input app-input--compact compact-token-input h-6 text-center" type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value, "autoCompactWindow")} />
+                        <input className={`app-input app-input--compact compact-token-input ${autoCompactDisabled ? "" : "compact-token-input--on"} h-6 text-center`} type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value, "autoCompactWindow")} />
                       </label>
                     </div>
                     <label className={`editor-ghost ${gitAttributionHidden ? "on" : ""}`} title={t("advanced.gitAttributionTitle")}>
@@ -526,7 +530,11 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                       onChange={(value) => {
                         if (value === "autoMemory") updateEnvValue("CLAUDE_CODE_DISABLE_AUTO_MEMORY", autoMemoryEnabled ? "1" : null, "autoMemoryEnabled");
                         else if (value === "bashEditDiff") updateEnvValue("CLAUDE_CODE_BASH_EDIT_DIFF", bashEditDiffEnabled ? null : "1", "bashEditDiffEnabled");
-                        else if (value === "bypassPermissions") setEnvText((current) => patchBypassPermissions(current, !bypassPermissionsEnabled));
+                        else if (value === "bypassPermissions") {
+                          const next = patchBypassPermissions(envText, !bypassPermissionsEnabled);
+                          if (!bypassPermissionsEnabled) editorRef.current?.revealField(next, "defaultMode");
+                          setEnvText(next);
+                        }
                       }}
                       renderLabel={(option) => (
                         <span title={t(option.value === "autoMemory" ? "advanced.autoMemoryTitle"

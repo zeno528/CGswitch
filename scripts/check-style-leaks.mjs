@@ -91,7 +91,8 @@ const STRUCTURAL_CHECKS = [
     // app/AppShell.tsx 只在 DOM 查询里引用该类名（页面进场动画的挂载点选择器），
     // 自身不渲染任何页面布局骨架，页头由各 feature 页自备。
     // 设置页不设标题和返回按钮，顶部标签栏与中间滚动区组成页面骨架。
-    exempt: (rel) => rel === "app/AppShell.tsx" || rel === "features/settings/SettingsView.tsx",
+    // 共享编辑器只查询正文容器以监听可用高度，不创建页面布局或页头。
+    exempt: (rel) => rel === "app/AppShell.tsx" || rel === "features/settings/SettingsView.tsx" || rel === "components/ConfigTextEditor.tsx",
     holds: (content) => content.includes("apple-page-bar"),
   },
 ];

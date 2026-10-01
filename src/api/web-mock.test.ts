@@ -4,6 +4,32 @@ import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../featur
 import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
+  it("关闭的 MCP 编辑源码不包含应用开关状态", async () => {
+    const fixture = (await webInvoke<McpServerSpec[]>("list_mcp_servers"))[0];
+    const name = "editor-disabled-fixture";
+    try {
+      await webInvoke("save_mcp_server", { spec: { ...fixture, name } });
+      await webInvoke("set_mcp_server_enabled", { name, tool: "codex", enabled: false });
+      const source = await webInvoke<string>("get_mcp_server_toml", { name });
+      const server = (await webInvoke<McpServerSpec[]>("list_mcp_servers")).find((item) => item.name === name)!;
+      const patched = await webInvoke<string>("patch_mcp_fragment", { toml: source, spec: server });
+      expect(patched).toBe(source);
+      expect(patched).not.toContain("enabled = false");
+    } finally {
+      await webInvoke("delete_mcp_server", { name });
+    }
+  });
+
+  it.each([null, false, true])("MCP 编辑只保留源码的 enabled=%s，不写入列表开关状态", async (enabled) => {
+    const source = `[mcp_servers.fixture]\nurl = "https://example.test/mcp"\n${enabled === null ? "" : `enabled = ${enabled}\n`}`;
+    const spec = await webInvoke<McpServerSpec>("parse_mcp_fragment", { toml: source });
+    const patched = await webInvoke<string>("patch_mcp_fragment", {
+      toml: source, spec: { ...spec, enabled: enabled === false ? null : false, url: "https://example.test/updated" },
+    });
+    expect((await webInvoke<McpServerSpec>("parse_mcp_fragment", { toml: patched })).enabled).toBe(enabled);
+    expect(patched).toContain('url = "https://example.test/updated"');
+  });
+
   it("MCP 开关与卸载只影响所选客户端，共用编辑不重新安装另一端", async () => {
     const fixture = (await webInvoke<McpServerSpec[]>("list_mcp_servers"))[0];
     for (const tool of ["codex", "claude"] as const) {

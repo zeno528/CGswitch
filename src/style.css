@@ -81,6 +81,8 @@
   --toolbar-control-height: calc(var(--control-height) + 2px);
   /* 输入类控件（.app-input/.app-select）最小高：行高 1.6 + 上下 padding + 边框，允许换行到两行 */
   --input-min-height: calc(1.6em + 1rem + 2px);
+  /* 弹窗沿用原限高；编辑页由共享编辑器按正文可用高度覆盖。 */
+  --editor-max-height: min(34rem, 60vh);
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
@@ -1640,7 +1642,8 @@ body.drag-active * {
   white-space: nowrap;
 }
 
-.editor-ghost:not(:disabled):not([aria-disabled="true"]):hover {
+/* :where 只归零守卫的优先级：组内子控件的透明覆盖必须压过这条，hover 才只亮整组一层 */
+.editor-ghost:where(:not(:disabled):not([aria-disabled="true"])):hover {
   background: var(--hover-bg);
 }
 
@@ -1688,10 +1691,6 @@ body.drag-active * {
 
 /* 组内子控件不单独刷底色，hover 只亮整组一层 */
 .editor-ghost-group > .editor-ghost:hover {
-  background: transparent;
-}
-
-:root.dark .editor-ghost-group > .editor-ghost:hover {
   background: transparent;
 }
 
@@ -2666,6 +2665,11 @@ button:focus-visible {
   color: inherit;
 }
 
+/* 开关开启时阈值药丸的唯一高亮：只描边转 accent，数值保持正常文字色；[type] 优先于 .app-input */
+.compact-token-input[type="number"].compact-token-input--on {
+  border-color: var(--accent);
+}
+
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
 .app-input-stepper__input[type="number"]::-webkit-outer-spin-button,
 .compact-token-input[type="number"]::-webkit-inner-spin-button,
@@ -2868,7 +2872,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .cm-editor {
   /* 代码区按文档内容自适应，最长文件的共享占位由外层承担 */
   height: auto;
-  max-height: min(34rem, 60vh);
+  max-height: var(--editor-max-height);
   background: transparent;
   /* 缩进参考线复用分隔线 token，标记随行首空白绘制且不跟随光标变化 */
   --indent-marker-bg-color: var(--panel-divider);

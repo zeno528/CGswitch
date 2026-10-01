@@ -28,7 +28,7 @@ export default {
     customOption: "在 /model 菜单底部追加一条自定义模型项，不替换内置别名",
   },
   mappingTitle: "模型映射",
-  mappingDescription: "请求模型用于实际调用；1M 表示百万 token 上下文。",
+  mappingDescription: "请求模型用于实际调用；勾选 1M 启用百万 token 上下文，需模型和供应商支持。",
   quickSet: "一键设置",
   modelRoleLabel: "模型角色",
   displayNameLabel: "显示名",

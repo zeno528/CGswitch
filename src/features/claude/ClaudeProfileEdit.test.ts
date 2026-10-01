@@ -68,4 +68,9 @@ describe("Claude 新建配置隔离", () => {
     expect(editSource).toContain("CLAUDE_CODE_EFFORT_LEVEL");
     expect(editSource).toContain("editor-ghost-group");
   });
+
+  it("自动压缩开启的唯一高亮是阈值药丸描边（数值保持正常文字色），标签文字不分块转 accent", () => {
+    expect(editSource).toContain('<label className="editor-ghost" title={t("advanced.autoCompactTitle")}>');
+    expect(editSource).toContain("compact-token-input ${autoCompactDisabled ? \"\" : \"compact-token-input--on\"} h-6 text-center");
+  });
 });

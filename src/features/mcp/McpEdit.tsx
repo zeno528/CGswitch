@@ -7,6 +7,7 @@ import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/
 import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 import McpConnectionForm, { PairEditor, TimeoutInput } from "./McpConnectionForm";
+import { McpSourceLabel } from "./McpSourceLabel";
 import { pairsToRecord, recordToPairs, type KVPair } from "./mcpFormData";
 
 type Transport = "stdio" | "http";
@@ -99,8 +100,6 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
     }).catch(() => undefined);
   }, [initialized, tomlText]);
 
-  const dirty = initialized && tomlText.replace(/\r\n/g, "\n") !== initialToml.replace(/\r\n/g, "\n");
-
   const formatToml = async () => {
     if (formatting || saving) return;
     setFormatting(true);
@@ -167,10 +166,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
 
           <div className="apple-panel-section">
             <div className="mb-1.5 flex min-h-8 items-center justify-between gap-2">
-              <div className="field-label flex items-center gap-1.5">
-                {t("edit.tomlSource")}
-                {dirty ? <span className="h-1.5 w-1.5 rounded-full bg-accent" role="img" aria-label={t("edit.unsavedChanges")} title={t("edit.unsavedChanges")} /> : null}
-              </div>
+              <McpSourceLabel label={t("edit.tomlSource")} value={tomlText} initialValue={initialToml} initialized={initialized} />
               <button type="button" className="editor-ghost editor-ghost--format shrink-0" disabled={formatting || saving} onClick={() => void formatToml()}>
                 <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                 <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>

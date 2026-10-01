@@ -118,7 +118,10 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
   const showProviderFields = create ? (isCustom || Boolean(selectedPreset?.base_url)) : Boolean(detail?.provider);
   const showLongContextOverride = isOfficial;
-  const advanced = useProfileAdvancedPatches({ configText, setConfigText, initialized, showLongContextOverride });
+  const advanced = useProfileAdvancedPatches({
+    configText, setConfigText, initialized, showLongContextOverride,
+    onPatched: (text, field) => editorRef.current?.revealField(text, field),
+  });
   const supportsBalance = create ? presetKind === "chatgpt" || balanceQueryProviders.has(selectedPreset?.provider ?? "") : isOfficial || balanceQueryProviders.has(detail?.provider ?? "");
   // 创建态下预设的 config 原文统一从后端取（单源真相），避免与 Rust 模板双份维护。
   // 与 configText 同源同时设置（selectPreset 内 await 后一起 set），防止异步晚到

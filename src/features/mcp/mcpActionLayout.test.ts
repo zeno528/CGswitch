@@ -1,7 +1,10 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { compareMcpServers } from "./McpView";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { setupI18n } from "../../i18n";
+import { compareMcpServers, McpServerRow } from "./McpView";
 
 const viewSource = readFileSync(new URL("./McpView.tsx", import.meta.url), "utf8");
 const editSource = readFileSync(new URL("./McpEdit.tsx", import.meta.url), "utf8");
@@ -124,9 +127,20 @@ describe("MCP 操作入口", () => {
     expect(viewSource).toContain("if (toolsLoading[name])");
   });
 
-  it("禁用的服务器同步禁用测试连通按钮（后端 probe 对禁用条目直接报错）", () => {
-    expect(viewSource).toContain("disabled={probing || server.enabled === false}");
-    expect(viewSource).toContain("list.testConnectionDisabled");
+  it.each([false, true, null])("服务器 enabled=%s 时，测试和工具按钮同步禁用，编辑仍可用", (enabled) => {
+    setupI18n("en-US");
+    const markup = renderToStaticMarkup(createElement(McpServerRow, {
+      server: {
+        name: "fixture", enabled, command: null, args: [], env: {}, url: "https://example.test/mcp",
+        startup_timeout_sec: null, tool_timeout_sec: null, bearer_token_env_var: null,
+        http_headers: {}, env_http_headers: {},
+      },
+      result: undefined, probing: false, detailsVisible: false, toolsBusy: true, toolsLoaded: false,
+      onEdit: () => {}, onProbe: () => {}, onToggleTools: () => {},
+    }));
+    const buttons = markup.match(/<button\b[^>]*>/g) ?? [];
+    expect(buttons.map((button) => button.includes(' disabled=""')))
+      .toEqual([false, enabled === false, enabled === false]);
   });
 
   it("列表按类型分组（stdio → http → unknown）优先、组内按名称", () => {

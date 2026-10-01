@@ -215,7 +215,9 @@ describe("AppShell 布局", () => {
       expect(styles).toContain(`${selector} {\n  background: var(--hover-bg);`);
     }
     expect(styles).toContain(":where(.apple-icon-button:hover:not(:disabled), .apple-icon-button:focus-visible:not(:disabled)) {\n  background: var(--hover-bg);");
-    expect(styles).toContain('.editor-ghost:not(:disabled):not([aria-disabled="true"]):hover {\n  background: var(--hover-bg);');
+    // :where 归零守卫优先级是硬契约：否则通用悬停压过组内透明覆盖，ghost 组悬停退化成左右分块高亮
+    expect(styles).toContain('.editor-ghost:where(:not(:disabled):not([aria-disabled="true"])):hover {\n  background: var(--hover-bg);');
+    expect(styles).toContain(".editor-ghost-group > .editor-ghost:hover {\n  background: transparent;\n}");
   });
 
   it("让主内容表面浅色使用白色、深色使用 #1e1e1e", () => {
@@ -354,7 +356,7 @@ describe("AppShell 布局", () => {
   });
 
   it("配置编辑器恢复原生横向滚动，不再自绘同步滚动条", () => {
-    expect(styles).toContain("max-height: min(34rem, 60vh);");
+    expect(styles).toContain("max-height: var(--editor-max-height);");
     expect(styles).toContain(".cm-editor .cm-scroller { overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; }");
     expect(styles).not.toContain(".cm-horizontal-scrollbar");
   });
