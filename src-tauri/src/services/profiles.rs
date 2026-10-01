@@ -2,11 +2,12 @@ use super::profile_config::{
     is_builtin_placeholder, parse_provider_detail, profile_config_fragment,
     write_live_provider_update,
 };
+use super::sync;
 use super::{
     app_err, atomic_write, backup_file, builtin, codex_config, codex_process,
     normalize_auth_override, now_ms, parse_external_auth_json, profile_summary, read_optional_text,
     AppContext, AppResult, AppState, AuthSource, CodexAppStatus, ProfileDetail, ProfileKind,
-    ProfileSummary,
+    ProfileSummary, SkillTool,
 };
 
 pub(super) fn validated_name(name: &str) -> AppResult<String> {
@@ -17,7 +18,7 @@ pub(super) fn validated_name(name: &str) -> AppResult<String> {
     Ok(name.to_string())
 }
 
-fn validated_description(description: Option<&str>) -> AppResult<Option<String>> {
+pub(super) fn validated_description(description: Option<&str>) -> AppResult<Option<String>> {
     let description = description.map(str::trim).filter(|text| !text.is_empty());
     if description.is_some_and(|text| text.chars().count() > 200) {
         return Err(app_err!("供应商描述不能超过 200 个字符"));
@@ -58,13 +59,27 @@ fn profile_subject(summary: &ProfileSummary) -> String {
     }
 }
 
+/// live config.toml 读取失败的可区分原因：回写守卫要分别落 `LiveUnreadable` /
+/// `LiveParseError`，混成一坨会把 io 故障（权限/占用）误引去查 TOML 语法。
+/// 文件不存在不算失败（`Ok(None)`，首次运行等正常态）。
+pub(super) enum LiveReadError {
+    Unreadable,
+    Parse,
+}
+
 impl AppContext {
     pub fn get_state(&self) -> AppResult<AppState> {
-        // 刷新/窗口激活等显式时机：外部改过 live 就把激活供应商快照同步回数据库（有差异才写）
+        // 被动回写统一走时机层（StateRefresh 覆盖启动预发/窗口激活/页内刷新）；
+        // 已解析的 live 文档直接复用，不在启动路径二次读盘；
+        // 操作锁被切换/应用占用时本轮跳过，下一轮激活自愈
         let live = self.live_document();
-        if let Some(document) = live.as_ref() {
-            let _ = self.sync_active_profile_document(document);
-        }
+        sync::registry().harvest_passive(
+            self,
+            &sync::SyncTrigger::StateRefresh,
+            sync::SyncMaterial {
+                codex_document: live.as_ref(),
+            },
+        );
         let settings = self.settings()?;
         let profiles = self.database.profiles()?;
         // 激活状态只来自手动应用（显式状态或应用事件），不做 live 配置推断，
@@ -140,6 +155,7 @@ impl AppContext {
                 })
                 .collect::<Vec<ProfileSummary>>(),
             active_profile_id,
+            active_claude_profile_id: self.database.active_claude_profile()?,
             codex: CodexAppStatus {
                 running: !process_ids.is_empty(),
                 display_path,
@@ -168,17 +184,21 @@ impl AppContext {
         self.live_document_checked().ok().flatten()
     }
 
-    /// `live_document` 的保留错误版：同一次读取、同一次解析，但把错误交出来。
-    /// 拉起 Codex 前用它：这份文件读不了，Codex 也起不来，日志必须留痕。
-    /// 文件不存在返回 `None`（首次运行）。
-    pub(super) fn live_document_checked(&self) -> AppResult<Option<toml_edit::DocumentMut>> {
-        let path = self.paths.codex_config();
-        let text = match std::fs::read_to_string(&path) {
+    /// `live_document` 的保留错误版：同一次读取、同一次解析，但把失败原因交出来。
+    /// 回写守卫与拉起 Codex 前用它：读不了（权限/占用）与解析失败必须落不同的
+    /// 结局和日志，否则 io 故障会被当成配置语法问题去排查。
+    /// 文件不存在返回 `Ok(None)`（首次运行，正常态）。
+    pub(super) fn live_document_checked(
+        &self,
+    ) -> Result<Option<toml_edit::DocumentMut>, LiveReadError> {
+        let text = match std::fs::read_to_string(self.paths.codex_config()) {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(app_err!("无法读取 {}: {error}", path.display())),
+            Err(_) => return Err(LiveReadError::Unreadable),
         };
-        Ok(Some(codex_config::parse_document(&text)?))
+        codex_config::parse_document(&text)
+            .map(Some)
+            .map_err(|_| LiveReadError::Parse)
     }
 
     pub fn capture_profile(&self, name: &str) -> AppResult<ProfileSummary> {
@@ -193,9 +213,13 @@ impl AppContext {
         let timestamp = now_ms().to_string();
         let summary = self.database.insert_profile(&name, &payload, &timestamp)?;
         // 捕获只保存快照；保留当前激活供应商，并把它在 live 中的累计改动同步回快照。
-        if let Some(document) = self.live_document() {
-            self.sync_active_profile_document(&document)?;
-        }
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::AfterCapture {
+                client: sync::ClientId::Codex,
+            },
+            sync::SyncMaterial::default(),
+        )?;
         self.database.record_event(
             Some(&summary.id),
             "capture",
@@ -361,14 +385,16 @@ impl AppContext {
             .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned()))
     }
 
-    pub fn rename_profile(&self, id: &str, name: &str) -> AppResult<()> {
-        let stored = self.database.profile(id)?;
+    pub fn rename_profile(&self, id: &str, name: &str, tool: SkillTool) -> AppResult<()> {
+        let (previous_name, source) = match tool {
+            SkillTool::Codex => (self.database.profile(id)?.name, "codex"),
+            SkillTool::Claude => (self.database.claude_profile(id)?.name, "claude"),
+        };
         let name = validated_name(name)?;
         self.database
-            .rename_profile(id, &name, &now_ms().to_string())?;
+            .rename_profile(id, &name, &now_ms().to_string(), tool)?;
         tauri_plugin_log::log::info!(
-            "[provider.profile.rename] profile_id={id} profile_name={:?} new_name={name:?} outcome=success msg=\"已重命名配置\"",
-            stored.name
+            "[provider.profile.rename] source={source} profile_id={id} profile_name={previous_name:?} new_name={name:?} outcome=success msg=\"已重命名配置\""
         );
         Ok(())
     }
@@ -379,10 +405,12 @@ impl AppContext {
 
     pub fn delete_profile(&self, id: &str) -> AppResult<()> {
         let stored = self.database.profile(id)?;
-        self.database.delete_profile(id)?;
-        if self.active_profile_state()?.as_deref() == Some(id) {
-            self.database.set_active_profile(None)?;
+        // 产品规则：使用中的供应商配置不可删除（前端对激活卡片禁用删除按钮，ProfileCardActions）。
+        // 后端对齐拒绝：托盘切换后列表未刷新的竞态也只会得到明确报错，不会静默清掉激活位。
+        if self.is_active_profile(id)? {
+            return Err(app_err!("无法删除使用中的供应商配置，请先切换到其他配置"));
         }
+        self.database.delete_profile(id)?;
         // 删除清掉的是配置与本地凭据，留痕是唯一审计线索
         tauri_plugin_log::log::info!(
             "[provider.profile.delete] profile_id={id} profile_name={:?} outcome=success msg=\"已删除配置\"",
@@ -420,12 +448,16 @@ impl AppContext {
     /// 完整复制供应商（配置、关联文件、图标、账号绑定），新供应商名加 `copy` 后缀，同名时追加序号。
     pub fn duplicate_profile(&self, id: &str) -> AppResult<ProfileSummary> {
         // 使用中的供应商：先把 live 的 config/models.json 改动同步回快照，副本取到最新状态
+        // （门控在执行体内部：目标不是激活配置时直接跳过）
         let active = self.is_active_profile(id)?;
-        if active {
-            if let Some(document) = self.live_document() {
-                let _ = self.sync_active_profile_document(&document);
-            }
-        }
+        let _ = sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProfileClone {
+                client: sync::ClientId::Codex,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        );
         let mut stored = self.database.profile(id)?;
         stored.payload.raw_auth = normalize_auth_override(stored.payload.raw_auth.as_deref());
         // 使用中的第三方供应商：快照没单独保存 auth 时连当前 live auth.json 一起复制，
@@ -441,15 +473,11 @@ impl AppContext {
             .position(|profile| profile.id == id)
             .ok_or_else(|| app_err!("供应商配置不存在"))?;
         let base: String = stored.name.trim().chars().take(45).collect();
-        let mut candidate = format!("{base} copy");
-        let mut counter = 2;
-        while profiles
-            .iter()
-            .any(|profile| profile.name.eq_ignore_ascii_case(&candidate))
-        {
-            candidate = format!("{base} copy {counter}");
-            counter += 1;
-        }
+        let candidate = super::unique_copy_name(&base, |name| {
+            profiles
+                .iter()
+                .any(|profile| profile.name.eq_ignore_ascii_case(name))
+        });
         let timestamp = now_ms().to_string();
         let summary = self
             .database
@@ -485,11 +513,14 @@ impl AppContext {
 
     pub fn get_profile(&self, id: &str) -> AppResult<ProfileDetail> {
         // 打开激活供应商的编辑页：先把外部改动同步回数据库快照
-        if self.is_active_profile(id)? {
-            if let Some(document) = self.live_document() {
-                let _ = self.sync_active_profile_document(&document);
-            }
-        }
+        let _ = sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProfileRead {
+                client: sync::ClientId::Codex,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial::default(),
+        );
         let stored = self.database.profile(id)?;
         let payload = &stored.payload;
         let active = self.is_active_profile(id)?;

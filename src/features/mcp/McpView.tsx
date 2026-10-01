@@ -3,26 +3,49 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedMcpProbe, getCachedMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setMcpDiffBadge, setMcpServersCache } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setClaudeMcpServersCache, setMcpDiffBadge, setMcpServersCache, type McpProbeScope } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { McpIcon } from "../../components/McpIcon";
-import { mcpTransportText } from "../../utils";
 import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
+import ClaudeMcpEdit from "./ClaudeMcpEdit";
 import McpDiffPage from "./McpDiffPage";
 import McpEdit from "./McpEdit";
 
 type Transport = "http" | "stdio" | "unknown";
 
 export type McpDiffVerb = "adopt" | "revert";
+export type McpTarget = "codex" | "claude";
 
 /// 差异动作：只指向单个条目的单侧（mirror=数据库镜像，live=config.toml）；
 /// fragment 为空表示删除该侧的条目。
 export type McpDiffAction = { side: "mirror" | "live" } & McpDiffEntryAction;
 
+export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChange: (target: McpTarget) => void }) {
+  const { t } = useTranslation("mcp");
+  return (
+    <div className="apple-toolbar-group mcp-target-switch shrink-0" role="tablist" aria-label={t("target.label")}>
+      {(["codex", "claude"] as const).map((target) => (
+        <button
+          key={target}
+          type="button"
+          role="tab"
+          aria-selected={value === target}
+          className={`apple-action-button ${value === target ? "app-button--primary" : ""}`}
+          title={t("target.label")}
+          onClick={() => onChange(target)}
+        >
+          <img src={target === "codex" ? "/codex.svg" : "/claude-code.svg"} alt="" className="h-4 w-4" />
+          {t(`target.${target}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /// 差异×动词到外科手术原语的唯一映射——每条命令只碰单个条目的单侧（镜像或 live），
-/// 不得使用 saveMcpServer/deleteMcpServer（它们会用整段 live 重建镜像，殃及其他未处理差异）：
+/// 不得使用 saveMcpServer/deleteMcpServer（它们会同时修改 live，无法表达只采纳镜像）：
 /// 同步 = 采纳外部修改（live 片段写入镜像；外部已删除的删除镜像条目）；
 /// 撤销 = 回退外部修改（数据库片段写回 live；外部新增的从 live 移除）。
 export function mcpEntryAction(entry: McpSyncDiffEntry, verb: McpDiffVerb): McpDiffAction | null {
@@ -45,16 +68,147 @@ function mcpServerFingerprint(server: McpServerSpec) {
   return (hash >>> 0).toString(36);
 }
 
-function cachedProbeState(servers: McpServerSpec[]) {
+function cachedProbeState(servers: McpServerSpec[], scope: McpProbeScope = "codex") {
   const results: Record<string, McpProbeResult> = {};
   const toolsLoaded: Record<string, boolean> = {};
   for (const server of servers) {
-    const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server));
+    const entry = getCachedMcpProbe(server.name, mcpServerFingerprint(server), scope);
     if (!entry) continue;
     results[server.name] = entry.result;
     if (entry.toolsLoaded) toolsLoaded[server.name] = true;
   }
   return { results, toolsLoaded };
+}
+
+/// MCP 探测状态机：Codex 与 Claude 两页共用同一套探测/工具清单/缓存逻辑，缓存按 scope 隔离。
+/// probe 一条函数覆盖两条路径：includeTools=false 只验连通（结果连同细节入库缓存），
+/// includeTools=true 拉工具清单（失败不覆盖既有连通结论，只报错——灯反映的是连通性，不是清单拉取）。
+/// manual 控制是否给用户反馈与后端 manual 标记，静默重探传 false；showLoading 默认跟随 manual。
+function useMcpProbes(scope: McpProbeScope, initialServers: McpServerSpec[]) {
+  const feedback = useFeedback();
+  const { t } = useTranslation("mcp");
+  const [probingNames, setProbingNames] = useState<Record<string, boolean>>({});
+  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>(() => cachedProbeState(initialServers, scope).results);
+  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
+  const [toolsLoading, setToolsLoading] = useState<Record<string, boolean>>({});
+  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(initialServers, scope).toolsLoaded);
+
+  const notifyFailure = (name: string, message: string) => {
+    if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
+    else feedback.error(t("list.connectionFailed", { name }));
+  };
+
+  /// 列表刷新后调用：用缓存重铺探测结果（进页不重新点亮状态灯），收起所有工具面板。
+  const applyCache = (servers: McpServerSpec[]) => {
+    const cached = cachedProbeState(servers, scope);
+    setProbeResults(cached.results);
+    setToolsOpen({});
+    setToolsLoading({});
+    setToolsLoaded(cached.toolsLoaded);
+  };
+
+  const probe = async (server: McpServerSpec, { includeTools = false, manual = true, showLoading = manual }: { includeTools?: boolean; manual?: boolean; showLoading?: boolean } = {}) => {
+    const name = server.name;
+    const fingerprint = mcpServerFingerprint(server);
+    // 连通探测不带工具清单：之前取到的工具列表跨探测保留，不因一次重探清空
+    const keepTools = (result: McpProbeResult) => {
+      const cached = getCachedMcpProbe(name, fingerprint, scope);
+      return cached?.toolsLoaded
+        ? { ...result, tools: cached.result.tools, tools_truncated: cached.result.tools_truncated, tools_error: cached.result.tools_error }
+        : result;
+    };
+    const remember = (result: McpProbeResult, toolsLoadedNow: boolean) => {
+      setProbeResults((current) => ({ ...current, [name]: result }));
+      setCachedMcpProbe(name, { fingerprint, result, toolsLoaded: toolsLoadedNow }, scope);
+      if (toolsLoadedNow) setToolsLoaded((current) => ({ ...current, [name]: true }));
+    };
+    if (includeTools) {
+      setToolsOpen((current) => ({ ...current, [name]: true }));
+      if (showLoading) setToolsLoading((current) => ({ ...current, [name]: true }));
+    } else if (showLoading) {
+      setProbingNames((current) => ({ ...current, [name]: true }));
+    }
+    try {
+      const result = await api.probeMcpServer(name, includeTools, manual, scope);
+      if (includeTools) {
+        if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name }));
+        if (result.tools_error) throw new Error(result.tools_error);
+        remember(result, true);
+      } else {
+        const next = keepTools(result);
+        remember(next, getCachedMcpProbe(name, fingerprint, scope)?.toolsLoaded ?? false);
+        if (manual) {
+          if (next.ok) feedback.success(t("list.connectionSuccess", { name, ms: next.latency_ms ?? "-" }));
+          else notifyFailure(name, next.error ?? "");
+        }
+      }
+    } catch (error) {
+      if (includeTools) {
+        if (manual) feedback.error(String(error));
+      } else {
+        const result = keepTools({ ok: false, latency_ms: null, status: null, protocol_version: null, server_info: null, tools: [], tools_truncated: false, error: String(error), tools_error: null });
+        remember(result, getCachedMcpProbe(name, fingerprint, scope)?.toolsLoaded ?? false);
+        if (manual) notifyFailure(name, String(error));
+      }
+    } finally {
+      if (includeTools) {
+        if (showLoading) setToolsLoading((current) => { const next = { ...current }; delete next[name]; return next; });
+      } else if (showLoading) {
+        setProbingNames((current) => { const next = { ...current }; delete next[name]; return next; });
+      }
+    }
+  };
+
+  const toggleTools = (server: McpServerSpec) => {
+    if (server.enabled === false) return;
+    const name = server.name;
+    if (toolsOpen[name]) {
+      setToolsOpen((current) => ({ ...current, [name]: false }));
+      return;
+    }
+    if (toolsLoading[name]) {
+      setToolsOpen((current) => ({ ...current, [name]: true }));
+      return;
+    }
+    void probe(server, { includeTools: true });
+  };
+
+  /// 应用级开关：两页只差刷新策略（refreshAfter）与乐观回滚（optimistic）。
+  /// optimistic 点击即翻列表与缓存，失败用其返回的回滚函数还原（模式对齐拆分前的旧实现）。
+  const [togglingName, setTogglingName] = useState("");
+  const toggleEnabled = async (server: McpServerSpec, enabled: boolean, refreshAfter: () => Promise<unknown>, optimistic?: (server: McpServerSpec, enabled: boolean) => () => void) => {
+    if (togglingName) return;
+    setTogglingName(server.name);
+    const rollback = optimistic?.(server, enabled);
+    try {
+      await api.setMcpServerEnabled(server.name, scope, enabled);
+      if (!enabled) deleteCachedMcpProbe(server.name, scope);
+      await refreshAfter();
+      feedback.success(t("feedback.updated"));
+    } catch (error) {
+      rollback?.();
+      feedback.error(String(error));
+    } finally {
+      setTogglingName("");
+    }
+  };
+
+  return { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache };
+}
+
+/// 开关的乐观翻转（Codex/Claude 两页共用，只差缓存写入口）：点击即翻列表与列表缓存，
+/// 失败由 toggleEnabled 调用返回的回滚函数还原到点击前的 enabled 值（模式对齐拆分前旧实现）。
+function optimisticToggleEnabled(setServers: (update: (current: McpServerSpec[]) => McpServerSpec[]) => void, writeCache: (items: McpServerSpec[]) => void) {
+  return (server: McpServerSpec, enabled: boolean): () => void => {
+    const previous = server.enabled;
+    const apply = (value: boolean | null) => setServers((current) => {
+      const next = current.map((item) => item.name === server.name ? { ...item, enabled: value } : item);
+      writeCache(next);
+      return next;
+    });
+    apply(enabled ? null : false);
+    return () => apply(previous);
+  };
 }
 
 function transportOf(server: McpServerSpec): Transport { return server.url ? "http" : server.command ? "stdio" : "unknown"; }
@@ -100,11 +254,12 @@ type McpServerRowProps = {
   onEdit: (server: McpServerSpec) => void;
   onProbe: (server: McpServerSpec) => void;
   onToggleTools: (server: McpServerSpec) => void;
-  onToggleEnabled: (server: McpServerSpec, enabled: boolean) => void;
+  onToggleEnabled?: (server: McpServerSpec, enabled: boolean) => void;
 };
 
-function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
+export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
   const { t } = useTranslation("mcp");
+  const testTitle = t(server.enabled === false ? "list.testConnectionDisabled" : "list.testConnection");
   const Icon = transportIcon(server);
 
   return (
@@ -125,7 +280,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
                 aria-label={t(probing ? "list.connectionStateChecking" : result?.ok ? "list.connectionStateConnected" : "list.connectionStateUnavailable")}
               />
               <span className="min-w-0 truncate font-semibold">{server.name}</span>
-              <MetaChip>{mcpTransportText(server, t)}</MetaChip>
+              <MetaChip>{server?.url ? "HTTP" : server?.command ? "STDIO" : t("transport.unknown")}</MetaChip>
               {result?.server_info?.version ? <MetaChip>{result.server_info.version}</MetaChip> : null}
               {toolsLoaded ? <MetaChip>{t("list.toolCount", { count: result?.tools.length ?? 0 })}</MetaChip> : null}
               {toolsBusy ? <span className="muted shrink-0"><LoadingSpinner /></span> : null}
@@ -146,9 +301,9 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
           <button
             type="button"
             className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={probing}
-            title={t("list.testConnection")}
-            aria-label={t("list.testConnection")}
+            disabled={probing || server.enabled === false}
+            title={testTitle}
+            aria-label={testTitle}
             onClick={() => onProbe(server)}
           >
             {probing ? <LoadingSpinner /> : <Wifi className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
@@ -156,13 +311,14 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
           <button
             type="button"
             className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={server.enabled === false}
             title={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
             aria-label={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
             onClick={() => onToggleTools(server)}
           >
             <Wrench className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
           </button>
-          <AppSwitch size="sm" checked={server.enabled !== false} label={t("list.enableServer", { name: server.name })} onCheckedChange={(value) => onToggleEnabled(server, value)} />
+          {onToggleEnabled ? <AppSwitch size="sm" checked={server.enabled !== false} label={t("list.enableServer", { name: server.name })} onCheckedChange={(value) => onToggleEnabled(server, value)} /> : null}
         </div>
       </div>
       {result ? (
@@ -178,7 +334,7 @@ function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, tool
   );
 }
 
-export default function McpView({ activationEpoch }: { activationEpoch: number }) {
+function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; onSwitch: (target: McpTarget) => void }) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const cachedServers = getCachedMcpServers();
@@ -187,12 +343,8 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
   const [loadError, setLoadError] = useState("");
   const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
   const [creatingServer, setCreatingServer] = useState(false);
-  const [togglingName, setTogglingName] = useState("");
-  const [probingNames, setProbingNames] = useState<Record<string, boolean>>({});
-  const [probeResults, setProbeResults] = useState<Record<string, McpProbeResult>>(() => cachedProbeState(cachedServers ?? []).results);
-  const [toolsOpen, setToolsOpen] = useState<Record<string, boolean>>({});
-  const [toolsLoading, setToolsLoading] = useState<Record<string, boolean>>({});
-  const [toolsLoaded, setToolsLoaded] = useState<Record<string, boolean>>(() => cachedProbeState(cachedServers ?? []).toolsLoaded);
+  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("codex", cachedServers ?? []);
+  const optimisticToggle = optimisticToggleEnabled(setServers, setMcpServersCache);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [diffOpen, setDiffOpen] = useState(false);
@@ -230,17 +382,14 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
     try {
       next = await loadMcpServers(force);
       setServers(next);
-      const cached = cachedProbeState(next);
-      setProbeResults(cached.results);
-      setToolsOpen({});
-      setToolsLoading({});
-      setToolsLoaded(cached.toolsLoaded);
+      applyCache(next);
       setLoadError("");
     } catch (error) { setLoadError(String(error)); }
     finally { setLoaded(true); }
     if (next) {
       const targets = only ? next.filter((server) => only.includes(server.name)) : next;
-      if (targets.length) void Promise.all(targets.map((server) => probeServer(server, false, false)));
+      const enabledTargets = targets.filter((server) => server.enabled !== false);
+      if (enabledTargets.length) void Promise.all(enabledTargets.map((server) => probe(server, { manual: false })));
     }
     await loadPreview();
     return next;
@@ -257,103 +406,6 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
   // 窗口激活时刷新差异预览：差异只可能来自 Codex 侧先改，激活是唯一需要重查差异的时机。
   // epoch=0 表示尚未激活过（含首次挂载，此时上面的 refresh 已经取过预览），不重复请求。
   useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);
-
-  const notifyProbeFailure = (name: string, message: string) => {
-    if (/(超时|timeout|timed out)/i.test(message)) feedback.warning(t("list.connectionTimeout", { name })); // i18n-exempt: 匹配后端错误原文
-    else feedback.error(t("list.connectionFailed", { name }));
-  };
-
-  const toggleEnabled = async (server: McpServerSpec, enabled: boolean) => {
-    if (togglingName) return;
-    setTogglingName(server.name);
-    const previous = server.enabled;
-    setServers((current) => {
-      const next = current.map((item) => item.name === server.name ? { ...item, enabled: enabled ? null : false } : item);
-      setMcpServersCache(next);
-      return next;
-    });
-    try { await api.saveMcpServer(server.name, { ...server, enabled: enabled ? null : false }); feedback.success(t("feedback.updated")); }
-    catch (error) { setServers((current) => { const next = current.map((item) => item.name === server.name ? { ...item, enabled: previous } : item); setMcpServersCache(next); return next; }); feedback.error(String(error)); }
-    finally { setTogglingName(""); }
-  };
-
-  const probeServer = async (server: McpServerSpec, notify = true, showLoading = notify) => {
-    const fingerprint = mcpServerFingerprint(server);
-    const keepTools = (result: McpProbeResult) => {
-      const cached = getCachedMcpProbe(server.name, fingerprint);
-      return cached?.toolsLoaded
-        ? { ...result, tools: cached.result.tools, tools_truncated: cached.result.tools_truncated, tools_error: cached.result.tools_error }
-        : result;
-    };
-    if (showLoading) setProbingNames((current) => ({ ...current, [server.name]: true }));
-    try {
-      const result = keepTools(await api.probeMcpServer(server.name, false, notify));
-      setProbeResults((current) => ({ ...current, [server.name]: result }));
-      setCachedMcpProbe(server.name, { fingerprint, result, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
-      if (notify) {
-        if (result.ok) {
-          feedback.success(t("list.connectionSuccess", { name: server.name, ms: result.latency_ms ?? "-" }));
-        } else notifyProbeFailure(server.name, result.error ?? "");
-      }
-    } catch (error) {
-      const result: McpProbeResult = {
-        ok: false,
-        latency_ms: null,
-        status: null,
-        protocol_version: null,
-        server_info: null,
-        tools: [],
-        tools_truncated: false,
-        error: String(error),
-        tools_error: null,
-      };
-      const nextResult = keepTools(result);
-      setProbeResults((current) => ({ ...current, [server.name]: nextResult }));
-      setCachedMcpProbe(server.name, { fingerprint, result: nextResult, toolsLoaded: getCachedMcpProbe(server.name, fingerprint)?.toolsLoaded ?? false });
-      if (notify) notifyProbeFailure(server.name, String(error));
-    } finally {
-      if (showLoading) setProbingNames((current) => {
-        const next = { ...current };
-        delete next[server.name];
-        return next;
-      });
-    }
-  };
-
-  const probeTools = async (server: McpServerSpec, showLoading = true, open = true) => {
-    const name = server.name;
-    if (open) setToolsOpen((current) => ({ ...current, [name]: true }));
-    if (showLoading) setToolsLoading((current) => ({ ...current, [name]: true }));
-    try {
-      const result = await api.probeMcpServer(name, true, showLoading);
-      if (!result.ok) throw new Error(result.error ?? t("list.connectionFailed", { name }));
-      if (result.tools_error) throw new Error(result.tools_error);
-      setProbeResults((current) => ({ ...current, [name]: result }));
-      setCachedMcpProbe(name, { fingerprint: mcpServerFingerprint(server), result, toolsLoaded: true });
-      setToolsLoaded((current) => ({ ...current, [name]: true }));
-    } catch (error) {
-      if (showLoading) feedback.error(String(error));
-    } finally {
-      if (showLoading) setToolsLoading((current) => {
-        const next = { ...current };
-        delete next[name];
-        return next;
-      });
-    }
-  };
-
-  const toggleTools = async (server: McpServerSpec) => {
-    const name = server.name;
-    if (toolsOpen[name]) {
-      setToolsOpen((current) => ({ ...current, [name]: false }));
-      return;
-    }
-    if (toolsLoading[name]) {
-      setToolsOpen((current) => ({ ...current, [name]: true }));
-      return;
-    }
-    void probeTools(server);
-  };
 
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
@@ -463,7 +515,7 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
             // 指纹已变、缓存里没有它，先探会被刷掉，灯反而灭。所以先等列表对齐再探，
             // 且用表单保存下来的 spec 直接探，不依赖 refresh 的返回值（它可能为 null）。
             try { await refresh(true, []); } catch { /* 列表刷新失败不拖累连通性验证 */ }
-            if (savedServer) await probeServer(savedServer, false, false);
+            if (savedServer) await probe(savedServer, { manual: false });
           })();
         }}
         onDelete={editingServer ? () => removeServer(editingServer) : undefined}
@@ -482,7 +534,7 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
             {loaded ? <span className="apple-chip">{t("list.serverCount", { count: servers.length })}</span> : null}
           </div>
         </div>
-        <div className="flex w-full max-w-md items-center justify-end gap-2">
+        <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
           {badgeText ? (
             <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
               <GitCompare className="h-4 w-4" strokeWidth={2} />
@@ -490,6 +542,7 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
               <span className="apple-count-badge" aria-hidden="true">{badgeText}</span>
             </button>
           ) : null}
+          <McpTargetSwitch value="codex" onChange={onSwitch} />
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
             <Plus className="h-4 w-4" strokeWidth={2} />
             {t("list.addServer")}
@@ -520,9 +573,9 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
                   toolsBusy={Boolean(toolsLoading[server.name])}
                   toolsLoaded={Boolean(toolsLoaded[server.name])}
                   onEdit={setEditingServer}
-                  onProbe={(target) => void probeServer(target)}
+                  onProbe={(target) => void probe(target)}
                   onToggleTools={(target) => void toggleTools(target)}
-                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled)}
+                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
                 />
               ))}
             </div>
@@ -531,4 +584,134 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
       </div>
     </section>
   );
+}
+
+function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; onSwitch: (target: McpTarget) => void }) {
+  const feedback = useFeedback();
+  const { t } = useTranslation("mcp");
+  const cachedServers = getCachedClaudeMcpServers();
+  const [servers, setServers] = useState<McpServerSpec[]>(() => cachedServers ?? []);
+  const [loaded, setLoaded] = useState(cachedServers !== null);
+  const [loadError, setLoadError] = useState("");
+  const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
+  const [creatingServer, setCreatingServer] = useState(false);
+  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("claude", cachedServers ?? []);
+  const optimisticToggle = optimisticToggleEnabled(setServers, setClaudeMcpServersCache);
+
+  const refresh = async (force = false, only?: string[]) => {
+    let next: McpServerSpec[] | null = null;
+    try {
+      next = await loadClaudeMcpServers(force);
+      setServers(next);
+      applyCache(next);
+      setLoadError("");
+    } catch (error) {
+      setLoadError(String(error));
+    } finally {
+      setLoaded(true);
+    }
+    if (next) {
+      const targets = only ? next.filter((server) => only.includes(server.name)) : next;
+      void Promise.all(targets.filter((server) => server.enabled !== false).map((server) => probe(server, { manual: false })));
+    }
+  };
+
+  const probedOnceRef = useRef(false);
+  useEffect(() => {
+    if (probedOnceRef.current) return;
+    probedOnceRef.current = true;
+    void refresh(true);
+  }, []);
+
+  useEffect(() => { if (activationEpoch === 0) return; void refresh(true, []); }, [activationEpoch]);
+
+  const removeServer = async (server: McpServerSpec) => {
+    const confirmed = await feedback.confirm({
+      title: t("confirm.deleteTitle"),
+      description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />,
+      confirmText: t("confirm.delete"),
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      await api.deleteClaudeMcpServer(server.name);
+      deleteCachedMcpProbe(server.name, "claude");
+      feedback.success(t("feedback.deleted"));
+      setEditingServer(null);
+      await refresh(true, []);
+    } catch (error) {
+      feedback.error(String(error));
+    }
+  };
+
+  if (editingServer || creatingServer) {
+    return (
+      <ClaudeMcpEdit
+        server={editingServer}
+        create={creatingServer}
+        onBack={() => { setEditingServer(null); setCreatingServer(false); }}
+        onSaved={(name) => { setEditingServer(null); setCreatingServer(false); void refresh(true, [name]); }}
+        onDelete={editingServer ? () => removeServer(editingServer) : undefined}
+      />
+    );
+  }
+
+  const orderedServers = [...servers].sort(compareMcpServers);
+  return (
+    <section className="apple-scroll-page mx-auto w-full max-w-none">
+      <header className="apple-page-bar flex-wrap justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent">
+            <McpIcon className="h-[22px] w-[22px]" />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <div className="apple-title">{t("list.title")}</div>
+              {loaded ? <span className="apple-chip">{t("list.serverCount", { count: servers.length })}</span> : null}
+            </div>
+          </div>
+        </div>
+        <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
+          <McpTargetSwitch value="claude" onChange={onSwitch} />
+          <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
+            <Plus className="h-4 w-4" strokeWidth={2} />
+            {t("list.addServer")}
+          </button>
+        </div>
+      </header>
+      <div className="apple-edit-content">
+        {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
+        {!servers.length ? (
+          <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
+            <p className="muted">{t("empty.description")}</p>
+          </EmptyStateCard>
+        ) : (
+          <div className="apple-group apple-list-card">
+            {orderedServers.map((server) => (
+              <McpServerRow
+                key={server.name}
+                server={server}
+                result={probeResults[server.name]}
+                probing={Boolean(probingNames[server.name])}
+                detailsVisible={Boolean(toolsOpen[server.name])}
+                toolsBusy={Boolean(toolsLoading[server.name])}
+                toolsLoaded={Boolean(toolsLoaded[server.name])}
+                onEdit={setEditingServer}
+                onProbe={(target) => void probe(target)}
+                onToggleTools={toggleTools}
+                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export default function McpView({ activationEpoch }: { activationEpoch: number }) {
+  const [target, setTarget] = useState<McpTarget>("codex");
+  return target === "codex"
+    ? <CodexMcpView activationEpoch={activationEpoch} onSwitch={setTarget} />
+    : <ClaudeMcpView activationEpoch={activationEpoch} onSwitch={setTarget} />;
 }

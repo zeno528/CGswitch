@@ -42,7 +42,7 @@ export default function PluginDetailView({ plugin, onBack }: { plugin: PluginSum
         </button>
       </div>
       <div className="apple-edit-content">
-        <div className="apple-group">
+        <div className="apple-edit-surface">
           <div className="apple-panel-section apple-panel-section--compact">
             <div className="flex flex-wrap items-center gap-2">
               <span className="title-md">{plugin.display_name ?? plugin.name}</span>

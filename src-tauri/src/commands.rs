@@ -9,13 +9,14 @@ use crate::builtin;
 use crate::codex::config as codex_config;
 use crate::error::{app_err, AppResult};
 use crate::models::{
-    AppState, AuthSource, CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview,
-    ProfileBalanceInfo, ProfileDetail, ProfileSummary, Settings, TrayClickAction,
+    AppState, AuthSource, ClaudeProfileDetail, ClaudeProfileInput, ClaudeProfileSummary,
+    CodexAppStatus, McpDiffEntryAction, McpServerSpec, McpSyncPreview, ProfileBalanceInfo,
+    ProfileDetail, ProfileSummary, Settings, TrayClickAction,
 };
 use crate::services::{
     AppContext, DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview,
     PluginSkill, PluginSummary, PluginUpdate, ProfileBalance, ProfileConnectionResult,
-    SkillSummary,
+    SkillSummary, SkillTool,
 };
 
 fn should_try_next_account_credential(result: &ProfileConnectionResult) -> bool {
@@ -122,18 +123,155 @@ pub async fn import_skill(source_path: String, state: State<'_, AppContext>) -> 
 }
 
 #[tauri::command]
-pub async fn enable_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
-    state.enable_skill(&name).await
+pub async fn enable_skill(
+    name: String,
+    tool: SkillTool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.enable_skill(&name, tool).await
 }
 
 #[tauri::command]
-pub async fn disable_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
-    state.disable_skill(&name).await
+pub async fn disable_skill(
+    name: String,
+    tool: SkillTool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.disable_skill(&name, tool).await
 }
 
 #[tauri::command]
 pub async fn delete_skill(name: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.delete_skill(&name).await
+}
+
+#[tauri::command]
+pub fn claude_list_profiles(state: State<'_, AppContext>) -> AppResult<Vec<ClaudeProfileSummary>> {
+    state.claude_list()
+}
+
+#[tauri::command]
+pub fn claude_get_profile(
+    id: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_get(&id)
+}
+
+#[tauri::command]
+pub fn claude_capture_profile(
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_capture(&name)
+}
+
+#[tauri::command]
+pub fn claude_get_common_settings(state: State<'_, AppContext>) -> AppResult<Option<String>> {
+    state.claude_common_settings()
+}
+
+#[tauri::command]
+pub fn claude_save_common_settings(
+    text: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_save_common_settings(text.as_deref())
+}
+
+// ponytail: 参数即表单字段一一对应，IPC 边界保持散参（camelCase 自动映射），service 层才收拢成 Input
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn claude_save_profile(
+    id: Option<String>,
+    name: String,
+    base_url: Option<String>,
+    auth_token: Option<String>,
+    model: Option<String>,
+    description: Option<String>,
+    fetched_models: Option<Vec<String>>,
+    kind: Option<String>,
+    admin_url: Option<String>,
+    extra_env: Option<String>,
+    raw_settings: Option<String>,
+    icon: Option<String>,
+    show_balance: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_save(
+        id.as_deref(),
+        ClaudeProfileInput {
+            name,
+            base_url,
+            auth_token,
+            model,
+            description,
+            fetched_models,
+            kind,
+            admin_url,
+            extra_env,
+            raw_settings,
+            icon,
+            show_balance,
+        },
+    )
+}
+
+#[tauri::command]
+pub fn claude_set_profile_icon(
+    id: String,
+    icon: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_set_icon(&id, icon)
+}
+
+#[tauri::command]
+pub fn claude_set_profile_show_balance(
+    id: String,
+    enabled: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_set_show_balance(&id, enabled)
+}
+
+#[tauri::command]
+pub async fn claude_fetch_models(base_url: String, auth_token: String) -> AppResult<Vec<String>> {
+    crate::services::fetch_claude_models(&base_url, &auth_token).await
+}
+
+/// 创建态表单的测试连通：向真实调用路径 /v1/messages 判活，成功回传耗时。
+#[tauri::command]
+pub async fn claude_test_connection(base_url: String, auth_token: String) -> AppResult<u64> {
+    crate::services::probe_claude_messages_reachable(&base_url, &auth_token).await
+}
+
+#[tauri::command]
+pub fn claude_delete_profile(id: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.claude_delete(&id)
+}
+
+#[tauri::command]
+pub fn claude_apply_profile(id: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.claude_apply(&id)
+}
+
+#[tauri::command]
+pub fn claude_reorder_profiles(ids: Vec<String>, state: State<'_, AppContext>) -> AppResult<()> {
+    state.claude_reorder(&ids)
+}
+
+#[tauri::command]
+pub fn claude_duplicate_profile(
+    id: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ClaudeProfileDetail> {
+    state.claude_duplicate(&id)
+}
+
+#[tauri::command]
+pub async fn claude_test_profile(id: String, state: State<'_, AppContext>) -> AppResult<u64> {
+    state.claude_test_profile(&id).await
 }
 
 #[tauri::command]
@@ -356,6 +494,14 @@ pub async fn get_profile_balance(
 }
 
 #[tauri::command]
+pub async fn get_claude_profile_balance(
+    id: String,
+    state: State<'_, AppContext>,
+) -> AppResult<ProfileBalance> {
+    state.get_claude_profile_balance(&id).await
+}
+
+#[tauri::command]
 pub fn export_database(state: State<'_, AppContext>) -> AppResult<String> {
     Ok(state.export_database()?.display().to_string())
 }
@@ -408,8 +554,13 @@ pub fn rename_database_backup(
 }
 
 #[tauri::command]
-pub fn rename_profile(id: String, name: String, state: State<'_, AppContext>) -> AppResult<()> {
-    state.rename_profile(&id, &name)
+pub fn rename_profile(
+    id: String,
+    name: String,
+    tool: Option<SkillTool>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.rename_profile(&id, &name, tool.unwrap_or(SkillTool::Codex))
 }
 
 #[tauri::command]
@@ -578,6 +729,34 @@ pub fn list_mcp_servers(state: State<'_, AppContext>) -> AppResult<Vec<McpServer
     state.list_mcp_servers()
 }
 
+#[tauri::command]
+pub fn list_claude_mcp_servers(state: State<'_, AppContext>) -> AppResult<Vec<McpServerSpec>> {
+    state.claude_mcp_servers()
+}
+
+#[tauri::command]
+pub fn get_claude_mcp_server_json(
+    name: String,
+    state: State<'_, AppContext>,
+) -> AppResult<Option<String>> {
+    state.claude_mcp_server_json(&name)
+}
+
+#[tauri::command]
+pub fn save_claude_mcp_server(
+    original_name: Option<String>,
+    name: String,
+    json: String,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.save_claude_mcp_server(original_name.as_deref(), &name, &json)
+}
+
+#[tauri::command]
+pub fn delete_claude_mcp_server(name: String, state: State<'_, AppContext>) -> AppResult<()> {
+    state.delete_claude_mcp_server(&name)
+}
+
 /// 测试 MCP 最小 initialize 握手；include_tools 为 true 时才额外读取 tools/list。
 /// manual=true（手动点击）时成功记 Info 日志，进页静默探测只记 Debug。
 #[tauri::command]
@@ -585,10 +764,11 @@ pub async fn probe_mcp_server(
     name: String,
     include_tools: bool,
     manual: Option<bool>,
+    tool: SkillTool,
     state: State<'_, AppContext>,
 ) -> AppResult<crate::models::McpProbeResult> {
     state
-        .probe_mcp_server(&name, include_tools, manual.unwrap_or(false))
+        .probe_mcp_server(&name, include_tools, manual.unwrap_or(false), tool)
         .await
 }
 
@@ -599,12 +779,28 @@ pub fn save_mcp_server(
     fragment: Option<String>,
     state: State<'_, AppContext>,
 ) -> AppResult<()> {
-    state.save_mcp_server_with_fragment(original_name.as_deref(), spec, fragment.as_deref())
+    state.save_mcp_server_with_fragment(
+        original_name.as_deref(),
+        spec,
+        fragment.as_deref(),
+        SkillTool::Codex,
+    )
 }
 
 #[tauri::command]
 pub fn delete_mcp_server(name: String, state: State<'_, AppContext>) -> AppResult<()> {
     state.delete_mcp_server(&name)
+}
+
+/// MCP 引擎级开关：只移除该引擎用户范围 live 条目，数据库镜像保留以便恢复。
+#[tauri::command]
+pub fn set_mcp_server_enabled(
+    name: String,
+    tool: SkillTool,
+    enabled: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.set_mcp_server_enabled(&name, tool, enabled)
 }
 
 /// 差异处理"同步"：改写数据库镜像中的单个条目（fragment 为空表示删除该条目；均不触碰 live）。
@@ -657,12 +853,6 @@ pub fn restore_mcp_from_database(state: State<'_, AppContext>) -> AppResult<usiz
     state.restore_mcp_from_database()
 }
 
-/// 用户显式导入：live 当前 MCP 段强制镜像进数据库，返回导入的服务器数量。
-#[tauri::command]
-pub fn import_mcp_from_live(state: State<'_, AppContext>) -> AppResult<usize> {
-    state.import_mcp_from_live()
-}
-
 /// 对比 live config.toml 与数据库镜像的 MCP 差异（只读不写），供同步前人工裁决。
 /// 窗口激活时会与 get_state 一起被调用，而它会等 operation 锁——重启/切换持锁数秒，
 /// 同步命令在主线程等锁会把窗口消息泵占死。与 restart_codex 同理丢到 blocking 线程：
@@ -687,6 +877,9 @@ pub fn get_mcp_server_toml(
 /// MCP 编辑页实时同步：把表单建模字段写进单服务器片段（表单 → 编辑器）。
 #[tauri::command]
 pub fn patch_mcp_fragment(toml: String, spec: McpServerSpec) -> AppResult<String> {
+    let mut spec = spec;
+    // 表单的 enabled 是应用开关状态；原生 enabled 只由配置源码管理。
+    spec.enabled = codex_config::parse_mcp_fragment(&toml).map_or(None, |source| source.enabled);
     codex_config::patch_mcp_fragment(&toml, &spec)
 }
 
@@ -1008,6 +1201,34 @@ pub fn open_path(path: String, state: State<'_, AppContext>) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mcp_editor_patch_preserves_source_enabled_instead_of_app_toggle() {
+        for (native, toggle) in [
+            (None, Some(false)),
+            (Some(false), None),
+            (Some(true), Some(false)),
+        ] {
+            let mut source =
+                "[mcp_servers.fixture]\nurl = \"https://example.test/mcp\"\n".to_string();
+            if let Some(enabled) = native {
+                source.push_str(&format!("enabled = {enabled}\n"));
+            }
+            let mut spec = codex_config::parse_mcp_fragment(&source).unwrap();
+            spec.enabled = toggle;
+            spec.url = Some("https://example.test/updated".to_string());
+            let patched = patch_mcp_fragment(source, spec).unwrap();
+            let parsed = codex_config::parse_mcp_fragment(&patched).unwrap();
+            assert_eq!(parsed.enabled, native, "{patched}");
+            assert_eq!(parsed.url.as_deref(), Some("https://example.test/updated"));
+        }
+        let spec = codex_config::parse_mcp_fragment(
+            "[mcp_servers.fixture]\nurl = \"https://example.test/mcp\"\n",
+        )
+        .unwrap();
+        assert!(patch_mcp_fragment(String::new(), spec).is_ok());
+        assert!(patch_mcp_fragment("[invalid".to_string(), McpServerSpec::default()).is_err());
+    }
 
     #[test]
     fn cached_auth_failure_allows_same_account_fallback_but_not_network_or_region_errors() {

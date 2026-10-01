@@ -1,11 +1,10 @@
-import { CircleQuestionMark, type LucideIcon } from "lucide-react";
+import { CircleQuestionMark } from "lucide-react";
 import { useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 interface AppTooltipProps {
   label: string;
   children: ReactNode;
-  icon?: LucideIcon;
 }
 
 export function tooltipPosition(trigger: Pick<DOMRect, "left" | "top" | "bottom">, panel: { width: number; height: number }, viewport: { width: number; height: number }) {
@@ -19,7 +18,7 @@ export function tooltipPosition(trigger: Pick<DOMRect, "left" | "top" | "bottom"
 }
 
 /** 与 MCP 差异说明同款的悬停卡片；Portal 避免被卡片的 overflow: hidden 裁切。 */
-export function AppTooltip({ label, children, icon: Icon = CircleQuestionMark }: AppTooltipProps) {
+export function AppTooltip({ label, children }: AppTooltipProps) {
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -59,7 +58,7 @@ export function AppTooltip({ label, children, icon: Icon = CircleQuestionMark }:
       onBlur={() => setFocused(false)}
       onClick={(event) => { event.currentTarget.blur(); event.stopPropagation(); }}
     >
-      <Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+      <CircleQuestionMark className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
     </button>
     {open && typeof document !== "undefined" ? createPortal(
       <div

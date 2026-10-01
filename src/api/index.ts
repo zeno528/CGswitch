@@ -3,6 +3,8 @@ import type {
   AppState,
   AuthStatus,
   BrowserLoginStart,
+  ClaudeProfileDetail,
+  ClaudeProfileSummary,
   CodexAppStatus,
   DatabaseBackupInfo,
   ManagedAccount,
@@ -18,6 +20,7 @@ import type {
   PluginUpdate,
   SkillSummary,
   SkillCandidate,
+  SkillTool,
   ProfileBalance,
   ProfileBalanceInfo,
   ProfileDetail,
@@ -91,6 +94,8 @@ export const api = {
     call<ProfileConnectionResult>("test_provider_connection", { baseUrl, apiKey }),
   getProfileBalance: (id: string) =>
     call<ProfileBalance>("get_profile_balance", { id }),
+  getClaudeProfileBalance: (id: string) =>
+    call<ProfileBalance>("get_claude_profile_balance", { id }),
   exportDatabase: () => call<string>("export_database"),
   exportDatabaseTo: (directory: string) => call<string>("export_database_to", { directory }),
   importDatabase: (path: string) => call<void>("import_database", { path }),
@@ -99,7 +104,7 @@ export const api = {
   deleteDatabaseBackup: (name: string) => call<void>("delete_database_backup", { name }),
   renameDatabaseBackup: (oldName: string, title: string) =>
     call<void>("rename_database_backup", { oldName, title }),
-  renameProfile: (id: string, name: string) => call<void>("rename_profile", { id, name }),
+  renameProfile: (id: string, name: string, tool: SkillTool = "codex") => call<void>("rename_profile", { id, name, tool }),
   setProfileIcon: (id: string, icon: string | null) => call<void>("set_profile_icon", { id, icon }),
   setProfileShowBalance: (id: string, enabled: boolean) =>
     call<void>("set_profile_show_balance", { id, enabled }),
@@ -129,12 +134,28 @@ export const api = {
   formatToml: (text: string) => call<string>("format_toml", { text }),
   listPlugins: () => call<PluginSummary[]>("list_plugins"),
   listSkills: () => call<SkillSummary[]>("list_skills"),
+  claudeListProfiles: () => call<ClaudeProfileSummary[]>("claude_list_profiles"),
+  claudeGetCommonSettings: () => call<string | null>("claude_get_common_settings"),
+  claudeSaveCommonSettings: (text: string | null) => call<void>("claude_save_common_settings", { text }),
+  claudeGetProfile: (id: string) => call<ClaudeProfileDetail>("claude_get_profile", { id }),
+  claudeCaptureProfile: (name: string) => call<ClaudeProfileDetail>("claude_capture_profile", { name }),
+  claudeSaveProfile: (input: { id?: string; name: string; baseUrl?: string | null; authToken?: string | null; model?: string | null; description?: string | null; fetchedModels?: string[] | null; kind?: string | null; adminUrl?: string | null; extraEnv?: string | null; rawSettings?: string | null; icon?: string | null; showBalance: boolean }) =>
+    call<ClaudeProfileDetail>("claude_save_profile", input),
+  claudeFetchModels: (baseUrl: string, authToken: string) => call<string[]>("claude_fetch_models", { baseUrl, authToken }),
+  claudeTestConnection: (baseUrl: string, authToken: string) => call<number>("claude_test_connection", { baseUrl, authToken }),
+  claudeSetProfileIcon: (id: string, icon: string | null) => call<void>("claude_set_profile_icon", { id, icon }),
+  claudeSetProfileShowBalance: (id: string, enabled: boolean) => call<void>("claude_set_profile_show_balance", { id, enabled }),
+  claudeReorderProfiles: (ids: string[]) => call<void>("claude_reorder_profiles", { ids }),
+  claudeDuplicateProfile: (id: string) => call<ClaudeProfileDetail>("claude_duplicate_profile", { id }),
+  claudeTestProfile: (id: string) => call<number>("claude_test_profile", { id }),
+  claudeDeleteProfile: (id: string) => call<void>("claude_delete_profile", { id }),
+  claudeApplyProfile: (id: string) => call<void>("claude_apply_profile", { id }),
   getSkillContent: (name: string) => call<string>("get_skill_content", { name }),
   getImportSkillContent: (sourcePath: string) => call<string>("get_import_skill_content", { sourcePath }),
   scanUnmanagedSkills: () => call<SkillCandidate[]>("scan_unmanaged_skills"),
   importSkill: (sourcePath: string) => call<number>("import_skill", { sourcePath }),
-  enableSkill: (name: string) => call<void>("enable_skill", { name }),
-  disableSkill: (name: string) => call<void>("disable_skill", { name }),
+  enableSkill: (name: string, tool: SkillTool) => call<void>("enable_skill", { name, tool }),
+  disableSkill: (name: string, tool: SkillTool) => call<void>("disable_skill", { name, tool }),
   deleteSkill: (name: string) => call<void>("delete_skill", { name }),
   listPluginSkills: (name: string, storePath?: string) => call<PluginSkill[]>("list_plugin_skills", { name, storePath }),
   listPluginMarketplaces: () => call<PluginMarketplace[]>("list_plugin_marketplaces"),
@@ -154,15 +175,18 @@ export const api = {
   reorderProfiles: (ids: string[]) => call<void>("reorder_profiles", { ids }),
   applyProfile: (id: string) => call<void>("apply_profile", { id }),
   listMcpServers: () => call<McpServerSpec[]>("list_mcp_servers"),
-  // manual 用于后端日志分级：手动测试记 Info，进页静默探测只记 Debug
-  probeMcpServer: (name: string, includeTools = false, manual = true) =>
-    call<McpProbeResult>("probe_mcp_server", { name, includeTools, manual }),
+  listClaudeMcpServers: () => call<McpServerSpec[]>("list_claude_mcp_servers"),
+  getClaudeMcpServerJson: (name: string) => call<string | null>("get_claude_mcp_server_json", { name }),
+  saveClaudeMcpServer: (originalName: string | null, name: string, json: string) =>
+    call<void>("save_claude_mcp_server", { originalName, name, json }),
+  deleteClaudeMcpServer: (name: string) => call<void>("delete_claude_mcp_server", { name }),
+  // manual 用于后端日志分级：手动测试记 Info，进页静默探测只记 Debug；tool 决定按哪侧引擎的名单与开关判定
+  probeMcpServer: (name: string, includeTools = false, manual = true, tool: "codex" | "claude" = "codex") =>
+    call<McpProbeResult>("probe_mcp_server", { name, includeTools, manual, tool }),
   // 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live
   getMcpSectionToml: () => call<string>("get_mcp_section_toml"),
   // 显式恢复：数据库镜像写回 live config.toml，返回恢复数量
   restoreMcpFromDatabase: () => call<number>("restore_mcp_from_database"),
-  // 显式导入：live 当前 MCP 段强制镜像进数据库，返回导入数量
-  importMcpFromLive: () => call<number>("import_mcp_from_live"),
   // 同步预览：对比 live 与数据库镜像的 MCP 差异（只读），供同步前人工裁决
   mcpSyncPreview: () => call<McpSyncPreview>("mcp_sync_preview"),
   saveMcpServer: (originalName: string | null, spec: McpServerSpec, fragment?: string) =>
@@ -175,6 +199,7 @@ export const api = {
   // MCP 编辑页实时同步：片段解析回建模字段（编辑器 → 表单）
   parseMcpFragment: (toml: string) => call<McpServerSpec>("parse_mcp_fragment", { toml }),
   deleteMcpServer: (name: string) => call<void>("delete_mcp_server", { name }),
+  setMcpServerEnabled: (name: string, tool: "codex" | "claude", enabled: boolean) => call<void>("set_mcp_server_enabled", { name, tool, enabled }),
   setMcpMirror: (name: string, fragment: string | null) => call<void>("set_mcp_mirror", { name, fragment }),
   revertMcpLive: (name: string, fragment: string | null) => call<void>("revert_mcp_live", { name, fragment }),
   // 批量差异处理：整批一次写入（只备份/写盘一次），返回实际处理的条目数

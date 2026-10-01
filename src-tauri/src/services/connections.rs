@@ -66,8 +66,6 @@ mod tests {
         ProfileBalanceInfo {
             currency: currency.into(),
             total_balance: total.into(),
-            granted_balance: "0.00".into(),
-            topped_up_balance: total.into(),
             usage_percent: None,
             usage_reset: None,
             usage_reset_at: None,
@@ -302,7 +300,7 @@ pub(crate) struct MiniMaxModelRemains {
 /// 缓存条目：键 = 检测到的代理地址，值 = 按它构建的 Client。
 type CachedHttpclient = (Option<String>, reqwest::Client);
 
-fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
+pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient>>> =
         std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(None));
@@ -318,7 +316,10 @@ fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8));
     if let Some(url) = &proxy {
         let parsed = reqwest::Proxy::all(url)
-            .map_err(|error| app_err!("系统代理地址无效 {url}: {error}"))?;
+            .map_err(|error| app_err!("系统代理地址无效 {url}: {error}"))?
+            // 环回地址不出代理：本机回环服务（本地连通测试 fixture 等）必须直连，
+            // 交给系统代理转发不可靠（代理可能拒绝环回目标）也污染代理访问日志。
+            .no_proxy(reqwest::NoProxy::from_string("localhost,127.0.0.1,::1"));
         builder = builder.proxy(parsed);
     }
     let client = builder
@@ -737,8 +738,6 @@ async fn query_minimax_balance(
                 balance_infos: vec![ProfileBalanceInfo {
                     currency: String::new(),
                     total_balance: String::new(),
-                    granted_balance: String::new(),
-                    topped_up_balance: String::new(),
                     usage_percent: Some(usage_percent),
                     usage_reset: entry.remains_time.and_then(|ms| format_reset(ms, false)),
                     usage_reset_at: None,
@@ -757,6 +756,56 @@ async fn query_minimax_balance(
         },
     )
     .await
+}
+
+/// 余额/用量查询的厂商默认端点：配置里 base_url 缺失或留空时回退到这里。
+/// 两处调用方都已把 provider 限定在 deepseek/minimax（/ZAI）集合内，其余值不可达。
+fn provider_default_balance_base(provider: &str) -> &'static str {
+    match provider {
+        "deepseek" => "https://api.deepseek.com",
+        "minimax" => "https://api.minimaxi.com/v1",
+        "ZAI" => "https://open.bigmodel.cn/api/v1",
+        _ => unreachable!("调用方已限定 provider 集合"),
+    }
+}
+
+async fn query_supported_provider_balance(
+    provider: &str,
+    base: &str,
+    api_key: &str,
+) -> AppResult<ProfileBalance> {
+    let (client, _proxy) = http_client()?;
+    let start = std::time::Instant::now();
+    match provider {
+        "deepseek" => query_deepseek_balance(&client, base, api_key, start).await,
+        "minimax" => query_minimax_balance(&client, base, api_key, start).await,
+        "ZAI" => query_zhipu_usage(&client, base, api_key, start).await,
+        _ => Err(app_err!("该供应商不支持余额/用量查询")),
+    }
+}
+
+fn claude_balance_base(kind: &str, base_url: Option<&str>) -> String {
+    let base = base_url
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+        .trim_end_matches('/');
+    if base.is_empty() {
+        return String::new();
+    }
+    let base = base.strip_suffix("/anthropic").unwrap_or(base);
+    match kind {
+        "deepseek" => base.to_string(),
+        "minimax" => {
+            let base = if base.ends_with("/v1") {
+                base.to_string()
+            } else {
+                format!("{base}/v1")
+            };
+            base.replacen("https://api.minimax.cn", "https://api.minimaxi.com", 1)
+        }
+        _ => String::new(),
+    }
 }
 
 fn zhipu_number(value: &serde_json::Value, key: &str) -> Option<f64> {
@@ -811,8 +860,6 @@ pub(crate) fn zhipu_quota_info(
     Ok(ProfileBalanceInfo {
         currency: String::new(),
         total_balance: String::new(),
-        granted_balance: String::new(),
-        topped_up_balance: String::new(),
         usage_percent: Some(primary.used_percent),
         usage_reset: primary.reset.clone(),
         usage_reset_at: primary.reset_at,
@@ -961,8 +1008,6 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
     Some(ProfileBalanceInfo {
         currency: String::new(),
         total_balance: String::new(),
-        granted_balance: String::new(),
-        topped_up_balance: String::new(),
         usage_percent: Some(usage_percent),
         usage_reset: chatgpt_reset_countdown(primary.reset_at, primary.limit_window_seconds),
         usage_reset_at: chatgpt_reset_timestamp(primary.reset_at),
@@ -1403,42 +1448,33 @@ impl AppContext {
         let detail = parse_provider_detail(body)?;
         let api_key = stored_provider_api_key(payload)
             .ok_or_else(|| app_err!("该供应商没有配置 API Key，无法查询余额/用量"))?;
-        let (client, _proxy) = http_client()?;
-        let start = std::time::Instant::now();
         let base = detail
             .base_url
             .as_deref()
             .filter(|value| !value.trim().is_empty());
-        match provider {
-            "deepseek" => {
-                query_deepseek_balance(
-                    &client,
-                    base.unwrap_or("https://api.deepseek.com"),
-                    &api_key,
-                    start,
-                )
-                .await
-            }
-            "minimax" => {
-                query_minimax_balance(
-                    &client,
-                    base.unwrap_or("https://api.minimaxi.com/v1"),
-                    &api_key,
-                    start,
-                )
-                .await
-            }
-            "ZAI" => {
-                query_zhipu_usage(
-                    &client,
-                    base.unwrap_or("https://open.bigmodel.cn/api/v1"),
-                    &api_key,
-                    start,
-                )
-                .await
-            }
-            _ => unreachable!(),
+        let default_base = provider_default_balance_base(provider);
+        query_supported_provider_balance(provider, base.unwrap_or(default_base), &api_key).await
+    }
+
+    pub async fn get_claude_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
+        let profile = self.database.claude_profile(id)?;
+        let kind = profile.kind.as_deref().unwrap_or_default();
+        if kind != "deepseek" && kind != "minimax" {
+            return Err(app_err!("该 Claude 供应商不支持用量查询"));
         }
+        let api_key = profile
+            .auth_token
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| app_err!("该供应商没有配置 API Key，无法查询余额/用量"))?;
+        let base = claude_balance_base(kind, profile.base_url.as_deref());
+        let default_base = provider_default_balance_base(kind);
+        query_supported_provider_balance(
+            kind,
+            if base.is_empty() { default_base } else { &base },
+            api_key,
+        )
+        .await
     }
 
     /// 供应商级余额缓存：上次成功查询结果写入 ~/.cgswitch/balance-cache.json，

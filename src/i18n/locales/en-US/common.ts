@@ -8,6 +8,10 @@ export default {
     skills: "Skill",
     accounts: "Accounts",
     settings: "Settings",
+    claudeProviders: "Providers",
+    groupCodex: "Codex",
+    groupClaude: "Claude",
+    groupCommon: "General",
   },
   sidebar: {
     expand: "Expand sidebar",
@@ -38,7 +42,6 @@ export default {
   editor: {
     placeholder: "Edit the configuration here...",
     jsonSyntaxError: "JSON syntax error. Check the comma, brackets, or value here.",
-    horizontalScrollbar: "Editor horizontal scrollbar",
   },
   preset: {
     custom: "Custom",
@@ -49,6 +52,12 @@ export default {
     mimo: "Xiaomi MiMo",
     qianfan: "Baidu Qianfan",
     xai: "xAI (Grok)",
+    kimiCode: "Kimi Code",
+    qwenCodingPlan: "Alibaba Cloud Bailian Coding Plan",
+    tencentTokenPlan: "Tencent Cloud General Token Plan",
+    qianfanCodingPlan: "Baidu Qianfan Coding Plan",
+    siliconflow: "SiliconFlow",
+    longcat: "LongCat",
   },
   providerName: {
     hunyuan: "Tencent Hunyuan",

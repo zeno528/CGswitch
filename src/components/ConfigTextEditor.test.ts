@@ -3,7 +3,8 @@ import profileEditSource from "../features/profiles/ProfileEdit.tsx?raw";
 import editorSource from "./ConfigTextEditor.tsx?raw";
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { collectJsonDiagnostics, computeTextChange } from "./ConfigTextEditor";
+import { collectJsonDiagnostics, computeTextChange, findConfigFieldPosition } from "./ConfigTextEditor";
+import { patchEnvValue } from "../features/claude/profileEnvText";
 
 describe("ConfigTextEditor runtime", () => {
   it("uses the native CodeMirror runtime instead of a duplicate wrapper runtime", () => {
@@ -33,6 +34,29 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain("JSON.parse(text)");
   });
 
+  it("编辑页按正文可用高度伸展，初次挂载和保活复显均监听正文尺寸", () => {
+    expect(editorSource).toContain('const scrollContent = parent.closest(".apple-edit-content");');
+    expect(editorSource).toContain("if (scrollContent) resizeObserver.observe(scrollContent);");
+    expect(editorSource).toContain("if (scrollContent) reattachedObserver.observe(scrollContent);");
+    expect(editorSource).toContain("window.innerHeight - content.clientHeight + chromeHeight + bottomGap");
+    expect(editorSource).toContain('shell.style.setProperty("--editor-max-height",');
+    expect(editorSource).toContain("max(0px, calc(100vh - ${reservedHeight}px))");
+    expect(editorSource).toContain("px, var(--editor-max-height))");
+  });
+
+  it("主题判定取当下 DOM 真值：Activity 隐藏期切主题后复显不会挂回配色过期的实例", () => {
+    // 隐藏期 effects 被拆掉，setDark 不会跑；判等与 oneDark 都必须用 DOM 现读值
+    expect(editorSource).toContain('const currentDark = document.documentElement.classList.contains("dark")');
+    expect(editorSource).toContain("const creationDeps = [currentDark, language, placeholder, validateToml, t]");
+    expect(editorSource).toContain("...(currentDark ? [oneDark] : [])");
+    expect(editorSource).not.toContain("...(dark ? [oneDark] : [])");
+  });
+
+  it("打开/复显/改文档时补齐整棵语法树：快速滚动不再落到未解析区间（无高亮的白字）", () => {
+    // Language.state 初始化只解析前 3000 字符，其余靠 ParseWorker 空闲补，滚动更快时无树可用
+    expect(editorSource).toContain("forceParsing(editor, editor.state.doc.length, 200);");
+  });
+
   it("only synchronizes the changed config fragment", () => {
     const current = 'model = "gpt-5.6"\nmodel_reasoning_effort = "medium"\n[features]\n';
     const next = `${current}respect_system_proxy = true\n`;
@@ -41,25 +65,58 @@ describe("ConfigTextEditor runtime", () => {
       to: current.length,
       insert: "respect_system_proxy = true\n",
     });
-    expect(editorSource).toContain("editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });");
+    expect(editorSource).toContain("const change = computeTextChange(editor.state.doc.toString(), value);");
+    expect(editorSource).toContain("editor.dispatch({ changes: change });");
   });
 
-  it("keeps the horizontal scrollbar outside the line-number gutter", () => {
-    expect(editorSource).toContain('className="cm-horizontal-scrollbar-row"');
-    expect(editorSource).toContain('className="cm-horizontal-scrollbar-gutter"');
-    expect(editorSource).toContain('className="cm-horizontal-scrollbar"');
-    expect(editorSource).toContain("editor.scrollDOM.scrollLeft = scrollbar.scrollLeft");
-    expect(editorSource.indexOf('<div ref={hostRef} />')).toBeLessThan(editorSource.indexOf('className="cm-horizontal-scrollbar-row"'));
+  it("定位新写入字段，跳过注释和变更前的同名字段", () => {
+    const current = '# experimental_mode = true\n[other]\nexperimental_mode = true\n[features.context_management]\nexperimental_mode = false\n';
+    const next = current.replace("experimental_mode = false", "experimental_mode = true");
+    const change = computeTextChange(current, next);
+    expect(findConfigFieldPosition(next, "experimental_mode", change.from)).toBe(next.lastIndexOf("experimental_mode"));
+    expect(findConfigFieldPosition('# respect_system_proxy = true\n', "respect_system_proxy", 0)).toBeNull();
+    expect(findConfigFieldPosition('"a.b" = true\naXb = false\n', "a.b", 0)).toBe(0);
+  });
+
+  it("Claude 工具栏写入重排 JSON 后定位实际 env 字段", () => {
+    const current = '{"env":{"UNRELATED":"keep"}}';
+    const next = patchEnvValue(current, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+    const change = computeTextChange(current, next);
+    expect(findConfigFieldPosition(next, "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", change.from)).toBe(next.indexOf('"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"'));
+    expect(findConfigFieldPosition(next, "MISSING_FIELD", change.from)).toBeNull();
+  });
+
+  it("只对成功写入的对应文本定位，其他外部更新继续恢复滚动且不抢输入焦点", () => {
+    expect(editorSource).toContain("const reveal = pendingRevealRef.current;\n    pendingRevealRef.current = null;");
+    expect(editorSource).toContain("reveal?.text === value ? findConfigFieldPosition(value, reveal.field, change.from) : null");
+    expect(editorSource).toContain("editor.dispatch({ selection: { anchor: revealPosition }, scrollIntoView: true });");
+    expect(editorSource).toContain("} else {\n        restoreScrollPosition();\n        restoreFrame = requestAnimationFrame(restoreScrollPosition);");
+  });
+
+  it("横向滚动走原生滚动条：行号栏 sticky 固定，不再自绘同步滚动条", () => {
+    expect(editorSource).not.toContain("cm-horizontal-scrollbar");
+    expect(editorSource).not.toContain("onEditorWheel");
     expect(editorSource).toContain("const previousScrollTop = editor.scrollDOM.scrollTop");
     expect(editorSource).toContain("editor.scrollDOM.scrollTop = previousScrollTop");
   });
 
-  it("按整个文档的最长行在首屏计算横向滚动条", () => {
+  it("按整个文档的最长行在首屏预设 contentDOM 最小宽度（虚拟化下原生滚动才能到底）", () => {
     expect(editorSource).toContain('document.createElement("canvas").getContext("2d")');
     expect(editorSource).toContain("editor.state.doc.lines; number += 1");
-    expect(editorSource).toContain("editor.contentDOM.style.minWidth = `${documentWidth}px`");
-    expect(editorSource).toContain("const hasOverflow = contentWidth > viewportWidth;");
-    expect(editorSource).toContain("syncHorizontalScrollbar();");
+    expect(editorSource).toContain("editor.contentDOM.style.minWidth");
+    expect(editorSource).toContain("syncEditorLayout(editor);");
+  });
+
+  it("页面保活复显时编辑器实例原样重挂，不销毁重建（切页不闪编辑器、滚动不丢）", () => {
+    // cleanup 只摘 DOM 不销毁：Activity 隐藏与真卸载共用 cleanup，销毁交给微任务裁决
+    expect(editorSource.match(/return \(\) => detachEditor\(/g)).toHaveLength(2);
+    // 复显走挂回存活实例的分支，不 new EditorView
+    expect(editorSource).toContain("parent.appendChild(alive.dom)");
+    expect(editorSource).toContain("alive.requestMeasure()");
+    // 真卸载裁决：hostRef 已被 React 置空才销毁，实例未销毁过才补刀
+    expect(editorSource).toContain("if (!hostRef.current && !destroyedRef.current)");
+    // 创建参数变化（主题/语言）仍走重建，保活不吞掉合法重建
+    expect(editorSource).toContain("alive.destroy();");
   });
 
   it("用错误行高亮和红色粗体行号替代独立错误 gutter", () => {

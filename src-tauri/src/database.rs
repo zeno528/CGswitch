@@ -7,8 +7,21 @@ use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{app_err, AppResult};
-use crate::models::{ProfileKind, ProfilePayload, ProfileSummary};
+use crate::models::{ClaudeProfileInput, ProfileKind, ProfilePayload, ProfileSummary};
 use crate::paths::AppPaths;
+use crate::services::profile_config::{parse_provider_detail, stored_provider_api_key};
+use crate::services::SkillTool;
+
+/// MCP 镜像行：共享片段 + 每引擎独立安装状态与开关（卸载不等同于禁用）。
+pub struct McpServerRecord {
+    pub name: String,
+    pub toml: String,
+    pub codex_enabled: bool,
+    pub claude_enabled: bool,
+    pub codex_installed: bool,
+    pub claude_installed: bool,
+    pub claude_json: Option<String>,
+}
 
 /// profile id 进程内自增后缀：同一毫秒内创建多个供应商也不会撞唯一约束。
 static PROFILE_ID_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -89,6 +102,54 @@ fn migrations() -> Migrations<'static> {
             backfill_account_plan_type(tx)?;
             Ok(())
         }),
+        // Claude Code 支持第一期：独立供应商表与激活位（与 Codex profiles 完全并行，互不触碰）
+        M::up(
+            "CREATE TABLE claude_profiles (
+               id TEXT PRIMARY KEY,
+               name TEXT NOT NULL,
+               base_url TEXT,
+               auth_token TEXT,
+               model TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             );
+             ALTER TABLE app_state ADD COLUMN active_claude_profile_id TEXT",
+        ),
+        // 编辑页端点档反查与官网按钮：记录创建时选的预设 kind 与控制台地址（对齐 Codex payload.builtin）
+        M::up(
+            "ALTER TABLE claude_profiles ADD COLUMN kind TEXT;
+             ALTER TABLE claude_profiles ADD COLUMN admin_url TEXT",
+        ),
+        // 编辑页描述与模型列表持久化（对齐 Codex description / set_profile_fetched_models）
+        M::up(
+            "ALTER TABLE claude_profiles ADD COLUMN description TEXT;
+             ALTER TABLE claude_profiles ADD COLUMN fetched_models TEXT",
+        ),
+        // 编辑页 settings.json 编辑器：托管键之外的附加 env（JSON 对象文本，应用时并入 env）
+        M::up("ALTER TABLE claude_profiles ADD COLUMN extra_env TEXT"),
+        // 编辑页可编辑 logo（对齐 Codex profiles.icon）
+        M::up("ALTER TABLE claude_profiles ADD COLUMN icon TEXT"),
+        // 卡片拖拽排序（对齐 Codex profiles.sort_order）
+        M::up("ALTER TABLE claude_profiles ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"),
+        M::up("ALTER TABLE claude_profiles ADD COLUMN raw_settings TEXT"),
+        // MCP 开关第一版（开发期中间态，已被下一迁移替换；槽位内容对已升级的存量库已固化，不可改）
+        M::up("ALTER TABLE mcp_servers ADD COLUMN global_enabled INTEGER NOT NULL DEFAULT 1"),
+        // MCP 开关按引擎独立：Codex/Claude 各自只控制自己用户范围 live 文件里的条目，
+        // 互不影响（对齐 Skills 的每工具独立开关）；中间态列随此移除。
+        M::up(
+            "ALTER TABLE mcp_servers ADD COLUMN codex_enabled INTEGER NOT NULL DEFAULT 1;
+             ALTER TABLE mcp_servers ADD COLUMN claude_enabled INTEGER NOT NULL DEFAULT 1;
+             ALTER TABLE mcp_servers DROP COLUMN global_enabled",
+        ),
+        // Claude 供应商用量条开关。迁移只能追加在末尾：插队会推后后续迁移的序号，
+        // 让已应用过它们的存量库重放旧迁移（duplicate column 崩溃）。
+        M::up("ALTER TABLE claude_profiles ADD COLUMN show_balance INTEGER NOT NULL DEFAULT 0"),
+        M::up("ALTER TABLE mcp_servers ADD COLUMN claude_json TEXT"),
+        M::up("ALTER TABLE app_state ADD COLUMN claude_common_settings TEXT"),
+        M::up(
+            "ALTER TABLE mcp_servers ADD COLUMN codex_installed INTEGER NOT NULL DEFAULT 1;
+             ALTER TABLE mcp_servers ADD COLUMN claude_installed INTEGER NOT NULL DEFAULT 1",
+        ),
     ])
 }
 
@@ -319,11 +380,21 @@ impl Database {
             .ok_or_else(|| app_err!("供应商配置不存在"))
     }
 
-    pub fn rename_profile(&self, id: &str, name: &str, timestamp: &str) -> AppResult<()> {
+    pub fn rename_profile(
+        &self,
+        id: &str,
+        name: &str,
+        timestamp: &str,
+        tool: SkillTool,
+    ) -> AppResult<()> {
         let connection = self.lock()?;
+        let table = match tool {
+            SkillTool::Codex => "profiles",
+            SkillTool::Claude => "claude_profiles",
+        };
         let changed = connection
             .execute(
-                "UPDATE profiles SET name=?2, updated_at=?3 WHERE id=?1",
+                &format!("UPDATE {table} SET name=?2, updated_at=?3 WHERE id=?1"),
                 params![id, name, timestamp],
             )
             .map_err(|error| app_err!("无法重命名供应商配置: {error}"))?;
@@ -440,28 +511,125 @@ impl Database {
 
     /// 读取 MCP 服务器片段（名称, TOML 片段）按 sort_order；表空返回空列表。
     pub fn mcp_server_fragments(&self) -> AppResult<Vec<(String, String)>> {
+        Ok(self
+            .mcp_server_records()?
+            .into_iter()
+            .filter(|record| record.codex_installed)
+            .map(|record| (record.name, record.toml))
+            .collect())
+    }
+
+    /// 读取 MCP 片段及每引擎开关，按 sort_order；表空返回空列表。
+    pub fn mcp_server_records(&self) -> AppResult<Vec<McpServerRecord>> {
         let connection = self.lock()?;
         let mut statement = connection
-            .prepare("SELECT name, toml FROM mcp_servers ORDER BY sort_order ASC, name ASC")
+            .prepare(
+                "SELECT name, toml, codex_enabled, claude_enabled, claude_json, codex_installed, claude_installed
+                 FROM mcp_servers ORDER BY sort_order ASC, name ASC",
+            )
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
         let rows = statement
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok(McpServerRecord {
+                    name: row.get(0)?,
+                    toml: row.get(1)?,
+                    codex_enabled: row.get::<_, i64>(2)? != 0,
+                    claude_enabled: row.get::<_, i64>(3)? != 0,
+                    claude_json: row.get(4)?,
+                    codex_installed: row.get::<_, i64>(5)? != 0,
+                    claude_installed: row.get::<_, i64>(6)? != 0,
+                })
             })
             .map_err(|error| app_err!("无法读取 MCP 服务器: {error}"))?;
-        let mut fragments = Vec::new();
-        for row in rows {
-            fragments.push(row.map_err(|error| app_err!("MCP 服务器数据无效: {error}"))?);
-        }
-        Ok(fragments)
+        rows.map(|row| row.map_err(|error| app_err!("MCP 服务器数据无效: {error}")))
+            .collect()
     }
 
-    /// 全量替换 MCP 服务器片段：管理规模小，整表重写最简单。
+    pub fn mcp_server_record(&self, name: &str) -> AppResult<Option<McpServerRecord>> {
+        Ok(self
+            .mcp_server_records()?
+            .into_iter()
+            .find(|record| record.name == name))
+    }
+
+    pub fn set_codex_mcp_enabled(&self, name: &str, enabled: bool) -> AppResult<()> {
+        self.update_mcp_enabled("codex_enabled", name, enabled)
+    }
+
+    pub fn set_claude_mcp_enabled(&self, name: &str, enabled: bool) -> AppResult<()> {
+        self.update_mcp_enabled("claude_enabled", name, enabled)
+    }
+
+    /// column 只能来自本文件的两个常量调用点，不接收外部输入。
+    fn update_mcp_enabled(&self, column: &str, name: &str, enabled: bool) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute(
+                &format!("UPDATE mcp_servers SET {column} = ?2 WHERE name = ?1"),
+                params![name, enabled as i64],
+            )
+            .map_err(|error| app_err!("无法更新 MCP 开关: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("MCP 服务器不存在: {name}"));
+        }
+        Ok(())
+    }
+
+    pub fn delete_mcp_server(&self, name: &str) -> AppResult<()> {
+        let connection = self.lock()?;
+        connection
+            .execute("DELETE FROM mcp_servers WHERE name = ?1", params![name])
+            .map_err(|error| app_err!("无法删除 MCP 服务器镜像: {error}"))?;
+        Ok(())
+    }
+
+    /// 单条保存或改名：同一事务保留另一引擎开关与原生配置，不重建其他行。
+    pub fn save_mcp_server_record(
+        &self,
+        original_name: Option<&str>,
+        record: &McpServerRecord,
+        timestamp: &str,
+    ) -> AppResult<()> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始 MCP 写入事务: {error}"))?;
+        let old_name = original_name.unwrap_or(&record.name);
+        transaction.execute(
+            "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json, codex_installed, claude_installed)
+             VALUES(?1, ?2, COALESCE((SELECT sort_order FROM mcp_servers WHERE name=?7), (SELECT COALESCE(MAX(sort_order), -1)+1 FROM mcp_servers)), ?3, ?4, ?5, ?6, ?8, ?9)
+             ON CONFLICT(name) DO UPDATE SET toml=excluded.toml, updated_at=excluded.updated_at,
+             codex_enabled=excluded.codex_enabled, claude_enabled=excluded.claude_enabled, claude_json=excluded.claude_json,
+             codex_installed=excluded.codex_installed, claude_installed=excluded.claude_installed",
+            params![record.name, record.toml, timestamp, record.codex_enabled, record.claude_enabled, record.claude_json, old_name, record.codex_installed, record.claude_installed],
+        ).map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
+        if old_name != record.name {
+            transaction
+                .execute("DELETE FROM mcp_servers WHERE name=?1", params![old_name])
+                .map_err(|error| app_err!("无法删除旧 MCP 名称: {error}"))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| app_err!("无法提交 MCP 写入事务: {error}"))
+    }
+
+    /// 全量替换 Codex 活跃片段集：管理规模小，整表重写最简单。
+    /// 已知行的引擎开关原样带过；不在新集合里的 Codex 关闭行保留（片段还要喂 Claude 端与恢复）。
     pub fn replace_mcp_server_fragments(
         &self,
         fragments: &[(String, String)],
         timestamp: &str,
     ) -> AppResult<()> {
+        self.replace_mcp_server_fragments_with(fragments, timestamp, |_| Ok(()))
+    }
+
+    pub fn replace_mcp_server_fragments_with(
+        &self,
+        fragments: &[(String, String)],
+        timestamp: &str,
+        before_commit: impl FnOnce(&mut [McpServerRecord]) -> AppResult<()>,
+    ) -> AppResult<()> {
+        let previous = self.mcp_server_records()?;
         let mut connection = self.lock()?;
         let transaction = connection
             .transaction()
@@ -469,12 +637,50 @@ impl Database {
         transaction
             .execute("DELETE FROM mcp_servers", [])
             .map_err(|error| app_err!("无法清理 MCP 服务器: {error}"))?;
-        for (index, (name, toml)) in fragments.iter().enumerate() {
+        let mut rows: Vec<McpServerRecord> = fragments
+            .iter()
+            .map(|(name, toml)| {
+                // 新集合里仍存在的行沿用旧开关（另一引擎的关闭状态不能被 Codex 侧保存冲掉）
+                let existing = previous.iter().find(|record| &record.name == name);
+                McpServerRecord {
+                    name: name.clone(),
+                    toml: toml.clone(),
+                    codex_enabled: existing.is_none_or(|record| record.codex_enabled),
+                    claude_enabled: existing.is_none_or(|record| record.claude_enabled),
+                    claude_json: existing.and_then(|record| record.claude_json.clone()),
+                    codex_installed: true,
+                    claude_installed: existing.is_none_or(|record| record.claude_installed),
+                }
+            })
+            .collect();
+        for mut record in previous {
+            if !rows.iter().any(|row| row.name == record.name) {
+                if record.codex_enabled {
+                    // 接受 Codex 现场删除，只撤销 Codex 安装；Claude 的安装和开关保留。
+                    record.codex_installed = false;
+                    record.codex_enabled = false;
+                }
+                rows.push(record);
+            }
+        }
+        // 回调只能读写文件，不能重新进入数据库连接锁。
+        before_commit(&mut rows)?;
+        for (index, record) in rows.iter().enumerate() {
             transaction
                 .execute(
-                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
-                     VALUES(?1, ?2, ?3, ?4)",
-                    params![name, toml, index as i64, timestamp],
+                    "INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled, claude_json, codex_installed, claude_installed)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        record.name,
+                        record.toml,
+                        index as i64,
+                        timestamp,
+                        record.codex_enabled as i64,
+                        record.claude_enabled as i64,
+                        record.claude_json,
+                        record.codex_installed,
+                        record.claude_installed
+                    ],
                 )
                 .map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
         }
@@ -519,6 +725,252 @@ impl Database {
                 params![id],
             )
             .map_err(|error| app_err!("无法保存应用状态: {error}"))?;
+        Ok(())
+    }
+
+    pub fn active_claude_profile(&self) -> AppResult<Option<String>> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                "SELECT active_claude_profile_id FROM app_state WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| app_err!("无法读取应用状态: {error}"))
+            .map(Option::flatten)
+    }
+
+    pub fn claude_common_settings(&self) -> AppResult<Option<String>> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                "SELECT claude_common_settings FROM app_state WHERE singleton = 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| app_err!("无法读取 Claude 通用模板: {error}"))
+            .map(Option::flatten)
+    }
+
+    pub fn set_claude_common_settings(&self, text: Option<&str>) -> AppResult<()> {
+        let connection = self.lock()?;
+        connection
+            .execute(
+                "INSERT INTO app_state(singleton, claude_common_settings) VALUES(1, ?1)
+                 ON CONFLICT(singleton) DO UPDATE SET claude_common_settings=excluded.claude_common_settings",
+                params![text],
+            )
+            .map_err(|error| app_err!("无法保存 Claude 通用模板: {error}"))?;
+        Ok(())
+    }
+
+    pub fn set_active_claude_profile(&self, id: Option<&str>) -> AppResult<()> {
+        let connection = self.lock()?;
+        connection
+            .execute(
+                "INSERT INTO app_state(singleton, active_claude_profile_id) VALUES(1, ?1)
+                 ON CONFLICT(singleton) DO UPDATE SET active_claude_profile_id=excluded.active_claude_profile_id",
+                params![id],
+            )
+            .map_err(|error| app_err!("无法保存应用状态: {error}"))?;
+        Ok(())
+    }
+
+    pub fn claude_profiles(&self) -> AppResult<Vec<StoredClaudeProfile>> {
+        let connection = self.lock()?;
+        let mut statement = connection
+            .prepare(&format!(
+                "SELECT {CLAUDE_PROFILE_COLUMNS}
+                 FROM claude_profiles ORDER BY sort_order ASC, created_at ASC, id ASC"
+            ))
+            .map_err(|error| app_err!("无法读取 Claude 供应商配置: {error}"))?;
+        let rows = statement
+            .query_map([], claude_profile_from_row)
+            .map_err(|error| app_err!("无法读取 Claude 供应商配置: {error}"))?;
+        let mut profiles = Vec::new();
+        for row in rows {
+            profiles.push(row.map_err(|error| app_err!("Claude 供应商配置数据无效: {error}"))?);
+        }
+        Ok(profiles)
+    }
+
+    pub fn claude_profile(&self, id: &str) -> AppResult<StoredClaudeProfile> {
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                &format!("SELECT {CLAUDE_PROFILE_COLUMNS} FROM claude_profiles WHERE id = ?1"),
+                params![id],
+                claude_profile_from_row,
+            )
+            .optional()
+            .map_err(|error| app_err!("无法读取 Claude 供应商配置: {error}"))?
+            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))
+    }
+
+    pub fn insert_claude_profile(
+        &self,
+        input: &ClaudeProfileInput,
+        timestamp: &str,
+    ) -> AppResult<StoredClaudeProfile> {
+        let id = format!(
+            "cla-{timestamp}-{}",
+            PROFILE_ID_SEQ.fetch_add(1, Ordering::Relaxed)
+        );
+        let connection = self.lock()?;
+        connection
+            .query_row(
+                &format!(
+                    "INSERT INTO claude_profiles(id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, show_balance, created_at, updated_at, sort_order)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14,
+                            (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM claude_profiles))
+                     RETURNING {CLAUDE_PROFILE_COLUMNS}"
+                ),
+                params![
+                    id,
+                    &input.name,
+                    &input.base_url,
+                    &input.auth_token,
+                    &input.model,
+                    &input.description,
+                    input
+                        .fetched_models
+                        .as_ref()
+                        .map(|models| serde_json::to_string(models).unwrap_or_default()),
+                    &input.kind,
+                    &input.admin_url,
+                    &input.extra_env,
+                    &input.raw_settings,
+                    &input.icon,
+                    input.show_balance,
+                    timestamp
+                ],
+                claude_profile_from_row,
+            )
+            .map_err(|error| app_err!("无法保存 Claude 供应商配置: {error}"))
+    }
+
+    pub fn update_claude_profile(
+        &self,
+        id: &str,
+        input: &ClaudeProfileInput,
+        timestamp: &str,
+        before_commit: impl FnOnce(&StoredClaudeProfile) -> AppResult<()>,
+    ) -> AppResult<StoredClaudeProfile> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始配置更新事务: {error}"))?;
+        let updated = transaction
+            .query_row(
+                &format!(
+                    "UPDATE claude_profiles SET name=?2, base_url=?3, auth_token=?4, model=?5, description=?6, fetched_models=?7, kind=?8, admin_url=?9, extra_env=?10, raw_settings=?11, icon=?12, show_balance=?13, updated_at=?14 WHERE id=?1
+                     RETURNING {CLAUDE_PROFILE_COLUMNS}"
+                ),
+                params![
+                    id,
+                    &input.name,
+                    &input.base_url,
+                    &input.auth_token,
+                    &input.model,
+                    &input.description,
+                    input
+                        .fetched_models
+                        .as_ref()
+                        .map(|models| serde_json::to_string(models).unwrap_or_default()),
+                    &input.kind,
+                    &input.admin_url,
+                    &input.extra_env,
+                    &input.raw_settings,
+                    &input.icon,
+                    input.show_balance,
+                    timestamp
+                ],
+                claude_profile_from_row,
+            )
+            .optional()
+            .map_err(|error| app_err!("无法更新 Claude 供应商配置: {error}"))?
+            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))?;
+        before_commit(&updated)?;
+        transaction
+            .commit()
+            .map_err(|error| app_err!("无法提交配置更新事务: {error}"))?;
+        Ok(updated)
+    }
+
+    pub fn delete_claude_profile(&self, id: &str) -> AppResult<()> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始配置删除事务: {error}"))?;
+        let changed = transaction
+            .execute("DELETE FROM claude_profiles WHERE id=?1", params![id])
+            .map_err(|error| app_err!("无法删除 Claude 供应商配置: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("Claude 供应商配置不存在"));
+        }
+        transaction.execute("UPDATE app_state SET active_claude_profile_id=NULL WHERE active_claude_profile_id=?1", params![id])
+            .map_err(|error| app_err!("无法清除激活配置: {error}"))?;
+        transaction
+            .commit()
+            .map_err(|error| app_err!("无法提交配置删除事务: {error}"))
+    }
+
+    /// 卡片拖拽排序持久化（对齐 Codex reorder_profiles：事务内逐行写 sort_order）。
+    pub fn reorder_claude_profiles(&self, ids: &[String], timestamp: &str) -> AppResult<()> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始排序事务: {error}"))?;
+        for (index, id) in ids.iter().enumerate() {
+            transaction
+                .execute(
+                    "UPDATE claude_profiles SET sort_order = ?2, updated_at = ?3 WHERE id = ?1",
+                    params![id, index as i64, timestamp],
+                )
+                .map_err(|error| app_err!("保存排序失败: {error}"))?;
+        }
+        transaction
+            .commit()
+            .map_err(|error| app_err!("提交排序事务失败: {error}"))
+    }
+
+    pub fn set_claude_profile_icon(
+        &self,
+        id: &str,
+        icon: Option<&str>,
+        timestamp: &str,
+    ) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute(
+                "UPDATE claude_profiles SET icon=?2, updated_at=?3 WHERE id=?1",
+                params![id, icon, timestamp],
+            )
+            .map_err(|error| app_err!("无法更新 Claude 供应商配置图标: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("Claude 供应商配置不存在"));
+        }
+        Ok(())
+    }
+
+    pub fn set_claude_profile_show_balance(
+        &self,
+        id: &str,
+        enabled: bool,
+        timestamp: &str,
+    ) -> AppResult<()> {
+        let connection = self.lock()?;
+        let changed = connection
+            .execute(
+                "UPDATE claude_profiles SET show_balance=?2, updated_at=?3 WHERE id=?1",
+                params![id, enabled, timestamp],
+            )
+            .map_err(|error| app_err!("无法保存 Claude 用量开关: {error}"))?;
+        if changed == 0 {
+            return Err(app_err!("Claude 供应商配置不存在"));
+        }
         Ok(())
     }
 
@@ -569,7 +1021,7 @@ impl Database {
     }
 
     /// 从备份文件把数据恢复进当前数据库（清空现有数据后复制）。
-    pub fn restore_from_backup(&self, backup: &Path) -> AppResult<()> {
+    pub fn restore_from_backup(&self, backup: &Path) -> AppResult<bool> {
         let source = Connection::open_with_flags(backup, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|error| app_err!("无法打开备份文件: {error}"))?;
         let has_profiles: i64 = source
@@ -593,6 +1045,7 @@ impl Database {
             .and_then(|_| transaction.execute("DELETE FROM accounts", []))
             .and_then(|_| transaction.execute("DELETE FROM app_state", []))
             .and_then(|_| transaction.execute("DELETE FROM mcp_servers", []))
+            .and_then(|_| transaction.execute("DELETE FROM claude_profiles", []))
             .map_err(|error| app_err!("恢复前清理数据失败: {error}"))?;
 
         // 旧 schema 备份没有身份两列/套餐列：按旧列复制后回填；新备份带列复制
@@ -645,13 +1098,18 @@ impl Database {
             backfill_account_plan_type(&transaction)
                 .map_err(|error| app_err!("回填账号套餐失败: {error}"))?;
         }
-        copy_table(
+        // app_state 按列交集复制：旧 schema 备份缺 active_claude_profile_id 时落列默认 NULL
+        copy_intersected_columns(
             &source,
             &transaction,
             "app_state",
-            "SELECT singleton, active_profile_id, default_account_id FROM app_state",
-            "INSERT INTO app_state(singleton, active_profile_id, default_account_id)
-             VALUES(?1, ?2, ?3)",
+            &[
+                "singleton",
+                "active_profile_id",
+                "default_account_id",
+                "active_claude_profile_id",
+                "claude_common_settings",
+            ],
         )?;
         // 备份带 sort_order 则原样复制（保留卡片排序）；旧 schema 备份无此列，落列默认 0（创建顺序）
         let source_has_sort_order: i64 = source
@@ -699,20 +1157,45 @@ impl Database {
             )
             .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
         if has_mcp_servers > 0 {
-            copy_table(
+            copy_intersected_columns(
                 &source,
                 &transaction,
                 "mcp_servers",
-                "SELECT name, toml, sort_order, updated_at FROM mcp_servers",
-                "INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
-                 VALUES(?1, ?2, ?3, ?4)",
+                &[
+                    "name",
+                    "toml",
+                    "sort_order",
+                    "updated_at",
+                    "codex_enabled",
+                    "claude_enabled",
+                    "claude_json",
+                    "codex_installed",
+                    "claude_installed",
+                ],
+            )?;
+        }
+        // 旧备份可能还没有 claude_profiles 表：无表跳过（Claude 供应商从零开始）
+        let has_claude_profiles: i64 = source
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='claude_profiles'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+        if has_claude_profiles > 0 {
+            // 列与 CLAUDE_PROFILE_COLUMNS 正典序求交集：备份有哪些列就复制哪些，缺列落默认 NULL
+            copy_intersected_columns(
+                &source,
+                &transaction,
+                "claude_profiles",
+                &CLAUDE_PROFILE_COLUMNS.split(", ").collect::<Vec<_>>(),
             )?;
         }
 
         transaction
             .commit()
             .map_err(|error| app_err!("恢复事务提交失败: {error}"))?;
-        Ok(())
+        Ok(has_mcp_servers > 0)
     }
 
     fn lock(&self) -> AppResult<std::sync::MutexGuard<'_, Connection>> {
@@ -754,6 +1237,43 @@ fn copy_table(
     Ok(())
 }
 
+/// 备份表列与正典列序求交集：备份有哪些列就按正典序复制哪些，缺列由目标表默认值兜底。
+/// （restore_from_backup 的逐档手写分支由此收敛成一条复制语句。）
+fn copy_intersected_columns(
+    source: &Connection,
+    destination: &rusqlite::Transaction<'_>,
+    table: &str,
+    canonical_columns: &[&str],
+) -> AppResult<()> {
+    let mut columns: Vec<&str> = Vec::new();
+    for name in canonical_columns {
+        let present: i64 = source
+            .query_row(
+                &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = ?1"),
+                params![name],
+                |row| row.get(0),
+            )
+            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+        if present > 0 {
+            columns.push(name);
+        }
+    }
+    let column_list = columns.join(", ");
+    let placeholders: Vec<String> = (1..=columns.len())
+        .map(|index| format!("?{index}"))
+        .collect();
+    copy_table(
+        source,
+        destination,
+        table,
+        &format!("SELECT {column_list} FROM {table}"),
+        &format!(
+            "INSERT INTO {table}({column_list}) VALUES({})",
+            placeholders.join(", ")
+        ),
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredProfile {
     pub id: String,
@@ -764,6 +1284,57 @@ pub struct StoredProfile {
     pub account_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Claude Code 供应商行：字段固定即列，不走 payload_json blob。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoredClaudeProfile {
+    pub id: String,
+    pub name: String,
+    pub base_url: Option<String>,
+    pub auth_token: Option<String>,
+    pub model: Option<String>,
+    pub description: Option<String>,
+    /// 已获取的模型 ID 列表（JSON 数组文本，对齐 Codex fetched_models）。
+    pub fetched_models: Option<String>,
+    /// 创建时选择的预设 kind（自定义/无预设为 NULL）：编辑页反查端点档用。
+    pub kind: Option<String>,
+    pub admin_url: Option<String>,
+    /// 附加 env 键值（JSON 对象文本）：应用时并入 settings.json 的 env，先移除旧值再写入。
+    pub extra_env: Option<String>,
+    /// 完整 settings.json 原文（旧行为空）。
+    pub raw_settings: Option<String>,
+    /// 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。
+    pub icon: Option<String>,
+    pub show_balance: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    /// 卡片排序（拖拽持久化；同序按 created_at）。
+    pub sort_order: i64,
+}
+
+const CLAUDE_PROFILE_COLUMNS: &str =
+    "id, name, base_url, auth_token, model, description, fetched_models, kind, admin_url, extra_env, raw_settings, icon, show_balance, created_at, updated_at, sort_order";
+
+fn claude_profile_from_row(row: &rusqlite::Row) -> rusqlite::Result<StoredClaudeProfile> {
+    Ok(StoredClaudeProfile {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        base_url: row.get(2)?,
+        auth_token: row.get(3)?,
+        model: row.get(4)?,
+        description: row.get(5)?,
+        fetched_models: row.get(6)?,
+        kind: row.get(7)?,
+        admin_url: row.get(8)?,
+        extra_env: row.get(9)?,
+        raw_settings: row.get(10)?,
+        icon: row.get(11)?,
+        show_balance: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+        sort_order: row.get(15)?,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -848,55 +1419,19 @@ fn summary(
         model: display_text(payload.model_values.get("model")),
         provider: payload.provider_id.clone(),
         reasoning_effort: display_text(payload.model_values.get("model_reasoning_effort")),
-        has_base_url: payload_has_base_url(payload),
-        has_key: payload_has_key(payload),
+        has_base_url: payload
+            .provider_body
+            .as_deref()
+            .and_then(|body| parse_provider_detail(body).ok())
+            .and_then(|detail| detail.base_url)
+            .is_some_and(|url| !url.trim().is_empty()),
+        has_key: stored_provider_api_key(payload).is_some(),
         admin_url: payload.admin_url.clone(),
         show_balance: payload.show_balance,
         icon: icon.map(str::to_string),
         created_at: created_at.into(),
         updated_at: updated_at.into(),
     }
-}
-
-fn payload_has_base_url(payload: &ProfilePayload) -> bool {
-    let Some(body) = payload.provider_body.as_deref() else {
-        return false;
-    };
-    let Ok(document) = body.parse::<toml_edit::DocumentMut>() else {
-        return false;
-    };
-    document
-        .as_table()
-        .get("base_url")
-        .and_then(toml_edit::Item::as_str)
-        .is_some_and(|url| !url.trim().is_empty())
-}
-
-fn payload_has_key(payload: &ProfilePayload) -> bool {
-    let Some(body) = payload.provider_body.as_deref() else {
-        return false;
-    };
-    let Ok(document) = body.parse::<toml_edit::DocumentMut>() else {
-        return false;
-    };
-    let Some(key) = document
-        .as_table()
-        .get("experimental_bearer_token")
-        .and_then(toml_edit::Item::as_str)
-    else {
-        return false;
-    };
-    if key.trim().is_empty() {
-        return false;
-    }
-    if let Some(kind) = payload.builtin.as_deref() {
-        if let Ok(template) = crate::builtin::template(kind) {
-            if template.is_placeholder(key.as_bytes()) {
-                return false;
-            }
-        }
-    }
-    true
 }
 
 fn display_text(value: Option<&String>) -> Option<String> {
@@ -920,6 +1455,128 @@ mod tests {
     use super::*;
 
     #[test]
+    fn rename_profile_only_changes_target_clients_name_and_timestamp() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        let db = Database::open(&paths).unwrap();
+        let codex = db
+            .insert_profile("codex-fixture", &ProfilePayload::default(), "1")
+            .unwrap();
+        let claude = db
+            .insert_claude_profile(
+                &ClaudeProfileInput {
+                    name: "claude-fixture".into(),
+                    raw_settings: Some(
+                        r#"{"env":{"CUSTOM":"keep"},"permissions":{"deny":["Write"]}}"#.into(),
+                    ),
+                    auth_token: Some("fixture-token".into()),
+                    description: Some("keep".into()),
+                    show_balance: true,
+                    ..Default::default()
+                },
+                "1",
+            )
+            .unwrap();
+        db.set_active_profile(Some(&codex.id)).unwrap();
+        db.set_active_claude_profile(Some(&claude.id)).unwrap();
+        let mut expected_codex = serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap();
+        let mut expected_claude =
+            serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap();
+
+        db.rename_profile(&claude.id, "renamed-claude", "2", SkillTool::Claude)
+            .unwrap();
+        expected_claude["name"] = "renamed-claude".into();
+        expected_claude["updated_at"] = "2".into();
+        assert_eq!(
+            serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap(),
+            expected_claude
+        );
+        assert_eq!(
+            serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap(),
+            expected_codex
+        );
+
+        db.rename_profile(&codex.id, "renamed-codex", "3", SkillTool::Codex)
+            .unwrap();
+        expected_codex["name"] = "renamed-codex".into();
+        expected_codex["updated_at"] = "3".into();
+        assert_eq!(
+            serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap(),
+            expected_codex
+        );
+        assert_eq!(
+            serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap(),
+            expected_claude
+        );
+        assert_eq!(
+            db.app_state().unwrap().0.as_deref(),
+            Some(codex.id.as_str())
+        );
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some(claude.id.as_str())
+        );
+        assert!(db
+            .rename_profile(&claude.id, "wrong-client", "4", SkillTool::Codex)
+            .is_err());
+        assert!(db
+            .rename_profile(&codex.id, "wrong-client", "4", SkillTool::Claude)
+            .is_err());
+    }
+
+    #[test]
+    fn common_template_migrates_and_round_trips_without_changing_active_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 18).unwrap();
+            connection.execute("INSERT INTO app_state(singleton, active_profile_id, active_claude_profile_id) VALUES(1, 'codex-fixture', 'claude-fixture')", []).unwrap();
+        }
+        let legacy = dir.path().join("legacy.db");
+        std::fs::copy(&paths.database, &legacy).unwrap();
+        let db = Database::open(&paths).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap(), None);
+        assert_eq!(db.app_state().unwrap().0.as_deref(), Some("codex-fixture"));
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-fixture")
+        );
+
+        let raw = r#"{"hooks":{"Stop":[]},"env":{"CUSTOM":"keep"},"unknown":{"nested":[1,null]}}"#;
+        db.set_claude_common_settings(Some(raw)).unwrap();
+        let backup = dir.path().join("template.db");
+        db.export_database(&backup).unwrap();
+        db.set_claude_common_settings(Some("{}")).unwrap();
+        db.restore_from_backup(&backup).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap().as_deref(), Some(raw));
+        let invalid = dir.path().join("invalid.db");
+        Connection::open(&invalid)
+            .unwrap()
+            .execute_batch("CREATE TABLE profiles(id TEXT)")
+            .unwrap();
+        assert!(db.restore_from_backup(&invalid).is_err());
+        assert_eq!(db.claude_common_settings().unwrap().as_deref(), Some(raw));
+        assert_eq!(db.app_state().unwrap().0.as_deref(), Some("codex-fixture"));
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-fixture")
+        );
+
+        // 旧备份没有模板列：恢复后清空当前模板，不能留下本次恢复之外的数据。
+        db.restore_from_backup(&legacy).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap(), None);
+        db.set_claude_common_settings(Some(raw)).unwrap();
+        db.set_claude_common_settings(None).unwrap();
+        assert_eq!(db.claude_common_settings().unwrap(), None);
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-fixture")
+        );
+    }
+
+    #[test]
     fn migration_creates_schema() {
         let dir = tempfile::tempdir().unwrap();
         let paths = crate::paths::from_home(dir.path()).unwrap();
@@ -939,6 +1596,151 @@ mod tests {
         assert!(names.contains(&"switch_events".into()));
         assert!(names.contains(&"accounts".into()));
         assert!(names.contains(&"mcp_servers".into()));
+        assert!(names.contains(&"claude_profiles".into()));
+    }
+
+    /// Claude 支持引入前（user_version = 7）的存量库升级：既有数据完好，
+    /// Claude 表全列与激活位就位且默认空，global_enabled 给存量 MCP 行落默认 1。
+    #[test]
+    fn migration_from_pre_claude_database_preserves_existing_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 7).unwrap();
+            connection
+                .execute_batch(
+                    r#"INSERT INTO profiles(id, name, payload_json, kind, created_at, updated_at, sort_order)
+                       VALUES ('p-1', 'GLM', '{}', 'third_party', '1', '1', 0);
+                       INSERT INTO accounts(id, email, refresh_token, authenticated_at, chatgpt_account_id)
+                       VALUES ('acc-1', 'a@example.com', 'rt-1', 1, 'acc-1');
+                       INSERT INTO mcp_servers(name, toml, sort_order, updated_at)
+                       VALUES ('github', '[mcp_servers.github]', 0, '1');
+                       INSERT INTO app_state(singleton, active_profile_id, default_account_id)
+                       VALUES (1, 'p-1', 'acc-1');"#,
+                )
+                .unwrap();
+        }
+
+        let db = Database::open(&paths).unwrap();
+
+        // 既有 Codex 数据完好
+        let profiles = db.profiles().unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].name, "GLM");
+        assert_eq!(db.accounts().unwrap()[0].refresh_token, "rt-1");
+        assert_eq!(
+            db.mcp_server_fragments().unwrap(),
+            vec![("github".to_string(), "[mcp_servers.github]".to_string())]
+        );
+        let (active, default) = db.app_state().unwrap();
+        assert_eq!(active.as_deref(), Some("p-1"));
+        assert_eq!(default.as_deref(), Some("acc-1"));
+
+        // Claude 表全列就位、激活位默认空；存量 MCP 行落 global_enabled 默认 1
+        assert_eq!(db.active_claude_profile().unwrap(), None);
+        assert!(db.claude_profiles().unwrap().is_empty());
+        let connection = db.lock().unwrap();
+        let columns: Vec<String> = connection
+            .prepare("SELECT name FROM pragma_table_info('claude_profiles') ORDER BY cid")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        for column in [
+            "id",
+            "name",
+            "base_url",
+            "auth_token",
+            "model",
+            "created_at",
+            "updated_at",
+            "kind",
+            "admin_url",
+            "description",
+            "fetched_models",
+            "extra_env",
+            "icon",
+            "sort_order",
+            "raw_settings",
+            "show_balance",
+        ] {
+            assert!(
+                columns.iter().any(|name| name == column),
+                "claude_profiles 缺列 {column}"
+            );
+        }
+        let (codex_enabled, claude_enabled): (i64, i64) = connection
+            .query_row(
+                "SELECT codex_enabled, claude_enabled FROM mcp_servers WHERE name = 'github'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((codex_enabled, claude_enabled), (1, 1));
+        // 开发期中间态列已随迁移移除
+        let stale: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('mcp_servers') WHERE name = 'global_enabled'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stale, 0);
+    }
+
+    /// 迁移只能追加在列表末尾：新迁移插队到已发布槽位之前，会推后后续迁移的序号，
+    /// 让已应用过它们的存量库（user_version 停留在插队前）按新序号重放旧迁移而崩溃。
+    /// 本测试钉住 MCP 拆分迁移边界：v16 库升级到最新只允许追加新列，不得重放旧迁移。
+    #[test]
+    fn migration_from_mcp_split_database_only_appends_new_columns() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 16).unwrap();
+            let column_exists = |table: &str, column: &str| -> bool {
+                connection
+                    .query_row(
+                        &format!(
+                            "SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'"
+                        ),
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map(|count| count > 0)
+                    .unwrap()
+            };
+            // v16 = MCP 拆分迁移刚应用完：codex/claude 开关在、global_enabled 已移除
+            assert!(column_exists("mcp_servers", "codex_enabled"));
+            assert!(!column_exists("mcp_servers", "global_enabled"));
+            assert!(!column_exists("claude_profiles", "show_balance"));
+            connection.execute("INSERT INTO mcp_servers(name, toml, sort_order, updated_at, codex_enabled, claude_enabled) VALUES('fixture', '[mcp_servers.fixture]\ncommand=\"echo\"', 0, '1', 0, 1)", []).unwrap();
+        }
+
+        let db = Database::open(&paths).unwrap();
+        let record = db.mcp_server_record("fixture").unwrap().unwrap();
+        assert!(!record.codex_enabled);
+        assert!(record.claude_enabled);
+        assert!(record.codex_installed);
+        assert!(record.claude_installed);
+        assert!(record.claude_json.is_none());
+        let connection = db.lock().unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 20);
+        let show_balance: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(show_balance, 1);
     }
 
     #[test]
@@ -1091,13 +1893,24 @@ mod tests {
             connection.pragma_update(None, "user_version", 4).unwrap();
             connection
                 .execute_batch(
-                    r#"CREATE TABLE accounts (
+                    r#"CREATE TABLE app_state (
+                         singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                         active_profile_id TEXT,
+                         default_account_id TEXT
+                       );
+                       CREATE TABLE accounts (
                          id TEXT PRIMARY KEY,
                          email TEXT,
                          id_token TEXT,
                          refresh_token TEXT NOT NULL,
                          authenticated_at INTEGER NOT NULL,
                          auth_json TEXT
+                       );
+                       CREATE TABLE mcp_servers (
+                         name TEXT PRIMARY KEY,
+                         toml TEXT NOT NULL,
+                         sort_order INTEGER NOT NULL DEFAULT 0,
+                         updated_at TEXT NOT NULL
                        );
                        INSERT INTO accounts VALUES
                          ('ws-1', 'a@example.com', NULL, 'rt-1', 1, NULL),

@@ -248,6 +248,7 @@ pub fn run() {
             commands::test_provider_connection,
             commands::fetch_provider_models,
             commands::get_profile_balance,
+            commands::get_claude_profile_balance,
             commands::export_database,
             commands::export_database_to,
             commands::import_database,
@@ -274,16 +275,20 @@ pub fn run() {
             commands::delete_profile,
             commands::apply_profile,
             commands::list_mcp_servers,
+            commands::list_claude_mcp_servers,
+            commands::get_claude_mcp_server_json,
+            commands::save_claude_mcp_server,
+            commands::delete_claude_mcp_server,
             commands::probe_mcp_server,
             commands::save_mcp_server,
             commands::delete_mcp_server,
+            commands::set_mcp_server_enabled,
             commands::set_mcp_mirror,
             commands::revert_mcp_live,
             commands::set_mcp_mirror_entries,
             commands::revert_mcp_live_entries,
             commands::get_mcp_section_toml,
             commands::restore_mcp_from_database,
-            commands::import_mcp_from_live,
             commands::mcp_sync_preview,
             commands::get_mcp_server_toml,
             commands::patch_mcp_fragment,
@@ -312,6 +317,21 @@ pub fn run() {
             commands::import_skill,
             commands::enable_skill,
             commands::disable_skill,
+            commands::claude_list_profiles,
+            commands::claude_get_common_settings,
+            commands::claude_save_common_settings,
+            commands::claude_get_profile,
+            commands::claude_capture_profile,
+            commands::claude_save_profile,
+            commands::claude_delete_profile,
+            commands::claude_apply_profile,
+            commands::claude_set_profile_icon,
+            commands::claude_set_profile_show_balance,
+            commands::claude_reorder_profiles,
+            commands::claude_duplicate_profile,
+            commands::claude_test_profile,
+            commands::claude_test_connection,
+            commands::claude_fetch_models,
             commands::delete_skill,
             commands::list_plugin_skills,
             commands::list_plugin_marketplaces,
@@ -359,11 +379,7 @@ pub fn run() {
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
-                    }
+                    show_main_window(app);
                 }))?;
 
             // 设置加载失败若静默回退默认值，用户配置「消失」且无迹可寻，必须留痕

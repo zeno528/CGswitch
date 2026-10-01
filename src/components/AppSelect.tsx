@@ -2,7 +2,7 @@ import { Check, ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useFixedMenuPosition } from "./useFixedMenuPosition";
 import { useMenuDismiss } from "./useMenuDismiss";
 
@@ -17,8 +17,13 @@ interface AppSelectProps<T extends string | number> {
   onChange: (value: T) => void;
   placeholder?: string;
   disabled?: boolean;
-  className?: string;
   renderLabel?: (option: SelectOption<T>) => ReactNode;
+  iconOnly?: boolean;
+  menuWidth?: CSSProperties["width"];
+  menuAlign?: "match" | "end";
+  compact?: boolean;
+  /** 传入后使用复选菜单；onChange 返回被切换的键，菜单保持展开。 */
+  checkedValues?: readonly T[];
 }
 
 export function AppSelect<T extends string | number>({
@@ -27,8 +32,12 @@ export function AppSelect<T extends string | number>({
   onChange,
   placeholder,
   disabled,
-  className = "",
   renderLabel,
+  iconOnly = false,
+  menuWidth,
+  menuAlign,
+  compact = false,
+  checkedValues,
 }: AppSelectProps<T>) {
   const { t } = useTranslation();
   const selected = options.find((option) => String(option.value) === String(value));
@@ -37,7 +46,7 @@ export function AppSelect<T extends string | number>({
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // 定位（向下/向上自适应翻转）与行内 ⋯ 菜单共用同一套逻辑；收起（外点/滚动/Escape）同样复用全局基建
-  const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, "match");
+  const menuStyle = useFixedMenuPosition(open, rootRef.current, menuRef, menuAlign ?? (iconOnly ? "end" : "match"), menuWidth);
   useMenuDismiss(open, rootRef, menuRef, setOpen);
 
   // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
@@ -68,12 +77,26 @@ export function AppSelect<T extends string | number>({
 
   const selectOption = (option: SelectOption<T>) => {
     onChange(option.value);
-    setOpen(false);
+    if (!checkedValues) setOpen(false);
   };
 
   const menu = (
-    <div ref={menuRef} className="app-select-menu" data-open={open} style={menuStyle} role="listbox" aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
-      {options.map((option) => <button
+    <div ref={menuRef} className={`app-select-menu ${iconOnly ? "app-select-menu--arrow" : ""}`} data-open={open} style={menuStyle} role={checkedValues ? "menu" : "listbox"} aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
+      {options.map((option) => checkedValues ? <label
+        key={String(option.value)}
+        className="app-select-option app-selection-state justify-start! gap-2!"
+      >
+        <input
+          type="checkbox"
+          role="menuitemcheckbox"
+          aria-checked={checkedValues.includes(option.value)}
+          checked={checkedValues.includes(option.value)}
+          disabled={disabled}
+          tabIndex={open ? 0 : -1}
+          onChange={() => selectOption(option)}
+        />
+        <span>{renderLabel?.(option) ?? option.label}</span>
+      </label> : <button
         key={String(option.value)}
         type="button"
         role="option"
@@ -92,14 +115,15 @@ export function AppSelect<T extends string | number>({
   const menuContent = typeof document === "undefined" ? menu : createPortal(menu, document.body);
 
   return (
-    <div ref={rootRef} className="app-select-wrap" data-open={open}>
+    <div ref={rootRef} className={`app-select-wrap ${iconOnly ? "app-select-wrap--icon" : ""} ${compact ? "app-select-wrap--compact" : ""}`} data-open={open}>
       <button
         type="button"
-        className={`app-select ${className}`}
+        className={`app-select ${iconOnly ? "app-select--icon" : ""} ${compact ? "app-select--compact" : ""}`}
         disabled={disabled}
-        aria-haspopup="listbox"
+        aria-haspopup={checkedValues ? "menu" : "listbox"}
         aria-expanded={open}
-        aria-label={placeholder}
+        aria-label={iconOnly ? (selected ? `${placeholder ?? t("select.placeholder")}: ${selected.label}` : placeholder ?? t("select.placeholder")) : placeholder}
+        title={iconOnly ? (selected?.label ?? placeholder) : undefined}
         onClick={() => hasOptions && setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (hasOptions && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -108,8 +132,8 @@ export function AppSelect<T extends string | number>({
           }
         }}
       >
-        <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>
-        <ChevronDown className="app-select__icon" size={16} strokeWidth={2} aria-hidden="true" />
+        {iconOnly ? <span className="sr-only">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span> : <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>}
+        <ChevronDown className="app-select__icon" size={compact ? 14 : 16} strokeWidth={2} aria-hidden="true" />
       </button>
       {menuContent}
     </div>

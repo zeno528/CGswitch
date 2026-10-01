@@ -125,7 +125,7 @@ describe("SettingsSections", () => {
     );
     expect(html.match(/class="apple-group /g)).toHaveLength(2);
     expect(html).toContain("app-version");
-    expect(html).toContain('class="apple-wordmark">CGswitch</span><span class="app-version">v');
+    expect(html).toContain('class="apple-wordmark">CGswitch</span><span class="flex items-center gap-2"><span class="app-version">v');
     expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
     expect(html).not.toContain("当前版本");
     expect(html).not.toContain("版本更新");
@@ -172,6 +172,8 @@ describe("SettingsSections", () => {
   });
 
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
+    expect(settingsSectionsSource).toContain('<span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span>');
+    expect(settingsSectionsSource).not.toContain("settings-about__update-description");
     expect(settingsSectionsSource).toContain('t("about.upgradeTo")');
     expect(settingsSectionsSource).not.toContain('t("about.updateNow")');
     expect(settingsSectionsSource).toContain('t("about.changelog")');
@@ -326,7 +328,7 @@ describe("SettingsSections", () => {
       accounts: [{ id: "oauth", login: "oauth@example.com", authenticated_at: 0, is_default: false, plan_type: "pro", subscription_active_until: 1_789_694_940_000 }],
     };
     const balance: ProfileBalanceInfo = {
-      currency: "", total_balance: "", granted_balance: "", topped_up_balance: "",
+      currency: "", total_balance: "",
       usage_percent: 18, usage_reset: "3h12m", usage_reset_at: Date.now() + 3 * 3_600_000, weekly_usage_percent: null, weekly_reset: null,
       reset_credits_available: 2,
       reset_credits: [

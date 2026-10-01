@@ -173,6 +173,7 @@ export default {
   },
   icons: {
     pageTitle: "Select a provider icon",
+    selected: "Selected: {{name}}",
     none: "No icon (show the first letter of the name)",
   },
 } as const;

@@ -1,10 +1,23 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import type { TFunction } from "i18next";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
+import type { ProfileSummary } from "../../types";
+import { connectionGate, profileConnectionGate } from "./ProfileCard";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
+const hookSource = readFileSync(new URL("./useProfileBalance.ts", import.meta.url), "utf8");
+const sortableCardSource = readFileSync(new URL("../../components/SortableCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
+
+it("供应商卡片文字区域固定保留标题和元信息行高度", () => {
+  expect(styles).toMatch(/\.profile-card-content__text\s*\{[^}]*height: calc\(1\.75rem \+ 0\.25rem \+ 18px\);/);
+});
+
+it("没有第二行时标题居中，有第二行时保留原布局", () => {
+  expect(styles).toMatch(/\.profile-card-content__text:not\(:has\(\.profile-card-meta\)\)\s*\{[^}]*justify-content: center;[^}]*transform: none;/);
+});
 
 describe("ProfileCard 官网入口", () => {
   it("将官网入口放在供应商标题行并使用 Globe 图标", () => {
@@ -20,7 +33,8 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("所有配置激活时复用全局品牌渐变", () => {
-    expect(source).toContain('active ? " is-active brand-gradient-surface" : ""');
+    // 卡片外壳（含激活渐变与拖拽手柄）抽到共享 SortableCard，两列表页共用
+    expect(sortableCardSource).toContain('active ? " is-active brand-gradient-surface" : ""');
     expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
     expect(source).not.toContain("third-party-gradient");
     expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
@@ -80,15 +94,24 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain("group-focus-within:");
   });
 
-  it("仅在端点或 API Key 缺失时禁用连通测试", () => {
-    expect(source).toContain("const connectionDisabled = profile.provider ? !profile.has_base_url || !profile.has_key : false;");
-    expect(source).toContain('!profile.has_base_url ? t("connection.missingApiEndpointWarning")');
+  it("仅在端点或 API Key 缺失时禁用连通测试，缺什么报什么", () => {
+    // 门控抽到共享 connectionGate（Codex 卡片、拖拽预览与 Claude 卡片共用同一判定）
+    const titles = { ready: "ready", missingEndpoint: "no-endpoint", missingKey: "no-key" };
+    expect(connectionGate(true, true, titles)).toEqual({ disabled: false, title: "ready" });
+    expect(connectionGate(false, true, titles)).toEqual({ disabled: true, title: "no-endpoint" });
+    expect(connectionGate(true, false, titles)).toEqual({ disabled: true, title: "no-key" });
+    expect(connectionGate(false, false, titles)).toEqual({ disabled: true, title: "no-endpoint" });
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
 
   it("订阅与普通供应商共用同一套连通性悬停文案", () => {
-    // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案
-    expect(source).toContain("const connectionTitle = !profile.provider || (profile.has_base_url && profile.has_key)");
+    // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案；
+    // 无 provider 的官方订阅永不禁用，第三方供应商才走缺什么报什么
+    const t = ((key: string) => key) as unknown as TFunction<"profiles">;
+    expect(profileConnectionGate({ provider: null } as ProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: true } as ProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: false, has_key: true } as ProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiEndpointWarning" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: false } as ProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiKeyWarning" });
     expect(source).not.toContain("connection.testSubscription");
   });
 
@@ -98,24 +121,26 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {
-    // 动效只由点击回调开关，静默路径（挂载/聚焦/轮询）不触发
-    expect(source).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
+    // 动效只由点击回调开关，静默路径（挂载/聚焦/轮询）不触发；刷新逻辑抽到 useProfileBalance
+    expect(hookSource).toContain("const [balanceRefreshing, setBalanceRefreshing] = useState(false);");
     expect(source).toContain("{balanceRefreshing ? <LoadingSpinner size=\"sm\" /> : <Gauge");
     expect(source).toContain("aria-busy={balanceRefreshing}");
-    expect(source).toContain("setBalanceRefreshing(true);");
-    expect(source).toContain("void fetchBalance(manual).finally(() => setBalanceRefreshing(false));");
+    expect(hookSource).toContain("setBalanceRefreshing(true);");
+    expect(hookSource).toContain("void fetchBalance(manual).finally(() => setBalanceRefreshing(false));");
     expect(authQuotaErrorKind("refresh_token 被服务端拒绝，该账号需要重新登录")).toBe("auth_expired"); // i18n-exempt: Backend error fixture.
     expect(authQuotaErrorKind("Network request timed out")).toBe("query_failed");
-    expect(source).toContain('feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));');
+    expect(hookSource).toContain('feedback.error(t(authInvalid ? "balance.authInvalidToast" : "balance.queryFailedToast"));');
     // 单飞去重把在途 promise 交回调用方：指示器跟随真正落地的查询，不留真空期
-    expect(source).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
+    expect(hookSource).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });
 
   it("静默额度刷新只在冷启动窗口内延后，其余场景零等待", () => {
     // 延迟的唯一理由是"别跟首屏抢资源"；窗口已经起来之后，切页和聚焦都不该再等。
-    // 两条路各自独立：冷启动走 900/1200，日常走 0（setTimeout 立即宏任务）
-    expect(source).toContain("window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);");
+    // 两条路各自独立：冷启动走 900/1200，日常走 0（setTimeout 立即宏任务）；逻辑在 useProfileBalance
+    expect(hookSource).toContain("window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);");
     expect(source).not.toContain("deferBalanceRef");
     expect(source).not.toContain("lastSeenEpoch");
+    expect(hookSource).not.toContain("deferBalanceRef");
+    expect(hookSource).not.toContain("lastSeenEpoch");
   });
 });

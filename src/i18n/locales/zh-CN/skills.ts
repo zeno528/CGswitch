@@ -1,7 +1,8 @@
 /** Skill 页文案。 */
 export default {
   installedCount: "已安装 {{count}}",
-  enabledCount: "已启用 {{count}}",
+  codexEnabledCount: "Codex 已启用 {{count}}",
+  claudeEnabledCount: "Claude 已启用 {{count}}",
   searchPlaceholder: "搜索 Skill…",
   importSkill: "导入 Skill",
   importSkillAria: "导入 Skill（有 {{count}} 个可导入或更新的 Skill）",
@@ -28,10 +29,12 @@ export default {
   previewSkill: "预览 Skill",
   toggleAddAria: "写入 Codex {{name}}",
   toggleRemoveAria: "从 Codex 移除 {{name}}",
+  toggleClaudeAddAria: "写入 Claude Code {{name}}",
+  toggleClaudeRemoveAria: "从 Claude Code 移除 {{name}}",
   delete: "删除",
   deleteAria: "删除 {{name}}",
   deleteDialogTitle: "删除 Skill",
-  deleteDialogDescription: "将删除 {{name}} 的 CGswitch 仓库副本和 Codex 副本。",
+  deleteDialogDescription: "将删除 {{name}} 的 CGswitch 仓库副本、Codex 副本和 Claude Code 副本。",
   deletedToast: "Skill 已删除",
   importedToast: "已导入 {{count}} 个 Skill",
   importFromFolder: "从文件夹导入…",

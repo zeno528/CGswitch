@@ -29,8 +29,6 @@ export default {
     minimizeDescription: "Hide to the tray instead of quitting when you click close",
   },
   view: {
-    title: "Settings",
-    backHome: "Back to home",
     sectionsLabel: "Settings sections",
     tabGeneral: "General",
     tabApp: "App",

@@ -1,4 +1,5 @@
 use super::storage::{backup_keep_count, DATABASE_BACKUP_PREFIX};
+use super::sync;
 use super::{
     app_err, atomic_write, codex_process, codex_window_state, now_ms, prune_backups, AppContext,
     AppResult, Path, PathInfo, Settings,
@@ -98,22 +99,15 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        // 拉起前先读一次 live config：这份文件读不了，Codex 也起不来，日志必须留痕
-        // （否则这条真相只能靠 [plugin.cli.run] 的失败间接暴露，归错域）。
-        // 同一次读取/解析顺带完成原来的快照同步——不是新增开销。
-        // 读不了也**不拦**：Codex 自己会报错，CGswitch 不替它做判断。
-        // 刻意不带 error 正文：解析报错会内嵌出错那一行的原文，可能是密钥。
-        match self.live_document_checked() {
-            Ok(Some(document)) => {
-                self.sync_active_profile_document(&document)?;
-            }
-            Ok(None) => {}
-            Err(_) => {
-                tauri_plugin_log::log::warn!(
-                    "[app.config.parse] outcome=failure failure_kind=parse_error msg=\"config.toml 无法读取或解析，Codex 可能无法启动\""
-                );
-            }
-        }
+        // 拉起前回写快照：严格读 live、读不了只记日志不拦
+        // （语义与日志设计见 sync 执行体的 BeforeProcessStart 分支）。
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeProcessStart {
+                client: sync::ClientId::Codex,
+            },
+            sync::SyncMaterial::default(),
+        )?;
         let process_ids = codex_process::find_process_ids(None);
         // 本次动作由 Codex 是否在跑决定：在跑＝先停后启的重启，没跑＝纯启动。两者共用本函数，
         // 收尾日志必须自己区分，否则纯启动也会记成“已重新启动”。

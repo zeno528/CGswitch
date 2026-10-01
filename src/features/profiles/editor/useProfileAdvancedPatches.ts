@@ -60,8 +60,9 @@ export function useProfileAdvancedPatches(options: {
   setConfigText: Dispatch<SetStateAction<string>>;
   initialized: MutableRefObject<boolean>;
   showLongContextOverride: boolean;
+  onPatched?: (text: string, field: string) => void;
 }): ProfileAdvancedPatches {
-  const { configText, setConfigText, initialized, showLongContextOverride } = options;
+  const { configText, setConfigText, initialized, showLongContextOverride, onPatched } = options;
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
   const [longContextEnabled, setLongContextEnabled] = useState(() => showLongContextOverride && hasLongContextOverride(configText));
@@ -94,6 +95,7 @@ export function useProfileAdvancedPatches(options: {
     setPatchingLongContext(true);
     try {
       const next = await api.patchChatgptContextConfig(configText, enabled, Number(compactTokenLimit));
+      if (enabled) onPatched?.(next, "model_context_window");
       setConfigText(next);
       setLongContextEnabled(enabled);
     } catch (error) {
@@ -113,6 +115,7 @@ export function useProfileAdvancedPatches(options: {
     setPatchingLongContext(true);
     try {
       const next = await api.patchChatgptContextConfig(configText, true, limit);
+      onPatched?.(next, "model_auto_compact_token_limit");
       setConfigText(next);
     } catch (error) {
       feedback.error(t("edit.errorCompactLimit", { error: String(error) }));
@@ -126,6 +129,7 @@ export function useProfileAdvancedPatches(options: {
     setPatchingSystemProxy(true);
     try {
       const next = await api.patchSystemProxyConfig(configText, enabled);
+      if (enabled) onPatched?.(next, "respect_system_proxy");
       setConfigText(next);
       setSystemProxyEnabled(enabled);
     } catch (error) {
@@ -140,6 +144,7 @@ export function useProfileAdvancedPatches(options: {
     setPatchingContextMgmt(true);
     try {
       const next = await api.patchContextManagementConfig(configText, enabled);
+      if (enabled) onPatched?.(next, "experimental_mode");
       setConfigText(next);
       setContextMgmtEnabled(enabled);
     } catch (error) {

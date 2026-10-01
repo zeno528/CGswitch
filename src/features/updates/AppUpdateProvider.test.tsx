@@ -92,7 +92,8 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).not.toContain("installingHere");
     expect(providerSource).toContain("const [confirming, setConfirming] = useState(false);");
     expect(providerSource).toContain("onClick={() => setConfirming(true)}");
-    expect(providerSource).not.toContain("onMouseEnter");
+    // 弹窗只允许点击触发；onMouseEnter 仅用于侧栏折叠态的飞出气泡 arm，不得承担开弹窗
+    expect(providerSource).not.toContain("onMouseEnter={() => setConfirming");
     expect(providerSource).toContain('aria-haspopup="dialog"');
   });
 
@@ -104,14 +105,16 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain("if (!update) setConfirming(false);");
   });
 
-  it("更新入口只显示在 Codex 状态旁，不再渲染侧边栏横幅", () => {
+  it("更新入口固定在侧栏底部，供应商页头展示产品标识", () => {
     const appShellSource = readFileSync(new URL("../../app/AppShell.tsx", import.meta.url), "utf8");
     const profilesSource = readFileSync(new URL("../profiles/ProfilesView.tsx", import.meta.url), "utf8");
-    expect(appShellSource).not.toContain("<UpdateNotice />");
-    expect(profilesSource).toContain("<UpdateNotice />");
-    expect(providerSource).not.toContain("apple-sidebar-label");
-    expect(providerSource).toContain('className="update-notice-trigger"');
-    expect(providerSource).toContain('h-7 w-7');
-    expect(providerSource).toContain('className="setting-title update-notice-label"');
+    expect(appShellSource).toContain("UpdateNotice");
+    expect(appShellSource).toContain("update-notice--sidebar");
+    expect(profilesSource).not.toContain("<UpdateNotice />");
+    expect(profilesSource).toContain("provider-page-brand");
+    expect(providerSource).toContain('className="apple-sidebar-nav-button update-notice-trigger"');
+    expect(providerSource).toContain('className="apple-sidebar-label"');
+    expect(providerSource).toContain("sidebarCollapsed && sidebarFlyoutArmed");
+    expect(providerSource).toContain("w-[var(--sidebar-icon-size)]");
   });
 });

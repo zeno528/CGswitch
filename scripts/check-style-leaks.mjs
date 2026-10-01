@@ -11,6 +11,7 @@ const SRC_ROOT = fileURLToPath(new URL("../src", import.meta.url));
 const WHITELIST = [
   { file: "features/mcp/McpView.tsx", class: "text-[10px]", reason: "MCP 传输类型徽标：低于 meta-xs 的特例字号" },
   { file: "features/profiles/ProfileEdit.tsx", class: "text-[13px]", reason: "编辑页 tab：介于 setting-title 与 field-label 之间的既有字号" },
+  { file: "features/claude/ClaudeProfileEdit.tsx", class: "text-[13px]", reason: "编辑页 tab：与 Codex ProfileEdit 同款编辑器 tab 的同一字号契约" },
   { file: "app/AppShell.tsx", class: "overflow-y-auto", reason: "<main> 本身：AGENTS.md 钦定的普通页唯一纵向滚动容器" },
   { file: "features/skills/SkillsView.tsx", class: "overflow-auto", reason: "Skill 内容预览弹窗的长文本滚动：弹窗不在页面流内" },
 ];
@@ -82,10 +83,16 @@ const SHARED_HEADER_CONTRACTS = [
 /* 文件级结构不变量：中间滚动区与页头必须成对出现，防止新页面漏页头或自建布局骨架 */
 const STRUCTURAL_CHECKS = [
   {
+    name: "编辑页表单分区必须复用 apple-edit-surface，禁止依赖卡片包装深度",
+    holds: (content) => !content.includes("apple-edit-page") || !content.includes("apple-panel-section") || content.includes("apple-edit-surface"),
+  },
+  {
     name: "使用 apple-edit-content 的文件必须同时包含 apple-page-bar",
     // app/AppShell.tsx 只在 DOM 查询里引用该类名（页面进场动画的挂载点选择器），
     // 自身不渲染任何页面布局骨架，页头由各 feature 页自备。
-    exempt: (rel) => rel === "app/AppShell.tsx",
+    // 设置页不设标题和返回按钮，顶部标签栏与中间滚动区组成页面骨架。
+    // 共享编辑器只查询正文容器以监听可用高度，不创建页面布局或页头。
+    exempt: (rel) => rel === "app/AppShell.tsx" || rel === "features/settings/SettingsView.tsx" || rel === "components/ConfigTextEditor.tsx",
     holds: (content) => content.includes("apple-page-bar"),
   },
 ];

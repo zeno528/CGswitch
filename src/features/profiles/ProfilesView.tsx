@@ -1,19 +1,19 @@
-import { Camera, GripVertical, Layers2, Play, Plus, RefreshCw } from "lucide-react";
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
-import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { Camera, Layers2, Play, Plus, RefreshCw } from "lucide-react";
+import { DndContext, DragOverlay, closestCenter } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
-import { AppDialog } from "../../components/AppDialog";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { useCardDragReorder } from "../../components/useCardDragReorder";
 import type { AppState, ProfileBalanceInfo, ProfileDetail, ProfileSummary } from "../../types";
-import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent } from "./ProfileCard";
+import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, profileConnectionGate } from "./ProfileCard";
 import ProfileEdit from "./ProfileEdit";
-import { UpdateNotice } from "../updates/AppUpdateProvider";
+import ProfileNameDialog from "./ProfileNameDialog";
 
 interface ProfilesViewProps {
   state: AppState;
@@ -31,12 +31,10 @@ export function codexActionFor(running: boolean) {
 }
 
 function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
-  const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
+  const { t } = useTranslation("profiles");
+  const connection = profileConnectionGate(profile, t);
   return (
-    <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
-      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
-        <GripVertical className="h-4 w-4" strokeWidth={2} />
-      </span>
+    <ProfileDragPreviewShell width={width} height={height} active={active}>
       <ProfileCardContent
         profile={profile}
         balanceInfos={balanceInfos}
@@ -44,8 +42,8 @@ function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos
         balanceRefreshing={false}
         onOpenAdmin={onOpenAdmin}
       />
-      <ProfileCardActions active={active} busy={busy} profile={profile} testing={false} dragging />
-    </div>
+      <ProfileCardActions active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
+    </ProfileDragPreviewShell>
   );
 }
 
@@ -61,39 +59,9 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   const [modal, setModal] = useState<"capture" | "rename" | null>(null);
   const [modalProfile, setModalProfile] = useState<ProfileSummary | null>(null);
   const [profileName, setProfileName] = useState("");
-  const [draggedProfileId, setDraggedProfileId] = useState<string | null>(null);
-  const [dragHoverProfileId, setDragHoverProfileId] = useState<string | null>(null);
-  const [draggedProfileWidth, setDraggedProfileWidth] = useState<number | null>(null);
-  const [draggedProfileHeight, setDraggedProfileHeight] = useState<number | null>(null);
-  const nameInput = useRef<HTMLInputElement>(null);
-  const dragHoverReleaseRef = useRef<(() => void) | null>(null);
   const duplicatingProfileRef = useRef(false);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor));
 
   useEffect(() => setItems(state.profiles), [state.profiles]);
-
-  useEffect(() => () => {
-    document.body.classList.remove("drag-active");
-    dragHoverReleaseRef.current?.();
-  }, []);
-
-  const releaseCardHoverSuppression = () => {
-    const release = dragHoverReleaseRef.current;
-    if (release) release();
-  };
-
-  const suppressCardHover = () => {
-    releaseCardHoverSuppression();
-    const activeElement = document.activeElement;
-    if (activeElement instanceof HTMLElement && activeElement.classList.contains("drag-handle")) activeElement.blur();
-    const release = () => {
-      setDragHoverProfileId(null);
-      window.removeEventListener("pointermove", release);
-      if (dragHoverReleaseRef.current === release) dragHoverReleaseRef.current = null;
-    };
-    dragHoverReleaseRef.current = release;
-    window.addEventListener("pointermove", release, { once: true });
-  };
 
   const persistOrder = async (previous: ProfileSummary[], next: ProfileSummary[]) => {
     try {
@@ -105,43 +73,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
       await onRefresh();
     }
   };
-
-  const onDragEnd = (event: DragEndEvent) => {
-    document.body.classList.remove("drag-active");
-    suppressCardHover();
-    setDraggedProfileId(null);
-    setDraggedProfileWidth(null);
-    setDraggedProfileHeight(null);
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldItems = items;
-    const oldIndex = oldItems.findIndex((item) => item.id === active.id);
-    const newIndex = oldItems.findIndex((item) => item.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(oldItems, oldIndex, newIndex);
-    setItems(next);
-    void persistOrder(oldItems, next);
-  };
-
-  const onDragStart = ({ active }: DragStartEvent) => {
-    releaseCardHoverSuppression();
-    document.body.classList.add("drag-active");
-    const source = [...document.querySelectorAll<HTMLElement>("[data-profile-id]")]
-      .find((node) => node.dataset.profileId === String(active.id));
-    const sourceRect = source?.getBoundingClientRect();
-    setDraggedProfileId(String(active.id));
-    setDragHoverProfileId(String(active.id));
-    setDraggedProfileWidth(active.rect.current.initial?.width ?? sourceRect?.width ?? null);
-    setDraggedProfileHeight(active.rect.current.initial?.height ?? sourceRect?.height ?? null);
-  };
-
-  const onDragCancel = () => {
-    document.body.classList.remove("drag-active");
-    suppressCardHover();
-    setDraggedProfileId(null);
-    setDraggedProfileWidth(null);
-    setDraggedProfileHeight(null);
-  };
+  const { sensors, draggedId: draggedProfileId, dragHoverId: dragHoverProfileId, dragWidth: draggedProfileWidth, dragHeight: draggedProfileHeight, onDragStart, onDragEnd, onDragCancel } = useCardDragReorder(items, setItems, persistOrder);
 
   const openCapture = () => { setModal("capture"); setModalProfile(null); setProfileName(""); };
   const openRename = (profile: ProfileSummary) => { setModal("rename"); setModalProfile(profile); setProfileName(profile.name); };
@@ -254,7 +186,10 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="min-w-0"><UpdateNotice /></div>
+        <div className="provider-page-brand">
+          <img src="/codex.svg" alt="" className="provider-page-brand__logo" draggable="false" />
+          <span>Codex</span>
+        </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
           <div className={`codex-status-control codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}>
             <span className="codex-status" role="status" aria-live="polite" aria-atomic="true">
@@ -277,9 +212,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
       <div className="apple-edit-content">
             <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)]">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
       </div>
-      <AppDialog open={modal !== null} onOpenChange={(open) => { if (!open) setModal(null); }} title={modal === "capture" ? t("dialog.captureTitle") : t("dialog.renameTitle")} initialFocusRef={nameInput} footer={<><button type="button" className="apple-action-button" onClick={() => setModal(null)}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={busy || !profileName.trim()} onClick={() => void submitModal()}>{t("dialog.save")}</button></>}>
-        <div className="space-y-4"><p className="muted text-sm">{modal === "capture" ? t("dialog.captureDescription") : t("dialog.renameDescription")}</p><input ref={nameInput} className="app-input" maxLength={50} placeholder={t("dialog.namePlaceholder")} value={profileName} onChange={(event) => setProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) void submitModal(); }} /></div>
-      </AppDialog>
+      <ProfileNameDialog mode={modal} name={profileName} busy={busy} onName={setProfileName} onClose={() => setModal(null)} onSubmit={() => void submitModal()} />
     </section>
   );
 }

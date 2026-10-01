@@ -6,12 +6,13 @@ export const MENU_MAX_HEIGHT = 320;
 
 /// AppSelect 下拉与行内 ⋯ 菜单共用的 fixed 弹层定位：打开后按菜单真实展示高度
 /// 判定下方空间，不够且上方更大时向上翻转，够则向下展开。
-/// align "match" = 左缘对齐且同宽（下拉框）；"end" = 右缘对齐、宽度自适应（行菜单）。
+/// align "match" = 左缘对齐且默认同宽（下拉框）；"end" = 右缘对齐、宽度自适应（行菜单）。
 export function useFixedMenuPosition(
   open: boolean,
   trigger: HTMLElement | null,
   menuRef: RefObject<HTMLDivElement | null>,
   align: "match" | "end",
+  menuWidth?: CSSProperties["width"],
 ): CSSProperties | undefined {
   const [style, setStyle] = useState<CSSProperties | undefined>(undefined);
   useLayoutEffect(() => {
@@ -30,7 +31,7 @@ export function useFixedMenuPosition(
       setStyle({
         ...(align === "end"
           ? { left: "auto", right: `${window.innerWidth - rect.right}px` }
-          : { left: `${rect.left}px`, width: `${rect.width}px` }),
+          : { left: `${rect.left}px`, width: menuWidth ?? `${rect.width}px` }),
         ...(openUp
           ? { top: "auto", bottom: `${window.innerHeight - rect.top + gap}px` }
           : { top: `${rect.bottom + gap}px`, bottom: "auto" }),
@@ -39,6 +40,6 @@ export function useFixedMenuPosition(
     updatePosition();
     window.addEventListener("resize", updatePosition);
     return () => window.removeEventListener("resize", updatePosition);
-  }, [open, trigger, align]);
+  }, [open, trigger, align, menuWidth]);
   return style;
 }

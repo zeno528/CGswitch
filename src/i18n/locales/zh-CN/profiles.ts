@@ -173,6 +173,7 @@ export default {
   },
   icons: {
     pageTitle: "选择供应商图标",
+    selected: "已选：{{name}}",
     none: "不使用图标（显示名称首字）",
   },
 } as const;

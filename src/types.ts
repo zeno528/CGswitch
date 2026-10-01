@@ -141,8 +141,6 @@ export interface EditorDiagnosticSummary {
 export interface ProfileBalanceInfo {
   currency: string;
   total_balance: string;
-  granted_balance: string;
-  topped_up_balance: string;
   /** 用量型供应商（如 MiniMax Token Plan）的已用百分比；余额型供应商为 null。 */
   usage_percent: number | null;
   /** 主用量窗口重置倒计时（如 "2h23m"）。 */
@@ -258,6 +256,47 @@ export interface PluginUpdate {
   version: string;
 }
 
+/** Skill 启停的目标工具：同一份正本分发到各工具自己的 skills 目录。 */
+export type SkillTool = "codex" | "claude";
+
+export interface ClaudeProfileSummary {
+  id: string;
+  name: string;
+  base_url: string | null;
+  /** token 是否已设置；明文只在详情里回显（卡片测试连通按钮的门控）。 */
+  has_token: boolean;
+  model: string | null;
+  description: string | null;
+  icon: string | null;
+  admin_url: string | null;
+  kind: string | null;
+  show_balance: boolean;
+  updated_at: string;
+}
+
+export interface ClaudeProfileDetail {
+  id: string;
+  name: string;
+  base_url: string | null;
+  auth_token: string | null;
+  model: string | null;
+  description: string | null;
+  fetched_models: string[];
+  /** 创建时选择的预设 kind：编辑页反查端点档用。 */
+  kind: string | null;
+  admin_url: string | null;
+  /** 旧配置的附加 env 键值；新配置由 raw_settings 派生。 */
+  extra_env: string | null;
+  /** 完整 settings.json 原文；旧配置可能为空。 */
+  raw_settings: string | null;
+  /** 图标 id（icons.ts 收集的 provider 图标；NULL 显示名称首字）。 */
+  icon: string | null;
+  show_balance: boolean;
+  updated_at: string;
+  /** 卡片排序（拖拽持久化）。 */
+  sort_order: number;
+}
+
 export interface SkillSummary {
   name: string;
   description: string | null;
@@ -266,6 +305,8 @@ export interface SkillSummary {
   source_path: string | null;
   update_available: boolean;
   enabled: boolean;
+  /** Claude Code 侧的分发状态（~/.claude/skills/<name> 是否存在）。 */
+  claude_enabled: boolean;
 }
 
 export interface SkillCandidate {
@@ -327,6 +368,8 @@ export interface PathInfo {
 export interface AppState {
   profiles: ProfileSummary[];
   active_profile_id: string | null;
+  /** Claude Code 侧当前激活的供应商（claude_profiles 表）。 */
+  active_claude_profile_id: string | null;
   codex: CodexAppStatus;
   settings: Settings;
   paths: PathInfo[];

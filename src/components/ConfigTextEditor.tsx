@@ -1,6 +1,6 @@
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, indentOnInput, indentUnit as indentUnitFacet, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, forceParsing, indentOnInput, indentUnit as indentUnitFacet, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { forEachDiagnostic, lintKeymap, linter, setDiagnosticsEffect, type Diagnostic } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -158,6 +158,7 @@ const diagnosticLineDecorationsField = StateField.define<ReturnType<typeof diagn
 
 export interface ConfigTextEditorHandle {
   focusFirstDiagnostic: () => void;
+  revealField: (text: string, field: string) => void;
 }
 
 /**
@@ -205,6 +206,54 @@ export function computeTextChange(current: string, next: string) {
   return { from, to: currentTo, insert: next.slice(from, nextTo) };
 }
 
+/** 从实际变更所在行向后定位字段，跳过前面同名字段和注释。 */
+export function findConfigFieldPosition(text: string, field: string, from: number): number | null {
+  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^[\\t ]*(?:"${escaped}"|'${escaped}'|${escaped})[\\t ]*[:=]`, "m");
+  const start = from === 0 ? 0 : text.lastIndexOf("\n", from - 1) + 1;
+  const match = pattern.exec(text.slice(start));
+  return match ? start + match.index + match[0].search(/\S/) : null;
+}
+
+// canvas 文本测量上下文只读共享：多个编辑器、多次显隐重挂复用，不随 effect 重建
+let measureContext: CanvasRenderingContext2D | null | undefined;
+
+/// 长文档按视口虚拟化，渲染宽度 ≠ 全文宽度：按 canvas 测量预设 contentDOM 的
+/// min-width，原生横向滚动条才能滚到最后一列（tab 展开宽度也要计入）。
+function syncEditorLayout(editor: EditorView) {
+  const shell = editor.dom.closest<HTMLElement>(".apple-editor-shell");
+  const section = shell?.closest<HTMLElement>(".apple-panel-section");
+  const content = shell?.closest<HTMLElement>(".apple-edit-content");
+  if (shell && section && content) {
+    // 滚到底后，分区顶部保持原位；窗口新增高度全部用于代码区，不挤动页面滚动位置。
+    const chromeHeight = shell.getBoundingClientRect().top - section.getBoundingClientRect().top;
+    const bottomGap = parseFloat(getComputedStyle(content).paddingBottom);
+    const reservedHeight = window.innerHeight - content.clientHeight + chromeHeight + bottomGap;
+    shell.style.setProperty("--editor-max-height", `max(0px, calc(100vh - ${reservedHeight}px))`);
+  }
+  // 语法树预热：CM 初始化只解析前 3000 字符，其余在空闲时补，快速滚动会先跑到未解析区间（无高亮）
+  forceParsing(editor, editor.state.doc.length, 200);
+  if (measureContext === undefined) measureContext = document.createElement("canvas").getContext("2d");
+  if (!measureContext) return;
+  const style = getComputedStyle(editor.contentDOM);
+  measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
+  let documentWidth = 0;
+  for (let number = 1; number <= editor.state.doc.lines; number += 1) {
+    const parts = editor.state.doc.line(number).text.split("\t");
+    let lineWidth = 0;
+    for (let index = 0; index < parts.length; index += 1) {
+      lineWidth += measureContext.measureText(parts[index]!).width;
+      if (index < parts.length - 1 && tabWidth > 0) {
+        const remainder = lineWidth % tabWidth;
+        lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
+      }
+    }
+    documentWidth = Math.max(documentWidth, lineWidth);
+  }
+  editor.contentDOM.style.minWidth = `${Math.ceil(documentWidth)}px`;
+}
+
 interface ConfigTextEditorProps {
   value: string;
   language: "toml" | "json";
@@ -223,24 +272,30 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   const { t } = useTranslation();
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   const hostRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarRowRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarGutterRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarRef = useRef<HTMLDivElement>(null);
-  const horizontalScrollbarContentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const onDiagnosticsRef = useRef(onDiagnostics);
   const lastSummary = useRef<EditorDiagnosticSummary | null>(null);
   const syncingValueRef = useRef(false);
+  const pendingRevealRef = useRef<{ text: string; field: string } | null>(null);
   const editingCompartment = useRef(new Compartment());
   const indentUnitCompartment = useRef(new Compartment());
   const appliedIndentUnitRef = useRef<string | null>(null);
-  const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, min(34rem, 60vh))`;
+  const syncFrameRef = useRef(0);
+  const destroyCheckRef = useRef(0);
+  const destroyedRef = useRef(false);
+  const creationDepsRef = useRef<readonly unknown[] | null>(null);
+  const editorMinHeight = `min(${Math.max(1, minLines) * 19.2 + 8}px, var(--editor-max-height))`;
 
   valueRef.current = value;
   onChangeRef.current = onChange;
   onDiagnosticsRef.current = onDiagnostics;
+
+  const scheduleContentWidthSync = (editor: EditorView) => {
+    cancelAnimationFrame(syncFrameRef.current);
+    syncFrameRef.current = requestAnimationFrame(() => syncEditorLayout(editor));
+  };
 
   useEffect(() => {
     const observer = new MutationObserver(() => setDark(document.documentElement.classList.contains("dark")));
@@ -249,6 +304,9 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   }, []);
 
   useImperativeHandle(ref, () => ({
+    revealField: (text, field) => {
+      pendingRevealRef.current = viewRef.current?.state.doc.toString() !== text ? { text, field } : null;
+    },
     focusFirstDiagnostic: () => {
       const view = viewRef.current;
       if (!view) return;
@@ -268,13 +326,14 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
 
   // 编辑器实例在首帧绘制前同步创建（useLayoutEffect）：CodeMirror DOM 与页面同帧呈现，
   // 避免 useEffect（绘后执行）导致编辑器区域晚一帧出现的空壳闪烁。
+  // 页面保活（AppShell 的 Activity）会把隐藏页的 effects 拆掉、复显时重装，而 React 不区分
+  // "隐藏"与"真卸载"——两者共用同一段 cleanup。因此 cleanup 只摘除 DOM、不销毁实例，
+  // 复显时把存活实例原样挂回（滚动位置、撤销栈、语法树、诊断全部保留，不闪重建帧）；
+  // 真卸载交给微任务后裁决：届时 React 已把 hostRef 置空，补一次 destroy 防泄漏。
   useLayoutEffect(() => {
     const parent = hostRef.current;
-    const scrollbarRow = horizontalScrollbarRowRef.current;
-    const scrollbarGutter = horizontalScrollbarGutterRef.current;
-    const scrollbar = horizontalScrollbarRef.current;
-    const scrollbarContent = horizontalScrollbarContentRef.current;
-    if (!parent || !scrollbarRow || !scrollbarGutter || !scrollbar || !scrollbarContent) return;
+    if (!parent) return;
+    const scrollContent = parent.closest(".apple-edit-content");
 
     const reportDiagnostics = (view: EditorView) => {
       let count = 0;
@@ -288,6 +347,45 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       onDiagnosticsRef.current({ count, firstLine });
     };
 
+    const detachEditor = (view: EditorView, observer: ResizeObserver) => {
+      cancelAnimationFrame(syncFrameRef.current);
+      observer.disconnect();
+      view.dom.remove();
+      window.clearTimeout(destroyCheckRef.current);
+      destroyCheckRef.current = window.setTimeout(() => {
+        if (!hostRef.current && !destroyedRef.current) {
+          view.destroy();
+          destroyedRef.current = true;
+          if (viewRef.current === view) viewRef.current = null;
+        }
+      }, 0);
+    };
+
+    window.clearTimeout(destroyCheckRef.current);
+    // 主题取当下 DOM 真值，不信 dark state：Activity 隐藏期会拆掉本页 effects（连带
+    // MutationObserver），隐藏中切主题时 setDark 不会跑。复显时 state 仍是旧主题，
+    // 下面按 state 判等会走保活挂回分支，留下一个配色过期的实例（浅色高亮 + 深色底）。
+    const currentDark = document.documentElement.classList.contains("dark");
+    const creationDeps = [currentDark, language, placeholder, validateToml, t] as const;
+    const previousDeps = creationDepsRef.current;
+    const alive = viewRef.current;
+    if (alive && !destroyedRef.current && previousDeps !== null && creationDeps.every((dep, index) => dep === previousDeps[index])) {
+      // 保活复显：实例存活且创建参数没变，挂回原 DOM 即可
+      parent.appendChild(alive.dom);
+      alive.requestMeasure();
+      scheduleContentWidthSync(alive);
+      const reattachedObserver = new ResizeObserver(() => scheduleContentWidthSync(alive));
+      reattachedObserver.observe(alive.dom);
+      if (scrollContent) reattachedObserver.observe(scrollContent);
+      return () => detachEditor(alive, reattachedObserver);
+    }
+    if (alive) {
+      // 创建参数变了（主题/语言/占位文案）：旧实例彻底销毁后重建
+      alive.destroy();
+      destroyedRef.current = true;
+      viewRef.current = null;
+    }
+
     const jsonDiagnostics = linter((view) => collectJsonDiagnostics(view.state));
     const tomlDiagnostics = linter(async (view) => {
       const diagnostics = await validateToml(view.state.doc.toString());
@@ -300,79 +398,12 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       }));
     });
 
-    let editor: EditorView;
     // 缩进单位按当前文档内容探测，供参考线按实际空白字符生成；
     // 编辑器可能先于异步详情挂载，value 到达/变化时由下方 [value] 效应重探并热重配
     const docIndentUnit = detectIndentUnit(valueRef.current);
     appliedIndentUnitRef.current = docIndentUnit;
-    const measureContext = document.createElement("canvas").getContext("2d");
-    let syncingScroll = false;
-    let syncFrame = 0;
-    const syncHorizontalScrollbar = () => {
-      const scroller = editor.scrollDOM;
-      const gutters = scroller.querySelector<HTMLElement>(".cm-gutters-before");
-      const gutterWidth = gutters?.getBoundingClientRect().width ?? 0;
-      const viewportWidth = Math.max(0, scroller.getBoundingClientRect().width - gutterWidth);
-      let documentWidth = scroller.scrollWidth - gutterWidth;
-      if (measureContext) {
-        const style = getComputedStyle(editor.contentDOM);
-        measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-        const tabWidth = measureContext.measureText(" ").width * editor.state.tabSize;
-        documentWidth = 0;
-        for (let number = 1; number <= editor.state.doc.lines; number += 1) {
-          const parts = editor.state.doc.line(number).text.split("\t");
-          let lineWidth = 0;
-          for (let index = 0; index < parts.length; index += 1) {
-            lineWidth += measureContext.measureText(parts[index]!).width;
-            if (index < parts.length - 1 && tabWidth > 0) {
-              const remainder = lineWidth % tabWidth;
-              lineWidth += remainder === 0 ? tabWidth : tabWidth - remainder;
-            }
-          }
-          documentWidth = Math.max(documentWidth, lineWidth);
-        }
-        documentWidth = Math.ceil(documentWidth);
-      }
-      // 长文档按视口虚拟化，预设全文宽度才能让首屏横向滚动生效。
-      editor.contentDOM.style.minWidth = `${documentWidth}px`;
-      documentWidth = Math.max(documentWidth, scroller.scrollWidth - gutterWidth);
-      const contentWidth = Math.max(viewportWidth, documentWidth);
-      const hasOverflow = contentWidth > viewportWidth;
-      const maxScrollLeft = hasOverflow ? Math.max(0, contentWidth - viewportWidth) : 0;
-      scrollbarGutter.style.width = `${gutterWidth}px`;
-      scrollbarGutter.style.backgroundColor = gutters ? getComputedStyle(gutters).backgroundColor : "transparent";
-      scrollbarContent.style.width = `${contentWidth}px`;
-      scrollbarRow.style.display = hasOverflow ? "flex" : "none";
-      scrollbar.scrollLeft = Math.min(scroller.scrollLeft, maxScrollLeft);
-      scrollbar.setAttribute("aria-valuemax", String(maxScrollLeft));
-      scrollbar.setAttribute("aria-valuenow", String(scroller.scrollLeft));
-    };
-    const scheduleScrollbarSync = () => {
-      cancelAnimationFrame(syncFrame);
-      syncFrame = requestAnimationFrame(syncHorizontalScrollbar);
-    };
-    const onEditorScroll = () => {
-      if (syncingScroll) return;
-      syncingScroll = true;
-      scrollbar.scrollLeft = editor.scrollDOM.scrollLeft;
-      scrollbar.setAttribute("aria-valuenow", String(editor.scrollDOM.scrollLeft));
-      syncingScroll = false;
-    };
-    const onScrollbarScroll = () => {
-      if (syncingScroll) return;
-      syncingScroll = true;
-      editor.scrollDOM.scrollLeft = scrollbar.scrollLeft;
-      scrollbar.setAttribute("aria-valuenow", String(scrollbar.scrollLeft));
-      syncingScroll = false;
-    };
-    const onEditorWheel = (event: WheelEvent) => {
-      const delta = event.deltaX || (event.shiftKey ? event.deltaY : 0);
-      if (!delta) return;
-      event.preventDefault();
-      scrollbar.scrollLeft += delta;
-    };
 
-    editor = new EditorView({
+    const editor = new EditorView({
       state: EditorState.create({
         doc: valueRef.current,
         extensions: [
@@ -386,34 +417,26 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           language === "toml" ? StreamLanguage.define(toml) : json(),
           language === "toml" ? tomlDiagnostics : jsonDiagnostics,
           diagnosticLineDecorationsField,
-          ...(dark ? [oneDark] : []),
+          ...(currentDark ? [oneDark] : []),
           EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !syncingValueRef.current) onChangeRef.current(update.state.doc.toString());
             reportDiagnostics(update.view);
-            if (update.docChanged || update.geometryChanged) scheduleScrollbarSync();
+            if (update.docChanged || update.geometryChanged) scheduleContentWidthSync(update.view);
           }),
         ],
       }),
       parent,
     });
     viewRef.current = editor;
-    editor.scrollDOM.addEventListener("scroll", onEditorScroll);
-    editor.scrollDOM.addEventListener("wheel", onEditorWheel, { passive: false });
-    scrollbar.addEventListener("scroll", onScrollbarScroll);
-    const resizeObserver = new ResizeObserver(scheduleScrollbarSync);
+    destroyedRef.current = false;
+    creationDepsRef.current = creationDeps;
+    const resizeObserver = new ResizeObserver(() => scheduleContentWidthSync(editor));
     resizeObserver.observe(editor.dom);
-    syncHorizontalScrollbar();
+    if (scrollContent) resizeObserver.observe(scrollContent);
+    syncEditorLayout(editor);
     reportDiagnostics(editor);
 
-    return () => {
-      cancelAnimationFrame(syncFrame);
-      resizeObserver.disconnect();
-      editor.scrollDOM.removeEventListener("scroll", onEditorScroll);
-      editor.scrollDOM.removeEventListener("wheel", onEditorWheel);
-      scrollbar.removeEventListener("scroll", onScrollbarScroll);
-      editor.destroy();
-      if (viewRef.current === editor) viewRef.current = null;
-    };
+    return () => detachEditor(editor, resizeObserver);
   }, [dark, language, placeholder, validateToml, t]);
 
   useEffect(() => {
@@ -430,6 +453,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
   useEffect(() => {
     const editor = viewRef.current;
     if (!editor) return;
+    const reveal = pendingRevealRef.current;
+    pendingRevealRef.current = null;
     // 外部灌入的内容可能换了缩进风格（如异步详情晚于编辑器挂载），重探并热重配参考线
     const nextIndentUnit = detectIndentUnit(value);
     if (nextIndentUnit !== appliedIndentUnitRef.current) {
@@ -439,6 +464,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       });
     }
     if (editor.state.doc.toString() === value) return;
+    const change = computeTextChange(editor.state.doc.toString(), value);
+    const revealPosition = reveal?.text === value ? findConfigFieldPosition(value, reveal.field, change.from) : null;
     const previousScrollTop = editor.scrollDOM.scrollTop;
     const previousScrollLeft = editor.scrollDOM.scrollLeft;
     let restoreFrame = 0;
@@ -448,9 +475,13 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     };
     syncingValueRef.current = true;
     try {
-      editor.dispatch({ changes: computeTextChange(editor.state.doc.toString(), value) });
-      restoreScrollPosition();
-      restoreFrame = requestAnimationFrame(restoreScrollPosition);
+      editor.dispatch({ changes: change });
+      if (revealPosition !== null) {
+        editor.dispatch({ selection: { anchor: revealPosition }, scrollIntoView: true });
+      } else {
+        restoreScrollPosition();
+        restoreFrame = requestAnimationFrame(restoreScrollPosition);
+      }
     } finally {
       syncingValueRef.current = false;
     }
@@ -461,22 +492,6 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     <div className="apple-editor-shell" style={{ minHeight: editorMinHeight }}>
       <div className="apple-editor-surface">
         <div ref={hostRef} />
-        <div ref={horizontalScrollbarRowRef} className="cm-horizontal-scrollbar-row">
-          <div ref={horizontalScrollbarGutterRef} className="cm-horizontal-scrollbar-gutter" aria-hidden="true" />
-          <div
-            ref={horizontalScrollbarRef}
-            className="cm-horizontal-scrollbar"
-            role="scrollbar"
-            aria-label={t("editor.horizontalScrollbar")}
-            aria-orientation="horizontal"
-            aria-valuemin={0}
-            aria-valuemax={0}
-            aria-valuenow={0}
-            tabIndex={0}
-          >
-            <div ref={horizontalScrollbarContentRef} />
-          </div>
-        </div>
       </div>
     </div>
   );

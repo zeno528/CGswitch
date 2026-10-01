@@ -1,7 +1,6 @@
-import { ArrowLeft, Check, ChevronDown, CodeXml, Download, Eye, EyeOff, ExternalLink, FileBraces, Pencil, Save, Settings, Webhook, Wifi } from "lucide-react";
+import { ArrowLeft, CodeXml, ExternalLink, FileBraces, Save, Settings, Webhook } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createPortal } from "react-dom";
 import { api } from "../../api";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
@@ -9,10 +8,10 @@ import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
-import { ProfileIconTile } from "../../components/ProfileIconTile";
-import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
-import { useMenuDismiss } from "../../components/useMenuDismiss";
+import { DiagnosticsChip } from "../../components/DiagnosticsChip";
+import EndpointField from "../../components/EndpointField";
+import PresetGrid from "../../components/PresetGrid";
+import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
 import {
   balanceQueryProviders,
   builtinHasCatalog,
@@ -110,15 +109,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const presetEndpoints = (create
     ? selectedPreset?.endpoints
     : builtinPresets.find((item) => item.provider != null && item.provider === detail?.provider)?.endpoints) ?? null;
-  // 双区域端点是可输入 combobox：地址输入框可自由填写任意 URL，菜单只是档位快捷入口。
-  // 弹层复用全局 app-select-menu 基建（定位翻转走 useFixedMenuPosition、收起走 useMenuDismiss，照 SettingsSections row-menu 先例），
-  // 菜单行带区域标识徽标；选中/手输的值都是 URL 本身，选档时顺带同步控制台地址（有官方全球控制台才覆盖）。
-  const [endpointMenuOpen, setEndpointMenuOpen] = useState(false);
-  const endpointRootRef = useRef<HTMLDivElement>(null);
-  const endpointMenuRef = useRef<HTMLDivElement>(null);
-  const endpointMenuStyle = useFixedMenuPosition(endpointMenuOpen, endpointRootRef.current, endpointMenuRef, "match");
-  useMenuDismiss(endpointMenuOpen, endpointRootRef, endpointMenuRef, setEndpointMenuOpen);
-  // 端点地址输入：双区域档（带下拉按钮）与普通输入共用同一受控输入，只差 class
+  // 端点地址输入：双区域档（EndpointField combobox）与普通输入共用同一受控值，只差形态
   const baseUrlField = (className: string) => (
     <input className={className} placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
   );
@@ -127,7 +118,10 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const isOpenCode = create ? presetKind === "opencode" : detail?.provider === "opencode-go";
   const showProviderFields = create ? (isCustom || Boolean(selectedPreset?.base_url)) : Boolean(detail?.provider);
   const showLongContextOverride = isOfficial;
-  const advanced = useProfileAdvancedPatches({ configText, setConfigText, initialized, showLongContextOverride });
+  const advanced = useProfileAdvancedPatches({
+    configText, setConfigText, initialized, showLongContextOverride,
+    onPatched: (text, field) => editorRef.current?.revealField(text, field),
+  });
   const supportsBalance = create ? presetKind === "chatgpt" || balanceQueryProviders.has(selectedPreset?.provider ?? "") : isOfficial || balanceQueryProviders.has(detail?.provider ?? "");
   // 创建态下预设的 config 原文统一从后端取（单源真相），避免与 Rust 模板双份维护。
   // 与 configText 同源同时设置（selectPreset 内 await 后一起 set），防止异步晚到
@@ -164,9 +158,9 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     if (!baseFragment) return "";
     return withMcpSection(patchProviderFields(baseFragment, baseUrl, apiKey), mcpSection);
   }, [apiKey, baseFragment, baseUrl, mcpSection]);
-  // 附属条右侧的格式化入口：config 直接放行尾，models/auth 经 TabFileControls 夹在状态文字与清空之间，清空恒收最右。
+  // 格式化入口与文件标签同一行，文件操作仍保留在编辑器附属条。
   const formatButton = (
-    <button type="button" className="editor-ghost ml-auto" disabled={saving || (activeTab === "auth" && authPreviewOnly)} title={formatTarget.title} onClick={() => void formatCurrentDocument()}>
+    <button type="button" className="editor-ghost editor-ghost--format ml-auto shrink-0" disabled={saving || (activeTab === "auth" && authPreviewOnly)} title={formatTarget.title} onClick={() => void formatCurrentDocument()}>
       <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
       <span className="whitespace-nowrap font-medium">{t("edit.format")}</span>
     </button>
@@ -520,18 +514,19 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
       </div>
       <div className="apple-edit-content">
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
-        <div className="apple-group p-0">
-          {create ? <div className="apple-panel-section"><div className="field-subtitle">{t("edit.selectProvider")}</div><div className="mt-3 grid gap-2 sm:grid-cols-3 md:grid-cols-6">
-            {builtinPresets.map((preset) => <button key={preset.kind} type="button" className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${presetKind === preset.kind ? "shadow-[0_0_0_1px_var(--accent)]" : "shadow-[0_0_0_1px_var(--panel-ring)] hover:bg-black/3 dark:hover:bg-white/4"}`} aria-pressed={presetKind === preset.kind} onClick={() => void selectPreset(preset.kind)}><ProfileIconTile name={preset.name} icon={preset.icon} size="xs" /><span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold tracking-tight">{preset.name}</span></span></button>)}
-          </div></div> : null}
+        <div className="apple-edit-surface">
+          {create ? <PresetGrid presets={builtinPresets} selectedKind={presetKind} onSelect={(kind) => void selectPreset(kind)} title={t("edit.selectProvider")} /> : null}
           <div className="apple-panel-section">
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              <div className="flex min-w-0 items-center gap-4">
-                <button type="button" className="relative grid h-[61px] w-[61px] shrink-0 place-items-center rounded-[16px] transition-opacity hover:opacity-80" title={t("edit.changeIcon")} aria-label={t("edit.changeIconLabel")} onClick={() => setPickingIcon(true)}><ProfileIconTile name={detail?.name ?? name} icon={selectedIcon} size="fill" /><span className="absolute -bottom-1 -right-1 grid h-5 w-5 place-items-center rounded-full bg-accent text-white shadow" aria-hidden="true"><Pencil className="h-2.5 w-2.5" strokeWidth={2} /></span></button>
-                <div className="min-w-0 flex-1"><label className="field-label mb-1.5 block" htmlFor="profile-name">{t("edit.nameLabel")}</label><input id="profile-name" className="app-input" maxLength={50} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} /></div>
-              </div>
-              <div className="min-w-0"><label className="field-label mb-1.5 block" htmlFor="profile-description">{t("edit.descriptionLabel")}</label><input id="profile-description" className="app-input" autoComplete="off" maxLength={200} placeholder={t("edit.descriptionPlaceholder")} value={description} onChange={(event) => setDescription(event.target.value)} /></div>
-            </div>
+            <ProviderIdentityFields
+              idPrefix="profile" name={name} description={description} icon={selectedIcon}
+              iconName={detail?.name ?? name} onIcon={() => setPickingIcon(true)}
+              onName={setName} onDescription={setDescription}
+              labels={{
+                changeIcon: t("edit.changeIcon"), changeIconLabel: t("edit.changeIconLabel"),
+                name: t("edit.nameLabel"), namePlaceholder: t("edit.namePlaceholder"),
+                description: t("edit.descriptionLabel"), descriptionPlaceholder: t("edit.descriptionPlaceholder"),
+              }}
+            />
             {showProviderFields ? (
               <>
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.protocolLabel")}</label>
@@ -541,73 +536,36 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
                 </div>
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.requestUrlLabel")}</label>
                 {presetEndpoints ? (
-                  <div ref={endpointRootRef}>
-                    <div className="app-input-action">
-                      {baseUrlField("app-input app-input--action")}
-                      <button type="button" className="app-input-action__button" aria-label={t("edit.requestUrlLabel")} aria-haspopup="listbox" aria-expanded={endpointMenuOpen} onClick={() => setEndpointMenuOpen((open) => !open)}>
-                        <ChevronDown className={endpointMenuOpen ? "h-4 w-4 rotate-180 transition-transform" : "h-4 w-4 transition-transform"} strokeWidth={2} aria-hidden="true" />
-                      </button>
-                    </div>
-                    {createPortal(
-                      <div ref={endpointMenuRef} className="app-select-menu" data-open={endpointMenuOpen} role="listbox" aria-label={t("edit.requestUrlLabel")} style={endpointMenuStyle}>
-                        {presetEndpoints.map((endpoint) => {
-                          const selected = endpoint.base_url === baseUrl;
-                          return (
-                            <button key={endpoint.base_url} type="button" role="option" aria-selected={selected} className="app-select-option app-selection-state" data-active={selected ? "true" : undefined} data-selected={selected} onClick={() => { setBaseUrl(endpoint.base_url); if (endpoint.admin_url) setAdminUrl(endpoint.admin_url); setEndpointMenuOpen(false); }}>
-                              <span className="flex min-w-0 items-center gap-2">
-                                <span className="meta-xs inline-flex w-13 shrink-0 items-center justify-center rounded-md bg-(--tile-bg) py-0.5 font-medium text-accent">
-                                  {endpoint.region === "cn" ? t("edit.endpointRegionCn") : t("edit.endpointRegionGlobal")}
-                                </span>
-                                {endpoint.label ? <span className="meta-xs shrink-0 rounded-md bg-(--tile-bg) px-1.5 py-0.5 font-medium text-[var(--text-secondary)]">{endpoint.label}</span> : null}
-                                <span className="min-w-0 truncate">{endpoint.base_url}</span>
-                              </span>
-                              {selected ? <Check className="app-select-option__check" size={16} strokeWidth={2.5} aria-hidden="true" /> : null}
-                            </button>
-                          );
-                        })}
-                      </div>,
-                      document.body,
-                    )}
-                  </div>
+                  <EndpointField value={baseUrl} onChange={setBaseUrl} endpoints={presetEndpoints} onPick={(endpoint) => { if (endpoint.admin_url) setAdminUrl(endpoint.admin_url); }} placeholder="https://api.example.com/v1" label={t("edit.requestUrlLabel")} regionCn={t("edit.endpointRegionCn")} regionGlobal={t("edit.endpointRegionGlobal")} />
                 ) : (
                   baseUrlField("app-input")
                 )}
-                <div className="mb-1.5 mt-4 flex items-center gap-2">
-                  <span className="field-label">{t("edit.apiKeyLabel")}</span>
-                  {isOpenCode && create ? (
+                <ProviderSecretField
+                  label={t("edit.apiKeyLabel")} placeholder={t("edit.apiKeyPlaceholder")}
+                  value={apiKey} onChange={setApiKey} visible={showApiKey}
+                  onToggle={() => setShowApiKey((visible) => !visible)}
+                  showLabel={t("edit.showApiKey")} hideLabel={t("edit.hideApiKey")}
+                  testLabel={t("edit.testConnection")}
+                  testTitle={!apiKey.trim() || !baseUrl.trim() ? t("edit.checkProviderFields") : undefined}
+                  testing={testing} onTest={() => void testConnection()}
+                  help={isOpenCode && create ? (
                     <button type="button" className="apple-inline-btn !h-5" onClick={() => void api.openUrl("https://opencode.ai/go?ref=APHY0DXATH").catch((error) => feedback.error(String(error)))}>
                       <ExternalLink className="h-3 w-3" strokeWidth={2} />
                       {t("edit.getApiKey")}
                     </button>
                   ) : null}
-                  <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5" disabled={testing || !apiKey.trim() || !baseUrl.trim()} title={!apiKey.trim() || !baseUrl.trim() ? t("edit.checkProviderFields") : undefined} onClick={() => void testConnection()}>
-                    {testing ? <LoadingSpinner /> : <Wifi className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
-                    {t("edit.testConnection")}
-                  </button>
-                </div>
-                <div className="app-input-action">
-                  <input className="app-input app-input--action" type={showApiKey ? "text" : "password"} placeholder={t("edit.apiKeyPlaceholder")} value={apiKey} onChange={(event) => setApiKey(event.target.value)} />
-                  <button type="button" className="app-input-action__button" aria-label={showApiKey ? t("edit.hideApiKey") : t("edit.showApiKey")} title={showApiKey ? t("edit.hideApiKey") : t("edit.showApiKey")} aria-pressed={showApiKey} onClick={() => setShowApiKey((visible) => !visible)}>
-                    {showApiKey ? <EyeOff className="h-4 w-4" strokeWidth={2} aria-hidden="true" /> : <Eye className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
-                  </button>
-                </div>
-                <div className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                  <div className="min-w-0">
-                    <div className="field-label mb-1.5 flex h-6 items-center">{t("edit.modelIdLabel")}</div>
-                    <input className="app-input" placeholder={t("edit.modelIdPlaceholder")} value={modelValue} onChange={(event) => setModelValue(event.target.value)} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="mb-1.5 flex h-6 items-center gap-2">
-                      <span className="field-label">{t("edit.modelsLabel")}</span>
-                      <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5" disabled={fetchingModels || !apiKey.trim() || !baseUrl.trim()} onClick={() => void fetchModelList()}>
-                        {fetchingModels ? <LoadingSpinner /> : <Download className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
-                        {t("edit.fetchModels")}
-                      </button>
-                      {fetchedModels.length > 0 ? <span className="muted text-xs">{t("edit.modelsAvailable", { count: fetchedModels.length })}</span> : null}
-                    </div>
-                    <AppSelect value={fetchedModels.includes(modelValue) ? modelValue : null} options={fetchedModels.map((id) => ({ label: id, value: id }))} onChange={(value) => setModelValue(value)} placeholder={fetchedModels.length ? t("edit.selectModel") : t("edit.fetchModelsFirst")} disabled={!apiKey.trim() || !baseUrl.trim()} />
-                  </div>
-                </div>
+                />
+                <ProviderModelFields
+                  value={modelValue} onChange={setModelValue} models={fetchedModels}
+                  fetching={fetchingModels} disabled={!apiKey.trim() || !baseUrl.trim()}
+                  onFetch={() => void fetchModelList()}
+                  labels={{
+                    model: t("edit.modelIdLabel"), placeholder: t("edit.modelIdPlaceholder"),
+                    models: t("edit.modelsLabel"), fetch: t("edit.fetchModels"),
+                    available: t("edit.modelsAvailable", { count: fetchedModels.length }),
+                    select: t("edit.selectModel"), fetchFirst: t("edit.fetchModelsFirst"),
+                  }}
+                />
               </>
             ) : null}
             {isOfficial ? <div className="mt-4"><div className="field-label mb-1.5">{t("edit.authMethodLabel")}</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder={t("card.authDesktop")} renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder={t("edit.selectOauthAccount")} renderLabel={renderAccountLabel} /> : <div className="app-input flex min-w-0 items-center gap-2"><AuthSourceIcon source="desktop" className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{t("card.authDesktop")}</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
@@ -615,27 +573,24 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
               {supportsBalance ? <div className="mt-4 flex min-h-[var(--input-min-height)] items-center justify-between gap-4"><div className="min-w-0"><div className="setting-title">{t("edit.balanceUsage")}</div><div className="setting-description mt-0.5">{t("edit.balanceAutoRefresh")}</div></div><AppSwitch checked={showBalance} disabled={saving || savingBalance} label={t("edit.balanceUsage")} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>
             <div className="apple-panel-section flex flex-col">
-              <div className="flex gap-1">
-                {tabs.map((tab) => <button key={tab.id} type="button" className={`relative flex h-8 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors ${activeTab === tab.id ? "bg-(--selection-bg) text-accent" : "muted hover:bg-black/5 dark:hover:bg-white/8"}`} aria-pressed={activeTab === tab.id} title={tab.title} onClick={() => { setActiveTab(tab.id); setEditorDiagnostics({ count: 0, firstLine: null }); }}>{tab.id === "config" ? <Settings className="h-3.5 w-3.5" strokeWidth={2} /> : <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />}<span>{tab.label}</span>{((tab.id === "config" && configDirty) || (tab.id === "models" && catalogDirty) || (tab.id === "auth" && authDirty)) ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}</button>)}
+              <div className="flex min-h-8 items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap gap-1">
+                  {tabs.map((tab) => <button key={tab.id} type="button" className={`relative flex h-8 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-semibold transition-colors ${activeTab === tab.id ? "bg-(--active-bg) text-accent" : "muted hover:bg-(--hover-bg)"}`} aria-pressed={activeTab === tab.id} title={tab.title} onClick={() => { setActiveTab(tab.id); setEditorDiagnostics({ count: 0, firstLine: null }); }}>{tab.id === "config" ? <Settings className="h-3.5 w-3.5" strokeWidth={2} /> : <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />}<span>{tab.label}</span>{((tab.id === "config" && configDirty) || (tab.id === "models" && catalogDirty) || (tab.id === "auth" && authDirty)) ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}</button>)}
+                </div>
+                {formatButton}
               </div>
-              {/* 附属条嵌进编辑器托盘顶部（editor chrome），随 tab 切换：config 快捷设置、models/auth 文件操作。
-                  flex-wrap：标签 whitespace-nowrap，英文文案比中文长约 30–50%，装不下时折行而不是被裁掉 */}
+              {/* 附属条嵌进编辑器托盘顶部（editor chrome），随 tab 切换：config 快捷设置、models/auth 文件操作。 */}
               <div className="editor-attach-group mt-2">
                 <div className="editor-attach-bar">
                   {activeTab === "config" ? (
-                    <>
-                      <ProfileAdvancedControls advanced={advanced} saving={saving} />
-                      {formatButton}
-                    </>
+                    <ProfileAdvancedControls advanced={advanced} saving={saving} />
                   ) : (
                     <TabFileControls
                       kind={activeTab === "models" ? "models" : "auth"}
                       editable={activeTab === "models" || !authPreviewOnly}
                       disabled={saving}
                       onClear={() => (activeTab === "models" ? setCatalogText("") : setAuthText(""))}
-                    >
-                      {formatButton}
-                    </TabFileControls>
+                    />
                   )}
                 </div>
               <div className="flex flex-col">{activeTab === "config" ? <ConfigTextEditor ref={editorRef} value={configText} language="toml" minLines={editorMinLines} placeholder={create ? t("edit.configPlaceholderCreate") : t("edit.configPlaceholderEdit")} onChange={(value) => setConfigText(value)} onDiagnostics={setEditorDiagnostics} /> : activeTab === "auth" ? <ConfigTextEditor ref={editorRef} value={authText} language="json" minLines={editorMinLines} readOnly={authPreviewOnly} placeholder={t("edit.authPlaceholder")} onChange={setAuthText} onDiagnostics={setEditorDiagnostics} /> : <ConfigTextEditor ref={editorRef} value={catalogText} language="json" minLines={editorMinLines} placeholder={t("edit.catalogPlaceholder")} onChange={(value) => setCatalogText(value)} onDiagnostics={setEditorDiagnostics} />}</div>
@@ -643,7 +598,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
             </div>
         </div>
       </div>
-      <div className="apple-edit-toolbar apple-edit-toolbar--footer">{editorDiagnostics.count > 0 ? <button type="button" className="mr-auto flex min-w-0 items-center gap-1.5 rounded-lg border border-[var(--danger)]/20 bg-(--danger)/10 px-2.5 py-1 text-xs chip-danger" aria-live="polite" onClick={() => editorRef.current?.focusFirstDiagnostic()}><span className="h-1.5 w-1.5 rounded-full bg-(--danger)" />{t("edit.diagnosticsErrors", { count: editorDiagnostics.count })}{editorDiagnostics.firstLine !== null ? t("edit.diagnosticsLine", { line: editorDiagnostics.firstLine }) : ""}</button> : null}<button type="button" className="apple-action-button" onClick={onBack}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={saving || !canSave} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("dialog.save")}</button></div>
+      <div className="apple-edit-toolbar apple-edit-toolbar--footer"><DiagnosticsChip diagnostics={editorDiagnostics} onFocusFirst={() => editorRef.current?.focusFirstDiagnostic()} /><button type="button" className="apple-action-button" onClick={onBack}>{t("dialog.cancel")}</button><button type="button" className="apple-action-button app-button--primary" disabled={saving || !canSave} onClick={() => void save()}><Save className="h-4 w-4" strokeWidth={2} />{saving ? t("edit.saving") : t("dialog.save")}</button></div>
     </section>
   );
 }

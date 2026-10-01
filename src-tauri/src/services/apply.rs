@@ -1,4 +1,5 @@
 use super::profile_config::{is_builtin_placeholder, provider_api_key};
+use super::sync;
 use super::{
     app_err, atomic_write, backup_file, builtin, codex_config, normalize_auth_override, now_ms,
     parse_external_auth_json, read_optional_text, AppContext, AppResult, AuthSource, Path, PathBuf,
@@ -7,18 +8,6 @@ use super::{
 use crate::auth::codex_oauth::CodexOAuthManager;
 
 impl AppContext {
-    pub fn sync_active_profile_from_live(&self) -> AppResult<bool> {
-        let _guard = self
-            .operation
-            .lock()
-            .map_err(|_| app_err!("操作锁已损坏"))?;
-        let Some(document) = self.live_document() else {
-            return Ok(false);
-        };
-        self.sync_active_profile_document(&document)?;
-        Ok(true)
-    }
-
     pub fn apply_profile(&self, id: &str) -> AppResult<()> {
         let _guard = self
             .operation
@@ -73,7 +62,16 @@ impl AppContext {
         let mut document = codex_config::parse_document(&original)?;
 
         // 切换前把当前 live 配置回写进正在生效的供应商，使供应商跟随使用中的累计更新
-        self.autosync_active_profile(id, &document)?;
+        sync::registry().harvest(
+            self,
+            &sync::SyncTrigger::BeforeLiveOverwrite {
+                client: sync::ClientId::Codex,
+                target_id: id.to_string(),
+            },
+            sync::SyncMaterial {
+                codex_document: Some(&document),
+            },
+        )?;
 
         let profile = self.database.profile(id)?;
         let profile_kind = profile.kind;
@@ -331,21 +329,21 @@ impl AppContext {
     pub(super) fn sync_active_profile_document(
         &self,
         document: &toml_edit::DocumentMut,
-    ) -> AppResult<bool> {
+    ) -> AppResult<sync::SyncOutcome> {
         let Some(active_id) = self.active_profile_state()? else {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
-        let Some(profile) = self
-            .database
-            .profiles()?
-            .iter()
-            .find(|profile| profile.id == active_id)
-            .cloned()
-        else {
-            return Ok(false);
+        // 按 id 点查，不要全表拉出来再 find：每行 payload 都带着完整 config.toml 文本，
+        // 供应商一多这就是同步路径上最贵的一步。读不到等同于"没有可同步的对象"。
+        let Ok(profile) = self.database.profile(&active_id) else {
+            return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
         let Ok(mut live) = codex_config::capture_from_document(document) else {
-            return Ok(false);
+            // 文档已解析但抽取不出配置形状：仍属"live 内容无效"守卫，必须带名定位
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::LiveParseError,
+                &profile.name,
+            ));
         };
         let auth_source = profile
             .payload
@@ -403,7 +401,10 @@ impl AppContext {
             &document.to_string(),
         )?);
         if live == profile.payload {
-            return Ok(false);
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::Unchanged,
+                &profile.name,
+            ));
         }
         if let Err(error) =
             self.database
@@ -416,24 +417,11 @@ impl AppContext {
                 Some(&error.0),
                 &now_ms().to_string(),
             );
-            return Ok(false);
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::WriteFailed,
+                &profile.name,
+            ));
         }
-        Ok(true)
-    }
-
-    pub(super) fn autosync_active_profile(
-        &self,
-        target_id: &str,
-        document: &toml_edit::DocumentMut,
-    ) -> AppResult<()> {
-        // 只回写手动应用过的供应商，不做 live 配置推断
-        let Some(active_id) = self.active_profile_state()? else {
-            return Ok(());
-        };
-        if active_id == target_id {
-            return Ok(());
-        }
-        self.sync_active_profile_document(document)?;
-        Ok(())
+        Ok(sync::SyncOutcome::of(sync::SyncKind::Wrote, &profile.name))
     }
 }

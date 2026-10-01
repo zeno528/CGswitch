@@ -8,7 +8,7 @@ use std::time::UNIX_EPOCH;
 use serde_json::Value;
 
 use super::catalog::validate_plugin_name;
-use super::{SkillCandidate, SkillSummary, SKILL_BACKUP_DIRECTORY, SKILL_SOURCE_FILE};
+use super::{SkillCandidate, SkillSummary, SkillTool, SKILL_BACKUP_DIRECTORY, SKILL_SOURCE_FILE};
 use crate::error::{app_err, AppResult};
 use crate::paths::now_ms;
 use crate::services::AppContext;
@@ -101,7 +101,8 @@ pub(super) fn read_managed_skills(repository: &Path, home: &Path) -> Vec<SkillSu
             let name = entry.file_name().to_string_lossy().to_string();
             if path.join("SKILL.md").is_file() {
                 let source_path = sources.get(&name).cloned();
-                let enabled = home.join(".codex/skills").join(&name).is_dir();
+                let enabled = SkillTool::Codex.skills_dir(home).join(&name).is_dir();
+                let claude_enabled = SkillTool::Claude.skills_dir(home).join(&name).is_dir();
                 skills.push(SkillSummary {
                     name,
                     description: read_skill_description(&path.join("SKILL.md")),
@@ -116,6 +117,7 @@ pub(super) fn read_managed_skills(repository: &Path, home: &Path) -> Vec<SkillSu
                         .unwrap_or(false),
                     source_path,
                     enabled,
+                    claude_enabled,
                 });
             }
         }
@@ -224,11 +226,13 @@ pub(super) fn backup_skill(repository: &Path, name: &str) -> AppResult<Option<Pa
     Ok(Some(destination))
 }
 
-pub(super) fn distribute_skill(home: &Path, repository: &Path, name: &str) -> AppResult<()> {
-    replace_skill(
-        &repository.join(name),
-        &home.join(".codex/skills").join(name),
-    )
+pub(super) fn distribute_skill(
+    tool: SkillTool,
+    home: &Path,
+    repository: &Path,
+    name: &str,
+) -> AppResult<()> {
+    replace_skill(&repository.join(name), &tool.skills_dir(home).join(name))
 }
 
 pub(super) fn replace_skill(source: &Path, target: &Path) -> AppResult<()> {
@@ -301,10 +305,14 @@ impl AppContext {
         let source = PathBuf::from(source_path);
         tauri::async_runtime::spawn_blocking(move || {
             let source = skill_io(fs::canonicalize(source))?;
-            let allowed = [home.join(".agents/skills"), home.join(".codex/skills")]
-                .into_iter()
-                .filter_map(|root| fs::canonicalize(root).ok())
-                .any(|root| source.parent() == Some(root.as_path()));
+            let allowed = [
+                home.join(".agents/skills"),
+                home.join(".claude/skills"),
+                home.join(".codex/skills"),
+            ]
+            .into_iter()
+            .filter_map(|root| fs::canonicalize(root).ok())
+            .any(|root| source.parent() == Some(root.as_path()));
             if !allowed {
                 return Err(app_err!("只能预览已扫描到的本地 Skill"));
             }
@@ -324,6 +332,7 @@ impl AppContext {
             let mut candidates = Vec::new();
             for (root, source) in [
                 (home.join(".codex/skills"), "Codex"),
+                (home.join(".claude/skills"), "Claude"),
                 (home.join(".agents/skills"), "Agent"),
             ] {
                 let Ok(entries) = fs::read_dir(root) else {
@@ -416,26 +425,28 @@ impl AppContext {
         .map_err(|error| app_err!("Skill 导入任务失败: {error}"))?
     }
 
-    pub async fn enable_skill(&self, name: &str) -> AppResult<()> {
+    pub async fn enable_skill(&self, name: &str, tool: SkillTool) -> AppResult<()> {
         validate_plugin_name(name)?;
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Err(app_err!("无法定位用户主目录"));
         };
         let repository = skill_repository(&self.paths.root);
         let name = name.to_string();
-        tauri::async_runtime::spawn_blocking(move || distribute_skill(&home, &repository, &name))
-            .await
-            .map_err(|error| app_err!("Skill 启用任务失败: {error}"))?
+        tauri::async_runtime::spawn_blocking(move || {
+            distribute_skill(tool, &home, &repository, &name)
+        })
+        .await
+        .map_err(|error| app_err!("Skill 启用任务失败: {error}"))?
     }
 
-    pub async fn disable_skill(&self, name: &str) -> AppResult<()> {
+    pub async fn disable_skill(&self, name: &str, tool: SkillTool) -> AppResult<()> {
         validate_plugin_name(name)?;
         let Some(home) = self.paths.codex_home.parent().map(Path::to_path_buf) else {
             return Err(app_err!("无法定位用户主目录"));
         };
         let name = name.to_string();
         tauri::async_runtime::spawn_blocking(move || {
-            let distributed = home.join(".codex/skills").join(&name);
+            let distributed = tool.skills_dir(&home).join(&name);
             if distributed.is_dir() {
                 skill_io(fs::remove_dir_all(distributed))?;
             }
@@ -458,9 +469,11 @@ impl AppContext {
                 return Err(app_err!("Skill 不存在"));
             }
             skill_io(fs::remove_dir_all(&stored))?;
-            let distributed = home.join(".codex/skills").join(&name);
-            if distributed.is_dir() {
-                skill_io(fs::remove_dir_all(distributed))?;
+            for tool in [SkillTool::Codex, SkillTool::Claude] {
+                let distributed = tool.skills_dir(&home).join(&name);
+                if distributed.is_dir() {
+                    skill_io(fs::remove_dir_all(distributed))?;
+                }
             }
             let mut sources = read_skill_sources(&repository);
             sources.remove(&name);
@@ -771,5 +784,59 @@ mod tests {
                 .unwrap(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn skill_enable_disable_delete_are_per_tool() {
+        let (home, context) = test_context();
+        let source = home.path().join("Downloads/two-sided");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("SKILL.md"), "---\ndescription: 双端分发\n---\n").unwrap();
+        assert_eq!(
+            context
+                .import_skill(&source.display().to_string())
+                .await
+                .unwrap(),
+            1
+        );
+
+        context
+            .enable_skill("two-sided", SkillTool::Codex)
+            .await
+            .unwrap();
+        context
+            .enable_skill("two-sided", SkillTool::Claude)
+            .await
+            .unwrap();
+        let summary = context
+            .list_skills()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|skill| skill.name == "two-sided")
+            .unwrap();
+        assert!(summary.enabled && summary.claude_enabled);
+
+        // 单端停用只移除自己的分发目录，另一端保持启用
+        context
+            .disable_skill("two-sided", SkillTool::Codex)
+            .await
+            .unwrap();
+        let summary = context
+            .list_skills()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|skill| skill.name == "two-sided")
+            .unwrap();
+        assert!(!summary.enabled);
+        assert!(summary.claude_enabled);
+        assert!(home.path().join(".claude/skills/two-sided").is_dir());
+
+        // 删除正本时清掉两端副本
+        context.delete_skill("two-sided").await.unwrap();
+        assert!(!home.path().join(".codex/skills/two-sided").is_dir());
+        assert!(!home.path().join(".claude/skills/two-sided").is_dir());
+        assert!(context.list_skills().await.unwrap().is_empty());
     }
 }

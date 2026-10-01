@@ -33,8 +33,13 @@
   --brand-gradient-blend: color-mix(in srgb, var(--brand-gradient-start) 55%, var(--brand-gradient-middle));
   --brand-gradient-blend-mix: 31%;
   --brand-gradient-fade-mix: 11%;
+  /* 品牌本色（主题不变量，两套主题同值）：Claude 星芒的品牌橙，启停状态只调不透明度 */
+  --brand-claude: #d97757;
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
+  /* 全局交互高亮：复用侧边栏原有的悬停与激活底色。 */
+  --hover-bg: rgb(0 0 0 / 0.05);
+  --active-bg: var(--tile-bg);
   --sidebar-bg: var(--panel-bg);
   --selection-bg: rgba(0, 122, 255, 0.12);
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
@@ -56,8 +61,8 @@
   --gap-card: 1.25rem;
   /* 大卡片正文左右内缩：与上下节奏分离，避免内容贴近卡片边缘 */
   --gap-card-inline: 1.5rem;
-  /* 主内容区左右间距基准（卡片到侧边栏/窗口边缘的视觉间距） */
-  --gap-main: 1.5rem;
+  /* 右侧所有页面的内容到主容器边缘的统一留白 */
+  --gap-main: 2rem;
   /* 操作按钮（药丸）之间的统一间距：弹窗底部与编辑页操作栏共用 */
   --gap-actions: 0.75rem;
   /* 弹窗内容/操作区到弹窗底边的统一留白（标准弹窗、hero 弹窗操作区、oauth 弹窗共用） */
@@ -76,6 +81,10 @@
   --toolbar-control-height: calc(var(--control-height) + 2px);
   /* 输入类控件（.app-input/.app-select）最小高：行高 1.6 + 上下 padding + 边框，允许换行到两行 */
   --input-min-height: calc(1.6em + 1rem + 2px);
+  /* 弹窗沿用原限高；编辑页由共享编辑器按正文可用高度覆盖。 */
+  --editor-max-height: min(34rem, 60vh);
+  /* Skill 内容预览与通用模板编辑器共用随窗口变化的高度预算。 */
+  --dialog-preview-height: 60vh;
   --icon-button-size: 2rem;
   --radius-control: 0.75rem;
   --radius-control-sm: 0.5rem;
@@ -121,6 +130,7 @@
   --brand-gradient-fade-mix: 38%;
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.68);
+  --hover-bg: rgb(255 255 255 / 0.08);
   --sidebar-bg: var(--panel-bg);
   --selection-bg: rgba(0, 122, 255, 0.16);
   --success-text: #6ee7a0;
@@ -316,7 +326,17 @@ body {
 }
 
 .profile-card-content__text {
+  /* 固定标题行（h-7）+ 行间距（mt-1）+ 元信息行；无用量时也保留相同卡片高度。 */
+  height: calc(1.75rem + 0.25rem + 18px);
   transform: translateY(-2px);
+}
+
+/* 只有标题时在固定高度内居中；有元信息行时保持原来的两行位置。 */
+.profile-card-content__text:not(:has(.profile-card-meta)) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transform: none;
 }
 
 /* 余额/用量胶囊数据变色（全局统一；后续供应商直接复用）。
@@ -638,16 +658,12 @@ body:has(.app-dialog-overlay) .window-control-button {
 }
 
 .window-control-button:hover {
-  background: rgb(0 0 0 / 0.06);
+  background: var(--hover-bg);
 }
 
 .window-control-button > svg {
   width: 1rem;
   height: 1rem;
-}
-
-:root.dark .window-control-button:not(.window-control-button--close):hover {
-  background: rgb(255 255 255 / 0.1);
 }
 
 .window-control-button--close:hover {
@@ -761,6 +777,32 @@ body.drag-active * {
   white-space: nowrap;
 }
 
+/* 侧栏分组：用边线分隔产品区域，收缩后保留品牌标识 */
+.apple-sidebar-group + .apple-sidebar-group {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 0.75rem;
+}
+
+.apple-sidebar-group-label {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 11px;
+  font-weight: 500;
+  gap: 0.5rem;
+  height: 1.5rem;
+  letter-spacing: 0.05em;
+  padding: 0 var(--sidebar-nav-padding);
+  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+}
+
+.apple-sidebar-group-label img {
+  width: var(--sidebar-icon-size);
+  height: var(--sidebar-icon-size);
+  flex-shrink: 0;
+}
+
 .apple-sidebar-flyout {
   position: absolute;
   left: calc(100% + 0.6rem);
@@ -807,10 +849,8 @@ body.drag-active * {
 }
 
 .app-selection-state:not([data-active="true"]):hover,
-.app-selection-state:not([data-active="true"]):focus-visible { background: rgb(0 0 0 / 0.05); }
-:root.dark .app-selection-state:not([data-active="true"]):hover,
-:root.dark .app-selection-state:not([data-active="true"]):focus-visible { background: rgb(255 255 255 / 0.08); }
-.app-selection-state[data-active="true"] { background: var(--tile-bg); color: var(--accent); }
+.app-selection-state:not([data-active="true"]):focus-visible { background: var(--hover-bg); }
+.app-selection-state[data-active="true"] { background: var(--active-bg); color: var(--accent); }
 
 .apple-sidebar-nav-button {
   align-items: center;
@@ -832,7 +872,8 @@ body.drag-active * {
     color var(--motion-fast) ease-out;
 }
 
-.apple-sidebar-nav-button > svg {
+/* 图标包在角标锚点 span 里（MCP 角标/通用 badge），不能用 > 直接子选择器 */
+.apple-sidebar-nav-button svg {
   width: var(--sidebar-icon-size);
   height: var(--sidebar-icon-size);
   flex-shrink: 0;
@@ -840,20 +881,6 @@ body.drag-active * {
 
 .update-notice {
   position: relative;
-}
-
-.update-notice-trigger {
-  display: inline-flex;
-  min-width: var(--icon-button-size);
-  min-height: var(--toolbar-control-height);
-  align-items: center;
-  gap: 0.375rem;
-  border-radius: 999px;
-  padding-inline: 0.25rem;
-}
-
-.update-notice-label {
-  font-weight: 550;
 }
 
 .update-notice-trigger__icon {
@@ -867,6 +894,32 @@ body.drag-active * {
 
 .update-notice-trigger:active .update-notice-trigger__icon {
   transform: scale(0.94);
+}
+
+/* 供应商页头的产品标识与侧栏分组共用现有 logo 资源，保持同一品牌层级。 */
+.provider-page-brand {
+  display: inline-flex;
+  height: var(--toolbar-control-height);
+  align-items: center;
+  box-sizing: border-box;
+  gap: 0.625rem;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.provider-page-brand__logo {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+}
+
+.update-notice--sidebar {
+  flex-shrink: 0;
+  margin-top: auto;
+  border-top: 1px solid var(--panel-border);
+  padding: 0.75rem 0.375rem;
 }
 
 /* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
@@ -938,7 +991,8 @@ body.drag-active * {
 }
 
 /* 页头右侧固定槽位在长标题页面可收缩，避免切页时操作区换行造成上下跳动 */
-.apple-page-bar > .w-full.max-w-md {
+.apple-page-bar > .w-full.max-w-md,
+.apple-page-bar > .w-full.max-w-2xl {
   flex: 1 1 0%;
   min-width: 0;
 }
@@ -999,7 +1053,7 @@ body.drag-active * {
   overflow-y: auto;
   padding-left: var(--gap-main);
   padding-right: calc(var(--gap-main) - 8px);
-  padding-bottom: 1rem;
+  padding-bottom: var(--gap-section);
   padding-top: var(--gap-page);
   position: relative;
   scrollbar-gutter: stable;
@@ -1016,6 +1070,38 @@ body.drag-active * {
 .apple-edit-content > .apple-group {
   margin-top: 0;
   border-radius: var(--radius-card);
+}
+
+/* 编辑正文统一容器 apple-edit-surface：无卡片外观（不带 apple-group 的底色/圆角/裁切），
+   横向内缩归零，让正文与分割线占满原卡片宽度。首分区顶部间距只由 apple-edit-content 提供，
+   图标网格（自身即分区）与表单（首个子分区）复用同一规则。 */
+.apple-edit-surface {
+  --gap-card-inline: 0px;
+}
+
+.apple-edit-surface.apple-panel-section,
+.apple-edit-surface > .apple-panel-section:first-child {
+  padding-top: 0;
+}
+
+/* 编辑正文末尾的留白由 apple-edit-content 统一承担，分区不再叠加下内边距。 */
+.apple-edit-surface.apple-panel-section,
+.apple-edit-surface > .apple-panel-section:last-child {
+  padding-bottom: 0;
+}
+
+/* 平铺网格：列数随可用宽度自适应（auto-fill），不写断点阶梯——阶梯让密度随窗口
+   跳变，且末行按固定列数留空。图标选择页（图标主导）与预设网格（图标+名称）共用，
+   行距与列宽策略只在此定义，页面不得内联重写。 */
+.apple-tile-grid {
+  display: grid;
+  gap: 0.375rem;
+  grid-template-columns: repeat(auto-fill, minmax(3.5rem, 1fr));
+}
+
+/* 图标 + 名称的预设行需要更宽的最小列（默认值服务图标主导的纯方块网格） */
+.apple-tile-grid--labeled {
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
 }
 
 /* 结构性防呆：首卡片间距只来自上方 padding-top（--gap-page），任何首子元素
@@ -1036,6 +1122,7 @@ body.drag-active * {
   padding-inline: 0.5rem;
   font-size: 11px;
   font-weight: 500;
+  white-space: nowrap;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
   transition:
@@ -1066,6 +1153,9 @@ body.drag-active * {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
+/* 字段标题旁的小按钮保留点击高度，不撑高标题行。 */
+.field-label + .apple-inline-btn { margin-block: -0.125rem; }
+
 /* 编辑类页面的统一返回按钮（ProfileEdit / ProfileIconEdit 共用） */
 .apple-page-header {
   display: flex;
@@ -1085,11 +1175,7 @@ body.drag-active * {
 }
 
 .apple-back-button:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-:root.dark .apple-back-button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover-bg);
 }
 
 .codex-status-control {
@@ -1219,10 +1305,6 @@ body.drag-active * {
 .settings-about__actions > .apple-action-button {
   border-color: color-mix(in srgb, currentColor 20%, transparent);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
-}
-
-.settings-about__update-description {
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
 }
 
 .profile-list > .apple-group,
@@ -1425,7 +1507,7 @@ body.drag-active * {
 }
 
 :where(.apple-icon-button:hover:not(:disabled), .apple-icon-button:focus-visible:not(:disabled)) {
-  background: var(--profile-chip-bg);
+  background: var(--hover-bg);
 }
 
 .apple-toolbar-group {
@@ -1451,7 +1533,40 @@ body.drag-active * {
 }
 
 .apple-toolbar-group > :is(.apple-action-button, .apple-icon-button):is(:hover, :focus-visible):not(:disabled) {
-  background: var(--tile-bg);
+  background: var(--hover-bg);
+}
+
+/* MCP 类型切换只保留当前项高亮，按钮位置保持固定。 */
+.mcp-target-switch {
+  height: var(--toolbar-control-height);
+  box-sizing: border-box;
+}
+
+.mcp-target-switch > .apple-action-button {
+  flex: 1 1 0%;
+  min-width: 0;
+  background: transparent;
+  transition: none;
+}
+
+.mcp-target-switch > .apple-action-button:not([aria-selected="true"]) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.mcp-target-switch > .apple-action-button:not([aria-selected="true"]):is(:hover, :focus-visible):not(:disabled) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.mcp-target-switch > .apple-action-button[aria-selected="true"] {
+  background: var(--primary-button-bg);
+  color: var(--primary-button-text);
+}
+
+.mcp-target-switch > .apple-action-button[aria-selected="true"]:is(:hover, :focus-visible):not(:disabled) {
+  background: var(--primary-button-hover-bg);
+  color: var(--primary-button-text);
 }
 
 /* MCP 差异页：行级 diff 的代码区域容器——背景/描边对齐编辑页输入框（.app-input），把变更代码块与卡片头部区分开 */
@@ -1490,11 +1605,8 @@ body.drag-active * {
 .apple-editor-surface {
   overflow: hidden;
   border-radius: var(--radius-control-sm);
-  background: rgb(0 0 0 / 0.04);
-}
-
-:root.dark .apple-editor-surface {
-  background: rgb(255 255 255 / 0.06);
+  /* 代码主内容区跟主视图底色一致（浅色白、深色 #1e1e1e），工具栏底色另算 */
+  background: var(--main-surface-bg);
 }
 
 /* 编辑器附属条（editor chrome）：文件级操作条嵌进代码托盘顶部，与 apple-editor-surface
@@ -1502,6 +1614,8 @@ body.drag-active * {
 .editor-attach-group {
   border-radius: var(--radius-control-sm);
   overflow: hidden;
+  /* 外边缘描边：附属条与代码区共用一个外框（surface 自带的描边在组内被关掉） */
+  box-shadow: var(--card-edge-shadow);
 }
 
 /* CodeMirror 官方样式模式：圆角等容器外观由外层统管，surface 只在顶部直角贴合附属条。
@@ -1544,12 +1658,29 @@ body.drag-active * {
   white-space: nowrap;
 }
 
-.editor-ghost:not(:disabled):hover {
-  background: rgb(0 0 0 / 0.05);
+/* :where 只归零守卫的优先级：组内子控件的透明覆盖必须压过这条，hover 才只亮整组一层 */
+.editor-ghost:where(:not(:disabled):not([aria-disabled="true"])):hover {
+  background: var(--hover-bg);
 }
 
-:root.dark .editor-ghost:not(:disabled):hover {
-  background: rgb(255 255 255 / 0.08);
+/* 格式化是编辑器的常用主操作：默认使用主题强调色，悬停只提高底色浓度。 */
+.editor-ghost--format {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.editor-ghost--format:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
+}
+
+:root.dark .editor-ghost--format {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+:root.dark .editor-ghost--format:not(:disabled):hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 .editor-ghost-group {
@@ -1571,11 +1702,7 @@ body.drag-active * {
 }
 
 .editor-ghost-group:hover {
-  background: rgb(0 0 0 / 0.05);
-}
-
-:root.dark .editor-ghost-group:hover {
-  background: rgb(255 255 255 / 0.08);
+  background: var(--hover-bg);
 }
 
 /* 组内子控件不单独刷底色，hover 只亮整组一层 */
@@ -1583,15 +1710,12 @@ body.drag-active * {
   background: transparent;
 }
 
-:root.dark .editor-ghost-group > .editor-ghost:hover {
-  background: transparent;
-}
-
 .editor-ghost.on {
   color: var(--accent);
 }
 
-.editor-ghost:disabled {
+.editor-ghost:disabled,
+.editor-ghost[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -1605,8 +1729,8 @@ body.drag-active * {
   background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
-/* 统一大面板：外层用 apple-group，内部区块用 apple-panel-section；
-   区块之间以分隔线连接，不再各自成卡（编辑供应商/新建供应商等整页表单用） */
+/* 统一表单分区：apple-panel-section 自持内边距，区块之间以分隔线连接；
+   编辑正文由 apple-edit-surface 承载，列表和独立信息卡继续使用 apple-group。 */
 .apple-panel-section {
   padding: var(--gap-card) var(--gap-card-inline);
 }
@@ -1739,9 +1863,15 @@ button:focus-visible {
   width: min(460px, calc(100vw - 2rem));
 }
 
-/* 内容预览弹窗（Skill 的 SKILL.md 等 Markdown 正文）：比标准弹窗宽一档，长行代码少折行 */
+/* Skill 内容预览：以窗口宽度的 61.8% 为参考，在 600～680px 间自适应，小窗口保留边距。 */
 .app-dialog-content--wide {
-  width: min(600px, calc(100vw - 2rem));
+  width: min(clamp(600px, 61.8vw, 680px), calc(100vw - 2rem));
+}
+
+/* Claude 通用模板编辑：宽度在 720～900px 间随窗口变化，小窗口仍保留两侧边距。 */
+.claude-template-dialog {
+  width: min(clamp(720px, 70vw, 900px), calc(100vw - 2rem));
+  --editor-max-height: var(--dialog-preview-height);
 }
 
 .app-dialog-content--confirm .app-dialog-description {
@@ -1786,7 +1916,7 @@ button:focus-visible {
 }
 
 .app-dialog-close:hover {
-  background: var(--profile-chip-bg);
+  background: var(--hover-bg);
   color: inherit;
 }
 
@@ -2219,10 +2349,6 @@ button:focus-visible {
   background: var(--primary-button-hover-bg);
 }
 
-:root.dark .apple-list-row button[role="switch"].app-button--primary > svg {
-  filter: invert(1);
-}
-
 .app-button--danger {
   border-color: color-mix(in srgb, var(--danger) 60%, transparent);
   background: var(--danger);
@@ -2343,7 +2469,7 @@ button:focus-visible {
 }
 
 .app-toast__close:hover {
-  background: var(--profile-chip-bg);
+  background: var(--hover-bg);
   color: inherit;
 }
 
@@ -2384,6 +2510,53 @@ button:focus-visible {
   min-height: var(--control-height);
   align-items: stretch;
   min-width: 0;
+}
+
+/* 模型映射表的选择器只保留箭头；展开菜单固定为宽卡片，避免长模型 ID 被按钮截断。 */
+.app-select-wrap--icon {
+  width: 2.5rem;
+  min-width: 2.5rem;
+}
+
+.app-select--icon {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+/* 模型映射工具栏的下拉按钮与旁边的获取按钮共用紧凑尺寸。 */
+.app-select-wrap--compact {
+  min-height: 1.75rem;
+}
+
+.app-select--compact {
+  min-height: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  justify-content: center;
+  gap: 0.25rem;
+  border-color: var(--panel-ring);
+  padding: 0 0.5rem;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+}
+
+.app-select--compact:disabled {
+  opacity: 0.4;
+}
+
+.app-select--compact:hover,
+.app-select--compact:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--panel-ring));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.app-select-menu--arrow {
+  min-width: 22rem;
 }
 
 .app-select__icon {
@@ -2438,7 +2611,7 @@ button:focus-visible {
   min-height: 2rem;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.875rem;
   border: 0;
   border-radius: 0.625rem;
   background: transparent;
@@ -2499,9 +2672,19 @@ button:focus-visible {
   -moz-appearance: textfield;
 }
 
-/* .app-input 的 width:100%（layer 外、源码靠后）压过 w-* 工具类，带 [type] 提优先级 */
+/* 两端共用的压缩数值输入：固定宽度，数值与默认占位文字使用正常文字色；[type] 优先于 .app-input。 */
 .compact-token-input[type="number"] {
   width: 4.5rem;
+  color: var(--text-primary);
+}
+
+.compact-token-input[type="number"]::placeholder {
+  color: inherit;
+}
+
+/* 启用但未聚焦时复用紧凑按钮的淡描边；聚焦时沿用 .app-input 的蓝色描边。 */
+.compact-token-input[type="number"].compact-token-input--on:not(:focus) {
+  border-color: var(--panel-ring);
 }
 
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
@@ -2559,7 +2742,7 @@ button:focus-visible {
 .app-dynamic-input__create:hover,
 .app-dynamic-input__create:focus-visible {
   border-color: var(--accent);
-  background: var(--selection-bg);
+  background: var(--hover-bg);
   color: var(--accent);
 }
 
@@ -2603,6 +2786,21 @@ button:focus-visible {
 .apple-disclosure--open .apple-disclosure__content { grid-template-rows: 1fr; opacity: 1; margin-bottom: -3px; padding-bottom: 3px; }
 .apple-disclosure--open .apple-disclosure__body { margin-bottom: -3px; padding-top: var(--gap-section); padding-bottom: 3px; }
 .apple-disclosure--open .apple-disclosure__icon { color: var(--accent); transform: rotate(90deg); }
+
+/* MCP 高级选项：与设置页自动备份小卡一致，纯描边无背景，只靠边缘划分归属。 */
+.mcp-advanced-disclosure {
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-control);
+  padding: 0.375rem var(--gap-section);
+}
+
+/* 标题行收紧为贴近单行文字高度，去掉大卡片式留白。 */
+.mcp-advanced-disclosure .apple-disclosure__summary { min-height: 1.75rem; }
+
+.mcp-advanced-disclosure.apple-disclosure--open .apple-disclosure__body {
+  padding-top: 0.75rem;
+  padding-bottom: var(--gap-section);
+}
 
 .app-input {
   width: 100%;
@@ -2671,7 +2869,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   transition: color 150ms ease-out, background-color 150ms ease-out;
 }
 
-.app-input-action__button:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.app-input-action__button:hover { background: var(--hover-bg); color: var(--accent); }
 .app-input-action__button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .app-input.underline-input {
@@ -2691,7 +2889,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .cm-editor {
   /* 代码区按文档内容自适应，最长文件的共享占位由外层承担 */
   height: auto;
-  max-height: min(34rem, 60vh);
+  max-height: var(--editor-max-height);
   background: transparent;
   /* 缩进参考线复用分隔线 token，标记随行首空白绘制且不跟随光标变化 */
   --indent-marker-bg-color: var(--panel-divider);
@@ -2724,41 +2922,46 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .cm-editor .cm-line,
 .cm-editor .cm-gutterElement {
   font-family: var(--font-mono) !important;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.6;
 }
 
-.cm-editor .cm-scroller { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-.cm-horizontal-scrollbar-row {
-  display: none;
-  height: 8px;
-  overflow: hidden;
+/* 横向滚动走原生滚动条；行号栏是 sticky 层，
+   代码从其下穿过，不透明背景见下方 gutter 规则。 */
+.cm-editor .cm-scroller { overflow-x: auto; overflow-y: auto; overscroll-behavior: contain; }
+
+/* 配置编辑器共用较宽的小圆角滚动条；auto 让 webkit 尺寸生效，颜色沿用全局主题。 */
+.apple-editor-shell .cm-scroller {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
 }
 
-.cm-horizontal-scrollbar-gutter {
-  flex: 0 0 auto;
-  height: 8px;
+.apple-editor-shell .cm-scroller::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
 }
 
-.cm-horizontal-scrollbar {
-  min-width: 0;
-  flex: 1 1 auto;
-  height: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-/* 编辑器滚动条只在编辑器悬停或获得焦点时显现，保留滚动能力和原有占位。 */
-.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar) {
-  scrollbar-color: transparent transparent;
-}
-
-.apple-editor-shell:not(:hover):not(:focus-within) :is(.cm-scroller, .cm-horizontal-scrollbar)::-webkit-scrollbar-thumb {
+/* 横纵滚动条交汇处透出编辑器底色，避免深色主题出现原生白色角块。 */
+.apple-editor-shell .cm-scroller::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-.cm-horizontal-scrollbar > div { height: 1px; }
+.apple-editor-shell .cm-scroller::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+}
+
+.apple-editor-shell .cm-scroller::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* 编辑器滚动条随鼠标移入/移出显隐，不受拖动后的焦点影响，保留滚动能力和原有占位。 */
+.apple-editor-shell:not(:hover) .cm-scroller::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
 /* 行号列宽随位数自适应（min-width 保住 24px 紧凑观感）；固定宽度会让三位以上行号
    被 .cm-gutter 的 overflow: hidden 裁掉末位 */
 .cm-gutters .cm-lineNumbers { width: auto; min-width: 1.5rem; flex: 0 0 auto; }
@@ -2768,18 +2971,13 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
    （.主题类 .cm-lineNumbers .cm-gutterElement 的 padding: 0 3px 0 5px 特异性更高，
    否则 border-box 下内容区只剩 16px，三位行号溢出被裁） */
 .cm-editor .cm-gutters .cm-lineNumbers .cm-gutterElement { width: auto; min-width: 1.5rem; padding: 0; }
-/* 行号栏必须不透明：CM gutter 是 sticky 层（z-index 200），横向滚动时代码从其下穿过。
-   颜色取卡片底（--panel-bg）混入 4% 黑 / 深色混入 6% 白的不透明合成色，与 surface
-   浅底叠卡片的视觉效果一致；右边线统一为无，靠留白分隔（深色 oneDark 本就无线）。
-   注意不能用 rgb(... / 4%) 当第一个参数——那是 alpha 语义，会混出半透明底导致穿模。
+/* 行号栏必须不透明：CM gutter 是 sticky 层（z-index 200），横向滚动时代码从其下穿过，
+   半透明底会穿模。取 --main-surface-bg（代码区同一个不透明底色，两侧无色差）；
+   右边线统一为无，靠留白分隔（深色 oneDark 本就无线）。
    !important 压过运行时注入的主题背景与浅色默认边线 */
 .cm-editor .cm-gutters {
-  background-color: color-mix(in srgb, black 4%, var(--panel-bg)) !important;
+  background-color: var(--main-surface-bg) !important;
   border-right: 0 !important;
-}
-
-:root.dark .cm-editor .cm-gutters {
-  background-color: color-mix(in srgb, white 6%, var(--panel-bg)) !important;
 }
 .cm-activeLine,
 .cm-activeLineGutter { background-color: var(--selection-bg) !important; }

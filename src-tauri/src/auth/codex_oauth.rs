@@ -7,14 +7,12 @@
 //!
 //! 认证一次后账号常驻，后续添加 ChatGPT 供应商无需重复认证。
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::database::{Database, StoredAccount};
@@ -40,8 +38,6 @@ const OAUTH_SCOPE_BROWSER: &str = "openid email profile offline_access";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CodexOAuthError {
-    #[error("用户拒绝授权")]
-    AccessDenied,
     #[error("OAuth 请求失败: {0}")]
     RequestFailed(String),
     #[error("Refresh Token 失效或已过期")]
@@ -1000,12 +996,6 @@ impl CodexOAuthManager {
 
     // ==================== 账号管理 ====================
 
-    pub async fn list_accounts(&self) -> Vec<ManagedAccount> {
-        let accounts = self.accounts.read().await.clone();
-        let default_id = self.resolve_default_account_id().await;
-        sorted_accounts(&accounts, default_id.as_deref())
-    }
-
     pub async fn get_status(&self) -> AuthStatus {
         let accounts = self.accounts.read().await.clone();
         let default_id = self.resolve_default_account_id().await;
@@ -1015,10 +1005,6 @@ impl CodexOAuthManager {
             accounts: sorted_accounts(&accounts, default_id.as_deref()),
             external: Vec::new(),
         }
-    }
-
-    pub async fn default_account_id(&self) -> Option<String> {
-        self.resolve_default_account_id().await
     }
 
     pub async fn remove_account(&self, account_id: &str) -> Result<(), CodexOAuthError> {
@@ -1048,10 +1034,6 @@ impl CodexOAuthManager {
             "[auth.account.remove] {subject} outcome=success msg=\"已移除托管账号\""
         );
         Ok(())
-    }
-
-    pub async fn is_authenticated(&self) -> bool {
-        !self.accounts.read().await.is_empty()
     }
 
     /// 日志定位字段：account_id 恒输出，email 仅 debug 构建附加（供连接层标注 OAuth 账号行为）。
@@ -1712,18 +1694,13 @@ fn pkce_code_challenge(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 
+/// token 数学要 i64；"当前时刻"唯一定义在 paths，这里只做类型适配。
 fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as i64)
-        .unwrap_or(0)
+    crate::paths::now_ms() as i64
 }
 
 fn now_secs() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or(0)
+    crate::paths::now_secs() as i64
 }
 
 #[cfg(test)]
@@ -2007,7 +1984,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            manager.default_account_id().await.as_deref(),
+            manager.resolve_default_account_id().await.as_deref(),
             Some(first.id.as_str())
         );
         let second = manager
@@ -2020,12 +1997,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            manager.default_account_id().await.as_deref(),
+            manager.resolve_default_account_id().await.as_deref(),
             Some(first.id.as_str())
         );
 
         manager.remove_account(&first.id).await.unwrap();
-        let accounts = manager.list_accounts().await;
+        let accounts = manager.get_status().await.accounts;
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].id, second.id);
     }
@@ -2059,7 +2036,7 @@ mod tests {
 
         let unknown = auth.replace("acc-1", "unknown");
         assert!(!manager.sync_external_auth_json(&unknown).await.unwrap());
-        assert_eq!(manager.list_accounts().await.len(), 1);
+        assert_eq!(manager.get_status().await.accounts.len(), 1);
     }
 
     #[tokio::test]
@@ -2201,7 +2178,7 @@ mod tests {
 
         // 幂等更新：不产生新行、行 id 不变、refresh_token 已刷新
         assert_eq!(first.id, second.id);
-        assert_eq!(manager.list_accounts().await.len(), 1);
+        assert_eq!(manager.get_status().await.accounts.len(), 1);
         let stored = database.accounts().unwrap().pop().unwrap();
         assert_eq!(stored.refresh_token, "rt-2");
         assert_eq!(stored.user_identity.as_deref(), Some("user-a"));
@@ -2234,7 +2211,7 @@ mod tests {
 
         // 同 workspace 两个用户各自成行，互不覆盖
         assert_ne!(first.id, second.id);
-        assert_eq!(manager.list_accounts().await.len(), 2);
+        assert_eq!(manager.get_status().await.accounts.len(), 2);
         let stored = database.accounts().unwrap();
         assert_eq!(stored.len(), 2);
         assert!(stored
@@ -2297,7 +2274,7 @@ mod tests {
         assert_eq!(row_b.refresh_token, "rt-b2");
         assert_eq!(row_a.auth_json, None);
         assert!(row_b.auth_json.is_some());
-        assert_eq!(manager.list_accounts().await.len(), 2);
+        assert_eq!(manager.get_status().await.accounts.len(), 2);
     }
 
     #[tokio::test]
@@ -2353,7 +2330,7 @@ mod tests {
 
         // workspace + email 命中存量行：原地更新并补齐身份，不产生新行
         assert_eq!(relogin.id, "ws-legacy");
-        assert_eq!(manager.list_accounts().await.len(), 1);
+        assert_eq!(manager.get_status().await.accounts.len(), 1);
         let stored = database.accounts().unwrap().pop().unwrap();
         assert_eq!(stored.refresh_token, "rt-new");
         assert_eq!(stored.user_identity.as_deref(), Some("user-a"));

@@ -1,4 +1,7 @@
 use super::*;
+use crate::models::ClaudeProfileInput;
+use rusqlite::Connection;
+use serde_json::Value;
 
 #[test]
 fn update_marker_writes_once_and_consumes_once() {
@@ -25,6 +28,17 @@ fn chatgpt_test_context() -> (tempfile::TempDir, AppContext) {
     std::fs::write(paths.codex_config(), "model = \"gpt-5.6\"\n").unwrap();
     let context = AppContext::new(paths).unwrap();
     (home, context)
+}
+
+/// 测试夹具：live config 的 [mcp_servers] 段整体镜像进数据库，返回导入的服务器数。
+/// （生产侧 import_mcp_from_live 因 UI 从未接线已随命令链一并移除，测试仍需要它构造镜像状态。）
+fn import_mcp_from_live(context: &AppContext) -> usize {
+    let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    let document = codex_config::parse_document(&live).unwrap();
+    let fragments = codex_config::mcp_server_fragments_from_document(&document);
+    let count = fragments.len();
+    context.replace_mcp_mirror(&fragments).unwrap();
+    count
 }
 
 fn chatgpt_auth(account_id: &str, access_token: &str) -> String {
@@ -1018,13 +1032,106 @@ fn sync_active_profile_from_live_persists_external_mcp_changes() {
     )
     .unwrap();
 
-    context.sync_active_profile_from_live().unwrap();
+    if let Some(document) = context.live_document() {
+        context.sync_active_profile_document(&document).unwrap();
+    }
     let stored = context.database.profile(&profile.id).unwrap();
     assert!(stored
         .payload
         .raw_config
         .as_deref()
         .is_some_and(|text| !text.contains("[mcp_servers.computer-use]")));
+}
+
+#[test]
+fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"gpt-5.6\"\n").unwrap();
+
+    let context = AppContext::new(paths).unwrap();
+    let profile = context.capture_profile("A").unwrap();
+    context.apply_profile(&profile.id).unwrap();
+
+    // 正常外部漂移：应当收敛
+    std::fs::write(context.paths.codex_config(), "model = \"gpt-5.7\"\n").unwrap();
+    let document = context.live_document().unwrap();
+    let outcome = context.sync_active_profile_document(&document).unwrap();
+    assert_eq!(outcome.kind, crate::services::sync::SyncKind::Wrote);
+    // 结局必须带出配置名，否则日志里只剩"没回写"，看不出是谁
+    assert_eq!(outcome.profile.as_deref(), Some("A"));
+    let last_valid = context
+        .database
+        .profile(&profile.id)
+        .unwrap()
+        .payload
+        .raw_config
+        .clone();
+
+    // 外部把 live 改坏：残缺的 TOML，严格读必须拒绝它
+    std::fs::write(context.paths.codex_config(), "model = \n").unwrap();
+    assert!(matches!(
+        context.live_document_checked(),
+        Err(super::profiles::LiveReadError::Parse)
+    ));
+
+    // 走真实被动收割（get_state 同一条路径）：损坏内容不得覆盖最后一次有效快照
+    crate::services::sync::registry().harvest_passive(
+        &context,
+        &crate::services::sync::SyncTrigger::StateRefresh,
+        crate::services::sync::SyncMaterial::default(),
+    );
+    assert_eq!(
+        context
+            .database
+            .profile(&profile.id)
+            .unwrap()
+            .payload
+            .raw_config,
+        last_valid
+    );
+
+    // 读不了（权限/占用）必须与解析失败分开：目录占位稳定复现非 NotFound 的 io 失败，
+    // 同一条被动路径同样不得覆盖最后一次有效快照
+    std::fs::remove_file(context.paths.codex_config()).unwrap();
+    std::fs::create_dir(context.paths.codex_config()).unwrap();
+    assert!(matches!(
+        context.live_document_checked(),
+        Err(super::profiles::LiveReadError::Unreadable)
+    ));
+    crate::services::sync::registry().harvest_passive(
+        &context,
+        &crate::services::sync::SyncTrigger::StateRefresh,
+        crate::services::sync::SyncMaterial::default(),
+    );
+    assert_eq!(
+        context
+            .database
+            .profile(&profile.id)
+            .unwrap()
+            .payload
+            .raw_config,
+        last_valid
+    );
+
+    // 修好后同一路径自愈
+    std::fs::remove_dir(context.paths.codex_config()).unwrap();
+    std::fs::write(context.paths.codex_config(), "model = \"gpt-5.8\"\n").unwrap();
+    crate::services::sync::registry().harvest_passive(
+        &context,
+        &crate::services::sync::SyncTrigger::StateRefresh,
+        crate::services::sync::SyncMaterial::default(),
+    );
+    assert!(context
+        .database
+        .profile(&profile.id)
+        .unwrap()
+        .payload
+        .raw_config
+        .as_deref()
+        .is_some_and(|text| text.contains("gpt-5.8")));
 }
 
 #[test]
@@ -1622,6 +1729,21 @@ fn adding_preset_does_not_activate() {
 }
 
 #[test]
+fn deleting_active_profile_is_rejected() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths.clone()).unwrap();
+    let profile = context.capture_profile("A").unwrap();
+    context.apply_profile(&profile.id).unwrap();
+    // 使用中的配置不可删除（前端删除按钮对激活卡片禁用）：拒绝后配置仍在库中
+    assert!(context.delete_profile(&profile.id).is_err());
+    assert!(context.database.profile(&profile.id).is_ok());
+}
+
+#[test]
 fn export_and_restore_database_round_trip() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();
@@ -1692,6 +1814,248 @@ fn restore_database_preserves_profile_order() {
         names,
         vec!["C".to_string(), "A".to_string(), "B".to_string()]
     );
+}
+
+/// Claude 供应商全字段随备份走：A/B 差异化字段 → 恢复后逐列对上，排序与激活位随之恢复，
+/// 恢复还把激活配置的托管键收敛回 live settings.json（平凡快照走 merge，不整写原文）。
+#[test]
+fn claude_profiles_survive_backup_restore_round_trip() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths).unwrap();
+
+    let a = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "A".into(),
+                base_url: Some("https://a.example".into()),
+                auth_token: Some("tok-a".into()),
+                model: Some("glm-a".into()),
+                description: Some("第一份".into()),
+                kind: Some("zhipu".into()),
+                admin_url: Some("https://console.example".into()),
+                extra_env: Some(r#"{"FOO":"bar"}"#.into()),
+                icon: Some("zhipu".into()),
+                fetched_models: Some(vec!["glm-a".into(), "glm-a-x".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let b_raw =
+        r#"{"env":{"ANTHROPIC_BASE_URL":"https://b.example","ANTHROPIC_AUTH_TOKEN":"tok-b"}}"#;
+    let b = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "B".into(),
+                raw_settings: Some(b_raw.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    context.claude_apply(&b.id).unwrap();
+    context
+        .claude_reorder(&[b.id.clone(), a.id.clone()])
+        .unwrap();
+
+    let exported = context.export_database().unwrap();
+    let name = exported.file_name().unwrap().to_string_lossy().into_owned();
+    // 破坏现场：清空 Claude 数据与激活位，确保恢复结果只能来自备份
+    // （service 层拒绝删除使用中的配置，清场直接走数据库层）
+    context.database.delete_claude_profile(&a.id).unwrap();
+    context.database.delete_claude_profile(&b.id).unwrap();
+    assert!(context.database.claude_profiles().unwrap().is_empty());
+    assert_eq!(context.database.active_claude_profile().unwrap(), None);
+
+    context.restore_database(&name).unwrap();
+    let restored = context.database.claude_profiles().unwrap();
+    assert_eq!(restored.len(), 2);
+    assert_eq!(restored[0].id, b.id, "排序随备份恢复");
+    let ra = restored.iter().find(|profile| profile.id == a.id).unwrap();
+    assert_eq!(ra.base_url.as_deref(), Some("https://a.example"));
+    assert_eq!(ra.auth_token.as_deref(), Some("tok-a"));
+    assert_eq!(ra.model.as_deref(), Some("glm-a"));
+    assert_eq!(ra.description.as_deref(), Some("第一份"));
+    assert_eq!(ra.kind.as_deref(), Some("zhipu"));
+    assert_eq!(ra.admin_url.as_deref(), Some("https://console.example"));
+    assert_eq!(ra.extra_env.as_deref(), Some(r#"{"FOO":"bar"}"#));
+    assert_eq!(ra.icon.as_deref(), Some("zhipu"));
+    assert_eq!(ra.fetched_models.as_deref(), Some(r#"["glm-a","glm-a-x"]"#));
+    let rb = restored.iter().find(|profile| profile.id == b.id).unwrap();
+    assert_eq!(rb.raw_settings.as_deref(), Some(b_raw));
+    assert_eq!(
+        context.database.active_claude_profile().unwrap().as_deref(),
+        Some(b.id.as_str())
+    );
+    let live = std::fs::read_to_string(home.path().join(".claude/settings.json")).unwrap();
+    // B 的快照只含托管 env 键，属平凡快照：写回落 merge 不再整文件替换（保住用户其余键），
+    // 断言收敛到 B 的托管键值即可。
+    let live: serde_json::Value = serde_json::from_str(&live).unwrap();
+    assert_eq!(live["env"]["ANTHROPIC_BASE_URL"], "https://b.example");
+    assert_eq!(live["env"]["ANTHROPIC_AUTH_TOKEN"], "tok-b");
+}
+
+/// 旧版备份（尚无 claude_profiles 表 / global_enabled 列）恢复：Codex 数据照常恢复，
+/// Claude 从零开始；恢复前激活过的配置把托管键从 live 撤下（应用不再管理任何 Claude 配置）。
+#[test]
+fn restore_legacy_backup_without_claude_tables_starts_claude_empty() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths).unwrap();
+    let settings = home.path().join(".claude/settings.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(
+        &settings,
+        r#"{"model":"opus","permissions":{"allow":["Read"]}}"#,
+    )
+    .unwrap();
+    let active = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "A".into(),
+                base_url: Some("https://a.example".into()),
+                auth_token: Some("tok-a".into()),
+                extra_env: Some(r#"{"A_KEY":"1"}"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    context.claude_apply(&active.id).unwrap();
+
+    // 手工搭旧版库（v4 形状：无 claude_profiles、app_state 无激活位、mcp_servers 无 global_enabled）
+    let legacy = context.paths.database_backup.join("cg-backup-legacy.db");
+    {
+        let connection = Connection::open(&legacy).unwrap();
+        connection
+            .execute_batch(
+                r#"CREATE TABLE app_state (
+                     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                     active_profile_id TEXT,
+                     default_account_id TEXT
+                   );
+                   CREATE TABLE switch_events (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     profile_id TEXT,
+                     action TEXT NOT NULL,
+                     status TEXT NOT NULL,
+                     message TEXT,
+                     created_at TEXT NOT NULL
+                   );
+                   CREATE TABLE profiles (
+                     id TEXT PRIMARY KEY,
+                     name TEXT NOT NULL,
+                     payload_json TEXT NOT NULL,
+                     icon TEXT,
+                     kind TEXT NOT NULL,
+                     account_id TEXT REFERENCES accounts(id) ON DELETE SET NULL,
+                     created_at TEXT NOT NULL,
+                     updated_at TEXT NOT NULL
+                   );
+                   CREATE TABLE accounts (
+                     id TEXT PRIMARY KEY,
+                     email TEXT,
+                     id_token TEXT,
+                     refresh_token TEXT NOT NULL,
+                     authenticated_at INTEGER NOT NULL,
+                     auth_json TEXT
+                   );
+                   INSERT INTO accounts VALUES ('acc-1', 'a@example.com', NULL, 'rt-1', 1, NULL);
+                   INSERT INTO profiles(id, name, payload_json, kind, created_at, updated_at)
+                     VALUES ('p-1', 'GLM', '{}', 'third_party', '1', '1');
+                   INSERT INTO app_state(singleton, active_profile_id) VALUES (1, 'p-1');"#,
+            )
+            .unwrap();
+    }
+
+    context.restore_database("cg-backup-legacy.db").unwrap();
+
+    // Codex 数据照常恢复；Claude 表为空、激活位为空
+    assert_eq!(context.database.profiles().unwrap()[0].name, "GLM");
+    let (codex_active, _default) = context.database.app_state().unwrap();
+    assert_eq!(codex_active.as_deref(), Some("p-1"));
+    assert!(context.database.claude_profiles().unwrap().is_empty());
+    assert_eq!(context.database.active_claude_profile().unwrap(), None);
+    // live 托管键撤下，未托管键原样保留
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(doc["model"], "opus");
+    assert_eq!(doc["permissions"]["allow"][0], "Read");
+    assert!(doc["env"].get("ANTHROPIC_BASE_URL").is_none());
+    assert!(doc["env"].get("ANTHROPIC_AUTH_TOKEN").is_none());
+    assert!(doc["env"].get("A_KEY").is_none());
+}
+
+/// 恢复数据库后 live settings.json 收敛到恢复出的激活位：
+/// 备份时刻激活 B、恢复前激活 A → 恢复后 live 是 B 的键，A 的附加键不残留，未托管键保留。
+#[test]
+fn restore_reconciles_claude_live_with_restored_active_profile() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = crate::paths::from_home(home.path()).unwrap();
+    paths.ensure().unwrap();
+    std::fs::create_dir_all(&paths.codex_home).unwrap();
+    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
+    let context = AppContext::new(paths).unwrap();
+    let settings = home.path().join(".claude/settings.json");
+    std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    std::fs::write(
+        &settings,
+        r#"{"model":"opus","permissions":{"allow":["Read"]}}"#,
+    )
+    .unwrap();
+
+    let a = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "A".into(),
+                base_url: Some("https://a.example".into()),
+                auth_token: Some("tok-a".into()),
+                extra_env: Some(r#"{"A_KEY":"1"}"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let b = context
+        .claude_save(
+            None,
+            ClaudeProfileInput {
+                name: "B".into(),
+                base_url: Some("https://b.example".into()),
+                auth_token: Some("tok-b".into()),
+                extra_env: Some(r#"{"B_KEY":"2"}"#.into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    // 备份时刻 B 激活，之后切到 A：live 现在是 A 的键
+    context.claude_apply(&b.id).unwrap();
+    let exported = context.export_database().unwrap();
+    let name = exported.file_name().unwrap().to_string_lossy().into_owned();
+    context.claude_apply(&a.id).unwrap();
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://a.example");
+
+    context.restore_database(&name).unwrap();
+
+    // 激活位回到 B，live 跟着回到 B：A 的附加键撤下，未托管键保留
+    assert_eq!(
+        context.database.active_claude_profile().unwrap().as_deref(),
+        Some(b.id.as_str())
+    );
+    let doc: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(doc["model"], "opus");
+    assert_eq!(doc["permissions"]["allow"][0], "Read");
+    assert_eq!(doc["env"]["ANTHROPIC_BASE_URL"], "https://b.example");
+    assert_eq!(doc["env"]["ANTHROPIC_AUTH_TOKEN"], "tok-b");
+    assert_eq!(doc["env"]["B_KEY"], "2");
+    assert!(doc["env"].get("A_KEY").is_none());
 }
 
 #[test]
@@ -1883,6 +2247,98 @@ fn mcp_save_rejects_invalid_input() {
         .is_err());
 }
 
+/// 应用自己的操作（开关/保存/采纳）不得制造或残留差异：差异只属于外部修改。
+#[test]
+fn mcp_app_operations_leave_no_sync_diff() {
+    // 带原生 enabled=false 的片段：app 内打开开关必须让 live 与镜像同时收敛，
+    // 否则语义比（Some(false) vs None）会把 app 自己的操作误报成"已修改"
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\nenabled = false\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    import_mcp_from_live(&context);
+    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
+
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, true)
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(
+        preview.entries.is_empty(),
+        "app 开关制造了幻影差异: {:?}",
+        preview.entries
+    );
+    let live = read_config_text(&context);
+    assert!(!live.contains("enabled"), "原生 enabled 键应被剥离: {live}");
+
+    // 开→关→开 与 Claude 侧开关同样不得留下差异
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, true)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("b", SkillTool::Claude, false)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("b", SkillTool::Claude, true)
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(
+        preview.entries.is_empty(),
+        "开关循环留下差异: {:?}",
+        preview.entries
+    );
+}
+
+/// 外部把已关条目加回 live 后，差异页"同步"必须真正消掉差异：片段进镜像、开关翻开。
+#[test]
+fn mcp_adopt_external_readd_clears_diff_and_reenables() {
+    let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
+    import_mcp_from_live(&context);
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+
+    // 外部把同名片段写回 live：应报告"仅 live 有"
+    let external = "[mcp_servers.a]\nurl = \"https://a/mcp\"\ncommand = \"node\"\n";
+    std::fs::write(context.paths.codex_config(), external).unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert_eq!(preview.entries.len(), 1);
+    assert_eq!(preview.entries[0].kind, McpSyncEntryKind::LiveOnly);
+
+    // 采纳后差异清空，codex 开关翻开（live 里有条目 = on 的事实源）
+    context
+        .set_mcp_mirror_entry(
+            "a",
+            Some("[mcp_servers.a]\nurl = \"https://a/mcp\"\ncommand = \"node\"\n"),
+        )
+        .unwrap();
+    let preview = context.mcp_sync_preview().unwrap();
+    assert!(
+        preview.entries.is_empty(),
+        "采纳后差异未清空: {:?}",
+        preview.entries
+    );
+    assert!(
+        context
+            .database
+            .mcp_server_record("a")
+            .unwrap()
+            .unwrap()
+            .codex_enabled
+    );
+    let listed = context.list_mcp_servers().unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|server| server.name == "a")
+            .unwrap()
+            .enabled,
+        None
+    );
+}
+
 #[test]
 fn mcp_managed_entry_hidden_and_untouchable() {
     // node_repl 由 Codex 桌面版自动写入/更新，本应用完全跳过且不许碰
@@ -1896,7 +2352,7 @@ fn mcp_managed_entry_hidden_and_untouchable() {
     assert_eq!(names, ["github"]);
 
     // 正常导入一次保证镜像与 live 一致，再往镜像塞入残留的 node_repl 片段
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
     let mut fragments = context.database.mcp_server_fragments().unwrap();
     fragments.push((
         "node_repl".into(),
@@ -1949,6 +2405,7 @@ fn mcp_save_with_fragment_is_wysiwyg() {
                 ..Default::default()
             },
             Some(fragment),
+            SkillTool::Codex,
         )
         .unwrap();
 
@@ -2029,7 +2486,7 @@ fn restore_database_writes_mcp_back_to_live() {
     let (source_context, _home_a) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
     context_with_profile(&source_context);
-    source_context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&source_context);
     let exported = source_context.export_database().unwrap();
     let backup_name = exported.file_name().unwrap().to_string_lossy().into_owned();
 
@@ -2059,7 +2516,7 @@ fn context_with_profile(context: &AppContext) {
 fn created_profiles_snapshot_prefers_database_mcp_mirror() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.mirrored]\nurl = \"https://mirror/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
     std::fs::write(
         context.paths.codex_config(),
         "[mcp_servers.live]\nurl = \"https://live/mcp\"\n",
@@ -2148,11 +2605,11 @@ fn mcp_delete_via_app_clears_database_mirror() {
 fn mcp_import_from_live_forces_mirror() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部清空 live 后，显式「从配置导入」让数据库接受空态（放弃保留的镜像）
     std::fs::write(context.paths.codex_config(), "model = \"gpt-5.6\"\n").unwrap();
-    let count = context.import_mcp_from_live().unwrap();
+    let count = import_mcp_from_live(&context);
     assert_eq!(count, 0);
     assert!(context.database.mcp_server_fragments().unwrap().is_empty());
     assert!(context.restore_mcp_from_database().is_err());
@@ -2163,7 +2620,7 @@ fn restore_mcp_rewrites_only_the_mcp_region() {
     let (context, _home) = mcp_test_context(
         "model = \"gpt-5.6\"\n\n[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n\n[projects.'x']\ntrust_level = \"trusted\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部把 tavily 那行的引号删掉：整份文件解析不了，MCP 段之外的内容完好
     std::fs::write(
@@ -2192,7 +2649,7 @@ fn restore_mcp_keeps_managed_entries_when_rebuilding_the_region() {
     const MANAGED: &str = "[mcp_servers.node_repl]\ncommand = \"node_repl.exe\"\n\n[mcp_servers.node_repl.env]\nCODEX_HOME = \"/x\"\n";
     let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{MANAGED}");
     let (context, _home) = mcp_test_context(&live);
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 解析不了时重建 MCP 区域：托管条目不在镜像里，必须按 live 原文留在原位
     std::fs::write(
@@ -2218,7 +2675,7 @@ fn restore_mcp_region_stops_at_the_next_section() {
     const TAIL: &str = "[[skills.config]]\npath = 'C:\\skills\\a\\SKILL.md'\nenabled = false\n\n[plugins.\"browser@openai-bundled\"]\nenabled = true\n";
     let live = format!("[mcp_servers.github]\nurl = \"https://g/mcp\"\n\n{TAIL}");
     let (context, _home) = mcp_test_context(&live);
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     std::fs::write(
         context.paths.codex_config(),
@@ -2241,7 +2698,7 @@ fn restore_mcp_region_stops_at_the_next_section() {
 fn restore_mcp_refuses_when_no_mcp_region_can_be_located() {
     let (context, _home) =
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 文件彻底损坏且不含 MCP 段：拒绝整份重写（那会丢掉区域外的全部配置），
     // 原文件一个字节都不动，交由备份恢复处理
@@ -2255,7 +2712,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     let (context, _home) = mcp_test_context(
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部（codex mcp remove）删掉 a：列表只读，a 保留为“仅数据库”差异
     std::fs::write(
@@ -2267,7 +2724,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     assert_eq!(context.database.mcp_server_fragments().unwrap().len(), 2);
 
     // 显式“以配置文件为准”才收敛：a 从数据库清除，预览归零
-    let count = context.import_mcp_from_live().unwrap();
+    let count = import_mcp_from_live(&context);
     assert_eq!(count, 1);
     let fragments = context.database.mcp_server_fragments().unwrap();
     assert_eq!(fragments.len(), 1);
@@ -2276,10 +2733,125 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
 }
 
+/// 引擎开关各自独立：Codex 关只删 config.toml 条目，Claude 侧 live 与开关不动，反之亦然。
+#[test]
+fn mcp_engine_toggle_only_touches_its_own_live_file() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    import_mcp_from_live(&context);
+
+    // Codex 关：config.toml 删条目；.claude.json 原样保留，Claude 开关仍是开
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+    let live = read_config_text(&context);
+    assert!(!live.contains("mcp_servers.a"), "{live}");
+    assert!(live.contains("mcp_servers.b"), "{live}");
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(claude.contains("\"a\""), "{claude}");
+    let record = context.database.mcp_server_record("a").unwrap().unwrap();
+    assert!(!record.codex_enabled);
+    assert!(record.claude_enabled);
+    let listed = context.list_mcp_servers().unwrap();
+    assert_eq!(
+        listed
+            .iter()
+            .find(|server| server.name == "a")
+            .unwrap()
+            .enabled,
+        Some(false)
+    );
+    let claude_listed = context.claude_mcp_servers().unwrap();
+    assert_eq!(
+        claude_listed
+            .iter()
+            .find(|server| server.name == "a")
+            .unwrap()
+            .enabled,
+        None
+    );
+
+    // Claude 关：.claude.json 删条目；config.toml 里 b 原样（a 本就不在），Codex 开关不动
+    context
+        .set_mcp_server_enabled("a", SkillTool::Claude, false)
+        .unwrap();
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(!claude.contains("\"a\""), "{claude}");
+    let record = context.database.mcp_server_record("a").unwrap().unwrap();
+    assert!(!record.codex_enabled);
+    assert!(!record.claude_enabled);
+
+    // Codex 开：条目从镜像片段恢复回 config.toml；Claude 仍是关（.claude.json 不回填）
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, true)
+        .unwrap();
+    let live = read_config_text(&context);
+    assert!(live.contains("mcp_servers.a"), "{live}");
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(!claude.contains("\"a\""), "{claude}");
+    assert!(
+        context
+            .database
+            .mcp_server_record("a")
+            .unwrap()
+            .unwrap()
+            .codex_enabled
+    );
+
+    // Claude 开：条目投影回 .claude.json
+    context
+        .set_mcp_server_enabled("a", SkillTool::Claude, true)
+        .unwrap();
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(claude.contains("\"a\""), "{claude}");
+}
+
+/// 镜像整表重写保留关闭行且不吞另一引擎的开关；后续保存不会把已关条目顶回 live。
+#[test]
+fn mcp_mirror_rewrite_preserves_engine_flags_across_saves() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    import_mcp_from_live(&context);
+    context
+        .set_mcp_server_enabled("a", SkillTool::Codex, false)
+        .unwrap();
+    context
+        .set_mcp_server_enabled("b", SkillTool::Claude, false)
+        .unwrap();
+
+    // 保存与 a/b 无关的第三台：整表重写后两个关闭行原样保留，开关不被重置
+    context
+        .save_mcp_server(
+            None,
+            McpServerSpec {
+                name: "c".into(),
+                url: Some("https://c/mcp".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let a = context.database.mcp_server_record("a").unwrap().unwrap();
+    assert!(!a.codex_enabled, "a 的 Codex 开关被保存冲掉了");
+    assert!(a.claude_enabled);
+    let b = context.database.mcp_server_record("b").unwrap().unwrap();
+    assert!(b.codex_enabled);
+    assert!(!b.claude_enabled, "b 的 Claude 开关被保存冲掉了");
+    let live = read_config_text(&context);
+    assert!(!live.contains("mcp_servers.a"), "{live}");
+    assert!(live.contains("mcp_servers.b"), "{live}");
+    assert!(live.contains("mcp_servers.c"), "{live}");
+    let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
+    assert!(claude.contains("\"a\""), "{claude}");
+    assert!(!claude.contains("\"b\""), "{claude}");
+    assert!(claude.contains("\"c\""), "{claude}");
+}
+
 #[test]
 fn mcp_preview_flags_live_only_db_only_and_changed() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部改 a 的 url、新增 b，且不再触发 list：预览应报“内容不同”与“仅配置文件”
     std::fs::write(
@@ -2326,7 +2898,7 @@ fn mcp_diff_verbs_are_surgical_to_one_entry() {
     let (context, _home) = mcp_test_context(
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部同时修改 a、b：出现两条 changed 差异
     std::fs::write(
@@ -2406,7 +2978,7 @@ fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
     let (context, _home) = mcp_test_context(
         "model = \"gpt-5\"\n\n[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n\n[scale]\nkeep = true\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部把两条都改了，且把顺序调换成 b、a
     std::fs::write(
@@ -2453,7 +3025,7 @@ fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
 #[test]
 fn mcp_batch_diff_live_aborts_without_writing_when_one_entry_fails() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
     let before = read_config_text(&context);
     let backups = config_backup_count(&context);
 
@@ -2482,7 +3054,7 @@ fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
     let (context, _home) = mcp_test_context(
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n\n[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
     );
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 外部只改了 a、b；c 保持原样
     std::fs::write(
@@ -2514,7 +3086,7 @@ fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
 #[test]
 fn mcp_preview_ignores_comment_only_difference() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // 只在条目内加一行注释：建模字段全等 = 语义等价，不算差异
     std::fs::write(
@@ -2529,7 +3101,7 @@ fn mcp_preview_ignores_comment_only_difference() {
 #[test]
 fn mcp_restore_keeps_live_text_for_semantically_equal_servers() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // live 侧只多了注释（建模字段一致）：恢复时保留 live 原文，不回滚注释
     std::fs::write(
@@ -2557,7 +3129,7 @@ fn mcp_restore_keeps_live_text_for_semantically_equal_servers() {
 #[test]
 fn mcp_preview_ignores_blank_line_only_difference() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     std::fs::write(
         context.paths.codex_config(),
@@ -2589,7 +3161,7 @@ fn mcp_preview_ignores_legacy_empty_mcp_root_header() {
 #[test]
 fn mcp_preview_empty_when_mirror_matches_live() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     let preview = context.mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
@@ -2600,7 +3172,7 @@ fn mcp_preview_empty_when_mirror_matches_live() {
 #[test]
 fn mcp_preview_fails_when_live_unparseable() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
-    context.import_mcp_from_live().unwrap();
+    import_mcp_from_live(&context);
 
     // live 无法解析：预览报错，前端进入“仅可从数据库恢复”降级模式
     std::fs::write(context.paths.codex_config(), "not [ valid").unwrap();

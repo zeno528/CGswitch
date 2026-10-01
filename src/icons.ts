@@ -24,9 +24,14 @@ const LABELS: Record<string, string> = {
   get "xiaomi-mimo"() { return i18next.t("preset.mimo"); },
   get hunyuan() { return i18next.t("providerName.hunyuan"); },
   get volcengine() { return i18next.t("providerName.volcengine"); },
+  tencentcloud: "Tencent Cloud",
+  "siliconcloud-siliconflow": "SiliconFlow",
+  get longcat() { return i18next.t("preset.longcat"); },
+  anthropic: "Anthropic",
+  claude: "Claude",
 };
 
-const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter", "custom", "qwen", "xai"]);
+const THEME_INVERTED_IDS = new Set(["openai-chatgpt", "opencode", "xiaomi-mimo", "openrouter", "custom", "xai", "anthropic"]);
 
 export interface ProviderIcon {
   id: string;

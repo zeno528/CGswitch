@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject } from "react";
+import { Activity, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -7,16 +7,17 @@ import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
-import { getMcpDiffBadge, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
+import ClaudeProfilesView from "../features/claude/ClaudeProfilesView";
 import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
-import { AppUpdateProvider } from "../features/updates/AppUpdateProvider";
-import { setupI18n } from "../i18n";
+import { AppUpdateProvider, UpdateNotice } from "../features/updates/AppUpdateProvider";
+import { setupI18n, type resources } from "../i18n";
 import type { AppState } from "../types";
 import { switchProfileFromTray } from "./traySwitch";
 
@@ -37,6 +38,9 @@ const checkMcpDiff = () =>
 // 进场动画的作用范围沿用原 CSS 动画的选择器：任何新挂载的页内容元素都整段上浮。
 const PAGE_ENTER_TARGET =
   ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
+
+/// 侧栏条目/分组标题的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
+type SidebarLabelKey = `nav.${keyof (typeof resources)["zh-CN"]["common"]["nav"]}`;
 
 /// 页面进场动画：沿原 cubic-bezier(0.16,1,0.35,1) 曲线做 8px 上浮，但位移逐帧量化到整设备像素。
 /// Chromium 渲染合成变换时本就按整设备像素取样：曲线尾段的亚像素爬行不会产生更细腻的运动，
@@ -75,17 +79,19 @@ function animatePageEnter(el: Element) {
   el.animate(frames, { duration: Math.round(total) });
 }
 
-/// 与原 CSS 动画语义一致：切页、设置分节切换、各页内部重挂载出现的新页内容都播放一次，
-/// 同一元素不重复播放。首扫用 useLayoutEffect 保证首帧就停在 8px 起点，之后交给
-/// MutationObserver 在微任务里（绘制前）接住后续挂载。
-function usePageEnterAnimation(mainRef: { current: HTMLElement | null }) {
+/// 与原 CSS 动画语义一致：每次进入页面（首次挂载、切页、切回保活页）页内容上浮一次，
+/// 各页内部重挂载出现的新页内容也播放。effect 以 view 为依赖：切回已保活的页面时 DOM
+/// 不变、MutationObserver 收不到，靠重跑 scan 补播；observer 只负责同页内部的新挂载，
+/// played 随 effect 重建，因此同一次停留内同一元素不会重复播。保活页隐藏后仍在 DOM 里
+/// （display:none），scan 按 offsetParent 跳过，不给看不见的页面播动画。
+function usePageEnterAnimation(mainRef: { current: HTMLElement | null }, view: AppView) {
   useLayoutEffect(() => {
     const main = mainRef.current;
     if (!main) return;
     const played = new WeakSet<Element>();
     const scan = () => {
       for (const el of main.querySelectorAll(PAGE_ENTER_TARGET)) {
-        if (played.has(el)) continue;
+        if ((el as HTMLElement).offsetParent === null || played.has(el)) continue;
         played.add(el);
         animatePageEnter(el);
       }
@@ -94,7 +100,7 @@ function usePageEnterAnimation(mainRef: { current: HTMLElement | null }) {
     const observer = new MutationObserver(scan);
     observer.observe(main, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [mainRef]);
+  }, [mainRef, view]);
 }
 
 function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
@@ -158,8 +164,8 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
 
 export default function AppShell() {
   const [view, setView] = useState<AppView>("profiles");
-  const [profilesReset, setProfilesReset] = useState(0);
-  const [mcpReset, setMcpReset] = useState(0);
+  // 切页记忆：进过的页面保活（Activity hidden），未访问页连渲染都不发生，冷启动零新增。
+  const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["profiles"]));
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
   // 侧栏角标复用 MCP 页的差异计数文案，避免同一件事在两处各写一份
@@ -176,9 +182,16 @@ export default function AppShell() {
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
-  // 页面进场动画：挂在 <main> 上监听页内容挂载（见 usePageEnterAnimation）
+  // 页面进场动画：挂在 <main> 上监听页内容挂载，切回保活页时补播（见 usePageEnterAnimation）
   const mainRef = useRef<HTMLElement>(null);
-  usePageEnterAnimation(mainRef);
+  usePageEnterAnimation(mainRef, view);
+  // 首次进入的页面在渲染期就补进挂载清单（React 丢弃中间渲染、不提交空帧）。
+  // 若放到 useEffect 里，切页第一帧是「旧页已隐藏、新页未挂载」的空白主区域——
+  // 浏览器先画出这个空帧再补挂载，正是首次进入各页闪一下的来源；
+  // 第二次进入已在清单内，单次渲染直接显隐切换，所以不闪。
+  if (!visitedViews.has(view)) {
+    setVisitedViews(new Set(visitedViews).add(view));
+  }
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
   const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
@@ -292,7 +305,7 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [startupReady, activationEpoch]);
 
-  // 首屏稳定后预热管理页数据（MCP 列表 / Skill / 插件 / 市场）：与差异检查同一波延迟，
+  // 首屏稳定后预热管理页数据（MCP 列表 / Skill / 插件 / 市场 / Claude 供应商与 Claude MCP）：与差异检查同一波延迟，
   // fire-and-forget、失败无感——预热失败时页面进入仍走各页自己的加载路径。
   // 只在启动后跑一次；进页后的静默刷新由各页自持。各页首帧吃这批缓存直出（缓存在
   // useState 里同步初始化），启动后立刻点任何管理页都是整页内容，不出现转圈。
@@ -303,6 +316,8 @@ export default function AppShell() {
       void loadSkills().catch(() => undefined);
       void loadPlugins().catch(() => undefined);
       void loadPluginMarketplaces().catch(() => undefined);
+      void loadClaudeMcpServers().catch(() => undefined);
+      void loadClaudeProfiles().catch(() => undefined);
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [startupReady]);
@@ -316,43 +331,64 @@ export default function AppShell() {
     updateScrollbarSize();
   }, []);
 
-  const goProfiles = () => {
-    if (view === "profiles") return;
-    setProfilesReset((value) => value + 1);
-    setView("profiles");
-  };
-
-  const goMcp = () => {
-    if (view === "mcp") return;
-    setMcpReset((value) => value + 1);
-    setView("mcp");
-  };
-
-  const goPlugins = () => {
-    if (view === "plugins") return;
-    setView("plugins");
-  };
-
-  const goSkills = () => {
-    if (view === "skills") return;
-    setView("skills");
-  };
-
-  const goSettings = () => {
-    if (view === "settings") return;
-    setView("settings");
-  };
-
-  const goAccounts = () => {
-    if (view === "accounts") return;
-    setView("accounts");
-  };
-
+  // 切页 = setView 换 Activity 的显隐，不强制重挂载：重复点击当前页由 setState bail-out
+  // 保证无副作用，进入过的页面保住工作现场（编辑草稿、弹窗、页内滚动）。
   const navClass = "apple-sidebar-nav-button app-selection-state";
+
+  // 各页内容唯一清单：Record 保证新增 AppView 分支时漏页是编译错误。
+  // 渲染时只挂载进过的页面，当前页 visible、其余 hidden——hidden 的页面 effects 已
+  // 清理（不加载、不轮询），state 与 DOM 保留，切回即恢复现场，effects 重跑后数据照常刷新。
+  const renderPages = (state: AppState) => {
+    const pages: Record<AppView, ReactNode> = {
+      profiles: <ProfilesView state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={() => setView("accounts")} />,
+      mcp: <McpView activationEpoch={activationEpoch} />,
+      plugins: <PluginsView state={state} />,
+      skills: <SkillsView activationEpoch={activationEpoch} />,
+      claude: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
+      accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />,
+      settings: <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
+    };
+    return (Object.keys(pages) as AppView[]).map((pageView) =>
+      visitedViews.has(pageView) ? (
+        <Activity key={pageView} mode={view === pageView ? "visible" : "hidden"}>{pages[pageView]}</Activity>
+      ) : null,
+    );
+  };
+
+  // 侧栏分组（C 方案）：Codex / Claude / 通用导航。新增页面 = 数组加一条，不再手写按钮块；
+  // 产品分组标识在收缩态仍可见，通用导航不显示多余分组标题。icon 存 ReactNode 以保留各页现有图标形态。
+  // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
+  const sidebarGroups: { key: string; labelKey: SidebarLabelKey; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; titleText?: string; onSelect: () => void }[] }[] = [
+    {
+      key: "codex",
+      labelKey: "nav.groupCodex",
+      items: [
+        { view: "profiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("profiles") },
+        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
+        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
+      ],
+    },
+    {
+      key: "claude",
+      labelKey: "nav.groupClaude",
+      items: [
+        { view: "claude", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("claude") },
+      ],
+    },
+    {
+      key: "common",
+      labelKey: "nav.groupCommon",
+      items: [
+        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
+        { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
+        { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
+      ],
+    },
+  ];
 
   return (
     <FeedbackProvider>
-      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={goSettings} openAccounts={goAccounts} />
+      <TrayActions stateRef={stateRef} refresh={refresh} openSettings={() => setView("settings")} openAccounts={() => setView("accounts")} />
       {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
       <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
@@ -369,7 +405,7 @@ export default function AppShell() {
         </div>
 
         <div className="apple-workspace flex min-h-0 flex-1">
-          <aside className={`apple-sidebar relative h-full shrink-0 ${sidebar.sidebarCollapsed ? "apple-sidebar--collapsed" : ""}`}>
+          <aside className={`apple-sidebar relative flex h-full shrink-0 flex-col ${sidebar.sidebarCollapsed ? "apple-sidebar--collapsed" : ""}`}>
             <div className="apple-sidebar-brand-row" data-tauri-drag-region>
               <div
                 className="apple-sidebar-brand flex w-fit cursor-pointer items-center"
@@ -390,48 +426,35 @@ export default function AppShell() {
                 <span className="apple-sidebar-flyout" aria-hidden="true">{t(sidebar.sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}</span>
               ) : null}
             </div>
-            <nav className="mx-1.5 mt-3 space-y-1">
-              <button type="button" className={navClass} data-active={view === "profiles" ? "true" : undefined} aria-label={t("nav.providers")} onClick={goProfiles} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <Layers2 strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.providers")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.providers")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "mcp" ? "true" : undefined} aria-label={t("nav.mcp")} title={mcpBadgeTitle} onClick={goMcp} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                {/* 角标锚在图标上：收缩态只剩图标时位置依然正确，且 --sidebar-bg 与 --panel-bg 同色，角标描边不用另配 */}
-                <span className="relative flex shrink-0">
-                  <McpIcon className="h-[18px] w-[18px]" />
-                  {mcpBadge ? <span className="apple-count-badge" aria-hidden="true">{mcpBadge}</span> : null}
-                </span>
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.mcp")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.mcp")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "plugins" ? "true" : undefined} aria-label={t("nav.plugins")} onClick={goPlugins} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <Blocks strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.plugins")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.plugins")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "skills" ? "true" : undefined} aria-label={t("nav.skills")} onClick={goSkills} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <Puzzle strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.skills")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.skills")}</span> : null}
-              </button>
+            <nav className="mx-1.5 mt-3 space-y-3">
+              {sidebarGroups.map((group) => (
+                <div key={group.key} className="apple-sidebar-group" role="group" aria-label={group.key === "common" ? undefined : t(group.labelKey)}>
+                  {group.key !== "common" ? <div className="apple-sidebar-group-label" aria-hidden="true">
+                    {group.key === "codex" ? <img src="/codex.svg" alt="" /> : null}
+                    {group.key === "claude" ? <img src="/claude-code.svg" alt="" /> : null}
+                    <span className="apple-sidebar-label">{t(group.labelKey)}</span>
+                  </div> : null}
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <button key={item.view} type="button" className={navClass} data-active={view === item.view ? "true" : undefined} aria-label={t(item.labelKey)} title={item.titleText} onClick={item.onSelect} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
+                        <span className="relative flex shrink-0">
+                          {item.icon}
+                          {item.badgeText ? <span className="apple-count-badge" aria-hidden="true">{item.badgeText}</span> : null}
+                        </span>
+                        <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>
+                        {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t(item.labelKey)}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </nav>
-            <div className="absolute inset-x-1.5 bottom-4 flex flex-col gap-1.5">
-              <button type="button" className={navClass} data-active={view === "accounts" ? "true" : undefined} aria-label={t("nav.accounts")} onClick={goAccounts} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <CircleUserRound strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.accounts")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.accounts")}</span> : null}
-              </button>
-              <button type="button" className={navClass} data-active={view === "settings" ? "true" : undefined} aria-label={t("nav.settings")} onClick={() => goSettings()} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
-                <SettingsIcon strokeWidth={2} aria-hidden="true" />
-                <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t("nav.settings")}</span>
-                {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t("nav.settings")}</span> : null}
-              </button>
-            </div>
+            <UpdateNotice className="update-notice--sidebar" sidebarCollapsed={sidebar.sidebarCollapsed} sidebarFlyoutArmed={sidebar.sidebarFlyoutArmed} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)} />
           </aside>
 
-          <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
-            <div key={state ? view : "loading"} className="apple-page-enter">
+          <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-[var(--main-top-inset)]">
+            {/* key 不含 view：view 变化只切 Activity 显隐，外层整树重挂载会清掉保活现场 */}
+            <div key={state ? "app" : "loading"} className="apple-page-enter">
               {!state ? (
                 <div className="startup-skeleton" aria-busy="true">
                   <div className="startup-skeleton__title" />
@@ -441,18 +464,8 @@ export default function AppShell() {
                   <div className="startup-skeleton__list" />
                   {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
                 </div>
-              ) : view === "profiles" ? (
-                <ProfilesView key={profilesReset} state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={goAccounts} />
-              ) : view === "mcp" ? (
-                <McpView key={mcpReset} activationEpoch={activationEpoch} />
-              ) : view === "plugins" ? (
-                <PluginsView state={state} />
-              ) : view === "skills" ? (
-                <SkillsView activationEpoch={activationEpoch} />
-              ) : view === "accounts" ? (
-                <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />
               ) : (
-                <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} onHome={goProfiles} />
+                renderPages(state)
               )}
             </div>
           </main>

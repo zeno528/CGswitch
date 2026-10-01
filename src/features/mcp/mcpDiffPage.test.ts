@@ -95,14 +95,11 @@ describe("MCP 差异二级页", () => {
     expect(viewSource).toContain("useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);");
   });
 
-  it("差异默认全部展开（单台差异只有几行，折叠默认态多一次点击）", () => {
-    expect(pageSource).toContain("const [collapsed, setCollapsed] = useState<Set<string>>(new Set());");
-    expect(pageSource).toContain("const expanded = !collapsed;");
-  });
-
-  it("展开卡片继承 MCP 列表卡片：全局 apple-disclosure 动画 + mcp-tools-disclosure 布局 + mcp-expanded-card__header 头部", () => {
-    expect(pageSource).toContain('className={`apple-disclosure mcp-tools-disclosure ${expanded ? "apple-disclosure--open" : ""}`}');
-    expect(pageSource).toContain("apple-disclosure__content\" aria-hidden={!expanded} inert={!expanded}");
+  it("差异始终展开，保留 MCP 卡片头部", () => {
+    expect(pageSource).toContain('<McpDiffDetail entry={entry} />');
+    expect(pageSource).not.toContain("apple-disclosure");
+    expect(pageSource).not.toContain("collapsed");
+    expect(pageSource).not.toContain("onToggle");
     expect(pageSource).toContain('className="apple-list-row mcp-expanded-card__header"');
     expect(pageSource).not.toContain("mcp-diff-detail");
   });
@@ -122,8 +119,9 @@ describe("MCP 差异二级页", () => {
     expect(pageSource).not.toContain("apple-inline-btn");
   });
 
-  it("卡片是折叠切换控件，禁用文本选中避免双击误选", () => {
-    expect(pageSource).toContain('className="apple-group select-none"');
+  it("卡片不再响应空白处点击，正文允许选中", () => {
+    expect(pageSource).toContain('className="apple-group"');
+    expect(pageSource).not.toContain("onClick={(event) => {");
   });
 
   it("标题栏提供悬停说明卡片，解释红绿语义与两个动词，关键词加粗", () => {
@@ -171,16 +169,16 @@ describe("MCP 差异二级页", () => {
     // 批量：同上，名单换成被处理的那几台
     expect(viewSource).toContain('await refresh(true, verb === "revert" ? actions.map((action) => action.name) : []);');
     // 编辑保存：不是"跳过它、其余全连"（那等于全量重探），而是谁都不连，
-    // 随后 probeServer 只验刚保存的那一台的连通性——保存的目的是"这台还能不能用"，
-    // 不是工具清单（那是点扳手才有的事），所以这里不能借 probeTools
+    // 随后 probe 只验刚保存的那一台的连通性——保存的目的是"这台还能不能用"，
+    // 不是工具清单（那是点扳手才有的事），所以这里不能传 includeTools
     const saveAnchor = viewSource.indexOf("onBack={(savedServer)");
     const savePath = viewSource.slice(saveAnchor, saveAnchor + 700);
     expect(savePath).toContain("refresh(true, [])");
     // 静默：保存已经弹过"已保存"，连通结果看那一行的状态灯，不再叠一条通知
-    expect(savePath).toContain("probeServer(savedServer, false, false)");
+    expect(savePath).toContain("probe(savedServer, { manual: false })");
     // 探测不等 refresh 的返回值（它可能为 null 把探测整个吞掉），顺序也不能反
-    expect(savePath.indexOf("await refresh(true, [])")).toBeLessThan(savePath.indexOf("probeServer(savedServer"));
-    expect(savePath).not.toContain("probeTools");
+    expect(savePath.indexOf("await refresh(true, [])")).toBeLessThan(savePath.indexOf("probe(savedServer"));
+    expect(savePath).not.toContain("includeTools");
     expect(viewSource).not.toContain("skip");
   });
 

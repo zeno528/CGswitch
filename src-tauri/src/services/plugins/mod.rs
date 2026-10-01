@@ -77,6 +77,24 @@ pub struct PluginUpdate {
     pub version: String,
 }
 
+/// Skill 启停的目标工具：同一份仓库正本分发到各工具自己的 skills 目录。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillTool {
+    Codex,
+    Claude,
+}
+
+impl SkillTool {
+    /// 目标工具的 skills 分发根（相对用户家目录）；两边同为 `<name>/SKILL.md` 布局。
+    pub fn skills_dir(self, home: &Path) -> std::path::PathBuf {
+        match self {
+            SkillTool::Codex => home.join(".codex/skills"),
+            SkillTool::Claude => home.join(".claude/skills"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct SkillSummary {
     pub name: String,
@@ -86,6 +104,8 @@ pub struct SkillSummary {
     pub source_path: Option<String>,
     pub update_available: bool,
     pub enabled: bool,
+    /// Claude Code 侧的分发状态（`~/.claude/skills/<name>` 是否存在）。
+    pub claude_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]

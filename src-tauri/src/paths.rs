@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::{err, AppResult};
+use crate::error::{app_err, AppResult};
 
 #[derive(Debug, Clone)]
 pub struct AppPaths {
@@ -17,11 +17,21 @@ pub struct AppPaths {
     /// 运行日志目录：tauri-plugin-log 按大小轮转写入，保留最近几个归档
     pub logs: PathBuf,
     pub codex_home: PathBuf,
+    /// Claude Code 的家目录（~/.claude）：供应商配置写入其下 settings.json。
+    pub claude_home: PathBuf,
 }
 
 impl AppPaths {
     pub fn codex_config(&self) -> PathBuf {
         self.codex_home.join("config.toml")
+    }
+
+    /// Claude Code 用户范围 MCP 配置（官方格式：用户目录下的 ~/.claude.json）。
+    pub fn claude_mcp_config(&self) -> PathBuf {
+        self.claude_home
+            .parent()
+            .unwrap_or(&self.claude_home)
+            .join(".claude.json")
     }
 
     pub fn ensure(&self) -> AppResult<()> {
@@ -33,7 +43,7 @@ impl AppPaths {
             &self.logs,
         ] {
             std::fs::create_dir_all(dir)
-                .map_err(|error| err(format!("无法创建目录 {}: {error}", dir.display())))?;
+                .map_err(|error| app_err!("无法创建目录 {}: {error}", dir.display()))?;
         }
         Ok(())
     }
@@ -54,6 +64,7 @@ pub fn from_home(home: &Path) -> AppResult<AppPaths> {
         codex_files_backup: root.join("backups").join("codex-files"),
         logs: root.join("logs"),
         codex_home: home.join(".codex"),
+        claude_home: home.join(".claude"),
         root,
     })
 }
@@ -68,6 +79,14 @@ pub fn now_ms() -> u128 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|value| value.as_millis())
+        .unwrap_or_default()
+}
+
+/// Unix 秒（i64 语义由调用方按需转换）：备份文件名与 token 时间戳共用同一个"当前时刻"定义。
+pub fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs())
         .unwrap_or_default()
 }
 
@@ -86,5 +105,7 @@ mod tests {
             paths.codex_config(),
             home.join(".codex").join("config.toml")
         );
+        assert_eq!(paths.claude_home, home.join(".claude"));
+        assert_eq!(paths.claude_mcp_config(), home.join(".claude.json"));
     }
 }

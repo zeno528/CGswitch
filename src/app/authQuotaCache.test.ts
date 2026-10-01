@@ -13,8 +13,6 @@ import type { ProfileBalanceInfo } from "../types";
 const quota = (usage: number): ProfileBalanceInfo => ({
   currency: "",
   total_balance: "",
-  granted_balance: "",
-  topped_up_balance: "",
   usage_percent: usage,
   usage_reset: null,
   weekly_usage_percent: null,

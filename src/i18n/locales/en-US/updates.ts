@@ -1,8 +1,8 @@
 /** App update strings (status-bar notice, upgrade flow). */
 export default {
   notice: {
-    title: "New version {{version}} is ready",
-    available: "New version available",
+    title: "New version available: v{{version}}",
+    available: "Update",
     updateNow: "Restart to update",
     later: "Later",
     installing: "Downloading…",

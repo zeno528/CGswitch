@@ -1,4 +1,5 @@
 import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type BuiltinPreset } from "../presets";
+import { splitEnvExtras } from "../features/claude/profileEnvText";
 import type {
   AppState,
   DatabaseBackupInfo,
@@ -10,6 +11,7 @@ import type {
   PluginPreview,
   PluginSkill,
   PluginSummary,
+  ClaudeProfileDetail,
   SkillSummary,
   SkillCandidate,
   ProfileBalanceInfo,
@@ -201,9 +203,37 @@ const webSkills: SkillSummary[] = [
     source_path: null,
     update_available: false,
     enabled: true,
+    claude_enabled: false,
   },
 ];
 const webLocalSkillPath = "C:\\Users\\<user>\\.agents\\skills\\local-skill";
+
+// Claude Code 供应商 fixture：与后端 claude_profiles 表同构，save/apply/delete 有状态
+const webClaudeProfiles: ClaudeProfileDetail[] = [
+  {
+    id: "cla-demo-1",
+    name: "BigModel 中转",
+    base_url: "https://open.bigmodel.cn/api/anthropic",
+    auth_token: "demo-token",
+    model: "glm-5.3[1m]",
+    description: "演示配置",
+    fetched_models: ["glm-5.3", "glm-5.3-air", "glm-5.3[1m]"],
+    kind: "zhipu",
+    admin_url: "https://open.bigmodel.cn",
+    extra_env: null,
+    raw_settings: JSON.stringify({ model: "sonnet", env: {
+      ANTHROPIC_BASE_URL: "https://open.bigmodel.cn/api/anthropic",
+      ANTHROPIC_AUTH_TOKEN: "demo-token",
+      ANTHROPIC_MODEL: "glm-5.3[1m]",
+    } }, null, 2),
+    icon: "zhipu",
+    show_balance: false,
+    sort_order: 0,
+    updated_at: "1700000000000",
+  },
+];
+let webActiveClaudeProfileId: string | null = "cla-demo-1";
+let webClaudeCommonSettings: string | null = null;
 
 let webMarketplaces: PluginMarketplace[] = [
   {
@@ -532,14 +562,34 @@ let webMcpServers: McpServerSpec[] = [
     env_http_headers: {},
   },
 ];
+let webClaudeMcpServers = structuredClone(webMcpServers);
+
+function saveWebMcpServer(original: string | null, spec: McpServerSpec, tool: "codex" | "claude") {
+  const name = original ?? spec.name;
+  const current = tool === "codex" ? webMcpServers : webClaudeMcpServers;
+  const other = tool === "codex" ? webClaudeMcpServers : webMcpServers;
+  const firstInstall = !current.some((server) => server.name === name) && !other.some((server) => server.name === name);
+  const update = (servers: McpServerSpec[], enable: boolean) => {
+    const previous = servers.find((server) => server.name === name);
+    const next = servers.filter((server) => server.name !== name);
+    if (enable || previous || firstInstall) next.push({ ...structuredClone(spec), enabled: enable ? null : previous?.enabled ?? null });
+    return next;
+  };
+  if (tool === "codex") {
+    webMcpServers = update(current, true);
+    webClaudeMcpServers = update(other, false);
+  } else {
+    webClaudeMcpServers = update(current, true);
+    webMcpServers = update(other, false);
+  }
+}
+
 // 与后端一致：激活状态只由“应用”显式建立，添加/捕获供应商不激活
 let webActiveProfileId: string | null = null;
 const webBalanceCache: Record<string, ProfileBalanceInfo> = {};
 const webChatgptQuota: ProfileBalanceInfo = {
   currency: "",
   total_balance: "",
-  granted_balance: "",
-  topped_up_balance: "",
   usage_percent: 18,
   usage_reset: "3h12m",
   usage_reset_at: Date.now() + 3 * 60 * 60 * 1000 + 12 * 60 * 1000,
@@ -586,6 +636,7 @@ function webState(): AppState {
   return {
     profiles: [...webProfiles],
     active_profile_id: webActiveProfileId,
+    active_claude_profile_id: webActiveClaudeProfileId,
     codex: {
       running: true,
       display_path: "OpenAI.Codex_2p2nqsd0c76g0!App",
@@ -609,12 +660,58 @@ function renderMcpFragmentWeb(spec: McpServerSpec): string {
   if (spec.bearer_token_env_var) {
     lines.push(`bearer_token_env_var = "${spec.bearer_token_env_var}"`);
   }
+  if (spec.enabled !== null) lines.push(`enabled = ${spec.enabled}`);
   const env = Object.entries(spec.env);
   if (env.length) {
     lines.push(`[mcp_servers.${spec.name}.env]`);
     for (const [key, value] of env) lines.push(`${key} = "${value}"`);
   }
   return lines.join("\n") + "\n";
+}
+
+function renderClaudeMcpEntryWeb(spec: McpServerSpec): string {
+  const entry: Record<string, unknown> = spec.command
+    ? { type: "stdio", command: spec.command }
+    : { type: "http", url: spec.url ?? "" };
+  if (spec.args.length) entry.args = spec.args;
+  if (Object.keys(spec.env).length) entry.env = spec.env;
+  const headers = { ...spec.http_headers } as Record<string, string>;
+  for (const [key, variable] of Object.entries(spec.env_http_headers)) headers[key] = `\${${variable}}`;
+  if (spec.bearer_token_env_var && !headers.Authorization) headers.Authorization = `Bearer \${${spec.bearer_token_env_var}}`;
+  if (Object.keys(headers).length) entry.headers = headers;
+  return JSON.stringify(entry, null, 2);
+}
+
+function parseClaudeMcpEntryWeb(name: string, text: string): McpServerSpec {
+  const entry = JSON.parse(text) as Record<string, unknown>;
+  const command = typeof entry.command === "string" ? entry.command : null;
+  const url = typeof entry.url === "string" ? entry.url : null;
+  if ((command ? 1 : 0) + (url ? 1 : 0) !== 1) throw new Error("Claude MCP 必须包含 command 或 url");
+  const headers = entry.headers && typeof entry.headers === "object" ? entry.headers as Record<string, unknown> : {};
+  const http_headers: Record<string, string> = {};
+  const env_http_headers: Record<string, string> = {};
+  let bearer_token_env_var: string | null = null;
+  for (const [key, raw] of Object.entries(headers)) {
+    const value = String(raw);
+    const bearer = /^Bearer \$\{(.+)\}$/.exec(value);
+    const variable = /^\$\{(.+)\}$/.exec(value);
+    if (bearer && key.toLowerCase() === "authorization") bearer_token_env_var = bearer[1];
+    else if (variable) env_http_headers[key] = variable[1];
+    else http_headers[key] = value;
+  }
+  return {
+    name,
+    enabled: null,
+    startup_timeout_sec: null,
+    tool_timeout_sec: null,
+    command,
+    args: Array.isArray(entry.args) ? entry.args.map(String) : [],
+    env: entry.env && typeof entry.env === "object" ? Object.fromEntries(Object.entries(entry.env as Record<string, unknown>).map(([key, value]) => [key, String(value)])) : {},
+    url,
+    bearer_token_env_var,
+    http_headers,
+    env_http_headers,
+  };
 }
 
 // 浏览器调试模式不查后端命令，用预设的展示元数据合成最小 config 模板
@@ -852,8 +949,6 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
             {
               currency: "",
               total_balance: "",
-              granted_balance: "",
-              topped_up_balance: "",
               usage_percent: 15,
               usage_reset: "2h23m",
               usage_label: "5小时",
@@ -871,8 +966,6 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           {
             currency: "CNY",
             total_balance: "110.00",
-            granted_balance: "10.00",
-            topped_up_balance: "100.00",
             usage_percent: null,
             usage_reset: null,
             weekly_usage_percent: null,
@@ -881,6 +974,15 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         ],
         latency_ms: 210,
       } as T;
+    }
+    case "get_claude_profile_balance": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      if (profile.kind !== "deepseek" && profile.kind !== "minimax") throw new Error("该 Claude 供应商不支持用量查询");
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return profile.kind === "minimax"
+        ? { is_available: true, balance_infos: [{ currency: "", total_balance: "", usage_percent: 15, usage_reset: "2h23m", usage_label: "5小时", weekly_usage_percent: 4, weekly_reset: "5d21h", weekly_label: "7天" }], latency_ms: 210 } as T
+        : { is_available: true, balance_infos: [{ currency: "CNY", total_balance: "110.00", usage_percent: null, usage_reset: null, weekly_usage_percent: null, weekly_reset: null }], latency_ms: 210 } as T;
     }
     case "export_database": {
       const name = databaseBackupName();
@@ -915,8 +1017,13 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     }
     case "rename_profile": {
-      const profile = webProfiles.find((item) => item.id === args?.id);
-      if (profile) profile.name = String(args?.name ?? profile.name);
+      const profiles = args?.tool === "claude" ? webClaudeProfiles : webProfiles;
+      const profile = profiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("供应商配置不存在");
+      const name = String(args?.name ?? "").trim();
+      if (!name || new TextEncoder().encode(name).length > 50) throw new Error("供应商名称长度必须在 1 到 50 个字符之间");
+      profile.name = name;
+      profile.updated_at = String(Date.now());
       return undefined as T;
     }
     case "set_profile_icon": {
@@ -1034,14 +1141,170 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         webSkills.push({
           name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理",
           source_url: null, store_path: webLocalSkillPath, source_path: webLocalSkillPath,
-          update_available: false, enabled: false,
+          update_available: false, enabled: false, claude_enabled: false,
         });
       }
       return 1 as T;
     case "enable_skill":
-    case "disable_skill":
+    case "disable_skill": {
+      // 与后端一致：按 tool 只翻动对应端的分发状态，两端互不影响
+      const field = args?.tool === "claude" ? "claude_enabled" : "enabled";
+      const skill = webSkills.find((item) => item.name === args?.name);
+      if (skill) skill[field] = command === "enable_skill";
+      return undefined as T;
+    }
     case "delete_skill":
       return undefined as T;
+    case "claude_get_common_settings":
+      return webClaudeCommonSettings as T;
+    case "claude_save_common_settings": {
+      const text = args?.text as string | null;
+      if (text !== null && splitEnvExtras(text) === undefined) throw new Error("settings.json 无效");
+      webClaudeCommonSettings = text;
+      return undefined as T;
+    }
+    case "claude_list_profiles":
+      return webClaudeProfiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        base_url: profile.base_url,
+        has_token: Boolean(profile.auth_token),
+        model: profile.model,
+        description: profile.description,
+        icon: profile.icon,
+        admin_url: profile.admin_url,
+        kind: profile.kind,
+        show_balance: profile.show_balance,
+        updated_at: profile.updated_at,
+      })) as T;
+    case "claude_get_profile": {
+      // 与后端一致：详情含 token 明文供编辑回显
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      return { ...profile } as T;
+    }
+    case "claude_capture_profile": {
+      const name = String(args?.name ?? "").trim();
+      if (!name) throw new Error("配置名称不能为空");
+      const timestamp = String(Date.now());
+      const captured: ClaudeProfileDetail = {
+        id: `cla-web-${timestamp}`,
+        name,
+        base_url: "https://relay.example/v1",
+        auth_token: "demo-token",
+        model: "example-model",
+        description: null,
+        fetched_models: [],
+        kind: null,
+        admin_url: null,
+        extra_env: null,
+        raw_settings: JSON.stringify({ model: "sonnet", env: {
+          ANTHROPIC_BASE_URL: "https://relay.example/v1",
+          ANTHROPIC_AUTH_TOKEN: "demo-token",
+          ANTHROPIC_MODEL: "example-model",
+        } }, null, 2),
+        icon: null,
+        show_balance: false,
+        sort_order: webClaudeProfiles.length,
+        updated_at: timestamp,
+      };
+      webClaudeProfiles.push(captured);
+      return { ...captured } as T;
+    }
+    case "claude_save_profile": {
+      const timestamp = String(Date.now());
+      const base = { name: String(args?.name ?? "").trim(), base_url: (args?.baseUrl as string | null) ?? null, auth_token: (args?.authToken as string | null) ?? null, model: (args?.model as string | null) ?? null, description: (args?.description as string | null) ?? null, fetched_models: (args?.fetchedModels as string[] | null) ?? [], kind: (args?.kind as string | null) ?? null, admin_url: (args?.adminUrl as string | null) ?? null, extra_env: (args?.extraEnv as string | null) ?? null, raw_settings: (args?.rawSettings as string | null) ?? null, icon: (args?.icon as string | null) ?? null, show_balance: Boolean(args?.showBalance) };
+      if (!base.name) throw new Error("配置名称不能为空");
+      if (base.raw_settings !== null) {
+        const settings = JSON.parse(base.raw_settings) as Record<string, unknown>;
+        if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("settings.json 顶层必须是 JSON 对象");
+        const env = (settings.env ?? {}) as Record<string, unknown>;
+        if (!env || typeof env !== "object" || Array.isArray(env) || Object.values(env).some((value) => typeof value !== "string")) throw new Error("settings.json 的 env 必须是字符串键值对象");
+        base.base_url = (env.ANTHROPIC_BASE_URL as string | undefined) ?? null;
+        base.auth_token = (env.ANTHROPIC_AUTH_TOKEN as string | undefined) ?? (env.ANTHROPIC_API_KEY as string | undefined) ?? null;
+        base.model = (env.ANTHROPIC_MODEL as string | undefined) ?? null;
+        const extras = Object.fromEntries(Object.entries(env).filter(([key]) => !["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_MODEL"].includes(key)));
+        base.extra_env = Object.keys(extras).length ? JSON.stringify(extras) : null;
+      }
+      if (typeof args?.id === "string") {
+        const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+        if (!profile) throw new Error("Claude 供应商配置不存在");
+        Object.assign(profile, base, { updated_at: timestamp });
+        return { ...profile } as T;
+      }
+      const maxSort = webClaudeProfiles.reduce((max, item) => Math.max(max, item.sort_order), -1);
+      const created: ClaudeProfileDetail = { id: `cla-web-${timestamp}`, ...base, sort_order: maxSort + 1, updated_at: timestamp };
+      webClaudeProfiles.push(created);
+      return { ...created } as T;
+    }
+    case "claude_set_profile_icon": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      profile.icon = (args?.icon as string | null) ?? null;
+      return undefined as T;
+    }
+    case "claude_set_profile_show_balance": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      profile.show_balance = Boolean(args?.enabled);
+      profile.updated_at = String(Date.now());
+      return undefined as T;
+    }
+    case "claude_reorder_profiles": {
+      const ids = (args?.ids as string[] | undefined) ?? [];
+      ids.forEach((id, index) => {
+        const profile = webClaudeProfiles.find((item) => item.id === id);
+        if (profile) profile.sort_order = index;
+      });
+      webClaudeProfiles.sort((a, b) => a.sort_order - b.sort_order);
+      return undefined as T;
+    }
+    case "claude_duplicate_profile": {
+      const source = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!source) throw new Error("Claude 供应商配置不存在");
+      const timestamp = String(Date.now());
+      let candidate = `${source.name} copy`;
+      let counter = 2;
+      while (webClaudeProfiles.some((item) => item.name.toLowerCase() === candidate.toLowerCase())) {
+        candidate = `${source.name} copy ${counter}`;
+        counter += 1;
+      }
+      const maxSort = webClaudeProfiles.reduce((max, item) => Math.max(max, item.sort_order), -1);
+      const copy: ClaudeProfileDetail = { ...source, id: `cla-web-${timestamp}`, name: candidate, sort_order: maxSort + 1, updated_at: timestamp };
+      webClaudeProfiles.push(copy);
+      return { ...copy } as T;
+    }
+    case "claude_test_profile": {
+      const profile = webClaudeProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("Claude 供应商配置不存在");
+      if (!profile.base_url?.trim()) throw new Error("请先填写 API 地址");
+      if (!profile.auth_token?.trim()) throw new Error("请先填写 API Token");
+      return 42 as T;
+    }
+    case "claude_delete_profile": {
+      // 使用中的配置不可删除：与后端守卫一致
+      if (webActiveClaudeProfileId === String(args?.id)) throw new Error("无法删除使用中的 Claude 供应商配置，请先切换到其他配置");
+      const index = webClaudeProfiles.findIndex((item) => item.id === args?.id);
+      if (index < 0) throw new Error("Claude 供应商配置不存在");
+      webClaudeProfiles.splice(index, 1);
+      return undefined as T;
+    }
+    case "claude_apply_profile": {
+      if (!webClaudeProfiles.some((item) => item.id === args?.id)) throw new Error("Claude 供应商配置不存在");
+      webActiveClaudeProfileId = String(args?.id);
+      return undefined as T;
+    }
+    case "claude_fetch_models": {
+      // 与后端一致：Anthropic 兼容 /v1/models，无 Token 直接拒绝
+      if (!String(args?.authToken ?? "").trim()) throw new Error("请先填写 API Token 再获取模型列表");
+      return ["glm-5.3", "glm-5.3-air", "glm-5.3[1m]"] as T;
+    }
+    case "claude_test_connection": {
+      // 浏览器侧不发真实 HTTP：与 claude_test_profile 同口径，校验必填后回固定延迟
+      if (!String(args?.baseUrl ?? "").trim()) throw new Error("请先填写 API 地址");
+      if (!String(args?.authToken ?? "").trim()) throw new Error("请先填写 API Token");
+      return 42 as T;
+    }
     case "list_plugin_skills": {
       // 与后端一致：storePath 仅用于 Tauri 端跳过重复的插件列表解析，Web mock 直接读 fixture。
       const name = String(args?.name ?? "");
@@ -1165,6 +1428,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     }
     case "delete_profile": {
+      // 使用中的配置不可删除：与后端守卫一致
+      if (webActiveProfileId === String(args?.id)) throw new Error("无法删除使用中的供应商配置，请先切换到其他配置");
       const index = webProfiles.findIndex((item) => item.id === args?.id);
       if (index >= 0) webProfiles.splice(index, 1);
       webDescriptions.delete(String(args?.id));
@@ -1229,6 +1494,22 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return String(args?.text ?? "") as T;
     case "list_mcp_servers":
       return [...webMcpServers] as T;
+    case "list_claude_mcp_servers":
+      return [...webClaudeMcpServers] as T;
+    case "get_claude_mcp_server_json": {
+      const server = webClaudeMcpServers.find((item) => item.name === args?.name);
+      return (server ? renderClaudeMcpEntryWeb(server) : null) as unknown as T;
+    }
+    case "save_claude_mcp_server": {
+      const name = String(args?.name ?? "").trim();
+      const original = typeof args?.originalName === "string" ? args.originalName : null;
+      const spec = parseClaudeMcpEntryWeb(name, String(args?.json ?? "{}"));
+      saveWebMcpServer(original, spec, "claude");
+      return undefined as T;
+    }
+    case "delete_claude_mcp_server":
+      webClaudeMcpServers = webClaudeMcpServers.filter((server) => server.name !== args?.name);
+      return undefined as T;
     case "probe_mcp_server": {
       const name = String(args?.name ?? "MCP");
       const includeTools = Boolean(args?.includeTools);
@@ -1261,11 +1542,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "get_mcp_section_toml": {
       // 创建表单预填用：把 mock 列表渲染成 config.toml 片段
-      return webMcpServers.map(renderMcpFragmentWeb).join("\n") as T;
+      return webMcpServers.map((server) => renderMcpFragmentWeb({ ...server, enabled: null })).join("\n") as T;
     }
     case "restore_mcp_from_database":
-      return webMcpServers.length as T;
-    case "import_mcp_from_live":
       return webMcpServers.length as T;
     case "mcp_sync_preview": {
       // web 调试样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异页
@@ -1310,18 +1589,19 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "save_mcp_server": {
       const spec = args?.spec as McpServerSpec;
       const original = typeof args?.originalName === "string" ? args.originalName : null;
-      webMcpServers = webMcpServers.filter((server) => server.name !== (original ?? spec.name));
-      webMcpServers.push(spec);
+      saveWebMcpServer(original, spec, "codex");
       return undefined as T;
     }
     // —— MCP 编辑页双向同步的 web 调试桩（精度有限：仅渲染/解析建模字段，
     //    未建模键与注释不保留；真实保真逻辑在 Rust 侧 toml_edit）——
     case "get_mcp_server_toml": {
       const server = webMcpServers.find((item) => item.name === args?.name);
-      return (server ? renderMcpFragmentWeb(server) : null) as unknown as T;
+      return (server ? renderMcpFragmentWeb({ ...server, enabled: null }) : null) as unknown as T;
     }
-    case "patch_mcp_fragment":
-      return renderMcpFragmentWeb(args?.spec as McpServerSpec) as unknown as T;
+    case "patch_mcp_fragment": {
+      const source = await webInvoke<McpServerSpec>("parse_mcp_fragment", { toml: args?.toml });
+      return renderMcpFragmentWeb({ ...args?.spec as McpServerSpec, enabled: source.enabled }) as unknown as T;
+    }
     case "parse_mcp_fragment": {
       const text = String(args?.toml ?? "");
       const spec: McpServerSpec = {
@@ -1361,6 +1641,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           if (envMatch) spec.env[envMatch[1]] = envMatch[2];
           continue;
         }
+        const enabled = /^enabled\s*=\s*(true|false)(?:\s*#.*)?$/.exec(line);
+        if (enabled) { spec.enabled = enabled[1] === "true"; continue; }
         const match = /^(command|url|bearer_token_env_var|args)\s*=\s*(.+)$/.exec(line);
         if (!match) continue;
         const value = match[2].trim();
@@ -1383,6 +1665,17 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
+    case "set_mcp_server_enabled": {
+      const name = String(args?.name ?? "");
+      const enabled = Boolean(args?.enabled);
+      const servers = args?.tool === "claude" ? webClaudeMcpServers : webMcpServers;
+      const next = servers.map((server) => server.name === name
+        ? { ...server, enabled: enabled ? null : false }
+        : server);
+      if (args?.tool === "claude") webClaudeMcpServers = next;
+      else webMcpServers = next;
+      return undefined as T;
+    }
     case "set_mcp_mirror":
     case "revert_mcp_live":
     case "set_mcp_mirror_entries":

@@ -18,7 +18,7 @@ struct ModelEntry {
     id: String,
 }
 
-const FETCH_TIMEOUT_SECS: u64 = 15;
+pub(super) const FETCH_TIMEOUT_SECS: u64 = 15;
 /// 404/405 响应体截断长度：避免把几十 KB 的 HTML 404 页整页保留到错误串里。
 const ERROR_BODY_MAX_CHARS: usize = 512;
 
@@ -118,13 +118,13 @@ pub fn build_models_url_candidates(base_url: &str) -> Result<Vec<String>, String
 }
 
 /// 是否以 OpenAI 风格的版本段 `/v{N}` 结尾（`/v1`、`.../paas/v4`）。
-fn ends_with_version_segment(url: &str) -> bool {
+pub(super) fn ends_with_version_segment(url: &str) -> bool {
     let last = url.rsplit('/').next().unwrap_or("");
     last.strip_prefix('v')
         .is_some_and(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
 }
 
-fn redact(body: &str, secret: &str) -> String {
+pub(super) fn redact(body: &str, secret: &str) -> String {
     if secret.is_empty() {
         body.to_string()
     } else {
@@ -132,7 +132,7 @@ fn redact(body: &str, secret: &str) -> String {
     }
 }
 
-fn truncate_body(body: String) -> String {
+pub(super) fn truncate_body(body: String) -> String {
     if body.chars().count() <= ERROR_BODY_MAX_CHARS {
         body
     } else {
