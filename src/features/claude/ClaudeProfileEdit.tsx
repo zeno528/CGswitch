@@ -133,7 +133,6 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   };
   const modelMappingLabels = [
     ["ANTHROPIC_MODEL", "current"],
-    ["ANTHROPIC_DEFAULT_MODEL", "default"],
     ["ANTHROPIC_DEFAULT_FABLE_MODEL", "fable"],
     ["ANTHROPIC_DEFAULT_OPUS_MODEL", "opus"],
     ["ANTHROPIC_DEFAULT_SONNET_MODEL", "sonnet"],
@@ -152,10 +151,13 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
   };
   const modelMappingFields = modelMappingLabels.map(([key, label]) => {
     const displayKey = modelDisplayKeyByModelKey[key];
+    // 悬停提示 = 环境变量名 + 作用简述（只有主会话/新会话/子代理/自定义有简述，其余只给变量名）
+    const purpose = t(`modelMappingHints.${label}`, { defaultValue: "" });
     return {
       key,
       label: t(`modelMappings.${label}`),
       value: modelMappings[key],
+      hint: purpose ? `${key} — ${purpose}` : key,
       displayValue: displayKey ? modelDisplayNames[displayKey] : undefined,
       displayPlaceholder: displayKey ? t("displayNamePlaceholder") : key === "CLAUDE_CODE_SUBAGENT_MODEL" ? t("displayNameUnavailable") : t("displayNameNotApplicable"),
       displayDisabled: !displayKey,

@@ -14,13 +14,18 @@ export default {
   },
   modelMappings: {
     current: "主会话",
-    default: "新会话",
     fable: "Fable",
     opus: "Opus",
     sonnet: "Sonnet",
     haiku: "Haiku",
     subagent: "子代理",
     customOption: "自定义",
+  },
+  // 悬停提示里的作用简述，措辞依据官方文档（env-vars / model-config / settings-reference）
+  modelMappingHints: {
+    current: "会话主模型；--model 和 /model 都能覆盖它，且 /model 的选择不会跨重启保留",
+    subagent: "子代理（Task、agent team）默认模型；单个子代理可用自己的 model 字段覆盖",
+    customOption: "在 /model 菜单底部追加一条自定义模型项，不替换内置别名",
   },
   mappingTitle: "模型映射",
   mappingDescription: "请求模型用于实际调用；1M 表示百万 token 上下文。",
@@ -41,7 +46,7 @@ export default {
     compactThresholdTitle: "自动压缩窗口大小，单位 Token，范围 100000–1000000，实际受模型上下文容量限制；留空使用模型默认值。",
     compactWindowPlaceholder: "默认",
     gitAttributionLabel: "隐藏 AI 署名",
-    gitAttributionTitle: "使用顶层 attribution.commit 和 attribution.pr 空值，阻止提交信息和 PR 描述追加 Claude Code 归属文本。",
+    gitAttributionTitle: "用顶层 attribution.commit 和 attribution.pr 置空，阻止 Claude Code 在 Git 提交信息和 PR 描述末尾追加归属文本。",
     agentTeamsLabel: "代理团队",
     agentTeamsTitle: "设置 CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1，启用实验性的多会话协作团队；通常消耗更多 Token。",
     effortLabel: "推理强度",

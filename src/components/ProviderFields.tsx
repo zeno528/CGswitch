@@ -108,7 +108,8 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
     label: string;
     value: string;
     onChange: (value: string) => void;
-    placeholder?: string;
+    /** 请求模型列悬停提示（环境变量名）：常显会被截断成半截标识符，只走原生 title */
+    hint?: string;
     displayValue?: string;
     displayPlaceholder?: string;
     displayDisabled?: boolean;
@@ -199,7 +200,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
                   disabled={field.displayDisabled ?? !field.onDisplayChange}
                   onChange={(event) => field.onDisplayChange?.(event.target.value)}
                 />
-                <input className="app-input app-input--compact min-w-0" aria-label={`${field.label} ${labels.requestModel ?? labels.model}`} placeholder={field.placeholder ?? ""} value={displayModelLabel(field.value)} onChange={(event) => field.onChange(event.target.value)} />
+                <input className="app-input app-input--compact min-w-0" aria-label={`${field.label} ${labels.requestModel ?? labels.model}`} title={field.hint} value={displayModelLabel(field.value)} onChange={(event) => field.onChange(event.target.value)} />
                 <AppSelect
                   value={selected}
                   options={options}

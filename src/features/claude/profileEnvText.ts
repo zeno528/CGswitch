@@ -12,6 +12,8 @@ export interface ClaudeEnvFields {
 /** Claude Code 支持的模型入口；展示元数据仍由全文编辑器保留，不单独做表单项。 */
 export const CLAUDE_MODEL_MAPPING_KEYS = [
   "ANTHROPIC_MODEL",
+  // 表单不展示：v2.1.236 才新增，且填了 ANTHROPIC_MODEL 时永远轮不到它。仍留在托管列表里，
+  // 已有配置里的这个键才会被原样读回、写回（删行不删数据，回滚只需把行加回表单）
   "ANTHROPIC_DEFAULT_MODEL",
   "ANTHROPIC_DEFAULT_FABLE_MODEL",
   "ANTHROPIC_DEFAULT_OPUS_MODEL",

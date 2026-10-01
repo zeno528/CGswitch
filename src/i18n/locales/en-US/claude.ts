@@ -14,13 +14,18 @@ export default {
   },
   modelMappings: {
     current: "Main",
-    default: "New session",
     fable: "Fable",
     opus: "Opus",
     sonnet: "Sonnet",
     haiku: "Haiku",
     subagent: "Subagent",
     customOption: "Custom",
+  },
+  // Wording follows the official env-vars / model-config / settings-reference docs
+  modelMappingHints: {
+    current: "Main model for the session; --model and /model override it, and a /model pick does not persist across restarts",
+    subagent: "Default model for subagents (Task, agent teams); a subagent can override it with its own model field",
+    customOption: "Adds one custom entry at the bottom of the /model picker without replacing built-in aliases",
   },
   mappingTitle: "Model mapping",
   mappingDescription: "Request models are sent to the gateway; 1M marks million-token context.",
@@ -41,7 +46,7 @@ export default {
     compactThresholdTitle: "Auto-compact window in tokens, from 100000 to 1000000, capped at the model's context window; leave empty for the model default.",
     compactWindowPlaceholder: "Default",
     gitAttributionLabel: "Hide AI attribution",
-    gitAttributionTitle: "Uses empty top-level attribution.commit and attribution.pr values to stop Claude Code attribution text in commits and pull request descriptions.",
+    gitAttributionTitle: "Uses empty top-level attribution.commit and attribution.pr values to stop Claude Code from appending attribution text to Git commit messages and PR descriptions.",
     agentTeamsLabel: "Agent teams",
     agentTeamsTitle: "Sets CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 to enable experimental teams of cooperating sessions; these usually use more tokens.",
     effortLabel: "Effort",
