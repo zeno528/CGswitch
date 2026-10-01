@@ -6,6 +6,7 @@
 
 use std::sync::OnceLock;
 
+use super::profiles::LiveReadError;
 use super::AppContext;
 use crate::error::AppResult;
 
@@ -184,9 +185,6 @@ impl SyncOutcome {
 pub trait ClientSync: Send + Sync {
     fn id(&self) -> ClientId;
 
-    /// 显式声明响应哪些时机。不响应必须写出来，不允许沉默。
-    fn supports(&self, trigger: &SyncTrigger) -> bool;
-
     /// 执行回写。守卫语义见上方契约表：四种跳过必须可辨，失败必须能被日志定位。
     fn sync(
         &self,
@@ -197,8 +195,8 @@ pub trait ClientSync: Send + Sync {
 }
 
 /// 宽松读路径：调用方已解析的文档优先，否则自行读取 live。
-/// 严格读（`live_document_checked`）而非 `.ok()` 吞错误：解析失败要能落到
-/// `LiveParseError` 走 Warn，否则 Codex 侧会重演 Claude 这次的"静默不回写"。
+/// 严格读（`live_document_checked`）而非 `.ok()` 吞错误：读不了与解析失败分别落到
+/// `LiveUnreadable` / `LiveParseError` 走 Warn，否则 Codex 侧会重演 Claude 这次的"静默不回写"。
 fn sync_loose(
     ctx: &AppContext,
     document: Option<&toml_edit::DocumentMut>,
@@ -207,9 +205,25 @@ fn sync_loose(
         Some(document) => ctx.sync_active_profile_document(document),
         None => match ctx.live_document_checked() {
             Ok(Some(document)) => ctx.sync_active_profile_document(&document),
-            Ok(None) => Ok(SyncOutcome::bare(SyncKind::LiveAbsent)),
-            Err(_) => Ok(SyncOutcome::bare(SyncKind::LiveParseError)),
+            Ok(None) => Ok(codex_guarded(SyncKind::LiveAbsent, ctx)),
+            Err(LiveReadError::Unreadable) => Ok(codex_guarded(SyncKind::LiveUnreadable, ctx)),
+            Err(LiveReadError::Parse) => Ok(codex_guarded(SyncKind::LiveParseError, ctx)),
         },
+    }
+}
+
+/// Codex 侧 live 缺席/故障的结局统一带出配置名（守卫契约表：除两条 bare 外必须带名）。
+/// 主键点查，只在这几条低频路径上花这一次查询，不影响常态与冷启动预算。
+fn codex_guarded(kind: SyncKind, ctx: &AppContext) -> SyncOutcome {
+    let name = ctx
+        .active_profile_state()
+        .ok()
+        .flatten()
+        .and_then(|id| ctx.database.profile(&id).ok())
+        .map(|profile| profile.name);
+    match name {
+        Some(name) => SyncOutcome::of(kind, &name),
+        None => SyncOutcome::bare(kind),
     }
 }
 
@@ -219,10 +233,6 @@ struct CodexSyncBody;
 impl ClientSync for CodexSyncBody {
     fn id(&self) -> ClientId {
         ClientId::Codex
-    }
-
-    fn supports(&self, _trigger: &SyncTrigger) -> bool {
-        true
     }
 
     fn sync(
@@ -257,12 +267,18 @@ impl ClientSync for CodexSyncBody {
             // 出错那一行的原文，可能是密钥。
             SyncTrigger::BeforeProcessStart { .. } => match ctx.live_document_checked() {
                 Ok(Some(document)) => ctx.sync_active_profile_document(&document),
-                Ok(None) => Ok(SyncOutcome::bare(SyncKind::LiveAbsent)),
-                Err(_) => {
+                Ok(None) => Ok(codex_guarded(SyncKind::LiveAbsent, ctx)),
+                Err(LiveReadError::Unreadable) => {
                     tauri_plugin_log::log::warn!(
-                            "[app.config.parse] outcome=failure failure_kind=parse_error msg=\"config.toml 无法读取或解析，Codex 可能无法启动\""
-                        );
-                    Ok(SyncOutcome::bare(SyncKind::LiveParseError))
+                        "[app.config.read] outcome=failure failure_kind=io_error msg=\"config.toml 读不了，Codex 可能无法启动\""
+                    );
+                    Ok(codex_guarded(SyncKind::LiveUnreadable, ctx))
+                }
+                Err(LiveReadError::Parse) => {
+                    tauri_plugin_log::log::warn!(
+                        "[app.config.parse] outcome=failure failure_kind=parse_error msg=\"config.toml 无法解析，Codex 可能无法启动\""
+                    );
+                    Ok(codex_guarded(SyncKind::LiveParseError, ctx))
                 }
             },
             // 被动刷新与捕获后：无激活直接跳过且不读 live 文件（冷启动预算）
@@ -285,10 +301,6 @@ struct ClaudeSyncBody;
 impl ClientSync for ClaudeSyncBody {
     fn id(&self) -> ClientId {
         ClientId::Claude
-    }
-
-    fn supports(&self, _trigger: &SyncTrigger) -> bool {
-        true
     }
 
     fn sync(
@@ -354,7 +366,6 @@ impl SyncRegistry {
             .bodies
             .iter()
             .filter(|body| trigger.is_passive() || body.id() == trigger.client())
-            .filter(|body| body.supports(trigger))
         {
             let outcome = body.sync(ctx, trigger, material)?;
             // 回写结局的唯一日志出口：常态跳过只打 Debug（release 自动消失），
@@ -467,6 +478,35 @@ mod tests {
             &SyncTrigger::StateRefresh,
             SyncMaterial::default(),
         );
+    }
+
+    /// 宽松读路径的三种非正常结局必须可辨且带名（守卫契约硬要求：LiveAbsent 与
+    /// LiveUnreadable 分开、除两条 bare 外必须带出配置名）：读不了被报成解析失败，
+    /// 或日志里看不出是哪个配置，都会把排查引去错误方向。
+    #[test]
+    fn loose_read_failures_are_distinguishable_and_carry_profile_name() {
+        let (_home, context) = test_context();
+        let profile = context.capture_profile("A").unwrap();
+        context.apply_profile(&profile.id).unwrap();
+
+        // live 不存在是正常态，但结局仍要带出配置名
+        std::fs::remove_file(context.paths.codex_config()).unwrap();
+        let outcome = sync_loose(&context, None).unwrap();
+        assert_eq!(outcome.kind, SyncKind::LiveAbsent);
+        assert_eq!(outcome.profile.as_deref(), Some("A"));
+
+        // 读不了（权限/占用）：目录占位稳定复现非 NotFound 的 io 失败
+        std::fs::create_dir(context.paths.codex_config()).unwrap();
+        let outcome = sync_loose(&context, None).unwrap();
+        assert_eq!(outcome.kind, SyncKind::LiveUnreadable);
+        assert_eq!(outcome.profile.as_deref(), Some("A"));
+
+        // 解析失败（被外部改坏）
+        std::fs::remove_dir(context.paths.codex_config()).unwrap();
+        std::fs::write(context.paths.codex_config(), "model = \n").unwrap();
+        let outcome = sync_loose(&context, None).unwrap();
+        assert_eq!(outcome.kind, SyncKind::LiveParseError);
+        assert_eq!(outcome.profile.as_deref(), Some("A"));
     }
 
     /// 日志里的客户端名必须用产品名而不是内部枚举名：

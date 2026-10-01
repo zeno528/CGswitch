@@ -26,6 +26,7 @@ const LABELS: Record<string, string> = {
   get volcengine() { return i18next.t("providerName.volcengine"); },
   tencentcloud: "Tencent Cloud",
   "siliconcloud-siliconflow": "SiliconFlow",
+  get longcat() { return i18next.t("preset.longcat"); },
   anthropic: "Anthropic",
   claude: "Claude",
 };

@@ -2855,6 +2855,76 @@ API_KEY = "secret"
         );
     }
 
+    /// registry 装配回归：Claude 的被动回写必须真的注册进 SyncRegistry。
+    /// 直调 `sync_active_claude_settings` 的测试全部绕过 registry——删掉注册行时，
+    /// 本测试是唯一会失败的守卫（生产 get_state 走的正是这条路径）。
+    #[test]
+    fn passive_harvest_via_registry_converges_claude_and_guards_corruption() {
+        let (_home, context) = test_context();
+        let profile = context
+            .database
+            .insert_claude_profile(
+                &draft("Provider", Some("https://api.example"), Some("key"), None),
+                "1",
+            )
+            .unwrap();
+        context.claude_apply(&profile.id).unwrap();
+
+        // 外部改写 live：get_state 同一条被动路径必须收敛进激活快照
+        let drifted = r#"{"env":{"ANTHROPIC_BASE_URL":"https://drift.example","ANTHROPIC_AUTH_TOKEN":"drift"}}"#;
+        std::fs::write(context.claude_settings_path(), drifted).unwrap();
+        crate::services::sync::registry().harvest_passive(
+            &context,
+            &sync::SyncTrigger::StateRefresh,
+            sync::SyncMaterial::default(),
+        );
+        let last_valid = context
+            .database
+            .claude_profile(&profile.id)
+            .unwrap()
+            .raw_settings;
+        assert!(last_valid
+            .as_deref()
+            .unwrap_or_default()
+            .contains("drift.example"));
+
+        // live 被改坏：同一路径绝不覆盖最后一次有效快照
+        std::fs::write(
+            context.claude_settings_path(),
+            r#"{"env":{"ANTHROPIC_BASE_URL":"https://drift.example"},"hooks":{"Stop":[]},}"#,
+        )
+        .unwrap();
+        crate::services::sync::registry().harvest_passive(
+            &context,
+            &sync::SyncTrigger::StateRefresh,
+            sync::SyncMaterial::default(),
+        );
+        assert_eq!(
+            context
+                .database
+                .claude_profile(&profile.id)
+                .unwrap()
+                .raw_settings,
+            last_valid
+        );
+
+        // 修好后同一路径自愈
+        std::fs::write(context.claude_settings_path(), drifted).unwrap();
+        crate::services::sync::registry().harvest_passive(
+            &context,
+            &sync::SyncTrigger::StateRefresh,
+            sync::SyncMaterial::default(),
+        );
+        assert!(context
+            .database
+            .claude_profile(&profile.id)
+            .unwrap()
+            .raw_settings
+            .as_deref()
+            .unwrap_or_default()
+            .contains("drift.example"));
+    }
+
     /// 四道守卫各自可辨：无激活 / live 不存在 / 解析失败 / 无差异，
     /// 不允许它们塌缩成同一个"没写"。
     #[test]

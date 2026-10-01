@@ -1072,7 +1072,10 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
 
     // 外部把 live 改坏：残缺的 TOML，严格读必须拒绝它
     std::fs::write(context.paths.codex_config(), "model = \n").unwrap();
-    assert!(context.live_document_checked().is_err());
+    assert!(matches!(
+        context.live_document_checked(),
+        Err(super::profiles::LiveReadError::Parse)
+    ));
 
     // 走真实被动收割（get_state 同一条路径）：损坏内容不得覆盖最后一次有效快照
     crate::services::sync::registry().harvest_passive(
@@ -1090,7 +1093,31 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
         last_valid
     );
 
+    // 读不了（权限/占用）必须与解析失败分开：目录占位稳定复现非 NotFound 的 io 失败，
+    // 同一条被动路径同样不得覆盖最后一次有效快照
+    std::fs::remove_file(context.paths.codex_config()).unwrap();
+    std::fs::create_dir(context.paths.codex_config()).unwrap();
+    assert!(matches!(
+        context.live_document_checked(),
+        Err(super::profiles::LiveReadError::Unreadable)
+    ));
+    crate::services::sync::registry().harvest_passive(
+        &context,
+        &crate::services::sync::SyncTrigger::StateRefresh,
+        crate::services::sync::SyncMaterial::default(),
+    );
+    assert_eq!(
+        context
+            .database
+            .profile(&profile.id)
+            .unwrap()
+            .payload
+            .raw_config,
+        last_valid
+    );
+
     // 修好后同一路径自愈
+    std::fs::remove_dir(context.paths.codex_config()).unwrap();
     std::fs::write(context.paths.codex_config(), "model = \"gpt-5.8\"\n").unwrap();
     crate::services::sync::registry().harvest_passive(
         &context,

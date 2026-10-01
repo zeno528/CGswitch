@@ -59,6 +59,14 @@ fn profile_subject(summary: &ProfileSummary) -> String {
     }
 }
 
+/// live config.toml 读取失败的可区分原因：回写守卫要分别落 `LiveUnreadable` /
+/// `LiveParseError`，混成一坨会把 io 故障（权限/占用）误引去查 TOML 语法。
+/// 文件不存在不算失败（`Ok(None)`，首次运行等正常态）。
+pub(super) enum LiveReadError {
+    Unreadable,
+    Parse,
+}
+
 impl AppContext {
     pub fn get_state(&self) -> AppResult<AppState> {
         // 被动回写统一走时机层（StateRefresh 覆盖启动预发/窗口激活/页内刷新）；
@@ -176,17 +184,21 @@ impl AppContext {
         self.live_document_checked().ok().flatten()
     }
 
-    /// `live_document` 的保留错误版：同一次读取、同一次解析，但把错误交出来。
-    /// 拉起 Codex 前用它：这份文件读不了，Codex 也起不来，日志必须留痕。
-    /// 文件不存在返回 `None`（首次运行）。
-    pub(super) fn live_document_checked(&self) -> AppResult<Option<toml_edit::DocumentMut>> {
-        let path = self.paths.codex_config();
-        let text = match std::fs::read_to_string(&path) {
+    /// `live_document` 的保留错误版：同一次读取、同一次解析，但把失败原因交出来。
+    /// 回写守卫与拉起 Codex 前用它：读不了（权限/占用）与解析失败必须落不同的
+    /// 结局和日志，否则 io 故障会被当成配置语法问题去排查。
+    /// 文件不存在返回 `Ok(None)`（首次运行，正常态）。
+    pub(super) fn live_document_checked(
+        &self,
+    ) -> Result<Option<toml_edit::DocumentMut>, LiveReadError> {
+        let text = match std::fs::read_to_string(self.paths.codex_config()) {
             Ok(text) => text,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(app_err!("无法读取 {}: {error}", path.display())),
+            Err(_) => return Err(LiveReadError::Unreadable),
         };
-        Ok(Some(codex_config::parse_document(&text)?))
+        codex_config::parse_document(&text)
+            .map(Some)
+            .map_err(|_| LiveReadError::Parse)
     }
 
     pub fn capture_profile(&self, name: &str) -> AppResult<ProfileSummary> {

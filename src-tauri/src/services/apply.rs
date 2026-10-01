@@ -339,7 +339,11 @@ impl AppContext {
             return Ok(sync::SyncOutcome::bare(sync::SyncKind::NoActiveProfile));
         };
         let Ok(mut live) = codex_config::capture_from_document(document) else {
-            return Ok(sync::SyncOutcome::bare(sync::SyncKind::LiveParseError));
+            // 文档已解析但抽取不出配置形状：仍属"live 内容无效"守卫，必须带名定位
+            return Ok(sync::SyncOutcome::of(
+                sync::SyncKind::LiveParseError,
+                &profile.name,
+            ));
         };
         let auth_source = profile
             .payload
