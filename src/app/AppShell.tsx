@@ -452,7 +452,7 @@ export default function AppShell() {
             <UpdateNotice className="update-notice--sidebar" sidebarCollapsed={sidebar.sidebarCollapsed} sidebarFlyoutArmed={sidebar.sidebarFlyoutArmed} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)} />
           </aside>
 
-          <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-4">
+          <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-[var(--main-top-inset)]">
             {/* key 不含 view：view 变化只切 Activity 显隐，外层整树重挂载会清掉保活现场 */}
             <div key={state ? "app" : "loading"} className="apple-page-enter">
               {!state ? (
