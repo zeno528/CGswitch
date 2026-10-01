@@ -11,12 +11,16 @@
 不能用 .NET 的 Process.MainWindowHandle —— 它会命中 single-instance 插件的窗口
 （标题 com.zeno528.cgswitch-siw），得到几十毫秒的假终点。
 
-用法：
+用法（路径相对**仓库根**，不是本文件所在目录）：
   pwsh -File scripts/perf-probe.ps1 -Exe "C:\Users\<you>\AppData\Local\CGswitch\cgswitch.exe"
-  pwsh -File scripts/perf-probe.ps1 -Exe <exe> -Runs 5 -SoakSeconds 600
+  pwsh -File scripts/perf-probe.ps1 -Exe <exe> -Runs 20 -SoakSeconds 600
 
-前置：被测 exe 必须是 tauri build 的产物（bundle/ 对应的那个）。cargo build/bench 直接编出的
-target/release/*.exe 缺少 custom-protocol 特性、前端资源未嵌入，主窗口永不显示。
+⚠️ 测量期间不要手动启动 CGswitch：每轮冷启动前需要「完全关闭」，脚本会强杀**与被测 exe 同路径**
+的进程来保证这一点。手测时开着的实例会被一并结束（本脚本不碰其他路径的同名进程）。
+
+前置：被测 exe 必须是 tauri build 的产物，且**前端资源已嵌入**（下面 Test-TauriArtifact 会核验）。
+cargo build/bench 直接编出的 target/release/*.exe 前端未嵌入，主窗口永不显示——
+不拦住的话整轮会得到一列 null，被误读成「窗口显示回归」。
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Exe,
@@ -28,6 +32,23 @@ param(
 )
 
 if (-not (Test-Path $Exe)) { throw "找不到可执行文件：$Exe" }
+
+# 产物核验：唯一的可靠判据是「前端资源有没有嵌进 exe」。
+# tauri build 会把 dist/assets/index-<hash>.js 打进二进制，cargo build/bench 直编的不会。
+# （`bundle/` 是否存在不能当判据：cargo bench 与 `tauri build --no-bundle` 都不产生它。）
+# （也别去二进制里找 `custom-protocol` 字面量——那是 Cargo feature 名，不是嵌入的字符串。）
+# 注意：本函数不返回布尔值——消息走输出流、失败走异常。若返回 $true/$false，
+# 调用处的 `if` 会把提示语一起捕获吞掉。
+function Assert-TauriArtifact([string]$Path) {
+  $text = [System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($Path))
+  $hit = [regex]::Match($text, 'assets/index-[A-Za-z0-9_\-]+\.(js|css)')
+  if ($hit.Success) {
+    Write-Output "产物核验 ✓：exe 内嵌前端资源（命中 $($hit.Value)）"
+    return
+  }
+  throw "产物核验失败：exe 内找不到 assets/index-*.js|css —— 多半是 cargo build/bench 直编的空壳。`n  请改用 'pnpm tauri build'（可加 --no-bundle）产出后再测；否则主窗口永不显示，会伪装成「窗口显示回归」。"
+}
+Assert-TauriArtifact $Exe
 
 Add-Type @"
 using System;using System.Text;using System.Runtime.InteropServices;
@@ -52,8 +73,23 @@ public class PerfWindow {
 }
 "@
 
+# 每轮冷启动需要「完全关闭」才能测到真正的冷启动。这里只结束**与被测 exe 同路径**的进程：
+# 用户可能同时开着另一个构建的 CGswitch（例如已安装版），那不是本轮要重启的那个，不该被牵连。
+# 读不到 Path 的进程一律跳过（宁可漏杀也不要误杀用户实例）；探针自己 Start-Process 起的实例
+# 路径必然可读，所以本轮自己的残留一定能被清掉。
 function EnsureNoInstance {
-  Get-Process -Name ([IO.Path]::GetFileNameWithoutExtension($Exe)) -ErrorAction SilentlyContinue | Stop-Process -Force
+  $target = (Resolve-Path $Exe).Path
+  $name = [IO.Path]::GetFileNameWithoutExtension($Exe)
+  Get-Process -Name $name -ErrorAction SilentlyContinue | ForEach-Object {
+    $path = $null
+    try { $path = $_.Path } catch { $path = $null }
+    if (-not $path) { return }
+    $resolved = Resolve-Path $path -ErrorAction SilentlyContinue
+    if ($resolved -and $resolved.Path -eq $target) {
+      Write-Output "  （结束同路径实例 PID=$($_.Id)，以保证从零冷启动）"
+      Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+    }
+  }
 }
 
 # 注意不能用 [int]($n/2)：PowerShell 的 [int] 是银行家舍入，3/2 会得到 2，取到最大值而非中位数。
@@ -119,11 +155,21 @@ Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
 # 不能量 exe 所在目录 —— 对 target/release 那类构建目录会把全部构建产物算进去。
 $exeDir = Split-Path -Parent $Exe
 $bundleDir = Join-Path $exeDir "bundle"
-# 只取「最新」一个安装包 —— bundle/ 会累积历届产物，求和得到的是历史总量，不是用户要下载的大小。
+$exeTime = (Get-Item $Exe).LastWriteTime
+# bundle/ 会累积历届安装包。只取「最新」一个仍不够：--no-bundle 构建根本不产出新包，
+# 于是会回退到几个月前的陈旧安装包，体积数字会被当成本轮数据引用。
+# 因此额外要求 installer 的时间戳晚于被测 exe，否则显式标注「本轮未产出」并把体积留空。
 $installer = $null
+$installerNote = "（本轮未产出安装包）"
 if (Test-Path $bundleDir) {
-  $installer = Get-ChildItem $bundleDir -Recurse -File -Include *.exe, *.msi -ErrorAction SilentlyContinue |
+  $newest = Get-ChildItem $bundleDir -Recurse -File -Include *.exe, *.msi -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($newest -and $newest.LastWriteTime -gt $exeTime) {
+    $installer = $newest
+    $installerNote = $newest.Name
+  } elseif ($newest) {
+    $installerNote = "（本轮未产出：bundle/ 里最新的是 $($newest.Name)，早于被测 exe，不作为本轮数据）"
+  }
 }
 $installMb = $null
 if ($InstallDir -and (Test-Path $InstallDir)) {
@@ -132,7 +178,7 @@ if ($InstallDir -and (Test-Path $InstallDir)) {
 $result["体积"] = [pscustomobject]@{
   Exe_MB       = [math]::Round((Get-Item $Exe).Length / 1MB, 1)
   Installer_MB = if ($installer) { [math]::Round($installer.Length / 1MB, 1) } else { $null }
-  Installer    = if ($installer) { $installer.Name } else { "（本次未产出安装包）" }
+  Installer    = if ($installer) { $installer.Name } else { $installerNote }
   Installed_MB = $installMb
 }
 
