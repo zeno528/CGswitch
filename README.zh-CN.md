@@ -173,27 +173,6 @@ CGswitch 将应用数据保存在当前用户的主目录下，实际文件和�
 
 运行日志写在 `~/.cgswitch/logs/` 下（1MB × 10 轮转）。
 
-Codex 的实际配置仍位于 `~/.codex`：
-
-```text
-~/.codex/
-├── config.toml
-├── models.json
-├── auth.json
-├── plugins/
-└── skills/
-```
-
-Claude Code 的文件与它们并列存放：
-
-```text
-~/.claude/
-├── settings.json
-└── skills/
-
-~/.claude.json
-```
-
 CGswitch 不读取也不保存 Claude Code 的登录态：`Claude Account` 配置只是让 Claude Code 去掉第三方的接口与认证覆盖项。Claude 通用模板保存在 CGswitch 数据库中，因此随数据库备份一起备份。
 
 API Key、OAuth 凭据、配置和备份都属于本地数据。CGswitch 会在相关配置写入前创建备份，但仍请不要将 `.cgswitch`、`auth.json`、`~/.claude.json`、API Key 或备份文件提交到 Git 或分享给他人。

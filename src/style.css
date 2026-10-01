@@ -918,7 +918,6 @@ body.drag-active * {
 .update-notice--sidebar {
   flex-shrink: 0;
   margin-top: auto;
-  border-top: 1px solid var(--panel-border);
   padding: 0.75rem 0.375rem;
 }
 

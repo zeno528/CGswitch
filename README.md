@@ -173,27 +173,6 @@ CGswitch keeps its application data under the current user's home directory. The
 
 CGswitch keeps its run logs under `~/.cgswitch/logs/` (1MB × 10 rotation).
 
-The live Codex files remain under `~/.codex`:
-
-```text
-~/.codex/
-├── config.toml
-├── models.json
-├── auth.json
-├── plugins/
-└── skills/
-```
-
-Claude Code files sit alongside them:
-
-```text
-~/.claude/
-├── settings.json
-└── skills/
-
-~/.claude.json
-```
-
 CGswitch never reads or stores a Claude Code sign-in: a `Claude Account` profile only tells Claude Code to drop third-party endpoint and credential overrides. The Claude common template lives in the CGswitch database and is therefore covered by database backups.
 
 API keys, OAuth credentials, profiles, and backups are local data. CGswitch creates backups before relevant configuration writes, but you should still avoid committing or sharing `.cgswitch`, `auth.json`, `~/.claude.json`, API keys, or backup files.
