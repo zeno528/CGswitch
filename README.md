@@ -5,8 +5,8 @@
 <h1 align="center">CGswitch</h1>
 
 <p align="center">
-  An open-source all-in-one desktop manager for OpenAI Codex.<br />
-  Switch provider profiles in one click, manage your ChatGPT accounts, and centrally manage MCP servers, plugins, and Skills.
+  An open-source all-in-one desktop manager for OpenAI Codex and Claude Code.<br />
+  Switch provider profiles for either client in one click, manage your ChatGPT accounts, and centrally manage MCP servers, plugins, and Skills.
 </p>
 
 <p align="center">
@@ -23,36 +23,51 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555?style=flat-square" alt="Windows and macOS" />
 </p>
 
-CGswitch is built for developers who use OpenAI Codex and works with the local Codex environment on their computer. It brings provider profiles, ChatGPT OAuth accounts, MCP servers, plugins, and Skills into one desktop app, reducing the need to move between configuration files and separate tools.
+CGswitch is built for developers who use OpenAI Codex or Claude Code and works with those clients' local environments on your computer. It brings provider profiles, ChatGPT OAuth accounts, MCP servers, plugins, and Skills into one desktop app, reducing the need to move between configuration files and separate tools.
 
-## How CGswitch fits into your Codex workflow
+## How CGswitch fits into your workflow
 
 ```text
-Provider preset or existing Codex configuration
+Provider preset or existing client configuration
                          ↓
                   Saved as a profile
                          ↓
             Edit · test · apply · restore
 ```
 
-CGswitch backs up relevant Codex files before applying a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
+Codex and Claude Code are managed side by side: each client has its own provider page, and applying a profile on one never rewrites the other. CGswitch backs up the relevant files before applying a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
 
 ## Features
 
-### Provider profiles
+### Codex provider profiles
 
 - Start from a built-in provider preset, capture the current `~/.codex/config.toml`, or create a custom provider.
 - Edit `config.toml`, `models.json`, and `auth.json` with TOML/JSON validation.
 - Fetch available models from a provider's `/models` endpoint and select them in the profile editor.
 - Rename, duplicate, reorder, delete, and apply profiles.
 - Keep unrelated Codex configuration such as MCP and plugin sections when applying provider-specific changes where possible.
-- Set a custom display name, provider icon, administration URL, and optional ChatGPT account binding.
+- Set a custom display name, provider icon, administration URL, optional description, and optional ChatGPT account binding. The description stays inside CGswitch and is not written into the Codex configuration.
 
 ### Supported provider presets
 
-The current built-in presets are `ChatGPT`, `DeepSeek`, `MiniMax`, `Zhipu`, `OpenCode`, `OpenRouter`, `Xiaomi MiMo`, `Kimi`, `Qwen`, `Tencent Hunyuan`, `Volcengine Doubao`, `Baidu Qianfan`, `xAI (Grok)`, and `Custom`.
+Each built-in preset declares which clients it supports and fills in the endpoint, model, and regional endpoints separately for each side.
 
-Custom providers can use the Responses API-compatible configuration supported by Codex, with their own endpoint, API key, and model catalog.
+- **Codex** — `ChatGPT`, `DeepSeek`, `MiniMax`, `Zhipu`, `OpenCode`, `OpenRouter`, `Xiaomi MiMo`, `Kimi`, `Qwen`, `Tencent Hunyuan`, `Volcengine Doubao`, `Baidu Qianfan`, `xAI (Grok)`, and `Custom`.
+- **Claude Code** — `Anthropic API`, `Claude Account`, `DeepSeek`, `MiniMax`, `Zhipu`, `OpenRouter`, `Xiaomi MiMo`, `Kimi`, `Qwen`, `Tencent Hunyuan`, `Volcengine Doubao`, `Baidu Qianfan`, and `Custom`.
+
+Presets available on both clients share a name and icon but never share endpoints or models. Custom providers can use the Responses API-compatible configuration supported by Codex, or the Anthropic-compatible configuration supported by Claude Code, with their own endpoint, key, and model catalog.
+
+### Claude Code providers
+
+- Start from a built-in Claude preset, save the current `~/.claude/settings.json` as a snapshot, or create a custom provider.
+- Provider fields are written into the `env` block of `~/.claude/settings.json`. The whole file stays editable with JSON validation, and every other top-level key and `env` entry is preserved.
+- Pick the `Anthropic-compatible` protocol and a CN or Global endpoint for third-party gateways; the key is written as `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` depending on the preset.
+- Map request models onto Claude Code's model roles — Main, Fable, Opus, Sonnet, Haiku, and Subagent — or add a custom `/model` entry. The `1M` flag appends `[1m]` to a model ID to request a million-token context.
+- `Claude Account` uses the account already signed in to Claude Code: run `/login` there first. Applying it removes third-party endpoint and credential overrides from `settings.json`, and CGswitch neither reads nor stores login credentials.
+- Test connectivity against the real `/v1/messages` call path using the stored credentials. Fetching a model list is a separate, optional step — a gateway that exposes no model catalog still passes the connection test.
+- Save shared fields as a common template and fill them into any profile. Endpoints, credentials, model mappings, and app-controlled fields are excluded, and template changes never rewrite existing profiles.
+- Turn the balance or usage indicator on or off per profile, on the presets that support querying it (currently DeepSeek and MiniMax).
+- Advanced options cover auto-compact and its window, effort level, agent teams, auto memory, hiding AI attribution, bypass permissions, and showing shell file changes.
 
 ### ChatGPT accounts and usage
 
@@ -64,11 +79,12 @@ Custom providers can use the Responses API-compatible configuration supported by
 
 ### MCP management
 
-- Manage the global `[mcp_servers.*]` configuration in `~/.codex/config.toml`.
+- Switch the MCP page between Codex and Claude Code. Codex manages the global `[mcp_servers.*]` configuration in `~/.codex/config.toml`; Claude Code manages the user-scope MCP configuration in `~/.claude.json`.
 - Configure local `STDIO` servers and remote `HTTP` / Streamable HTTP servers.
 - Edit commands, arguments, URLs, bearer-token environment variables, headers, environment variables, and timeouts.
-- Test server connectivity and inspect the tools a server provides; probes go through the system proxy.
-- Switch between a structured form and TOML source editing with validation and formatting.
+- Test server connectivity and inspect the tools a server provides; probes go through the system proxy and each client is probed and cached separately.
+- Enabling, disabling, or uninstalling a server affects only the client you are on — the other client's servers and configuration are left as they are.
+- Switch between a structured form and source editing — TOML for Codex, JSON for Claude Code — with validation and formatting.
 - Compare the live Codex configuration with CGswitch's database mirror before syncing either direction.
 
 ### Plugins and Skills
@@ -82,7 +98,8 @@ Custom providers can use the Responses API-compatible configuration supported by
 - Preview and install a plugin from a GitHub repository, optionally using a branch or subdirectory.
 - Check and upgrade third-party marketplace plugins, or uninstall plugins through the Codex CLI.
 - Import local Skills, preview their `SKILL.md`, detect updates and conflicts, and enable, disable, or delete managed Skills.
-- Scan Skills from `~/.codex/skills` and `~/.agents/skills` while keeping the CGswitch Skill registry separate from plugin-contained Skills.
+- Scan Skills from `~/.codex/skills`, `~/.claude/skills`, and `~/.agents/skills` while keeping the CGswitch Skill registry separate from plugin-contained Skills.
+- Enable a managed Skill per client: the Codex and Claude Code copies are toggled independently, and each side shows its own enabled count. Deleting a managed Skill removes the CGswitch copy and both client copies.
 
 ### Desktop experience
 
@@ -91,7 +108,7 @@ Custom providers can use the Responses API-compatible configuration supported by
 - English and Simplified Chinese interface languages, with system-language detection.
 - Optional launch at login, silent start, and minimize-to-tray behavior.
 - System tray menu with quick actions: switch profiles, open settings, jump to accounts, and show the main window. Single-click on the tray icon can be set to either show the main window or open the tray menu.
-- Optional Codex restart after applying a profile.
+- Optional Codex restart after applying a Codex profile; Claude Code profiles are applied without restarting anything.
 - Optional automatic update checks with release notes before installation, with an "updated to vX" notification on the next launch.
 - Local backups of the database, configuration files, and Codex files are created automatically; database backups can be browsed and restored from Settings.
 
@@ -100,7 +117,7 @@ Custom providers can use the Responses API-compatible configuration supported by
 The settings page is organized into four tabs:
 
 - **General** — theme, language, launch-at-login, silent start, and minimize-to-tray.
-- **Application** — single-click tray action, restart Codex after switching, and automatic update checks.
+- **App** — single-click tray action, restart Codex after switching, and automatic update checks.
 - **Advanced** — database backup management with immediate backup, import/export, auto-backup (frequency and retention), and collapsible backup records.
 - **About** — application info card with version, GitHub / changelog links, and the data-path list.
 
@@ -131,9 +148,10 @@ Replace the path if you installed the app somewhere else. Official packages are 
 
 ## Quick start
 
-1. Open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then apply.
-2. Enable the optional Codex restart behavior in **Settings → Application** if you want CGswitch to restart Codex after applying a profile.
-3. Use **MCP**, **Plugins**, or **Skill** in the sidebar to manage the corresponding global Codex resources.
+1. In the **Codex** group, open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then apply.
+2. In the **Claude** group, open **Providers** to configure Claude Code, or save the current `~/.claude/settings.json` as a snapshot.
+3. Enable the optional Codex restart behavior in **Settings → App** if you want CGswitch to restart Codex after applying a profile.
+4. Use **MCP**, **Plugins**, or **Skill** under **General** to manage the corresponding global resources. MCP is managed one client at a time; Skills can be enabled for both.
 
 ## Data and privacy
 
@@ -166,17 +184,33 @@ The live Codex files remain under `~/.codex`:
 └── skills/
 ```
 
-API keys, OAuth credentials, profiles, and backups are local data. CGswitch creates backups before relevant configuration writes, but you should still avoid committing or sharing `.cgswitch`, `auth.json`, API keys, or backup files.
+Claude Code files sit alongside them:
+
+```text
+~/.claude/
+├── settings.json
+└── skills/
+
+~/.claude.json
+```
+
+CGswitch never reads or stores a Claude Code sign-in: a `Claude Account` profile only tells Claude Code to drop third-party endpoint and credential overrides. The Claude common template lives in the CGswitch database and is therefore covered by database backups.
+
+API keys, OAuth credentials, profiles, and backups are local data. CGswitch creates backups before relevant configuration writes, but you should still avoid committing or sharing `.cgswitch`, `auth.json`, `~/.claude.json`, API keys, or backup files.
 
 ## FAQ and troubleshooting
 
 ### What happens when I apply a profile?
 
-CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → Application**.
+CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → App**.
 
 ### Are profiles, MCP, Plugins, and Skills the same thing?
 
 No. Profiles describe model/provider settings; MCP describes tool servers; Plugins are Codex extension packages; Skills are reusable instruction directories. They are managed in separate areas of the application.
+
+### Does CGswitch take over my Claude Code sign-in?
+
+No. Run `/login` in Claude Code itself, then apply the `Claude Account` profile — CGswitch only removes third-party endpoint and credential overrides from `settings.json` so Claude Code uses its own account. It never reads or stores login credentials, and it leaves the shell environment untouched.
 
 ### Why can a third-party plugin still fail after a provider is configured?
 
@@ -241,12 +275,11 @@ src/
 ├── presets.ts   built-in provider display metadata
 ├── icons.ts     bundled provider icon registry
 ├── types.ts     shared TypeScript types
-├── utils.ts     shared frontend utilities
 ├── api/         typed IPC methods and browser mock
 ├── app/         shell, navigation, state, polling, and management data cache
 ├── assets/      bundled provider icons and resources
 ├── components/  shared UI components (AppDialog, AppSelect, ConfigTextEditor, …)
-├── features/    profiles, mcp, plugins, skills, settings, updates
+├── features/    profiles, claude, mcp, plugins, skills, accounts, settings, updates
 └── i18n/        English and Simplified Chinese messages
 
 src-tauri/src/
@@ -255,7 +288,7 @@ src-tauri/src/
 ├── commands.rs   Tauri command boundary
 ├── error.rs      typed application errors
 ├── fsutil.rs     filesystem helpers (atomic write, …)
-├── services/     AppContext and use cases (profiles, mcp, plugins, accounts, …)
+├── services/     AppContext and use cases (profiles, claude, mcp, plugins, accounts, sync, …)
 ├── codex/        Codex config files and process management
 ├── auth/         OAuth and account authentication
 ├── database.rs   SQLite connection, schema, and migrations
@@ -273,4 +306,4 @@ Bug reports, feature ideas, documentation improvements, and pull requests are we
 
 ## License
 
-CGswitch is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax`, `OpenCode`, `Qwen`, `xAI`, `Zhipu`) are sourced from [thesvg.org](https://thesvg.org); the rest are in-house or sourced separately. Each SVG keeps its own source notice.
+CGswitch is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax`, `OpenCode`, and `Zhipu`) are sourced from [thesvg.org](https://thesvg.org) and keep a source notice in the file; the rest are in-house or sourced separately.
