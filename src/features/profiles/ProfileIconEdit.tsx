@@ -1,7 +1,8 @@
 import { ArrowLeft, Save } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { providerIconThemeClass, providerIcons } from "../../icons";
+import { ProfileIconTile } from "../../components/ProfileIconTile";
+import { providerIcons } from "../../icons";
 
 interface ProfileIconEditProps {
   icon: string | null;
@@ -9,9 +10,14 @@ interface ProfileIconEditProps {
   onSave: (icon: string | null) => void;
 }
 
+/** 图标选择页：图标主导的方形网格，Codex / Claude Code 两个编辑页共用。
+ *  格内不再显示名称文字——写死 6 列时 19 个图标要占 4 行且末行只落 1 个；
+ *  名称改走 aria-label/title，已选项在网格下方常显一行，选中后不必靠记忆确认。 */
 export default function ProfileIconEdit({ icon, onBack, onSave }: ProfileIconEditProps) {
   const { t } = useTranslation("profiles");
   const [selected, setSelected] = useState<string | null>(icon);
+  const icons = providerIcons();
+  const current = icons.find((item) => item.id === selected);
   return (
     <section className="apple-edit-page mx-auto flex w-full max-w-none flex-col">
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header">
@@ -22,22 +28,32 @@ export default function ProfileIconEdit({ icon, onBack, onSave }: ProfileIconEdi
       </div>
       <div className="apple-edit-content">
         <div className="apple-edit-surface apple-panel-section">
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8">
-            {providerIcons().map((current) => (
+          {/* 默认态不带描边，悬停才浮现一圈中性色，选中才是强调色。 */}
+          <div className="apple-tile-grid">
+            {icons.map((item) => (
               <button
-                key={current.id}
+                key={item.id}
                 type="button"
-                className={`flex flex-col items-center gap-1 rounded-lg px-1.5 py-2 transition-colors ${selected === current.id ? "shadow-[0_0_0_1px_var(--accent)] bg-(--active-bg)" : "shadow-[0_0_0_1px_var(--panel-ring)] hover:bg-(--hover-bg)"}`}
-                aria-pressed={selected === current.id}
-                onClick={() => setSelected(current.id)}
+                className={`grid place-items-center rounded-lg p-2 transition-colors ${selected === item.id ? "shadow-[0_0_0_1px_var(--accent)] bg-(--active-bg)" : "hover:shadow-[0_0_0_1px_var(--panel-ring)] hover:bg-(--hover-bg)"}`}
+                aria-label={item.label}
+                aria-pressed={selected === item.id}
+                title={item.label}
+                onClick={() => setSelected(item.id)}
               >
-                <span className="grid h-7 w-7 place-items-center rounded-lg bg-(--tile-bg)" aria-hidden="true"><img src={current.url} alt={current.label} className={`h-4 w-4 ${providerIconThemeClass(current.id)}`} /></span>
-                <span className="w-full truncate text-center text-xs">{current.label}</span>
+                <ProfileIconTile name={item.label} icon={item.id} />
               </button>
             ))}
           </div>
-          <button type="button" className={`mt-3 w-full rounded-lg border border-dashed px-2 py-2.5 text-xs transition-colors ${selected === null ? "border-accent font-medium text-accent bg-(--active-bg)" : "muted border-[var(--panel-border)] hover:bg-(--hover-bg)"}`} aria-pressed={selected === null} onClick={() => setSelected(null)}>
-            {t("icons.none")}
+          {/* 这一行同时是"当前状态"和"不使用图标"的入口：选中时显示已选名称，
+              点它回到不使用图标；格内不再有名称文字，状态就不必另起一行。
+              12px 常规字重太细、600 又太重，卡在 medium：只加一档字重，不动字号。 */}
+          <button
+            type="button"
+            className={`mt-2 w-full rounded-lg border border-dashed px-2 py-2.5 text-xs font-medium transition-colors ${selected === null ? "border-accent text-accent bg-(--active-bg)" : "muted border-(--panel-border) hover:bg-(--hover-bg)"}`}
+            aria-pressed={selected === null}
+            onClick={() => setSelected(null)}
+          >
+            {current ? t("icons.selected", { name: current.label }) : t("icons.none")}
           </button>
         </div>
       </div>
