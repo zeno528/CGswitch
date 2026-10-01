@@ -1,6 +1,6 @@
 import { closeBrackets, closeBracketsKeymap, autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
-import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, indentOnInput, indentUnit as indentUnitFacet, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
+import { bracketMatching, defaultHighlightStyle, ensureSyntaxTree, foldGutter, foldKeymap, forceParsing, indentOnInput, indentUnit as indentUnitFacet, StreamLanguage, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { forEachDiagnostic, lintKeymap, linter, setDiagnosticsEffect, type Diagnostic } from "@codemirror/lint";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
@@ -211,6 +211,8 @@ let measureContext: CanvasRenderingContext2D | null | undefined;
 /// 长文档按视口虚拟化，渲染宽度 ≠ 全文宽度：按 canvas 测量预设 contentDOM 的
 /// min-width，原生横向滚动条才能滚到最后一列（tab 展开宽度也要计入）。
 function syncContentWidth(editor: EditorView) {
+  // 语法树预热：CM 初始化只解析前 3000 字符，其余在空闲时补，快速滚动会先跑到未解析区间（无高亮）
+  forceParsing(editor, editor.state.doc.length, 200);
   if (measureContext === undefined) measureContext = document.createElement("canvas").getContext("2d");
   if (!measureContext) return;
   const style = getComputedStyle(editor.contentDOM);
@@ -335,7 +337,11 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     };
 
     window.clearTimeout(destroyCheckRef.current);
-    const creationDeps = [dark, language, placeholder, validateToml, t] as const;
+    // 主题取当下 DOM 真值，不信 dark state：Activity 隐藏期会拆掉本页 effects（连带
+    // MutationObserver），隐藏中切主题时 setDark 不会跑。复显时 state 仍是旧主题，
+    // 下面按 state 判等会走保活挂回分支，留下一个配色过期的实例（浅色高亮 + 深色底）。
+    const currentDark = document.documentElement.classList.contains("dark");
+    const creationDeps = [currentDark, language, placeholder, validateToml, t] as const;
     const previousDeps = creationDepsRef.current;
     const alive = viewRef.current;
     if (alive && !destroyedRef.current && previousDeps !== null && creationDeps.every((dep, index) => dep === previousDeps[index])) {
@@ -385,7 +391,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
           language === "toml" ? StreamLanguage.define(toml) : json(),
           language === "toml" ? tomlDiagnostics : jsonDiagnostics,
           diagnosticLineDecorationsField,
-          ...(dark ? [oneDark] : []),
+          ...(currentDark ? [oneDark] : []),
           EditorView.updateListener.of((update: ViewUpdate) => {
             if (update.docChanged && !syncingValueRef.current) onChangeRef.current(update.state.doc.toString());
             reportDiagnostics(update.view);

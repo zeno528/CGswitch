@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CodeXml, Eraser } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
@@ -64,6 +65,24 @@ export default function ClaudeCommonTemplateDialog({ sourceText, onClose }: {
     }
   };
 
+  // 与编辑页 settings.json 同一套排版：JSON.parse + stringify 本地格式化
+  const format = () => {
+    if (!text.trim()) {
+      feedback.warning(tProfiles("edit.formatEmpty"));
+      return;
+    }
+    try {
+      const formatted = JSON.stringify(JSON.parse(text), null, 2);
+      if (formatted === text) feedback.info(tProfiles("edit.formatNoChange", { label: t("commonTemplate.title") }));
+      else {
+        setText(formatted);
+        feedback.success(tProfiles("edit.formatSuccess", { label: t("commonTemplate.title") }));
+      }
+    } catch (error) {
+      feedback.error(tProfiles("edit.formatFailed", { error: String(error) }));
+    }
+  };
+
   return (
     <AppDialog
       open
@@ -73,7 +92,6 @@ export default function ClaudeCommonTemplateDialog({ sourceText, onClose }: {
       className="claude-template-dialog"
       footer={(
         <>
-          <button type="button" className="apple-action-button app-button--danger mr-auto" disabled={loading || saving} onClick={() => setText("{}")}>{tProfiles("edit.clearFile")}</button>
           {sourceText !== undefined ? (
             <button type="button" className="apple-action-button" disabled={loading || saving} onClick={extract}>{t("commonTemplate.extract")}</button>
           ) : null}
@@ -84,7 +102,21 @@ export default function ClaudeCommonTemplateDialog({ sourceText, onClose }: {
         </>
       )}
     >
-      <ConfigTextEditor value={text} language="json" minLines={12} readOnly={loading || saving} onChange={setText} onDiagnostics={setDiagnostics} />
+      {/* 清空与格式化都是编辑器工具而非弹窗动作：放进编辑器附属条（与编辑页 models/auth
+          文件操作同一模式），底部只留 提取/取消/保存 */}
+      <div className="editor-attach-group">
+        <div className="editor-attach-bar">
+          <button type="button" className="editor-ghost editor-ghost--danger ml-auto shrink-0" disabled={loading || saving} onClick={() => setText("{}")}>
+            <Eraser className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            <span className="whitespace-nowrap font-medium">{tProfiles("edit.clearFile")}</span>
+          </button>
+          <button type="button" className="editor-ghost editor-ghost--format shrink-0" disabled={loading || saving} title={tProfiles("edit.formatTitle", { label: t("commonTemplate.title"), format: "JSON" })} onClick={format}>
+            <CodeXml className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+            <span className="whitespace-nowrap font-medium">{tProfiles("edit.format")}</span>
+          </button>
+        </div>
+        <ConfigTextEditor value={text} language="json" minLines={12} readOnly={loading || saving} onChange={setText} onDiagnostics={setDiagnostics} />
+      </div>
     </AppDialog>
   );
 }

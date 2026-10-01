@@ -33,6 +33,19 @@ describe("ConfigTextEditor runtime", () => {
     expect(editorSource).toContain("JSON.parse(text)");
   });
 
+  it("主题判定取当下 DOM 真值：Activity 隐藏期切主题后复显不会挂回配色过期的实例", () => {
+    // 隐藏期 effects 被拆掉，setDark 不会跑；判等与 oneDark 都必须用 DOM 现读值
+    expect(editorSource).toContain('const currentDark = document.documentElement.classList.contains("dark")');
+    expect(editorSource).toContain("const creationDeps = [currentDark, language, placeholder, validateToml, t]");
+    expect(editorSource).toContain("...(currentDark ? [oneDark] : [])");
+    expect(editorSource).not.toContain("...(dark ? [oneDark] : [])");
+  });
+
+  it("打开/复显/改文档时补齐整棵语法树：快速滚动不再落到未解析区间（无高亮的白字）", () => {
+    // Language.state 初始化只解析前 3000 字符，其余靠 ParseWorker 空闲补，滚动更快时无树可用
+    expect(editorSource).toContain("forceParsing(editor, editor.state.doc.length, 200);");
+  });
+
   it("only synchronizes the changed config fragment", () => {
     const current = 'model = "gpt-5.6"\nmodel_reasoning_effort = "medium"\n[features]\n';
     const next = `${current}respect_system_proxy = true\n`;

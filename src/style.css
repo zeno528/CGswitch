@@ -1575,11 +1575,8 @@ body.drag-active * {
 .apple-editor-surface {
   overflow: hidden;
   border-radius: var(--radius-control-sm);
-  background: rgb(0 0 0 / 0.04);
-}
-
-:root.dark .apple-editor-surface {
-  background: rgb(255 255 255 / 0.06);
+  /* 代码主内容区跟主视图底色一致（浅色白、深色 #1e1e1e），工具栏底色另算 */
+  background: var(--main-surface-bg);
 }
 
 /* 编辑器附属条（editor chrome）：文件级操作条嵌进代码托盘顶部，与 apple-editor-surface
@@ -1587,6 +1584,8 @@ body.drag-active * {
 .editor-attach-group {
   border-radius: var(--radius-control-sm);
   overflow: hidden;
+  /* 外边缘描边：附属条与代码区共用一个外框（surface 自带的描边在组内被关掉） */
+  box-shadow: var(--card-edge-shadow);
 }
 
 /* CodeMirror 官方样式模式：圆角等容器外观由外层统管，surface 只在顶部直角贴合附属条。
@@ -2924,18 +2923,13 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
    （.主题类 .cm-lineNumbers .cm-gutterElement 的 padding: 0 3px 0 5px 特异性更高，
    否则 border-box 下内容区只剩 16px，三位行号溢出被裁） */
 .cm-editor .cm-gutters .cm-lineNumbers .cm-gutterElement { width: auto; min-width: 1.5rem; padding: 0; }
-/* 行号栏必须不透明：CM gutter 是 sticky 层（z-index 200），横向滚动时代码从其下穿过。
-   颜色取卡片底（--panel-bg）混入 4% 黑 / 深色混入 6% 白的不透明合成色，与 surface
-   浅底叠卡片的视觉效果一致；右边线统一为无，靠留白分隔（深色 oneDark 本就无线）。
-   注意不能用 rgb(... / 4%) 当第一个参数——那是 alpha 语义，会混出半透明底导致穿模。
+/* 行号栏必须不透明：CM gutter 是 sticky 层（z-index 200），横向滚动时代码从其下穿过，
+   半透明底会穿模。取 --main-surface-bg（代码区同一个不透明底色，两侧无色差）；
+   右边线统一为无，靠留白分隔（深色 oneDark 本就无线）。
    !important 压过运行时注入的主题背景与浅色默认边线 */
 .cm-editor .cm-gutters {
-  background-color: color-mix(in srgb, black 4%, var(--panel-bg)) !important;
+  background-color: var(--main-surface-bg) !important;
   border-right: 0 !important;
-}
-
-:root.dark .cm-editor .cm-gutters {
-  background-color: color-mix(in srgb, white 6%, var(--panel-bg)) !important;
 }
 .cm-activeLine,
 .cm-activeLineGutter { background-color: var(--selection-bg) !important; }
