@@ -2682,9 +2682,9 @@ button:focus-visible {
   color: inherit;
 }
 
-/* 开关开启时阈值药丸的唯一高亮：只描边转 accent，数值保持正常文字色；[type] 优先于 .app-input */
-.compact-token-input[type="number"].compact-token-input--on {
-  border-color: var(--accent);
+/* 启用但未聚焦时复用紧凑按钮的淡描边；聚焦时沿用 .app-input 的蓝色描边。 */
+.compact-token-input[type="number"].compact-token-input--on:not(:focus) {
+  border-color: var(--panel-ring);
 }
 
 .app-input-stepper__input[type="number"]::-webkit-inner-spin-button,
@@ -2940,6 +2940,11 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .apple-editor-shell .cm-scroller::-webkit-scrollbar {
   width: 12px;
   height: 12px;
+}
+
+/* 横纵滚动条交汇处透出编辑器底色，避免深色主题出现原生白色角块。 */
+.apple-editor-shell .cm-scroller::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .apple-editor-shell .cm-scroller::-webkit-scrollbar-thumb {
