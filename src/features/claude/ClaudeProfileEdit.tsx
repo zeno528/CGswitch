@@ -362,7 +362,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
         </button>
       </div>
       <div className="apple-edit-content">
-        <div className="apple-group p-0">
+        <div className="apple-edit-surface">
           {create ? <PresetGrid presets={claudePresets} selectedKind={presetKind} onSelect={selectPreset} title={tProfiles("edit.selectProvider")} /> : null}
           <div className="apple-panel-section">
             <ProviderIdentityFields

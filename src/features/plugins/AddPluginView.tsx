@@ -85,7 +85,7 @@ export default function AddPluginView({
       </div>
       <div className="apple-edit-content">
         <div className="space-y-4">
-          <div className="apple-group">
+          <div className="apple-edit-surface">
             <div className="apple-panel-section">
               <div className="field-label mb-1.5">{t("add.method")}</div>
               <AppSelect
@@ -116,7 +116,7 @@ export default function AddPluginView({
             </div>
           </div>
           {method === "repository" && preview ? (
-            <div className="apple-group">
+            <div className="apple-edit-surface">
               <div className="apple-panel-section">
                 <div className="field-label">{t("add.candidates")}</div>
                 <p className="muted mt-1.5 text-sm">

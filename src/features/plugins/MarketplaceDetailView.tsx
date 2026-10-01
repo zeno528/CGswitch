@@ -128,7 +128,7 @@ export default function MarketplaceDetailView({
       <div className="apple-edit-content">
         <div className="space-y-4">
           {thirdPartyProfile ? (
-            <div className="apple-group">
+            <div className="apple-edit-surface">
               <div className="apple-panel-section">
                 <p className="muted text-sm">
                   {t("marketDetail.thirdPartyNotice")}
@@ -136,7 +136,7 @@ export default function MarketplaceDetailView({
               </div>
             </div>
           ) : null}
-          <div className="apple-group">
+          <div className="apple-edit-surface">
             <div className="apple-panel-section">
               <div className="flex flex-wrap items-center gap-2">
                 <div className="field-label">{t("marketDetail.browsable")}</div>

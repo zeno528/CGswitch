@@ -266,6 +266,23 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-panel-section + .apple-panel-section::before {\n  content: \"\";\n  position: absolute;\n  top: 0;\n  right: var(--gap-card-inline);\n  left: var(--gap-card-inline);\n  border-top: 1px solid var(--panel-divider);");
   });
 
+  it("所有编辑正文复用共享容器，不依赖 apple-group 的嵌套层数", () => {
+    const files = ["profiles/ProfileEdit", "profiles/ProfileIconEdit", "claude/ClaudeProfileEdit", "mcp/McpEdit", "mcp/ClaudeMcpEdit", "plugins/PluginDetailView", "plugins/AddPluginView", "plugins/MarketplaceDetailView"];
+    // 「必须使用 apple-edit-surface」由 check-style-leaks 的结构检查兜底；这里守另一半：不得再挂 apple-group
+    for (const file of files) {
+      const page = readFileSync(new URL(`../features/${file}.tsx`, import.meta.url), "utf8");
+      expect(page).not.toContain('className="apple-group');
+    }
+    expect(styles).not.toContain(".apple-edit-page > .apple-edit-content > .apple-group:not(.apple-list-card)");
+  });
+
+  it("编辑页首分区不叠加卡片上内边距，后续分区仍使用共享间距", () => {
+    const rule = styles.match(/\.apple-edit-surface\.apple-panel-section,\n\.apple-edit-surface > \.apple-panel-section:first-child \{([^}]+)\}/)?.[1];
+    expect(rule).toContain("padding-top: 0;");
+    expect(styles).toContain(".apple-panel-section {\n  padding: var(--gap-card) var(--gap-card-inline);");
+    expect(styles).toContain("padding-top: var(--gap-page);");
+  });
+
   it("让配置卡片与独立列表卡片复用全局描边", () => {
     expect(styles).toContain("--card-edge-shadow: 0 0 0 0.5px var(--panel-border);");
     expect(styles).toContain(".panel,\n.apple-group,\n.apple-list-row,\n.apple-editor-surface {\n  box-shadow: var(--card-edge-shadow);");
@@ -285,7 +302,7 @@ describe("AppShell 布局", () => {
 
   it("编辑页滚动条收在主卡片边界内", () => {
     expect(profileEditSource).toContain('className="apple-edit-content"');
-    expect(profileEditSource).toContain('className="apple-group p-0"');
+    expect(profileEditSource).toContain('className="apple-edit-surface"');
     expect(styles).not.toContain(".apple-edit-card-frame");
   });
 

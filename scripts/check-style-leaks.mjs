@@ -83,6 +83,10 @@ const SHARED_HEADER_CONTRACTS = [
 /* 文件级结构不变量：中间滚动区与页头必须成对出现，防止新页面漏页头或自建布局骨架 */
 const STRUCTURAL_CHECKS = [
   {
+    name: "编辑页表单分区必须复用 apple-edit-surface，禁止依赖卡片包装深度",
+    holds: (content) => !content.includes("apple-edit-page") || !content.includes("apple-panel-section") || content.includes("apple-edit-surface"),
+  },
+  {
     name: "使用 apple-edit-content 的文件必须同时包含 apple-page-bar",
     // app/AppShell.tsx 只在 DOM 查询里引用该类名（页面进场动画的挂载点选择器），
     // 自身不渲染任何页面布局骨架，页头由各 feature 页自备。

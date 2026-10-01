@@ -141,7 +141,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
       </div>
 
       <div className="apple-edit-content">
-        <div className="apple-group p-0">
+        <div className="apple-edit-surface">
           <McpConnectionForm
             name={name} setName={setName} transport={transport} setTransport={(value) => setTransport(value as Transport)}
             command={command} setCommand={setCommand} argsText={argsText} setArgsText={setArgsText}

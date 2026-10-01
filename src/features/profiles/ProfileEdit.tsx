@@ -511,7 +511,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
       </div>
       <div className="apple-edit-content">
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
-        <div className="apple-group p-0">
+        <div className="apple-edit-surface">
           {create ? <PresetGrid presets={builtinPresets} selectedKind={presetKind} onSelect={(kind) => void selectPreset(kind)} title={t("edit.selectProvider")} /> : null}
           <div className="apple-panel-section">
             <ProviderIdentityFields

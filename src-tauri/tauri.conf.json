@@ -15,8 +15,8 @@
         "title": "CGswitch",
         "width": 1080,
         "height": 720,
-        "minWidth": 900,
-        "minHeight": 620,
+        "minWidth": 1000,
+        "minHeight": 680,
         "center": true,
         "visible": false,
         "decorations": false

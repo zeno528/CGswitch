@@ -126,7 +126,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
         {!create && onDelete ? <button type="button" className="apple-action-button app-button--danger" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("edit.uninstall")}</button> : null}
       </div>
       <div className="apple-edit-content">
-        <div className="apple-group p-0">
+        <div className="apple-edit-surface">
           <McpConnectionForm
             name={name} setName={setName} transport={form.transport} setTransport={(value) => editField("transport", value)}
             command={form.command} setCommand={(value) => editField("command", value)}
