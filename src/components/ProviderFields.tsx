@@ -1,4 +1,4 @@
-import { Download, Eye, EyeOff, Pencil, Wifi } from "lucide-react";
+import { Download, Eye, EyeOff, Pencil, Trash2, Wifi } from "lucide-react";
 import type { ReactNode } from "react";
 import { AppSelect } from "./AppSelect";
 import { LoadingSpinner } from "./LoadingSpinner";
@@ -134,6 +134,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
     oneMillion?: string;
     oneMillionColumn?: string;
     oneMillionTitle?: string;
+    clear?: string;
   };
 }) {
   if (mappingFields) {
@@ -175,7 +176,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
           </div>
         </div>
         <div className="overflow-hidden rounded-xl border border-(--panel-border) bg-(--main-surface-bg)">
-          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_4.5rem] items-center gap-2 bg-(--tile-bg) px-3 py-2 sm:grid">
+          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.5rem_max-content_2rem] items-center gap-2 bg-(--tile-bg) px-3 py-2 sm:grid">
             <span className="meta-xs muted font-medium">{labels.role ?? labels.model}</span>
             <span className="meta-xs muted font-medium">{labels.displayName}</span>
             <span className="meta-xs muted flex min-w-0 items-center gap-2 whitespace-nowrap font-medium">
@@ -185,11 +186,13 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
             </span>
             <span aria-hidden="true" />
             <span className="meta-xs muted whitespace-nowrap text-center font-medium">{labels.oneMillionColumn ?? labels.oneMillion}</span>
+            <span aria-hidden="true" />
           </div>
           {mappingFields.map((field) => {
+            const empty = !displayModelLabel(field.value).trim();
             const selected = modelOptions.find((option) => option.label === displayModelLabel(field.value.trim()))?.value ?? null;
             return (
-              <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.75rem_4.5rem] sm:items-center">
+              <div key={field.key} className="grid grid-cols-1 gap-2 border-t border-(--panel-divider) px-3 py-2 sm:grid-cols-[7rem_minmax(0,1fr)_minmax(0,1fr)_2.5rem_max-content_2rem] sm:items-center">
                 <div className="flex min-w-0 items-center">
                   <span className="inline-flex min-h-8 w-full min-w-0 items-center rounded-lg bg-(--tile-bg) px-3 text-sm font-medium text-(--text-secondary)" title={field.label}>{field.label}</span>
                 </div>
@@ -212,10 +215,15 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
                   menuWidth="max-content"
                 />
                 {field.onToggleOneMillion && labels.oneMillion ? (
-                  <label className={`editor-ghost !h-8 shrink-0 !px-2 sm:justify-center ${field.oneMillion ? "on" : ""}`} title={labels.oneMillionTitle}>
-                    <input type="checkbox" checked={field.oneMillion ?? false} onChange={(event) => field.onToggleOneMillion?.(event.target.checked)} />
+                  <label className={`editor-ghost !h-8 shrink-0 !px-2 justify-self-center ${!empty && field.oneMillion ? "on" : ""}`} title={labels.oneMillionTitle} aria-disabled={empty}>
+                    <input type="checkbox" checked={!empty && (field.oneMillion ?? false)} disabled={empty} aria-label={`${field.label} ${labels.oneMillion}`} onChange={(event) => field.onToggleOneMillion?.(event.target.checked)} />
                     <span className="meta-xs font-medium">{labels.oneMillion}</span>
                   </label>
+                ) : null}
+                {labels.clear ? (
+                  <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:text-(--text-secondary) disabled:opacity-40" disabled={empty && !field.displayValue?.trim()} aria-label={`${labels.clear} ${field.label}`} onClick={() => { field.onChange(""); field.onDisplayChange?.(""); }}>
+                    <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
+                  </button>
                 ) : null}
               </div>
             );

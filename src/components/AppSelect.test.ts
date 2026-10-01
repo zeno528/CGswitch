@@ -45,9 +45,11 @@ describe("AppSelect styles", () => {
       styleSource.indexOf(".app-selection-state {"),
       styleSource.indexOf(".apple-sidebar-nav-button {"),
     );
-    expect(sharedStateSource).toContain("background: rgb(0 0 0 / 0.05)");
-    expect(sharedStateSource).toContain("background: rgb(255 255 255 / 0.08)");
-    expect(sharedStateSource).toContain("background: var(--tile-bg)");
+    expect(styleSource).toContain("--hover-bg: rgb(0 0 0 / 0.05);");
+    expect(styleSource).toContain("--hover-bg: rgb(255 255 255 / 0.08);");
+    expect(styleSource).toContain("--active-bg: var(--tile-bg);");
+    expect(sharedStateSource).toContain("background: var(--hover-bg)");
+    expect(sharedStateSource).toContain("background: var(--active-bg)");
     expect(sharedStateSource).toContain("color: var(--accent)");
     expect(sharedStateSource).toContain("transition: background-color var(--motion-fast) ease-out, color var(--motion-fast) ease-out;");
     expect(sharedStateSource).not.toContain("background: var(--selection-bg)");

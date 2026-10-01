@@ -18,7 +18,7 @@ export default function PresetGrid({ presets, selectedKind, onSelect, title }: P
           <button
             key={preset.kind}
             type="button"
-            className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${selectedKind === preset.kind ? "shadow-[0_0_0_1px_var(--accent)]" : "shadow-[0_0_0_1px_var(--panel-ring)] hover:bg-black/3 dark:hover:bg-white/4"}`}
+            className={`flex items-center gap-2 rounded-xl px-2.5 py-2 text-left transition-colors ${selectedKind === preset.kind ? "shadow-[0_0_0_1px_var(--accent)] bg-(--active-bg)" : "shadow-[0_0_0_1px_var(--panel-ring)] hover:bg-(--hover-bg)"}`}
             aria-pressed={selectedKind === preset.kind}
             onClick={() => onSelect(preset.kind)}
           >

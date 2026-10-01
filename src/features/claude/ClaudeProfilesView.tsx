@@ -6,6 +6,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { createPortal } from "react-dom";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
+import { getCachedClaudeProfiles, loadClaudeProfiles, setClaudeProfilesCache } from "../../app/managementDataCache";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import SortableCard from "../../components/SortableCard";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
@@ -95,8 +96,10 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
   const { t } = useTranslation("claude");
   // 卡片外壳/操作行的悬停文案直接用 profiles 资源（与 Codex 同词），不另造 key
   const { t: tProfiles } = useTranslation("profiles");
-  const [items, setItems] = useState<ClaudeProfileSummary[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  // 缓存直出（同插件/Skill/MCP 页契约）：首帧就是完整列表，进页静默强刷取新
+  const cached = getCachedClaudeProfiles();
+  const [items, setItems] = useState<ClaudeProfileSummary[]>(cached ?? []);
+  const [loaded, setLoaded] = useState(cached !== null);
   const [busy, setBusy] = useState(false);
   const [modal, setModal] = useState<"capture" | "rename" | null>(null);
   const [modalProfile, setModalProfile] = useState<ClaudeProfileSummary | null>(null);
@@ -108,7 +111,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
 
   const refresh = async () => {
     try {
-      setItems(await api.claudeListProfiles());
+      setItems(await loadClaudeProfiles(true));
     } catch (error) {
       feedback.error(String(error));
     } finally {
@@ -121,6 +124,8 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
   const persistOrder = async (previous: ClaudeProfileSummary[], next: ClaudeProfileSummary[]) => {
     try {
       await api.claudeReorderProfiles(next.map((item) => item.id));
+      // 排序不整页强刷：本地顺序即新顺序，直接回写缓存，下次进页直出的顺序才正确
+      setClaudeProfilesCache(next);
     } catch (error) {
       setItems(previous);
       feedback.error(String(error));

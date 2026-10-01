@@ -39,6 +39,10 @@ describe("AppShell 布局", () => {
     // 外层 key 不得含 view：否则每次切页整树重挂载，保活失效
     expect(source).toContain('key={state ? "app" : "loading"}');
     expect(source).not.toContain('key={state ? view : "loading"}');
+    // 首进页面必须在渲染期进挂载清单：useEffect 晚一帧才提交，
+    // 「旧页已隐藏、新页未挂载」的空主区域帧正是首进闪屏的来源
+    expect(source).toContain('if (!visitedViews.has(view)) {\n    setVisitedViews(new Set(visitedViews).add(view));\n  }');
+    expect(source).not.toContain("setVisitedViews((prev) => (prev.has(view)");
   });
 
   it("切回保活页时进场动画补播，同页内部挂载不重复播", () => {
@@ -203,6 +207,17 @@ describe("AppShell 布局", () => {
     expect(styles).toMatch(/\.panel \{[\s\S]*?background: var\(--panel-bg\);/);
   });
 
+  it("普通悬停块复用侧边栏原有的深浅色高亮", () => {
+    expect(styles).toMatch(/:root \{[^}]*--hover-bg: rgb\(0 0 0 \/ 0\.05\);/);
+    expect(styles).toMatch(/:root\.dark \{[^}]*--hover-bg: rgb\(255 255 255 \/ 0\.08\);/);
+    expect(styles.match(/--hover-bg:/g)).toHaveLength(2);
+    for (const selector of [".window-control-button:hover", ".apple-back-button:hover", ".editor-ghost-group:hover", ".app-dialog-close:hover", ".app-toast__close:hover"]) {
+      expect(styles).toContain(`${selector} {\n  background: var(--hover-bg);`);
+    }
+    expect(styles).toContain(":where(.apple-icon-button:hover:not(:disabled), .apple-icon-button:focus-visible:not(:disabled)) {\n  background: var(--hover-bg);");
+    expect(styles).toContain('.editor-ghost:not(:disabled):not([aria-disabled="true"]):hover {\n  background: var(--hover-bg);');
+  });
+
   it("让主内容表面浅色使用白色、深色使用 #1e1e1e", () => {
     expect(styles).toContain("--main-surface-bg: #ffffff;");
     expect(styles).toContain("--main-surface-bg: #1e1e1e;");
@@ -276,7 +291,8 @@ describe("AppShell 布局", () => {
     expect(styles).not.toContain(".apple-edit-page > .apple-edit-content > .apple-group:not(.apple-list-card)");
   });
 
-  it("编辑页首分区不叠加卡片上内边距，后续分区仍使用共享间距", () => {
+  it("编辑正文占满原卡片宽度，首分区不叠加上内边距", () => {
+    expect(styles).toContain(".apple-edit-surface {\n  --gap-card-inline: 0px;");
     const rule = styles.match(/\.apple-edit-surface\.apple-panel-section,\n\.apple-edit-surface > \.apple-panel-section:first-child \{([^}]+)\}/)?.[1];
     expect(rule).toContain("padding-top: 0;");
     expect(styles).toContain(".apple-panel-section {\n  padding: var(--gap-card) var(--gap-card-inline);");
@@ -315,7 +331,8 @@ describe("AppShell 布局", () => {
     expect(profileEditSource).toContain("if (((!create && !detail) || authStatusPending) && !loadError) return null;");
   });
 
-  it("将内容区滚动条槽从右侧内边距中扣除", () => {
+  it("主区域统一增加左右留白，并从右侧内边距扣除滚动条槽", () => {
+    expect(styles).toContain("--gap-main: 2rem;");
     expect(styles).toContain("padding-right: calc(var(--gap-main) - 8px);");
   });
 

@@ -434,17 +434,18 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                 role: t("modelRoleLabel"), displayName: t("displayNameLabel"), requestModel: t("requestModelLabel"),
                 oneMillion: t("oneMillionLabel"), oneMillionTitle: t("oneMillionTitle"),
                 oneMillionColumn: t("oneMillionColumn"),
+                clear: tProfiles("edit.clearFile"),
               }}
             />
           </div>
           <div className="apple-panel-section flex flex-col">
             <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-              <button type="button" className="relative flex h-8 items-center gap-1.5 rounded-[10px] bg-(--selection-bg) px-3 text-[13px] font-semibold text-accent transition-colors" aria-pressed="true" title="settings.json">
+              <button type="button" className="relative flex h-8 items-center gap-1.5 rounded-[10px] bg-(--active-bg) px-3 text-[13px] font-semibold text-accent transition-colors" aria-pressed="true" title="settings.json">
                 <FileBraces className="h-3.5 w-3.5" strokeWidth={2} />
                 <span>settings.json</span>
                 {envDirty ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}
               </button>
-              <div className="editor-ghost-group ml-auto bg-(--selection-bg) px-2">
+              <div className="editor-ghost-group ml-auto bg-(--active-bg) px-2">
                 <span className="field-label font-normal! flex items-center gap-1">
                   <LayoutTemplate size={16} strokeWidth={2} aria-hidden="true" />
                   {t("commonTemplate.title")}

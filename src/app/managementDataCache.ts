@@ -1,5 +1,5 @@
 import { api } from "../api";
-import type { DatabaseBackupInfo, MarketplacePlugin, McpProbeResult, McpServerSpec, PluginMarketplace, PluginSummary, SkillSummary } from "../types";
+import type { ClaudeProfileSummary, DatabaseBackupInfo, MarketplacePlugin, McpProbeResult, McpServerSpec, PluginMarketplace, PluginSummary, SkillSummary } from "../types";
 
 export type McpProbeCacheEntry = {
   fingerprint: string;
@@ -105,6 +105,11 @@ const claudeMcpServers = createManagementCache<McpServerSpec[]>(api.listClaudeMc
   key: "cgswitch.claude-mcp-servers-cache-v1",
   restore: restoreNamedList<McpServerSpec>,
 });
+/// Claude 供应商列表可持久化：摘要里只有 has_token 布尔，明文 token 不进缓存。
+const claudeProfiles = createManagementCache<ClaudeProfileSummary[]>(api.claudeListProfiles, {
+  key: "cgswitch.claude-profiles-cache-v1",
+  restore: restoreNamedList<ClaudeProfileSummary>,
+});
 const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPluginMarketplaces, {
   key: "cgswitch.plugin-marketplaces-cache-v1",
   restore: restoreNamedList<PluginMarketplace>,
@@ -207,6 +212,18 @@ export function loadClaudeMcpServers(force = false): Promise<McpServerSpec[]> {
 
 export function getCachedClaudeMcpServers(): McpServerSpec[] | null {
   return claudeMcpServers.get();
+}
+
+export function loadClaudeProfiles(force = false): Promise<ClaudeProfileSummary[]> {
+  return claudeProfiles.load(force);
+}
+
+export function getCachedClaudeProfiles(): ClaudeProfileSummary[] | null {
+  return claudeProfiles.get();
+}
+
+export function setClaudeProfilesCache(items: ClaudeProfileSummary[]): void {
+  claudeProfiles.set(items);
 }
 
 export function loadDatabaseBackups(force = false): Promise<DatabaseBackupInfo[]> {

@@ -37,6 +37,9 @@
   --brand-claude: #d97757;
   --text-primary: #1c1c1e;
   --text-secondary: rgba(60, 60, 67, 0.68);
+  /* 全局交互高亮：复用侧边栏原有的悬停与激活底色。 */
+  --hover-bg: rgb(0 0 0 / 0.05);
+  --active-bg: var(--tile-bg);
   --sidebar-bg: var(--panel-bg);
   --selection-bg: rgba(0, 122, 255, 0.12);
   /* 状态徽标文字：比 --success 深一档，浅底上保证对比度；深色主题换亮绿 */
@@ -58,8 +61,8 @@
   --gap-card: 1.25rem;
   /* 大卡片正文左右内缩：与上下节奏分离，避免内容贴近卡片边缘 */
   --gap-card-inline: 1.5rem;
-  /* 主内容区左右间距基准（卡片到侧边栏/窗口边缘的视觉间距） */
-  --gap-main: 1.5rem;
+  /* 右侧所有页面的内容到主容器边缘的统一留白 */
+  --gap-main: 2rem;
   /* 操作按钮（药丸）之间的统一间距：弹窗底部与编辑页操作栏共用 */
   --gap-actions: 0.75rem;
   /* 弹窗内容/操作区到弹窗底边的统一留白（标准弹窗、hero 弹窗操作区、oauth 弹窗共用） */
@@ -123,6 +126,7 @@
   --brand-gradient-fade-mix: 38%;
   --text-primary: #ffffff;
   --text-secondary: rgba(255, 255, 255, 0.68);
+  --hover-bg: rgb(255 255 255 / 0.08);
   --sidebar-bg: var(--panel-bg);
   --selection-bg: rgba(0, 122, 255, 0.16);
   --success-text: #6ee7a0;
@@ -650,16 +654,12 @@ body:has(.app-dialog-overlay) .window-control-button {
 }
 
 .window-control-button:hover {
-  background: rgb(0 0 0 / 0.06);
+  background: var(--hover-bg);
 }
 
 .window-control-button > svg {
   width: 1rem;
   height: 1rem;
-}
-
-:root.dark .window-control-button:not(.window-control-button--close):hover {
-  background: rgb(255 255 255 / 0.1);
 }
 
 .window-control-button--close:hover {
@@ -845,10 +845,8 @@ body.drag-active * {
 }
 
 .app-selection-state:not([data-active="true"]):hover,
-.app-selection-state:not([data-active="true"]):focus-visible { background: rgb(0 0 0 / 0.05); }
-:root.dark .app-selection-state:not([data-active="true"]):hover,
-:root.dark .app-selection-state:not([data-active="true"]):focus-visible { background: rgb(255 255 255 / 0.08); }
-.app-selection-state[data-active="true"] { background: var(--tile-bg); color: var(--accent); }
+.app-selection-state:not([data-active="true"]):focus-visible { background: var(--hover-bg); }
+.app-selection-state[data-active="true"] { background: var(--active-bg); color: var(--accent); }
 
 .apple-sidebar-nav-button {
   align-items: center;
@@ -1071,8 +1069,12 @@ body.drag-active * {
 }
 
 /* 编辑正文统一容器 apple-edit-surface：无卡片外观（不带 apple-group 的底色/圆角/裁切），
-   自身无需任何声明，仅作结构契约钩子。首分区顶部间距只由 apple-edit-content 提供，
+   横向内缩归零，让正文与分割线占满原卡片宽度。首分区顶部间距只由 apple-edit-content 提供，
    图标网格（自身即分区）与表单（首个子分区）复用同一规则。 */
+.apple-edit-surface {
+  --gap-card-inline: 0px;
+}
+
 .apple-edit-surface.apple-panel-section,
 .apple-edit-surface > .apple-panel-section:first-child {
   padding-top: 0;
@@ -1149,11 +1151,7 @@ body.drag-active * {
 }
 
 .apple-back-button:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-:root.dark .apple-back-button:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover-bg);
 }
 
 .codex-status-control {
@@ -1485,7 +1483,7 @@ body.drag-active * {
 }
 
 :where(.apple-icon-button:hover:not(:disabled), .apple-icon-button:focus-visible:not(:disabled)) {
-  background: var(--profile-chip-bg);
+  background: var(--hover-bg);
 }
 
 .apple-toolbar-group {
@@ -1511,7 +1509,7 @@ body.drag-active * {
 }
 
 .apple-toolbar-group > :is(.apple-action-button, .apple-icon-button):is(:hover, :focus-visible):not(:disabled) {
-  background: var(--tile-bg);
+  background: var(--hover-bg);
 }
 
 /* MCP 类型切换只保留当前项高亮，按钮位置保持固定。 */
@@ -1636,12 +1634,8 @@ body.drag-active * {
   white-space: nowrap;
 }
 
-.editor-ghost:not(:disabled):hover {
-  background: rgb(0 0 0 / 0.05);
-}
-
-:root.dark .editor-ghost:not(:disabled):hover {
-  background: rgb(255 255 255 / 0.08);
+.editor-ghost:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--hover-bg);
 }
 
 /* 格式化是编辑器的常用主操作：默认使用主题强调色，悬停只提高底色浓度。 */
@@ -1683,11 +1677,7 @@ body.drag-active * {
 }
 
 .editor-ghost-group:hover {
-  background: rgb(0 0 0 / 0.05);
-}
-
-:root.dark .editor-ghost-group:hover {
-  background: rgb(255 255 255 / 0.08);
+  background: var(--hover-bg);
 }
 
 /* 组内子控件不单独刷底色，hover 只亮整组一层 */
@@ -1703,7 +1693,8 @@ body.drag-active * {
   color: var(--accent);
 }
 
-.editor-ghost:disabled {
+.editor-ghost:disabled,
+.editor-ghost[aria-disabled="true"] {
   opacity: 0.4;
   cursor: default;
 }
@@ -1903,7 +1894,7 @@ button:focus-visible {
 }
 
 .app-dialog-close:hover {
-  background: var(--profile-chip-bg);
+  background: var(--hover-bg);
   color: inherit;
 }
 
@@ -2456,7 +2447,7 @@ button:focus-visible {
 }
 
 .app-toast__close:hover {
-  background: var(--profile-chip-bg);
+  background: var(--hover-bg);
   color: inherit;
 }
 
@@ -2724,7 +2715,7 @@ button:focus-visible {
 .app-dynamic-input__create:hover,
 .app-dynamic-input__create:focus-visible {
   border-color: var(--accent);
-  background: var(--selection-bg);
+  background: var(--hover-bg);
   color: var(--accent);
 }
 
@@ -2851,7 +2842,7 @@ textarea.app-input::-webkit-scrollbar { width: 0; height: 0; display: none; }
   transition: color 150ms ease-out, background-color 150ms ease-out;
 }
 
-.app-input-action__button:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.app-input-action__button:hover { background: var(--hover-bg); color: var(--accent); }
 .app-input-action__button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .app-input.underline-input {

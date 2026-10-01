@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listMcpServers, listClaudeMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
+const { listMcpServers, listClaudeMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
   listMcpServers: vi.fn(),
   listClaudeMcpServers: vi.fn(),
+  claudeListProfiles: vi.fn(),
   listMarketplacePlugins: vi.fn(),
   listPlugins: vi.fn(),
   listDatabaseBackups: vi.fn(),
@@ -13,13 +14,14 @@ const localStorageMock = {
   setItem: (key: string, value: string) => persistedStorage.set(key, value),
 };
 
-vi.mock("../api", () => ({ api: { listMcpServers, listClaudeMcpServers, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
+vi.mock("../api", () => ({ api: { listMcpServers, listClaudeMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
 
 describe("managementDataCache", () => {
   beforeEach(() => {
     vi.resetModules();
     listMcpServers.mockReset();
     listClaudeMcpServers.mockReset();
+    claudeListProfiles.mockReset();
     listDatabaseBackups.mockReset();
     persistedStorage.clear();
     vi.stubGlobal("localStorage", localStorageMock);
@@ -51,6 +53,19 @@ describe("managementDataCache", () => {
 
     expect(cache.getCachedClaudeMcpServers()).toEqual(servers);
     expect(listClaudeMcpServers).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the cached Claude profile list when the management page remounts", async () => {
+    const profiles = [{ id: "claude-1", name: "Provider", base_url: "https://api.example", has_token: true, model: null, description: null, icon: null, admin_url: null, kind: null, show_balance: false, updated_at: "0" }];
+    claudeListProfiles.mockResolvedValue(profiles);
+    const cache = await import("./managementDataCache");
+
+    expect(cache.getCachedClaudeProfiles()).toBeNull();
+    await cache.loadClaudeProfiles();
+    await cache.loadClaudeProfiles();
+
+    expect(cache.getCachedClaudeProfiles()).toEqual(profiles);
+    expect(claudeListProfiles).toHaveBeenCalledTimes(1);
   });
 
   it("returns the cached backup list when the settings page remounts", async () => {

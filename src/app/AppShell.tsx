@@ -7,7 +7,7 @@ import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
-import { getMcpDiffBadge, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import ProfilesView from "../features/profiles/ProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -185,9 +185,13 @@ export default function AppShell() {
   // 页面进场动画：挂在 <main> 上监听页内容挂载，切回保活页时补播（见 usePageEnterAnimation）
   const mainRef = useRef<HTMLElement>(null);
   usePageEnterAnimation(mainRef, view);
-  useEffect(() => {
-    setVisitedViews((prev) => (prev.has(view) ? prev : new Set(prev).add(view)));
-  }, [view]);
+  // 首次进入的页面在渲染期就补进挂载清单（React 丢弃中间渲染、不提交空帧）。
+  // 若放到 useEffect 里，切页第一帧是「旧页已隐藏、新页未挂载」的空白主区域——
+  // 浏览器先画出这个空帧再补挂载，正是首次进入各页闪一下的来源；
+  // 第二次进入已在清单内，单次渲染直接显隐切换，所以不闪。
+  if (!visitedViews.has(view)) {
+    setVisitedViews(new Set(visitedViews).add(view));
+  }
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
   const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
@@ -301,7 +305,7 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [startupReady, activationEpoch]);
 
-  // 首屏稳定后预热管理页数据（MCP 列表 / Skill / 插件 / 市场）：与差异检查同一波延迟，
+  // 首屏稳定后预热管理页数据（MCP 列表 / Skill / 插件 / 市场 / Claude 供应商与 Claude MCP）：与差异检查同一波延迟，
   // fire-and-forget、失败无感——预热失败时页面进入仍走各页自己的加载路径。
   // 只在启动后跑一次；进页后的静默刷新由各页自持。各页首帧吃这批缓存直出（缓存在
   // useState 里同步初始化），启动后立刻点任何管理页都是整页内容，不出现转圈。
@@ -312,6 +316,8 @@ export default function AppShell() {
       void loadSkills().catch(() => undefined);
       void loadPlugins().catch(() => undefined);
       void loadPluginMarketplaces().catch(() => undefined);
+      void loadClaudeMcpServers().catch(() => undefined);
+      void loadClaudeProfiles().catch(() => undefined);
     }, 1500);
     return () => window.clearTimeout(timer);
   }, [startupReady]);
