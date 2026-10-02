@@ -29,7 +29,10 @@ pub async fn fetch_models(base_url: &str, api_key: &str) -> Result<Vec<String>, 
         return Err("请先填写 API Key 再获取模型列表".to_string());
     }
 
-    let client = reqwest::Client::builder()
+    let client = crate::network::Network::current()
+        .await
+        .map_err(|error| error.to_string())?
+        .builder()
         .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
         .build()
         .map_err(|error| format!("构建 HTTP 客户端失败: {error}"))?;

@@ -14,10 +14,78 @@ use crate::models::{
     McpSyncPreview, ProfileBalanceInfo, Settings, TrayClickAction,
 };
 use crate::services::{
-    AppContext, CodexProfileConnectionResult, DatabaseBackupInfo, MarketplacePlugin,
-    PluginMarketplace, PluginPreview, PluginSkill, PluginSummary, PluginUpdate, ProfileBalance,
-    SkillSummary, SkillTool,
+    AppContext, CliFailure, CliProgress, CliStatus, CliUpdate, CodexProfileConnectionResult,
+    DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview, PluginSkill,
+    PluginSummary, PluginUpdate, ProfileBalance, SkillSummary, SkillTool,
 };
+
+#[tauri::command]
+pub async fn claude_get_cli_status(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.claude_get_cli_status())
+        .await
+        .map_err(|_| CliFailure {
+            stage: "detect",
+            kind: "internal",
+            message: "CLI 检测任务失败".into(),
+        })?
+}
+
+#[tauri::command]
+pub async fn claude_check_cli_update(
+    state: State<'_, AppContext>,
+) -> Result<CliUpdate, CliFailure> {
+    state.claude_check_cli_update().await
+}
+
+#[tauri::command]
+pub async fn claude_install_cli(
+    state: State<'_, AppContext>,
+    progress: tauri::ipc::Channel<CliProgress>,
+) -> Result<CliStatus, CliFailure> {
+    state.claude_run_cli(true, progress).await
+}
+
+#[tauri::command]
+pub async fn claude_update_cli(
+    state: State<'_, AppContext>,
+    progress: tauri::ipc::Channel<CliProgress>,
+) -> Result<CliStatus, CliFailure> {
+    state.claude_run_cli(false, progress).await
+}
+
+#[tauri::command]
+pub async fn codex_get_cli_status(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.codex_get_cli_status())
+        .await
+        .map_err(|_| CliFailure {
+            stage: "detect",
+            kind: "internal",
+            message: "CLI 检测任务失败".into(),
+        })?
+}
+
+#[tauri::command]
+pub async fn codex_check_cli_update(state: State<'_, AppContext>) -> Result<CliUpdate, CliFailure> {
+    state.codex_check_cli_update().await
+}
+
+#[tauri::command]
+pub async fn codex_install_cli(
+    state: State<'_, AppContext>,
+    progress: tauri::ipc::Channel<CliProgress>,
+) -> Result<CliStatus, CliFailure> {
+    state.codex_run_cli(true, progress).await
+}
+
+#[tauri::command]
+pub async fn codex_update_cli(
+    state: State<'_, AppContext>,
+    progress: tauri::ipc::Channel<CliProgress>,
+) -> Result<CliStatus, CliFailure> {
+    state.codex_run_cli(false, progress).await
+}
 
 fn should_try_next_account_credential(result: &CodexProfileConnectionResult) -> bool {
     matches!(result.status, Some(401 | 403))
@@ -1079,6 +1147,37 @@ pub fn get_settings(state: State<'_, AppContext>) -> AppResult<Settings> {
     state.settings()
 }
 
+/// 只接管网络配置与资源注册，下载、签名验证和安装继续由官方更新插件执行。
+#[tauri::command]
+pub async fn check_app_update(webview: tauri::Webview) -> AppResult<Option<serde_json::Value>> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let network = crate::network::Network::current()
+        .await
+        .map_err(|error| app_err!("{error}"))?;
+    let updater = network
+        .updater(webview.updater_builder())
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|error| app_err!("创建更新器失败: {error}"))?;
+    let Some(update) = updater
+        .check()
+        .await
+        .map_err(|error| app_err!("检查更新失败: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let mut metadata = serde_json::json!({
+        "currentVersion": update.current_version,
+        "version": update.version,
+        "date": update.raw_json.get("pub_date"),
+        "body": update.body,
+        "rawJson": update.raw_json,
+    });
+    metadata["rid"] = serde_json::json!(webview.resources_table().add(update));
+    Ok(Some(metadata))
+}
+
 /// 应用内更新安装成功前写入「已更新到 vX」标记（须在启动安装器/退出进程前完成落盘）。
 #[tauri::command]
 pub fn set_update_marker(version: String, state: State<'_, AppContext>) -> AppResult<()> {
@@ -1187,6 +1286,14 @@ pub async fn save_settings(
     }
     sync_autostart(&app, &saved)?;
     Ok(saved)
+}
+
+#[tauri::command]
+pub async fn get_proxy_status() -> AppResult<Option<String>> {
+    crate::network::Network::current()
+        .await
+        .map(|network| network.display)
+        .map_err(|error| app_err!("{error}"))
 }
 
 fn sync_autostart(app: &AppHandle, settings: &Settings) -> AppResult<()> {

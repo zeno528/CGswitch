@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
+const { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups, getProxyStatus } = vi.hoisted(() => ({
   codexListMcpServers: vi.fn(),
   claudeListMcpServers: vi.fn(),
   claudeListProfiles: vi.fn(),
   listMarketplacePlugins: vi.fn(),
   listPlugins: vi.fn(),
   listDatabaseBackups: vi.fn(),
+  getProxyStatus: vi.fn(),
 }));
 const persistedStorage = new Map<string, string>();
 const localStorageMock = {
@@ -14,7 +15,7 @@ const localStorageMock = {
   setItem: (key: string, value: string) => persistedStorage.set(key, value),
 };
 
-vi.mock("../api", () => ({ api: { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
+vi.mock("../api", () => ({ api: { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups, getProxyStatus } }));
 
 describe("managementDataCache", () => {
   beforeEach(() => {
@@ -23,11 +24,31 @@ describe("managementDataCache", () => {
     claudeListMcpServers.mockReset();
     claudeListProfiles.mockReset();
     listDatabaseBackups.mockReset();
+    getProxyStatus.mockReset();
     persistedStorage.clear();
     vi.stubGlobal("localStorage", localStorageMock);
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it("代理状态刷新时保留缓存并合并请求，失败缓存能在下一次刷新自愈", async () => {
+    const cache = await import("./managementDataCache");
+    getProxyStatus.mockResolvedValueOnce("http://proxy.invalid:8080/");
+    await cache.loadProxyStatus();
+    expect(cache.getCachedProxyStatus()).toEqual({ proxy: "http://proxy.invalid:8080/", error: false });
+    let fail: (error: Error) => void = () => undefined;
+    getProxyStatus.mockReturnValueOnce(new Promise<never>((_, reject) => { fail = reject; }));
+    const refresh = cache.loadProxyStatus(true);
+    expect(cache.loadProxyStatus(true)).toBe(refresh);
+    expect(cache.getCachedProxyStatus()).toEqual({ proxy: "http://proxy.invalid:8080/", error: false });
+    fail(new Error("fixture failure"));
+    expect(await refresh).toEqual({ proxy: null, error: true });
+    expect(cache.getCachedProxyStatus()).toEqual({ proxy: null, error: true });
+    expect(getProxyStatus).toHaveBeenCalledTimes(2);
+    getProxyStatus.mockResolvedValueOnce(null);
+    await cache.loadProxyStatus(true);
+    expect(cache.getCachedProxyStatus()).toEqual({ proxy: null, error: false });
+  });
 
   it("returns the cached MCP list when the management page remounts", async () => {
     const servers = [{ name: "github", command: "github-mcp-server", args: [], env: {}, enabled: null }];

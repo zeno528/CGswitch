@@ -117,6 +117,15 @@ const pluginMarketplaces = createManagementCache<PluginMarketplace[]>(api.listPl
 // 备份记录列表：只在内存缓存（不落 localStorage）——设置页切分页重挂载时直出，
 // 避免先闪"还没有备份记录"空态；跨重启的首开由进页静默刷新立刻补齐。
 const databaseBackups = createManagementCache<DatabaseBackupInfo[]>(api.listDatabaseBackups);
+export type ProxyStatus = { proxy: string | null; error: boolean };
+// 同样只放内存，切设置分区时直出上次结果；读取失败也保留为稳定的状态。
+const proxyStatus = createManagementCache<ProxyStatus>(async () => {
+  try {
+    return { proxy: await api.getProxyStatus(), error: false };
+  } catch {
+    return { proxy: null, error: true };
+  }
+});
 const mcpProbes = new Map<string, McpProbeCacheEntry>();
 let mcpProbeStorageLoaded = false;
 
@@ -224,6 +233,14 @@ export function getCachedClaudeProfiles(): ClaudeProfileSummary[] | null {
 
 export function setClaudeProfilesCache(items: ClaudeProfileSummary[]): void {
   claudeProfiles.set(items);
+}
+
+export function loadProxyStatus(force = false): Promise<ProxyStatus> {
+  return proxyStatus.load(force);
+}
+
+export function getCachedProxyStatus(): ProxyStatus | null {
+  return proxyStatus.get();
 }
 
 export function loadDatabaseBackups(force = false): Promise<DatabaseBackupInfo[]> {

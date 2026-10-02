@@ -12,14 +12,22 @@ describe("AppShell 布局", () => {
     expect(source).toContain("apple-sidebar relative flex h-full shrink-0 flex-col");
     expect(source).toContain('className="mx-1.5 mt-3 space-y-3"');
     expect(source).toContain("sidebarGroups.map");
-    expect(source).toContain("apple-sidebar-group-label");
+    expect(source).toContain('className={navClass} data-active={view === item.view ? "true" : undefined}');
+    expect(source).not.toContain("apple-sidebar-group-label");
     expect(source).toContain('src="/codex.svg"');
     expect(source).toContain('src="/claude-code.svg"');
-    expect(source).toContain('group.key !== "common"');
-    expect(styles).toContain(".apple-sidebar-group + .apple-sidebar-group");
-    // 分组文案复用全局侧栏文字动画，不能用 display:none 瞬间切换。
-    expect(source).toContain('<span className="apple-sidebar-label">{t(group.labelKey)}</span>');
-    expect(styles).not.toContain(".apple-sidebar--collapsed .apple-sidebar-group-label");
+    expect(source).toContain('key: "clients"');
+    expect(source.indexOf('labelKey: "nav.groupClaude"')).toBeLessThan(source.indexOf('labelKey: "nav.groupCodex"'));
+    expect(source).toContain('view: "claudeProfiles"');
+    expect(source).toContain('view: "codexProfiles"');
+    expect(source).not.toContain('labelKey: "nav.providers"');
+    expect(source).not.toContain('labelKey: "nav.claudeProviders"');
+    expect(styles).toContain(".apple-sidebar-group--content");
+    expect(source.indexOf('key: "clients"')).toBeLessThan(source.indexOf('key: "common"'));
+    expect(source.indexOf('labelKey: "nav.plugins"')).toBeLessThan(source.indexOf('labelKey: "nav.mcp"'));
+    // 客户端按钮与下方功能入口复用全局侧栏文字动画，不能用 display:none 瞬间切换。
+    expect(styles).not.toContain(".apple-sidebar-group-label");
+    expect(styles).toContain(".apple-sidebar-nav-button img");
     // 每个导航项必须渲染可见文案 + 收缩态悬浮提示（曾因修复闭合标签丢失过，钉死）
     expect(source).toContain('<span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>');
     expect(source).toContain('sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout"');
@@ -145,7 +153,11 @@ describe("AppShell 布局", () => {
     const startup = source.slice(source.indexOf("let delayedAuth: number | undefined;"));
     expect(source).toContain("const [startupReady, setStartupReady] = useState(false);");
     expect(source).toContain("setStartupReady(true);");
-    expect(source).toContain('<AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>');
+    const updater = source.match(/<AppUpdateProvider\b[^>]*>/)?.[0] ?? "";
+    expect(updater).toContain("enabled={Boolean(state?.settings.auto_check_update) && startupReady}");
+    expect(updater).toContain("ready={startupReady}");
+    expect(updater).toContain("proxyMode={state?.settings.proxy_mode}");
+    expect(updater).toContain("proxyUrl={state?.settings.proxy_url}");
     expect(startup.indexOf("setStartupReady(true);")).toBeGreaterThan(startup.indexOf("await appWindow?.show();"));
   });
 
@@ -174,8 +186,8 @@ describe("AppShell 布局", () => {
     expect(source).not.toContain('active ? "bg-(--tile-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) text-accent" :');
     expect(source).not.toContain('active ? "bg-(--selection-bg) font-semibold text-accent" :');
-    // 侧栏标签的颜色两主题都靠继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
-    // 禁止再给标签写直接 color 规则：它会压过继承，让激活态在深色下不变色。
+    // 侧栏标签的颜色两主题都靠继承 body（浅 #1c1c1e / 深 #ffffff），激活项不单独变色。
+    // 禁止再给标签写直接 color 规则，保持激活态与普通项一致。
     expect(styles).not.toContain(".apple-sidebar-nav-button .apple-sidebar-label");
     expect(styles).not.toContain(".apple-sidebar-indicator");
     expect(styles).toMatch(/\.apple-sidebar-flyout \{[\s\S]*font-weight: 400;/);
@@ -271,11 +283,10 @@ describe("AppShell 布局", () => {
     expect(styles).toContain("height: var(--toolbar-control-height);");
     expect(styles).toContain(".app-input--pill {\n  height: var(--toolbar-control-height);");
     expect(styles).toContain(".provider-page-brand {\n  display: inline-flex;\n  height: var(--toolbar-control-height);");
-    expect(styles).toContain(".mcp-target-switch {\n  height: var(--toolbar-control-height);");
   });
 
   it("让主题分段控件与工具栏容器共用药丸圆角", () => {
-    expect(styles).toContain(".apple-toolbar-group,\n.apple-segmented-control {\n  border-radius: 999px;");
+    expect(styles).toContain(".apple-toolbar-group,\n.app-segmented-control {\n  border-radius: 999px;");
   });
 
   it("让共享面板的分割线与内容左右内边距对齐", () => {
@@ -311,7 +322,7 @@ describe("AppShell 布局", () => {
 
   it("让配置卡片与独立列表卡片复用全局描边", () => {
     expect(styles).toContain("--card-edge-shadow: 0 0 0 0.5px var(--panel-border);");
-    expect(styles).toContain(".panel,\n.apple-group,\n.apple-list-row,\n.apple-editor-surface {\n  box-shadow: var(--card-edge-shadow);");
+    expect(styles).toContain(".panel,\n.apple-group,\n.app-segmented-control,\n.apple-list-row,\n.apple-editor-surface {\n  box-shadow: var(--card-edge-shadow);");
   });
 
   it("让技能预览器的 Markdown 分割线使用全局分割线", () => {

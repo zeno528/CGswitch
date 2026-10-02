@@ -298,6 +298,15 @@ pub enum TrayClickAction {
     ShowMenu,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyMode {
+    #[default]
+    Auto,
+    Off,
+    Custom,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default = "default_theme")]
@@ -320,6 +329,10 @@ pub struct Settings {
     pub auto_backup_interval_hours: u64,
     #[serde(default = "default_database_backup_keep_count")]
     pub database_backup_keep_count: u32,
+    #[serde(default)]
+    pub proxy_mode: ProxyMode,
+    #[serde(default)]
+    pub proxy_url: String,
 }
 
 fn default_theme() -> String {
@@ -352,13 +365,31 @@ impl Default for Settings {
             auto_check_update: default_auto_check_update(),
             auto_backup_interval_hours: 0,
             database_backup_keep_count: default_database_backup_keep_count(),
+            proxy_mode: ProxyMode::Auto,
+            proxy_url: String::new(),
         }
     }
 }
 
 #[cfg(test)]
 mod settings_tests {
-    use super::{Settings, TrayClickAction};
+    use super::{ProxyMode, Settings, TrayClickAction};
+
+    #[test]
+    fn proxy_settings_default_to_auto_and_round_trip_custom_address() {
+        let legacy: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.proxy_mode, ProxyMode::Auto);
+        assert!(legacy.proxy_url.is_empty());
+        let custom = Settings {
+            proxy_mode: ProxyMode::Custom,
+            proxy_url: "https://proxy.invalid:8443".into(),
+            ..legacy
+        };
+        let restored: Settings =
+            serde_json::from_str(&serde_json::to_string(&custom).unwrap()).unwrap();
+        assert_eq!(custom, restored);
+        assert!(serde_json::from_str::<Settings>(r#"{"proxy_mode":"invalid"}"#).is_err());
+    }
 
     #[test]
     fn tray_click_action_defaults_for_existing_settings_and_accepts_only_two_modes() {

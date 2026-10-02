@@ -19,6 +19,7 @@ import type {
   CodexProfileDetail,
   CodexProfileSummary,
   Settings,
+  CliFailure,
 } from "../types";
 
 const webProfiles: CodexProfileSummary[] = [
@@ -530,6 +531,8 @@ let webSettings: Settings = {
   auto_check_update: true,
   auto_backup_interval_hours: 0,
   database_backup_keep_count: 5,
+  proxy_mode: "auto",
+  proxy_url: "",
 };
 
 let webBackups: DatabaseBackupInfo[] = [];
@@ -728,6 +731,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return webState() as T;
     case "get_settings":
       return { ...webSettings } as T;
+    case "get_proxy_status":
+      // 浏览器无法读取系统代理或控制网络路由，不能伪造已生效的代理。
+      throw new Error("浏览器预览不支持读取应用代理状态");
     case "set_update_marker":
       webUpdateMarker = (args?.version as string) ?? null;
       return null as T;
@@ -737,6 +743,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webUpdateMarker = null;
       return marker as T;
     }
+    case "check_app_update":
+      throw new Error("应用更新需要在桌面版执行，浏览器无法模拟原生更新资源");
     case "log_update_event":
       return undefined as T;
     case "get_codex_status":
@@ -1158,6 +1166,19 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "delete_skill":
       return undefined as T;
+    case "claude_get_cli_status":
+    case "claude_check_cli_update":
+    case "claude_install_cli":
+    case "claude_update_cli":
+    case "codex_get_cli_status":
+    case "codex_check_cli_update":
+    case "codex_install_cli":
+    case "codex_update_cli":
+      throw {
+        stage: "desktop",
+        kind: "validation_error",
+        message: "CLI 检测、安装与升级需要在桌面版执行",
+      } satisfies CliFailure;
     case "claude_get_common_settings":
       return webClaudeCommonSettings as T;
     case "claude_save_common_settings": {

@@ -10,7 +10,7 @@ export default {
     settings: "Settings",
     claudeProviders: "Providers",
     groupCodex: "Codex",
-    groupClaude: "Claude",
+    groupClaude: "Claude Code",
     groupCommon: "General",
   },
   sidebar: {

@@ -6,6 +6,7 @@ import { useFeedback } from "../../app/Feedback";
 import { checkForAppUpdate, UPDATED_VERSION_KEY, type AppUpdate } from "./appUpdate";
 import { updateFailureMessage } from "./updateText";
 import { preloadUpdateNotesRenderer, UpdateNotesDialog } from "./UpdateNotesDialog";
+import type { Settings } from "../../types";
 
 /** 更新日志入口：直接打开对应版本的 GitHub Release 页，避免 /latest 重定向。 */
 export const releaseNotesUrl = (version: string) => `https://github.com/zeno528/CGswitch/releases/tag/v${encodeURIComponent(version.replace(/^v/, ""))}`;
@@ -28,7 +29,10 @@ export function useAppUpdate() {
   return value;
 }
 
-export function AppUpdateProvider({ enabled, ready = true, children }: { enabled: boolean; ready?: boolean; children: ReactNode }) {
+export function AppUpdateProvider({ enabled, ready = true, proxyMode = "auto", proxyUrl = "", children }: {
+  enabled: boolean; ready?: boolean; children: ReactNode;
+  proxyMode?: Settings["proxy_mode"]; proxyUrl?: string;
+}) {
   const feedback = useFeedback();
   const { t } = useTranslation("updates");
   const [update, setUpdate] = useState<AppUpdate | null>(null);
@@ -37,13 +41,23 @@ export function AppUpdateProvider({ enabled, ready = true, children }: { enabled
   // StrictMode 下 effect 双跑共用同一组件实例，state 守卫两次都读到旧值，必须用 ref 防重入
   const autoCheckedRef = useRef(false);
   const checkingRef = useRef(false);
+  const network = JSON.stringify([proxyMode, proxyMode === "custom" ? proxyUrl : ""]);
+  const networkRef = useRef(network);
+  const checkedNetworkRef = useRef<string | null>(null);
+  networkRef.current = network;
+
+  // 未开始安装的更新结果不能继续沿用旧代理；正在下载的任务保持原网络快照。
+  useEffect(() => { setUpdate(null); }, [network]);
 
   const check = useCallback(async (): Promise<AppUpdate | null> => {
     if (checkingRef.current) return update;
     checkingRef.current = true;
     setChecking(true);
+    const checkingNetwork = networkRef.current;
     try {
       const found = await checkForAppUpdate();
+      if (checkingNetwork !== networkRef.current) return null;
+      checkedNetworkRef.current = checkingNetwork;
       setUpdate(found);
       if (found?.notes) preloadUpdateNotesRenderer();
       return found;
@@ -75,7 +89,7 @@ export function AppUpdateProvider({ enabled, ready = true, children }: { enabled
   }, [feedback, ready, t]);
 
   const install = useCallback(async () => {
-    if (!update || installing) return;
+    if (!update || installing || checkedNetworkRef.current !== networkRef.current) return;
     setInstalling(true);
     try {
       await update.install();

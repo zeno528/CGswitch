@@ -69,7 +69,7 @@
   --dialog-pad-bottom: 1.5rem;
   /* 全局控件与窗口几何：页面、编辑页和侧边栏只从这里取尺寸 */
   --font-size-base: 0.875rem;
-  --sidebar-width-expanded: 8rem;
+  --sidebar-width-expanded: 10rem;
   --sidebar-width-collapsed: 3rem;
   --sidebar-nav-height: 2.25rem;
   --sidebar-nav-radius: 0.625rem;
@@ -197,6 +197,7 @@ body {
 
 .panel,
 .apple-group,
+.app-segmented-control,
 .apple-list-row,
 .apple-editor-surface {
   box-shadow: var(--card-edge-shadow);
@@ -498,6 +499,72 @@ body {
   color: var(--text-secondary);
 }
 
+/* CLI 升级按钮：尺寸复用订阅等级徽标，交互态只覆盖颜色与按钮行为。 */
+.cli-upgrade-pill {
+  align-items: center;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--accent);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.375rem;
+  transition: background-color var(--motion-fast) ease-out;
+  white-space: nowrap;
+}
+
+.cli-upgrade-pill:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.cli-upgrade-pill:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* CLI 管理卡事实行：头部下发丝线分隔的「图标 + 灰标签 + 值」并排小字 */
+.cli-facts {
+  align-items: center;
+  border-top: 1px solid var(--panel-divider);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  padding-top: 0.625rem;
+}
+
+.cli-fact {
+  align-items: center;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: 0.75rem;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.cli-fact > svg {
+  flex: none;
+  opacity: 0.65;
+}
+
+/* 事实值：主文本色中字重，与灰色标签形成层级 */
+.cli-fact-value {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* 路径 mono 胶囊：限宽省略，全文看 title 悬浮 */
+.cli-fact-path {
+  background: var(--tile-bg);
+  border-radius: 0.375rem;
+  color: var(--text-secondary);
+  font-size: 0.6875rem;
+  max-width: 18.75rem;
+  overflow: hidden;
+  padding: 0.0625rem 0.4375rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 设置页图标容器：边界复用全局面板，图标颜色跟随主按钮的深浅主题语义色 */
 .settings-icon-tile {
   background: transparent;
@@ -777,30 +844,10 @@ body.drag-active * {
   white-space: nowrap;
 }
 
-/* 侧栏分组：用边线分隔产品区域，收缩后保留品牌标识 */
-.apple-sidebar-group + .apple-sidebar-group {
+/* 侧栏内容区：只把两个客户端与下方功能入口分开 */
+.apple-sidebar-group--content {
   border-top: 1px solid var(--panel-border);
   padding-top: 0.75rem;
-}
-
-.apple-sidebar-group-label {
-  align-items: center;
-  color: var(--text-secondary);
-  display: flex;
-  font-size: 11px;
-  font-weight: 500;
-  gap: 0.5rem;
-  height: 1.5rem;
-  letter-spacing: 0.05em;
-  padding: 0 var(--sidebar-nav-padding);
-  margin-bottom: 0.25rem;
-  text-transform: uppercase;
-}
-
-.apple-sidebar-group-label img {
-  width: var(--sidebar-icon-size);
-  height: var(--sidebar-icon-size);
-  flex-shrink: 0;
 }
 
 .apple-sidebar-flyout {
@@ -850,7 +897,8 @@ body.drag-active * {
 
 .app-selection-state:not([data-active="true"]):hover,
 .app-selection-state:not([data-active="true"]):focus-visible { background: var(--hover-bg); }
-.app-selection-state[data-active="true"] { background: var(--active-bg); color: var(--accent); }
+.app-selection-state[data-active="true"] { background: var(--active-bg); }
+.app-select-option[data-active="true"] { color: var(--accent); }
 
 .apple-sidebar-nav-button {
   align-items: center;
@@ -868,12 +916,12 @@ body.drag-active * {
   transition:
     gap var(--motion-sidebar) cubic-bezier(0.22, 1, 0.36, 1),
     padding var(--motion-sidebar) cubic-bezier(0.22, 1, 0.36, 1),
-    background-color var(--motion-fast) ease-out,
-    color var(--motion-fast) ease-out;
+    background-color var(--motion-fast) ease-out;
 }
 
 /* 图标包在角标锚点 span 里（MCP 角标/通用 badge），不能用 > 直接子选择器 */
-.apple-sidebar-nav-button svg {
+.apple-sidebar-nav-button svg,
+.apple-sidebar-nav-button img {
   width: var(--sidebar-icon-size);
   height: var(--sidebar-icon-size);
   flex-shrink: 0;
@@ -921,9 +969,7 @@ body.drag-active * {
   padding: 0.75rem 0.375rem;
 }
 
-/* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项继承按钮的 text-accent。
-   这里曾有一条 :root.dark 写死 #ffffff 的规则——它与 body 深色值重复，却因「直接规则压过继承」
-   把激活态的 accent 截胡，导致深色下激活项不变色。不要再加回来。 */
+/* 侧栏导航标签不设 color：深浅两色都继承 body（浅 #1c1c1e / 深 #ffffff），激活项也不单独变色。 */
 
 .apple-sidebar--collapsed .apple-sidebar-label {
   max-width: 0;
@@ -1421,9 +1467,39 @@ body.drag-active * {
   outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
 }
 
-.apple-segmented-control {
+/* 共享分段切换：复用卡片描边，保留滑块及颜色过渡，字体沿用调用方样式。 */
+.app-segmented-control {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr));
+  padding: 2px;
   background: var(--input-bg);
 }
+
+.app-segmented-control::before {
+  content: "";
+  position: absolute;
+  inset: 2px auto 2px 2px;
+  width: calc((100% - 4px) / var(--segment-count));
+  border-radius: inherit;
+  background: var(--primary-button-bg);
+  pointer-events: none;
+  transform: translateX(calc(var(--segment-index) * 100%));
+  transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1), background-color 210ms ease;
+}
+
+.app-segmented-control > button {
+  position: relative;
+  height: 100%;
+  background: transparent;
+  color: var(--text-secondary);
+  user-select: none;
+  transition: color 210ms ease;
+}
+
+.app-segmented-control > button:hover { background: transparent; color: var(--text-primary); }
+.app-segmented-control > button:is([aria-pressed="true"], [aria-selected="true"]) { color: var(--primary-button-text); }
+.app-segmented-control > button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .apple-action-button {
   align-items: center;
@@ -1572,7 +1648,7 @@ body.drag-active * {
 }
 
 .apple-toolbar-group,
-.apple-segmented-control {
+.app-segmented-control {
   border-radius: 999px;
 }
 
@@ -1586,39 +1662,6 @@ body.drag-active * {
 
 .apple-toolbar-group > :is(.apple-action-button, .apple-icon-button):is(:hover, :focus-visible):not(:disabled) {
   background: var(--hover-bg);
-}
-
-/* MCP 类型切换只保留当前项高亮，按钮位置保持固定。 */
-.mcp-target-switch {
-  height: var(--toolbar-control-height);
-  box-sizing: border-box;
-}
-
-.mcp-target-switch > .apple-action-button {
-  flex: 1 1 0%;
-  min-width: 0;
-  background: transparent;
-  transition: none;
-}
-
-.mcp-target-switch > .apple-action-button:not([aria-selected="true"]) {
-  background: transparent;
-  color: var(--text-primary);
-}
-
-.mcp-target-switch > .apple-action-button:not([aria-selected="true"]):is(:hover, :focus-visible):not(:disabled) {
-  background: transparent;
-  color: var(--text-primary);
-}
-
-.mcp-target-switch > .apple-action-button[aria-selected="true"] {
-  background: var(--primary-button-bg);
-  color: var(--primary-button-text);
-}
-
-.mcp-target-switch > .apple-action-button[aria-selected="true"]:is(:hover, :focus-visible):not(:disabled) {
-  background: var(--primary-button-hover-bg);
-  color: var(--primary-button-text);
 }
 
 /* MCP 差异页：行级 diff 的代码区域容器——背景/描边对齐编辑页输入框（.app-input），把变更代码块与卡片头部区分开 */
@@ -1853,11 +1896,10 @@ button:focus-visible {
   outline: none;
 }
 
-/* 切主题期间冻结全部过渡：侧边栏按钮等 transition-colors 在主题翻转时
-   会产生 150ms 颜色渐变（文字/图标尾帧闪烁），冻结后整页同帧切换、无动画 */
-.theme-switching *,
-.theme-switching *::before,
-.theme-switching *::after {
+/* 切主题期间冻结页面过渡，防文字/图标尾帧闪烁；共享分段组件保留位移与颜色过渡。 */
+.theme-switching *:not(.app-segmented-control, .app-segmented-control *),
+.theme-switching *:not(.app-segmented-control, .app-segmented-control *)::before,
+.theme-switching *:not(.app-segmented-control, .app-segmented-control *)::after {
   transition: none !important;
 }
 
@@ -1867,6 +1909,11 @@ button:focus-visible {
   *::after {
     scroll-behavior: auto !important;
   transition-duration: 1ms !important;
+  }
+
+  .app-segmented-control::before,
+  .app-segmented-control > button {
+    transition: none;
   }
 
   /* 进场动画的 reduced-motion 豁免在 AppShell 的 animatePageEnter 内处理 */
@@ -2838,6 +2885,14 @@ button:focus-visible {
 .apple-disclosure--open .apple-disclosure__content { grid-template-rows: 1fr; opacity: 1; margin-bottom: -3px; padding-bottom: 3px; }
 .apple-disclosure--open .apple-disclosure__body { margin-bottom: -3px; padding-top: var(--gap-section); padding-bottom: 3px; }
 .apple-disclosure--open .apple-disclosure__icon { color: var(--accent); transform: rotate(90deg); }
+
+/* 代理地址区内部已有留白：纵向间距固定，展开收起只走共享的高度与透明度动画。 */
+.proxy-address-disclosure .apple-disclosure__content,
+.proxy-address-disclosure .apple-disclosure__body {
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
 
 /* MCP 高级选项：与设置页自动备份小卡一致，纯描边无背景，只靠边缘划分归属。 */
 .mcp-advanced-disclosure {

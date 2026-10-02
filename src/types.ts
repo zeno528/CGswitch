@@ -219,6 +219,8 @@ export interface Settings {
   auto_check_update: boolean;
   auto_backup_interval_hours: number;
   database_backup_keep_count: number;
+  proxy_mode: "auto" | "off" | "custom";
+  proxy_url: string;
 }
 
 export interface PluginSkill {
@@ -376,4 +378,34 @@ export interface AppState {
   auth_status: AuthStatus;
   /** 供应商级余额/用量缓存（上次成功查询结果），保证卡片静默显示不闪烁。 */
   balance_cache: Record<string, ProfileBalanceInfo>;
+}
+/** CLI 拒绝结果：阶段和错误类别用于界面翻译，message 保留诊断信息。 */
+export interface CliFailure {
+  stage: string;
+  kind: string;
+  message: string;
+}
+
+export interface CliStatus {
+  installation: "missing" | "native" | "other" | "conflict" | "broken";
+  version: string | null;
+  path: string | null;
+  other_paths: string[];
+  embedded_paths?: string[];
+  platform: string;
+  network: "direct" | "proxy";
+  proxy: string | null;
+  busy: boolean;
+}
+
+export interface CliUpdate {
+  status: CliStatus;
+  latest_version: string;
+  channel: string;
+  available: boolean;
+}
+
+export interface CliProgress {
+  task_id: string;
+  stage: "fetch_installer" | "run_cli" | "verify_version";
 }

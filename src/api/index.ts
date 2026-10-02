@@ -1,6 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import type { Update } from "@tauri-apps/plugin-updater";
 import type {
   AppState,
+  CliStatus,
+  CliUpdate,
+  CliProgress,
   AuthStatus,
   BrowserLoginStart,
   ClaudeProfileDetail,
@@ -31,6 +35,8 @@ import type {
 } from "../types";
 export const isTauri = typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
 
+export type AppUpdateMetadata = ConstructorParameters<typeof Update>[0];
+
 export type UpdateLogEvent =
   | "check_available"
   | "check_latest"
@@ -48,7 +54,22 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   return webInvoke<T>(command, args);
 }
 
+function runCli(command: string, onProgress: (event: CliProgress) => void) {
+  const progress = isTauri ? new Channel<CliProgress>() : undefined;
+  if (progress) progress.onmessage = onProgress;
+  return call<CliStatus>(command, { progress });
+}
+
 export const api = {
+  // CLI 命令失败返回 CliFailure 对象，界面按阶段/类别翻译，不直接显示后端诊断文案。
+  claudeGetCliStatus: () => call<CliStatus>("claude_get_cli_status"),
+  claudeCheckCliUpdate: () => call<CliUpdate>("claude_check_cli_update"),
+  claudeInstallCli: (onProgress: (event: CliProgress) => void) => runCli("claude_install_cli", onProgress),
+  claudeUpdateCli: (onProgress: (event: CliProgress) => void) => runCli("claude_update_cli", onProgress),
+  codexGetCliStatus: () => call<CliStatus>("codex_get_cli_status"),
+  codexCheckCliUpdate: () => call<CliUpdate>("codex_check_cli_update"),
+  codexInstallCli: (onProgress: (event: CliProgress) => void) => runCli("codex_install_cli", onProgress),
+  codexUpdateCli: (onProgress: (event: CliProgress) => void) => runCli("codex_update_cli", onProgress),
   getState: () => call<AppState>("get_state"),
   // 启动里程碑：只写日志（Rust 侧折算到进程起点），无返回值语义
   reportStartupMark: (stage: string, frontendElapsedMs: number, detail?: string) =>
@@ -221,8 +242,10 @@ export const api = {
   openUrl: (url: string) => call<void>("open_url", { url }),
   getSettings: () => call<Settings>("get_settings"),
   saveSettings: (settings: Settings) => call<Settings>("save_settings", { settings }),
+  getProxyStatus: () => call<string | null>("get_proxy_status"),
   logUpdateEvent: (event: UpdateLogEvent, version?: string) =>
     call<void>("log_update_event", { event, version }),
+  checkAppUpdate: () => call<AppUpdateMetadata | null>("check_app_update"),
   setUpdateMarker: (version: string) => call<void>("set_update_marker", { version }),
   takeUpdateMarker: (rollback = false) =>
     call<string | null>("take_update_marker", { rollback }),

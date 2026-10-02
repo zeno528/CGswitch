@@ -1,9 +1,11 @@
 use super::codex_profile_config::{parse_provider_detail, stored_provider_api_key};
 use super::{
-    app_err, atomic_write, detect_system_proxy, AppContext, AppResult, AuthSource, BTreeMap,
-    ChatgptResetCredit, CodexProfileKind, PathBuf, ProfileBalanceInfo,
+    app_err, atomic_write, AppContext, AppResult, AuthSource, BTreeMap, ChatgptResetCredit,
+    CodexProfileKind, PathBuf, ProfileBalanceInfo,
 };
 use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
+pub(crate) use crate::network::proxy_note;
+use crate::network::Network;
 
 /// 供应商连通性测试结果
 #[derive(Debug, Clone, serde::Serialize)]
@@ -307,34 +309,19 @@ pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     let mut cached = cache
         .lock()
         .map_err(|_| app_err!("HTTP 客户端缓存锁已损坏"))?;
-    let proxy = detect_system_proxy();
+    let network = Network::detect().map_err(|error| app_err!("{error}"))?;
+    let proxy = network.proxy.clone();
     if let Some((key, client)) = cached.as_ref() {
         if *key == proxy {
-            return Ok((client.clone(), proxy));
+            return Ok((client.clone(), network.display));
         }
     }
-    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8));
-    if let Some(url) = &proxy {
-        let parsed = reqwest::Proxy::all(url)
-            .map_err(|error| app_err!("系统代理地址无效 {url}: {error}"))?
-            // 环回地址不出代理：本机回环服务（本地连通测试 fixture 等）必须直连，
-            // 交给系统代理转发不可靠（代理可能拒绝环回目标）也污染代理访问日志。
-            .no_proxy(reqwest::NoProxy::from_string("localhost,127.0.0.1,::1"));
-        builder = builder.proxy(parsed);
-    }
+    let builder = network.builder().timeout(std::time::Duration::from_secs(8));
     let client = builder
         .build()
         .map_err(|error| app_err!("创建 HTTP 客户端失败: {error}"))?;
     *cached = Some((proxy.clone(), client.clone()));
-    Ok((client, proxy))
-}
-
-/// 日志归因后缀：原样输出检测结果——有代理是 URL 原文，无代理是 None，不做措辞加工。
-pub(crate) fn proxy_note(proxy: &Option<String>) -> String {
-    match proxy {
-        Some(url) => format!(" proxy={url}"),
-        None => " proxy=None".to_string(),
-    }
+    Ok((client, network.display))
 }
 
 /// reqwest 错误转可读提示。
@@ -504,7 +491,10 @@ fn log_provider_connect_failure(context: &str, result: &CodexProfileConnectionRe
         .status
         .map(|status| format!(" status_code={status}"))
         .unwrap_or_default();
-    let proxy = proxy_note(&detect_system_proxy());
+    let proxy = match Network::detect() {
+        Ok(network) => proxy_note(&network.proxy),
+        Err(_) => " proxy=invalid".into(),
+    };
     let error = result.error.as_deref().unwrap_or("未知错误");
     tauri_plugin_log::log::warn!(
         "[provider.connect.test] {context} outcome=failure failure_kind={failure_kind}{status}{proxy} error={error:?} msg=\"测试连通失败\""

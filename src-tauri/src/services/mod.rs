@@ -19,8 +19,11 @@ use crate::models::{
 use crate::paths::{now_ms, now_secs, AppPaths};
 
 mod claude;
+mod claude_cli;
+mod cli;
 mod codex_accounts;
 mod codex_apply;
+mod codex_cli;
 pub(crate) mod codex_profile_config;
 mod codex_profiles;
 mod connections;
@@ -34,11 +37,12 @@ mod storage;
 pub(crate) mod sync;
 
 pub use claude::{fetch_claude_models, probe_claude_messages_reachable};
+pub use cli::{CliProgress, CliStatus, CliUpdate, Failure as CliFailure};
 pub use connections::{test_provider_connection, CodexProfileConnectionResult, ProfileBalance};
 pub use model_fetch::fetch_models;
 pub use plugins::{
-    detect_system_proxy, MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview,
-    PluginSkill, PluginSummary, PluginUpdate, SkillCandidate, SkillSummary, SkillTool,
+    MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill,
+    PluginSummary, PluginUpdate, SkillCandidate, SkillSummary, SkillTool,
 };
 pub use storage::DatabaseBackupInfo;
 
@@ -49,6 +53,8 @@ pub struct AppContext {
     operation: Arc<Mutex<()>>,
     /// 认证激活需要等待 OAuth 刷新，必须从开始到 live auth 写入保持顺序。
     activation: Arc<AsyncMutex<()>>,
+    claude_cli_operation: Arc<AsyncMutex<Option<CliUpdate>>>,
+    codex_cli_operation: Arc<AsyncMutex<Option<CliUpdate>>>,
 }
 
 impl AppContext {
@@ -63,6 +69,8 @@ impl AppContext {
             paths,
             operation: Arc::new(Mutex::new(())),
             activation: Arc::new(AsyncMutex::new(())),
+            claude_cli_operation: Arc::new(AsyncMutex::new(None)),
+            codex_cli_operation: Arc::new(AsyncMutex::new(None)),
         }
     }
 

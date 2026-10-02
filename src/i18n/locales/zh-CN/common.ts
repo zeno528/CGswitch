@@ -9,7 +9,7 @@ export default {
     settings: "设置",
     claudeProviders: "供应商",
     groupCodex: "Codex",
-    groupClaude: "Claude",
+    groupClaude: "Claude Code",
     groupCommon: "通用",
   },
   sidebar: {

@@ -1,6 +1,6 @@
 import { Activity, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
+import { Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { api, isTauri } from "../api";
@@ -39,7 +39,7 @@ const checkMcpDiff = () =>
 const PAGE_ENTER_TARGET =
   ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
 
-/// 侧栏条目/分组标题的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
+/// 侧栏条目的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
 type SidebarLabelKey = `nav.${keyof (typeof resources)["zh-CN"]["common"]["nav"]}`;
 
 /// 页面进场动画：沿原 cubic-bezier(0.16,1,0.35,1) 曲线做 8px 上浮，但位移逐帧量化到整设备像素。
@@ -355,30 +355,22 @@ export default function AppShell() {
     );
   };
 
-  // 侧栏分组（C 方案）：Codex / Claude / 通用导航。新增页面 = 数组加一条，不再手写按钮块；
-  // 产品分组标识在收缩态仍可见，通用导航不显示多余分组标题。icon 存 ReactNode 以保留各页现有图标形态。
+  // 侧栏分组（C 方案）：客户端 / 功能入口。新增页面 = 数组加一条，不再手写按钮块；
+  // 客户端与功能入口沿用同一组按钮间距。icon 存 ReactNode 以保留各页现有图标形态。
   // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
-  const sidebarGroups: { key: string; labelKey: SidebarLabelKey; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; titleText?: string; onSelect: () => void }[] }[] = [
+  const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; titleText?: string; onSelect: () => void }[] }[] = [
     {
-      key: "codex",
-      labelKey: "nav.groupCodex",
+      key: "clients",
       items: [
-        { view: "codexProfiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("codexProfiles") },
-        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
-        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
-      ],
-    },
-    {
-      key: "claude",
-      labelKey: "nav.groupClaude",
-      items: [
-        { view: "claudeProfiles", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("claudeProfiles") },
+        { view: "claudeProfiles", labelKey: "nav.groupClaude", icon: <img src="/claude-code.svg" alt="" />, onSelect: () => setView("claudeProfiles") },
+        { view: "codexProfiles", labelKey: "nav.groupCodex", icon: <img src="/codex.svg" alt="" />, onSelect: () => setView("codexProfiles") },
       ],
     },
     {
       key: "common",
-      labelKey: "nav.groupCommon",
       items: [
+        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
+        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
         { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
         { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
         { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
@@ -390,7 +382,7 @@ export default function AppShell() {
     <FeedbackProvider>
       <TrayActions stateRef={stateRef} refresh={refresh} openSettings={() => setView("settings")} openAccounts={() => setView("accounts")} />
       {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
-      <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
+      <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady} proxyMode={state?.settings.proxy_mode} proxyUrl={state?.settings.proxy_url}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
         <div className="apple-window-chrome">
           {isMacWindow ? <div className="apple-chrome-inset" data-tauri-drag-region aria-hidden="true" /> : null}
@@ -428,12 +420,7 @@ export default function AppShell() {
             </div>
             <nav className="mx-1.5 mt-3 space-y-3">
               {sidebarGroups.map((group) => (
-                <div key={group.key} className="apple-sidebar-group" role="group" aria-label={group.key === "common" ? undefined : t(group.labelKey)}>
-                  {group.key !== "common" ? <div className="apple-sidebar-group-label" aria-hidden="true">
-                    {group.key === "codex" ? <img src="/codex.svg" alt="" /> : null}
-                    {group.key === "claude" ? <img src="/claude-code.svg" alt="" /> : null}
-                    <span className="apple-sidebar-label">{t(group.labelKey)}</span>
-                  </div> : null}
+                <div key={group.key} className={`apple-sidebar-group ${group.key === "common" ? "apple-sidebar-group--content" : ""}`} role="group">
                   <div className="space-y-1">
                     {group.items.map((item) => (
                       <button key={item.view} type="button" className={navClass} data-active={view === item.view ? "true" : undefined} aria-label={t(item.labelKey)} title={item.titleText} onClick={item.onSelect} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>

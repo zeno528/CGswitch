@@ -10,6 +10,7 @@ import { AppDialog } from "../../components/AppDialog";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
 import { AppSelect } from "../../components/AppSelect";
+import { AppSegmentedControl } from "../../components/AppSegmentedControl";
 import { AppSwitch } from "../../components/AppSwitch";
 import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
 import { updateFailureMessage } from "../updates/updateText";
@@ -74,13 +75,16 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                   <div className="setting-description mt-0.5">{t("appearance.description")}</div>
                 </div>
               </div>
-              <div className="apple-group apple-segmented-control inline-flex h-9 w-72 shrink-0 gap-0.5 p-0.5">
+              <AppSegmentedControl
+                className="h-9 w-72 shrink-0"
+                selectedIndex={themeOptions.findIndex((option) => option.value === form.theme)}
+                label={t("appearance.title")}
+              >
                 {themeOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
-                    className="app-selection-state inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"
-                    data-active={form.theme === option.value ? "true" : undefined}
+                    className="inline-flex h-full items-center justify-center gap-1.5 rounded-full text-sm font-normal"
                     aria-pressed={form.theme === option.value}
                     onClick={() => onPatch({ theme: option.value })}
                   >
@@ -88,7 +92,7 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                     {t(option.labelKey)}
                   </button>
                 ))}
-              </div>
+              </AppSegmentedControl>
             </div>
             <div className="flex items-center justify-between gap-4 py-4">
               <div className="flex min-w-0 items-start gap-3">

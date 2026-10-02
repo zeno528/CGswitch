@@ -402,7 +402,7 @@ pub(super) fn claude_entry_to_spec(name: &str, value: &Value) -> AppResult<McpSe
 /// 读一个顶层必须是 JSON 对象的 Claude Code 配置文件（label 供报错文案用）。
 /// 文件不存在或为空按空对象继续；内容不是合法 JSON、顶层不是对象一律报错，
 /// 宁可让操作失败也不拿半截内容覆盖用户手改的现场。
-fn read_json_object(path: &std::path::Path, label: &str) -> AppResult<Value> {
+pub(super) fn read_json_object(path: &std::path::Path, label: &str) -> AppResult<Value> {
     let text = match std::fs::read_to_string(path) {
         Ok(text) if text.trim().is_empty() => return Ok(Value::Object(Map::new())),
         Ok(text) => text,

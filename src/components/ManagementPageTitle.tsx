@@ -31,13 +31,13 @@ export function ManagementPageTitle({ icon, title, count, countLabel, loading = 
       </span>
       {targets ? (
         <span className="management-page-title__targets">
-          <span className="management-page-title__target" role="img" aria-label={targets.codexLabel}>
-            <SkillTargetLogo target="codex" variant="title" />
-            <span>{targets.codex}</span>
-          </span>
           <span className="management-page-title__target" role="img" aria-label={targets.claudeLabel}>
             <SkillTargetLogo target="claude" variant="title" />
             <span>{targets.claude}</span>
+          </span>
+          <span className="management-page-title__target" role="img" aria-label={targets.codexLabel}>
+            <SkillTargetLogo target="codex" variant="title" />
+            <span>{targets.codex}</span>
           </span>
         </span>
       ) : null}

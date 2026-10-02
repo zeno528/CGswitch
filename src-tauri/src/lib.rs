@@ -6,6 +6,7 @@ pub mod database;
 pub mod error;
 pub mod fsutil;
 pub mod models;
+mod network;
 pub mod paths;
 pub mod services;
 
@@ -305,8 +306,10 @@ pub fn run() {
             commands::auth_remove_account,
             commands::open_url,
             commands::get_settings,
+            commands::get_proxy_status,
             commands::save_settings,
             commands::log_update_event,
+            commands::check_app_update,
             commands::set_update_marker,
             commands::take_update_marker,
             commands::list_plugins,
@@ -332,6 +335,14 @@ pub fn run() {
             commands::claude_test_profile,
             commands::claude_test_connection,
             commands::claude_fetch_models,
+            commands::claude_get_cli_status,
+            commands::claude_check_cli_update,
+            commands::claude_install_cli,
+            commands::claude_update_cli,
+            commands::codex_get_cli_status,
+            commands::codex_check_cli_update,
+            commands::codex_install_cli,
+            commands::codex_update_cli,
             commands::delete_skill,
             commands::list_plugin_skills,
             commands::list_plugin_marketplaces,
@@ -355,19 +366,6 @@ pub fn run() {
                 "[app.start] version=\"{}\" outcome=success msg=\"CGswitch 启动\"",
                 env!("CARGO_PKG_VERSION")
             );
-            // reqwest 的「proxy(...) intercepts」建连日志已随 DEBUG 噪音压掉，
-            // 代理走向改由自己记：一场一行，排障时对照请求是否走代理。
-            // reg.exe / scutil 是阻塞子进程调用且此处只喂启动日志，
-            // spawn_blocking 移出 setup 同步路径；各网络请求路径本来就按需现查
-            tauri::async_runtime::spawn_blocking(|| {
-                match services::detect_system_proxy() {
-                    Some(proxy) => {
-                        log::info!("[net.proxy] outcome=success proxy={proxy} msg=\"检测到系统代理\"")
-                    }
-                    None => log::debug!("[net.proxy] outcome=success proxy=None msg=\"未检测到系统代理\""),
-                }
-            });
-
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
             // 统一先隐藏一次；非静默启动时由前端在 settings 加载后 show()。
             if let Some(window) = app.get_webview_window("main") {
@@ -392,6 +390,17 @@ pub fn run() {
                     Default::default()
                 }
             };
+            network::set_proxy(settings.proxy_mode.clone(), settings.proxy_url.clone());
+            // reg.exe / scutil 属于阻塞平台调用，只在后台记录一次实际网络走向。
+            tauri::async_runtime::spawn_blocking(|| {
+                match network::Network::detect() {
+                    Ok(network) if network.proxy.is_some() => {
+                        log::info!("[net.proxy] outcome=success proxy={:?} msg=\"应用请求使用代理\"", network.display.as_deref().unwrap_or_default())
+                    }
+                    Ok(_) => log::debug!("[net.proxy] outcome=success proxy=None msg=\"应用请求直连\""),
+                    Err(error) => log::warn!("[net.proxy] outcome=failure failure_kind={} msg={:?}", error.kind, error.message),
+                }
+            });
             let show_tray_menu_on_left_click = settings.tray_click_action == TrayClickAction::ShowMenu;
             app.manage(TrayClickMode(AtomicBool::new(show_tray_menu_on_left_click)));
             // dev 构建与安装版共用 identifier，自启注册表值名同为 productName，

@@ -256,7 +256,7 @@ fn account_subject(account_id: &str, email: Option<&str>) -> String {
 
 /// 多账号认证管理器
 pub struct CodexOAuthManager {
-    client: Mutex<reqwest::Client>,
+    client: Mutex<Option<(Option<String>, reqwest::Client)>>,
     accounts: Arc<RwLock<HashMap<String, CodexAccountData>>>,
     default_account_id: Arc<RwLock<Option<String>>>,
     access_tokens: Arc<RwLock<HashMap<String, CachedAccessToken>>>,
@@ -271,15 +271,16 @@ pub struct CodexOAuthManager {
 }
 
 impl CodexOAuthManager {
-    fn build_client() -> reqwest::Client {
-        reqwest::Client::builder()
+    fn build_client(network: &crate::network::Network) -> Result<reqwest::Client, CodexOAuthError> {
+        network
+            .builder()
             .user_agent(CODEX_USER_AGENT)
             .build()
-            .expect("创建 HTTP 客户端失败")
+            .map_err(CodexOAuthError::from)
     }
 
     /// 发送请求；响应为地区拦截 403 时，重建客户端（重新读取系统代理）后重试一次。
-    /// 正常路径复用缓存客户端，不影响性能。
+    /// 正常路径复用缓存客户端；系统代理变化时按需重建，启动时不读取网络设置。
     async fn request_with_proxy_retry(
         &self,
         operation: &str,
@@ -289,7 +290,19 @@ impl CodexOAuthManager {
         let mut retried = false;
         loop {
             let retry_prefix = if retried { " 代理重试" } else { " " };
-            let client = self.client.lock().await.clone();
+            let network = crate::network::Network::current()
+                .await
+                .map_err(|error| CodexOAuthError::NetworkError(error.to_string()))?;
+            let client = {
+                let mut cached = self.client.lock().await;
+                if cached
+                    .as_ref()
+                    .is_none_or(|(proxy, _)| *proxy != network.proxy)
+                {
+                    *cached = Some((network.proxy.clone(), Self::build_client(&network)?));
+                }
+                cached.as_ref().expect("HTTP 客户端已初始化").1.clone()
+            };
             let response = make(client).send().await.map_err(|error| {
                 tauri_plugin_log::log::warn!(
                     "[auth.request] op={:?} subject={context:?} outcome=failure failure_kind=network_error error={error:?} msg=\"网络请求失败\"",
@@ -310,7 +323,7 @@ impl CodexOAuthManager {
                 && status == reqwest::StatusCode::FORBIDDEN
                 && text.contains(REGION_BLOCKED_MARKER)
             {
-                *self.client.lock().await = Self::build_client();
+                *self.client.lock().await = None;
                 retried = true;
                 continue;
             }
@@ -320,7 +333,7 @@ impl CodexOAuthManager {
 
     pub fn new(database: Arc<Database>) -> Self {
         let manager = Self {
-            client: Mutex::new(Self::build_client()),
+            client: Mutex::new(None),
             accounts: Arc::new(RwLock::new(HashMap::new())),
             default_account_id: Arc::new(RwLock::new(None)),
             access_tokens: Arc::new(RwLock::new(HashMap::new())),
