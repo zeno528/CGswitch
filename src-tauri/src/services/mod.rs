@@ -37,7 +37,7 @@ mod storage;
 pub(crate) mod sync;
 
 pub use claude::{fetch_claude_models, probe_claude_messages_reachable};
-pub use cli::{CliProgress, CliStatus, CliUpdate, Failure as CliFailure};
+pub use cli::{CliStatus, CliUpdate, Failure as CliFailure};
 pub use connections::{test_provider_connection, CodexProfileConnectionResult, ProfileBalance};
 pub use model_fetch::fetch_models;
 pub use plugins::{

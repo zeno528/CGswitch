@@ -39,12 +39,13 @@ function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos
     <ProfileDragPreviewShell width={width} height={height} active={active}>
       <ProfileCardContent
         profile={profile}
+        hideModel
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         balanceRefreshing={false}
         onOpenAdmin={onOpenAdmin}
       />
-      <ProfileCardActions active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
+      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
     </ProfileDragPreviewShell>
   );
 }

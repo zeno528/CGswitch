@@ -104,6 +104,7 @@ export default function CodexProfileCard({
     <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent
         profile={profile}
+        hideModel
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         balanceRefreshing={balanceRefreshing}
@@ -111,7 +112,7 @@ export default function CodexProfileCard({
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />
-      <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
+      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
     </SortableCard>
   );
 }

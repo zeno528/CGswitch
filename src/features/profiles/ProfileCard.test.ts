@@ -21,16 +21,15 @@ it("没有第二行时标题居中，有第二行时保留原布局", () => {
 });
 
 describe("ProfileCard 官网入口", () => {
-  it("将官网入口放在供应商标题行并使用 Globe 图标", () => {
-    const titleRow = source.indexOf('<div className="flex min-h-7 items-center gap-2">');
-    const metaRow = source.indexOf('<div className="profile-card-meta');
-    const adminButton = source.indexOf("{profile.admin_url ? <button");
-
+  it("官网入口悬停居中覆盖在 Logo 容器上，沿用 Globe 图标", () => {
     expect(source).toContain("Globe");
-    expect(source).toContain('className="apple-icon-button !h-6 !w-7 shrink-0 text-accent"');
-    expect(source).toContain('className="h-3.5 w-3.5"');
-    expect(adminButton).toBeGreaterThan(titleRow);
-    expect(adminButton).toBeLessThan(metaRow);
+    expect(source).toContain("overlay={");
+    expect(source).toContain("profile.admin_url ?");
+    expect(source).toContain('title={t("card.openWebsite")}');
+    expect(source).toContain("group-hover/tile:opacity-100");
+    expect(source).toContain("focus-visible:opacity-100");
+    // 标题行的旧官网按钮已移除，不再与「点击名称重命名」抢注意力
+    expect(source).not.toContain('className="apple-icon-button !h-6 !w-7 shrink-0 text-accent"');
   });
 
   it("所有配置激活时复用全局品牌渐变", () => {
@@ -70,7 +69,7 @@ describe("ProfileCard 官网入口", () => {
   it("提高渐变卡片的文字与图标对比度", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
   });
 
   it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {

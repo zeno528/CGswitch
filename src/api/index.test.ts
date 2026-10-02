@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { webInvoke } from "./web-mock";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
-vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke, Channel: class { onmessage?: (value: unknown) => void; } }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -60,30 +60,23 @@ it("应用更新经已注册的共享网络命令返回原生资源，浏览器�
   await expect(webInvoke("check_app_update")).rejects.toThrow("应用更新需要在桌面版执行");
 });
 
-it("CLI 命令全部注册，进度通过 Channel 回传且浏览器禁止执行", async () => {
-  mocks.invoke.mockImplementation(async (command: string, args?: { progress?: { onmessage: (value: unknown) => void } }) => {
+it("CLI 命令全部注册且浏览器禁止执行", async () => {
+  mocks.invoke.mockImplementation(async (command: string) => {
     expect(registered.has(command)).toBe(true);
-    args?.progress?.onmessage({ stage: "run_cli" });
     return { installation: "native", version: "1.2.3" };
   });
   vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
   const { api } = await import("./index");
-  const onProgress = vi.fn();
-  const codexProgress = vi.fn();
   await api.claudeCheckCliUpdate();
   await api.codexCheckCliUpdate();
   expect(mocks.invoke.mock.calls.map(([command]) => command)).toEqual(["claude_check_cli_update", "codex_check_cli_update"]);
   expect(mocks.invoke.mock.calls.every(([, args]) => args === undefined)).toBe(true);
-  expect(onProgress).not.toHaveBeenCalled();
-  expect(codexProgress).not.toHaveBeenCalled();
   await api.claudeGetCliStatus();
-  await api.claudeInstallCli(onProgress);
-  await api.claudeUpdateCli(onProgress);
+  await api.claudeInstallCli();
+  await api.claudeUpdateCli();
   await api.codexGetCliStatus();
-  await api.codexInstallCli(codexProgress);
-  await api.codexUpdateCli(codexProgress);
-  expect(onProgress).toHaveBeenCalledTimes(2);
-  expect(codexProgress).toHaveBeenCalledTimes(2);
+  await api.codexInstallCli();
+  await api.codexUpdateCli();
   for (const command of ["claude_get_cli_status", "claude_check_cli_update", "claude_install_cli", "claude_update_cli", "codex_get_cli_status", "codex_check_cli_update", "codex_install_cli", "codex_update_cli"]) {
     await expect(webInvoke(command)).rejects.toMatchObject({ stage: "desktop", kind: "validation_error" });
   }

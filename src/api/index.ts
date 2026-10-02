@@ -1,10 +1,9 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import type { Update } from "@tauri-apps/plugin-updater";
 import type {
   AppState,
   CliStatus,
   CliUpdate,
-  CliProgress,
   AuthStatus,
   BrowserLoginStart,
   ClaudeProfileDetail,
@@ -54,22 +53,16 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   return webInvoke<T>(command, args);
 }
 
-function runCli(command: string, onProgress: (event: CliProgress) => void) {
-  const progress = isTauri ? new Channel<CliProgress>() : undefined;
-  if (progress) progress.onmessage = onProgress;
-  return call<CliStatus>(command, { progress });
-}
-
 export const api = {
   // CLI 命令失败返回 CliFailure 对象，界面按阶段/类别翻译，不直接显示后端诊断文案。
   claudeGetCliStatus: () => call<CliStatus>("claude_get_cli_status"),
   claudeCheckCliUpdate: () => call<CliUpdate>("claude_check_cli_update"),
-  claudeInstallCli: (onProgress: (event: CliProgress) => void) => runCli("claude_install_cli", onProgress),
-  claudeUpdateCli: (onProgress: (event: CliProgress) => void) => runCli("claude_update_cli", onProgress),
+  claudeInstallCli: () => call<CliStatus>("claude_install_cli"),
+  claudeUpdateCli: () => call<CliStatus>("claude_update_cli"),
   codexGetCliStatus: () => call<CliStatus>("codex_get_cli_status"),
   codexCheckCliUpdate: () => call<CliUpdate>("codex_check_cli_update"),
-  codexInstallCli: (onProgress: (event: CliProgress) => void) => runCli("codex_install_cli", onProgress),
-  codexUpdateCli: (onProgress: (event: CliProgress) => void) => runCli("codex_update_cli", onProgress),
+  codexInstallCli: () => call<CliStatus>("codex_install_cli"),
+  codexUpdateCli: () => call<CliStatus>("codex_update_cli"),
   getState: () => call<AppState>("get_state"),
   // 启动里程碑：只写日志（Rust 侧折算到进程起点），无返回值语义
   reportStartupMark: (stage: string, frontendElapsedMs: number, detail?: string) =>

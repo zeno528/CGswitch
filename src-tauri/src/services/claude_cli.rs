@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
-use tauri::ipc::Channel;
 
 use super::cli::*;
 use super::AppContext;
@@ -17,6 +16,27 @@ fn native_path(home: &Path) -> PathBuf {
     } else {
         "claude"
     })
+}
+
+fn source_for_path(path: &Path) -> &'static str {
+    let path = path
+        .to_string_lossy()
+        .replace('\\', "/")
+        .to_ascii_lowercase();
+    if path.contains("/.claude/local/node_modules/.bin/") || path.contains("/appdata/roaming/npm/")
+    {
+        return "npm";
+    }
+    if path.contains("/appdata/local/microsoft/winget/links/") {
+        return "winget";
+    }
+    if path == "/opt/homebrew/bin/claude" || path == "/usr/local/bin/claude" {
+        return "homebrew";
+    }
+    if path == "/usr/bin/claude" || path == "/bin/claude" {
+        return "package_manager";
+    }
+    "unknown"
 }
 
 fn other_paths(home: &Path, native: &Path, dirs: impl IntoIterator<Item = PathBuf>) -> Vec<String> {
@@ -100,8 +120,18 @@ fn status(home: &Path, network: &Network, verify: bool) -> Result<CliStatus, Fai
     } else {
         "broken"
     };
+    let mut sources = Vec::new();
+    if present && native {
+        sources.push("native");
+    }
+    sources.extend(
+        other_paths
+            .iter()
+            .map(|other| source_for_path(Path::new(other))),
+    );
     Ok(CliStatus {
         installation,
+        source: combine_sources(sources),
         version,
         path: present.then(|| path.to_string_lossy().into_owned()),
         other_paths,
@@ -230,17 +260,11 @@ impl AppContext {
         Ok(status)
     }
 
-    pub async fn claude_run_cli(
-        &self,
-        install: bool,
-        channel: Channel<CliProgress>,
-    ) -> Result<CliStatus, Failure> {
+    pub async fn claude_run_cli(&self, install: bool) -> Result<CliStatus, Failure> {
         let task_id = task_id();
         let action = if install { "install" } else { "update" };
         let started = Instant::now();
-        let result = self
-            .claude_run_cli_inner(install, &channel, &task_id, started)
-            .await;
+        let result = self.claude_run_cli_inner(install, &task_id, started).await;
         if let Err(error) = &result {
             log_cli_failure("Claude Code", &task_id, action, started, error);
         }
@@ -250,7 +274,6 @@ impl AppContext {
     async fn claude_run_cli_inner(
         &self,
         install: bool,
-        channel: &Channel<CliProgress>,
         task_id: &str,
         started: Instant,
     ) -> Result<CliStatus, Failure> {
@@ -293,7 +316,6 @@ impl AppContext {
             tempfile::tempdir().map_err(|_| failure("prepare", "io_error", "无法创建临时目录"))?;
         let execution = async {
             let executable = if install {
-                progress(channel, "fetch_installer");
                 let (path, bytes) = fetch_installer(&network, installer_url(&before.platform)?, &["claude.ai", "downloads.claude.ai"], temp.path(), started).await?;
                 tauri_plugin_log::log::info!("[app.cli.download] client=\"Claude Code\" task_id={task_id:?} bytes={bytes} outcome=success msg=\"官方安装脚本已就绪，安装包由安装器校验\"");
                 path
@@ -310,12 +332,10 @@ impl AppContext {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&settings_path, std::fs::Permissions::from_mode(0o600)).map_err(|_| failure("prepare", "io_error", "无法保护临时网络设置"))?;
             }
-            progress(channel, "run_cli");
             let child_command = execution_command(install, &executable, &settings_path, &network)?;
             let timeout = remaining(started, "run_cli")?;
             let output = run_cli(child_command, timeout).await?;
             tauri_plugin_log::log::info!("[app.cli.process] client=\"Claude Code\" task_id={task_id:?} action={action} exit_code={:?} duration_ms={} outcome=success msg=\"CLI 命令执行完成\"", output.status.code(), started.elapsed().as_millis());
-            progress(channel, "verify_version");
             let status_home = home.clone();
             let status_network = network.clone();
             remaining(started, "verify_version")?;
@@ -481,6 +501,23 @@ mod tests {
     }
 
     #[test]
+    fn installation_source_uses_known_paths_and_leaves_unknown_paths_unclassified() {
+        let home = tempfile::tempdir().unwrap();
+        assert_eq!(
+            source_for_path(&home.path().join("AppData/Roaming/npm/claude.cmd")),
+            "npm"
+        );
+        assert_eq!(
+            source_for_path(Path::new(
+                "C:/Users/test/AppData/Local/Microsoft/WinGet/Links/claude.exe"
+            )),
+            "winget"
+        );
+        assert_eq!(source_for_path(Path::new("/tmp/claude")), "unknown");
+        assert_eq!(combine_sources(["native", "npm"]), Some("multiple"));
+    }
+
+    #[test]
     fn official_install_and_native_update_share_network_without_changing_update_settings_scope() {
         for os in ["windows", "macos"] {
             for arch in ["x86_64", "arm64"] {
@@ -606,9 +643,8 @@ exit $LASTEXITCODE
         paths.ensure().unwrap();
         let context = AppContext::new(paths).unwrap();
         let _guard = context.claude_cli_operation.lock().await;
-        let channel = Channel::new(|_| Ok(()));
         let error = context
-            .claude_run_cli_inner(true, &channel, "fixture", Instant::now())
+            .claude_run_cli_inner(true, "fixture", Instant::now())
             .await
             .unwrap_err();
         assert_eq!((error.stage, error.kind), ("guard", "validation_error"));

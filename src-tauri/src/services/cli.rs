@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::ipc::Channel;
 
 use super::now_ms;
 use super::plugins::wait_child_with_timeout;
@@ -18,6 +17,7 @@ pub(super) use crate::network::PROXY_KEYS;
 #[derive(Clone, Debug, Serialize)]
 pub struct CliStatus {
     pub installation: &'static str,
+    pub source: Option<&'static str>,
     pub version: Option<String>,
     pub path: Option<String>,
     pub other_paths: Vec<String>,
@@ -119,7 +119,7 @@ pub(super) fn require_update(
             failure(
                 "guard",
                 "validation_error",
-                "请先检查更新，确认有新版本后再升级；安装状态变化后需要重新检查",
+                "请先检查更新，确认有新版本后再更新；安装状态变化后需要重新检查",
             )
         })
 }
@@ -134,15 +134,10 @@ pub(super) fn verify_update(checked: &CliUpdate, after: &CliStatus) -> Result<()
         return Err(failure(
             "verify_version",
             "protocol_error",
-            "命令完成，但未升级到已检查的新版本；请检查客户端更新策略后重试",
+            "命令完成，但未更新到已检查的新版本；请检查客户端更新策略后重试",
         ));
     }
     Ok(())
-}
-
-#[derive(Clone, Serialize)]
-pub struct CliProgress {
-    stage: &'static str,
 }
 
 #[derive(Debug, Serialize, thiserror::Error)]
@@ -250,6 +245,18 @@ pub(super) fn valid_version(version: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-'))
 }
 
+pub(super) fn combine_sources(
+    sources: impl IntoIterator<Item = &'static str>,
+) -> Option<&'static str> {
+    let mut sources = sources.into_iter();
+    let first = sources.next()?;
+    Some(if sources.any(|source| source != first) {
+        "multiple"
+    } else {
+        first
+    })
+}
+
 pub(super) fn version(
     path: &Path,
     parse_version: fn(&str) -> Option<String>,
@@ -280,10 +287,6 @@ pub(super) fn remaining(started: Instant, stage: &'static str) -> Result<Duratio
         .checked_sub(started.elapsed())
         .filter(|d| !d.is_zero())
         .ok_or_else(|| failure(stage, "timeout", "CLI 操作超过 15 分钟，请检查网络后重试"))
-}
-
-pub(super) fn progress(channel: &Channel<CliProgress>, stage: &'static str) {
-    let _ = channel.send(CliProgress { stage });
 }
 
 /// 两端外壳共用的失败日志行；格式串只此一份，防止两处漂移。
@@ -474,7 +477,7 @@ pub(super) async fn run_cli(
                 failure(
                     "run_cli",
                     "timeout",
-                    "安装或升级超时，请检查网络或代理后重试",
+                    "安装或更新超时，请检查网络或代理后重试",
                 )
             })
     })
@@ -586,7 +589,7 @@ pub(super) fn check_installation(status: &CliStatus, install: bool) -> Result<()
         return Err(failure(
             "detect",
             "validation_error",
-            "已有原生安装，请先检查更新后选择升级",
+            "已有原生安装，请先检查更新后选择更新",
         ));
     }
     Ok(())
@@ -599,6 +602,7 @@ mod tests {
     fn native_status() -> CliStatus {
         CliStatus {
             installation: "native",
+            source: Some("native"),
             version: Some("1.9.0".into()),
             path: Some("/fixture/bin/cli".into()),
             other_paths: vec![],

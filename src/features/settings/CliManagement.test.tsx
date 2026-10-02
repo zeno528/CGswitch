@@ -38,28 +38,62 @@ beforeEach(() => {
 });
 
 const status: CliStatus = {
-  installation: "native", version: "1.2.3", path: "/fixture/bin/cli", other_paths: [],
+  installation: "native", source: null, version: "1.2.3", path: "/fixture/bin/cli", other_paths: [],
   platform: "darwin-arm64", network: "direct", proxy: null, busy: false,
 };
 const management = {
-  status, update: null, busy: false, progress: null, error: null, refresh: vi.fn(), check: vi.fn(), run: vi.fn(),
+  status, update: null, busy: false, operation: null, error: null, refresh: vi.fn(), check: vi.fn(), run: vi.fn(),
 };
 
 it("两端卡片共用行为，运行中的 Codex 不会禁用 Claude 按钮", () => {
   const codex = renderToStaticMarkup(<CliCard client="codex" management={{
     ...management, busy: true,
-    progress: { stage: "run_cli" },
+    operation: "install" as const,
   }} />);
   const claude = renderToStaticMarkup(<CliCard client="claude" management={management} />);
-  expect(codex.match(/disabled=""/g)).toHaveLength(2);
+  expect(codex.match(/disabled=""/g)).toHaveLength(1);
   expect(codex).toContain("animate-spin");
-  expect(codex).toContain("cli.stages.run_cli");
+  expect(codex).toContain("cli.installing");
   expect(codex).toContain('role="status"');
   expect(codex).toContain('aria-live="polite"');
   expect(claude).not.toContain('disabled=""');
   expect(claude).not.toContain("animate-spin");
   expect(claude).toContain("cli.checkUpdate");
   expect(claude).not.toContain("cli.updateTo");
+});
+
+it("进行中反馈按动作显示对应文案", () => {
+  const render = (operation: "refresh" | "check" | "install" | "update") => renderToStaticMarkup(<CliCard client="codex" management={{
+    ...management, busy: true, operation,
+  }} />);
+  expect(render("refresh")).not.toContain("cli.refreshing");
+  expect(render("refresh")).not.toContain('role="status"');
+  expect(render("check")).toContain("cli.checkingUpdate");
+  expect(render("install")).toContain("cli.installing");
+  expect(render("update")).toContain("cli.updating");
+});
+
+it("按客户端显示实际安装来源", () => {
+  const claude = renderToStaticMarkup(<CliCard client="claude" management={{
+    ...management, status: { ...status, source: "native" },
+  }} />);
+  const codex = renderToStaticMarkup(<CliCard client="codex" management={{
+    ...management, status: { ...status, installation: "missing", source: "embedded", version: null },
+  }} />);
+  expect(claude).toContain("cli.sources.claude.native");
+  expect(claude).toContain('class="plan-badge">cli.sources.claude.native</span>');
+  expect(claude).not.toContain("apple-chip--success");
+  expect(codex).toContain("cli.sources.codex.embedded");
+  expect(codex.indexOf("cli.sources.codex.embedded")).toBeLessThan(codex.indexOf("cli.missing"));
+});
+
+it("网络地址复用路径高亮块，连接方式与网络标签分层", () => {
+  const html = renderToStaticMarkup(<CliCard client="codex" management={{
+    ...management, status: { ...status, network: "proxy", proxy: "http://127.0.0.1:20080" },
+  }} />);
+  expect(html).toContain('class="meta-xs">cli.networkLabel</span>');
+  expect(html).toContain('class="cli-fact-value">cli.proxy</span>');
+  expect(html).toContain('class="cli-fact-path mono" title="http://127.0.0.1:20080">http://127.0.0.1:20080</span>');
 });
 
 it("版本查询错误随界面语言翻译，不显示后端中文或内部阶段标识", async () => {
@@ -87,10 +121,11 @@ it("版本查询错误随界面语言翻译，不显示后端中文或内部阶�
   expect(chinese).not.toContain("Update check failed");
 });
 
-it("两端的检测、检查、安装与升级只更新卡片，成功或失败均不弹重复通知", async () => {
+it("两端的失败操作只更新卡片，不弹成功通知", async () => {
   const failure: CliFailure = { stage: "fetch_version", kind: "timeout", message: "诊断信息" };
   for (const client of ["codex", "claude"] as const) {
     hooks.cells.length = 0;
+    hooks.success.mockClear();
     const render = () => { hooks.index = 0; return useCliManagement(client, false); };
     for (const action of ["refresh", "check", "install", "update"] as const) {
       if (action === "update") {
@@ -109,9 +144,24 @@ it("两端的检测、检查、安装与升级只更新卡片，成功或失败�
     await render().run(true);
     expect(render().status).toEqual(status);
     expect(render().error).toBeNull();
-    expect(hooks.success).not.toHaveBeenCalled();
+    expect(hooks.success).toHaveBeenCalledOnce();
+    expect(hooks.success).toHaveBeenCalledWith("cli.installComplete1.2.3");
     expect(hooks.error).not.toHaveBeenCalled();
   }
+});
+
+it("升级成功后发出升级完成通知", async () => {
+  const i18n = createInstance();
+  await i18n.init({ lng: "zh-CN", defaultNS: "settings", resources: { "zh-CN": { settings: zhSettings } } });
+  hooks.t = i18n.getFixedT("zh-CN", "settings");
+  hooks.command.mockResolvedValueOnce({ status, latest_version: "1.2.4", channel: "latest", available: true });
+  hooks.index = 0;
+  await useCliManagement("claude", false).check();
+  hooks.command.mockResolvedValueOnce({ ...status, version: "1.2.4" });
+  hooks.index = 0;
+  await useCliManagement("claude", false).run(false);
+  expect(hooks.success).toHaveBeenCalledOnce();
+  expect(hooks.success).toHaveBeenCalledWith("Claude Code 已更新至 v1.2.4");
 });
 
 function buttons(node: ReactNode): { children?: ReactNode; onClick: () => void }[] {
@@ -167,6 +217,7 @@ it("混装与其他任务阻止安装，桌面内置副本可以共存", () => {
   }} />);
   expect(card).not.toContain('disabled=""');
   expect(card).toContain("cli.install");
+  expect(card).toContain("app-button--primary");
   expect(card).toContain("cli.embedded");
   const remoteTask = renderToStaticMarkup(<CliCard client="claude" management={{
     ...management, status: { ...status, busy: true },

@@ -14,9 +14,9 @@ use crate::models::{
     McpSyncPreview, ProfileBalanceInfo, Settings, TrayClickAction,
 };
 use crate::services::{
-    AppContext, CliFailure, CliProgress, CliStatus, CliUpdate, CodexProfileConnectionResult,
-    DatabaseBackupInfo, MarketplacePlugin, PluginMarketplace, PluginPreview, PluginSkill,
-    PluginSummary, PluginUpdate, ProfileBalance, SkillSummary, SkillTool,
+    AppContext, CliFailure, CliStatus, CliUpdate, CodexProfileConnectionResult, DatabaseBackupInfo,
+    MarketplacePlugin, PluginMarketplace, PluginPreview, PluginSkill, PluginSummary, PluginUpdate,
+    ProfileBalance, SkillSummary, SkillTool,
 };
 
 /// CLI 状态检测走阻塞线程池；两端命令共用壳，兜底文案只此一份。
@@ -47,19 +47,13 @@ pub async fn claude_check_cli_update(
 }
 
 #[tauri::command]
-pub async fn claude_install_cli(
-    state: State<'_, AppContext>,
-    progress: tauri::ipc::Channel<CliProgress>,
-) -> Result<CliStatus, CliFailure> {
-    state.claude_run_cli(true, progress).await
+pub async fn claude_install_cli(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    state.claude_run_cli(true).await
 }
 
 #[tauri::command]
-pub async fn claude_update_cli(
-    state: State<'_, AppContext>,
-    progress: tauri::ipc::Channel<CliProgress>,
-) -> Result<CliStatus, CliFailure> {
-    state.claude_run_cli(false, progress).await
+pub async fn claude_update_cli(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    state.claude_run_cli(false).await
 }
 
 #[tauri::command]
@@ -73,19 +67,13 @@ pub async fn codex_check_cli_update(state: State<'_, AppContext>) -> Result<CliU
 }
 
 #[tauri::command]
-pub async fn codex_install_cli(
-    state: State<'_, AppContext>,
-    progress: tauri::ipc::Channel<CliProgress>,
-) -> Result<CliStatus, CliFailure> {
-    state.codex_run_cli(true, progress).await
+pub async fn codex_install_cli(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    state.codex_run_cli(true).await
 }
 
 #[tauri::command]
-pub async fn codex_update_cli(
-    state: State<'_, AppContext>,
-    progress: tauri::ipc::Channel<CliProgress>,
-) -> Result<CliStatus, CliFailure> {
-    state.codex_run_cli(false, progress).await
+pub async fn codex_update_cli(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    state.codex_run_cli(false).await
 }
 
 fn should_try_next_account_credential(result: &CodexProfileConnectionResult) -> bool {

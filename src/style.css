@@ -802,19 +802,39 @@ body:has(.app-dialog-overlay) .window-control-button {
 }
 
 .profile-card-actions--dragging {
-  opacity: 1;
   pointer-events: none;
 }
 
-.profile-card-actions > .apple-action-button {
+.profile-list > .apple-group.is-drag-hover .profile-card-action-buttons {
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
+}
+
+.profile-card-action-buttons > .apple-action-button {
   height: var(--icon-button-size);
   font-weight: 600;
 }
 
-.profile-list > .apple-group.is-drag-hover .profile-card-actions {
-  opacity: 1;
-  pointer-events: auto;
-  transition: none;
+/* 操作行的模型/推理档位信息：悬停浮现按钮组时保持可见，用间距让位 */
+.profile-card-action-meta {
+  align-items: center;
+  color: var(--text-primary);
+  display: inline-flex;
+  flex: 0 1 auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  gap: 0.375rem;
+  margin-inline-end: var(--gap-actions);
+  max-width: min(26vw, 18rem);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* 模型名单行截断（容器 nowrap） */
+.profile-card-action-meta__model {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 拖拽期间全局禁止文本选中，防止路过卡片时标题/内容被框选 */
@@ -1433,9 +1453,9 @@ body.drag-active * {
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete),
+.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-drag-preview.brand-gradient-surface .profile-card-actions > .apple-icon-button:not(.profile-card-delete) {
+.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete) {
   color: var(--text-primary);
 }
 
@@ -1447,11 +1467,11 @@ body.drag-active * {
   color: var(--success-text);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .apple-icon-button.profile-card-delete {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button.profile-card-delete {
   color: var(--danger);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-actions > .app-button--primary:disabled {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .app-button--primary:disabled {
   opacity: 0.9;
 }
 

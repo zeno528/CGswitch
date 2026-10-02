@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use tauri::ipc::Channel;
-
 use super::cli::*;
 use super::AppContext;
 
@@ -35,6 +33,17 @@ fn path_key(path: &Path) -> String {
     } else {
         text
     }
+}
+
+fn source_for_path(path: &Path) -> &'static str {
+    let path = path_key(path).to_ascii_lowercase();
+    if path.contains("/appdata/roaming/npm/") || path.contains("/node_modules/.bin/") {
+        return "npm";
+    }
+    if path == "/opt/homebrew/bin/codex" || path == "/usr/local/bin/codex" {
+        return "homebrew";
+    }
+    "unknown"
 }
 
 fn resolved(path: &Path) -> PathBuf {
@@ -229,6 +238,23 @@ fn status(
         } else {
             "broken"
         };
+    let source = if found.native.len() > 1 || (!found.native.is_empty() && !found.other.is_empty())
+    {
+        Some("multiple")
+    } else if !found.native.is_empty() {
+        Some("standalone")
+    } else if !found.other.is_empty() {
+        combine_sources(
+            found
+                .other
+                .iter()
+                .map(|path| source_for_path(Path::new(path))),
+        )
+    } else if !found.embedded.is_empty() {
+        Some("embedded")
+    } else {
+        None
+    };
     let mut other_paths = found.other;
     other_paths.extend(
         found
@@ -239,6 +265,7 @@ fn status(
     );
     Ok(CliStatus {
         installation,
+        source,
         version,
         path: path.map(|path| path.to_string_lossy().into_owned()),
         other_paths,
@@ -343,17 +370,11 @@ impl AppContext {
         Ok(status)
     }
 
-    pub async fn codex_run_cli(
-        &self,
-        install: bool,
-        channel: Channel<CliProgress>,
-    ) -> Result<CliStatus, Failure> {
+    pub async fn codex_run_cli(&self, install: bool) -> Result<CliStatus, Failure> {
         let task_id = task_id();
         let action = if install { "install" } else { "update" };
         let started = Instant::now();
-        let result = self
-            .codex_run_cli_inner(install, &channel, &task_id, started)
-            .await;
+        let result = self.codex_run_cli_inner(install, &task_id, started).await;
         if let Err(error) = &result {
             log_cli_failure("Codex", &task_id, action, started, error);
         }
@@ -363,7 +384,6 @@ impl AppContext {
     async fn codex_run_cli_inner(
         &self,
         install: bool,
-        channel: &Channel<CliProgress>,
         task_id: &str,
         started: Instant,
     ) -> Result<CliStatus, Failure> {
@@ -397,7 +417,6 @@ impl AppContext {
         let temp =
             tempfile::tempdir().map_err(|_| failure("prepare", "io_error", "无法创建临时目录"))?;
         let execution = async {
-            progress(channel, "fetch_installer");
             let (script_path, bytes) = fetch_installer(&network, installer_url(&before.platform)?, &["chatgpt.com", "releases.openai.com"], temp.path(), started).await?;
             if install {
                 tauri_plugin_log::log::info!("[app.cli.download] client=\"Codex\" task_id={task_id:?} bytes={bytes} outcome=success msg=\"官方安装脚本已就绪，安装包由安装器校验\"");
@@ -406,11 +425,9 @@ impl AppContext {
             let install_dir = before.path.as_deref().map(Path::new)
                 .filter(|path| !path_key(path).starts_with(&format!("{}/", path_key(&codex_home.join("packages/standalone")))))
                 .and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(|| default_install_dir(&home));
-            progress(channel, "run_cli");
             let target = update.as_ref().map_or("latest", |update| update.latest_version.as_str());
             let output = run_cli(installer_command(&script_path, &install_dir, &codex_home, &network, target)?, remaining(started, "run_cli")?).await?;
             tauri_plugin_log::log::info!("[app.cli.process] client=\"Codex\" task_id={task_id:?} action={action} exit_code={:?} duration_ms={} outcome=success msg=\"CLI 命令执行完成\"", output.status.code(), started.elapsed().as_millis());
-            progress(channel, "verify_version");
             remaining(started, "verify_version")?;
             let status_home = home.clone();
             let status_network = network.clone();
@@ -553,6 +570,19 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn installation_source_uses_known_external_paths() {
+        assert_eq!(
+            source_for_path(Path::new("C:/Users/test/AppData/Roaming/npm/codex.cmd")),
+            "npm"
+        );
+        assert_eq!(
+            source_for_path(Path::new("/opt/homebrew/bin/codex")),
+            "homebrew"
+        );
+        assert_eq!(source_for_path(Path::new("/tmp/codex")), "unknown");
+    }
+
     #[cfg(unix)]
     #[test]
     fn shared_bin_allows_claude_but_rejects_foreign_codex_and_deduplicates_owned_symlinks() {
@@ -592,7 +622,7 @@ mod tests {
         let guard = context.codex_cli_operation.lock().await;
         assert!(context.claude_cli_operation.try_lock().is_ok());
         let error = context
-            .codex_run_cli_inner(true, &Channel::new(|_| Ok(())), "fixture", Instant::now())
+            .codex_run_cli_inner(true, "fixture", Instant::now())
             .await
             .unwrap_err();
         assert_eq!((error.stage, error.kind), ("guard", "validation_error"));
@@ -606,6 +636,7 @@ mod tests {
     fn installed_version_is_checked_and_foreign_or_duplicate_installs_are_blocked() {
         let mut status = CliStatus {
             installation: "missing",
+            source: None,
             version: None,
             path: None,
             other_paths: vec![],

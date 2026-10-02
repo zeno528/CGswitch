@@ -388,6 +388,7 @@ export interface CliFailure {
 
 export interface CliStatus {
   installation: "missing" | "native" | "other" | "conflict" | "broken";
+  source: string | null;
   version: string | null;
   path: string | null;
   other_paths: string[];
@@ -403,8 +404,4 @@ export interface CliUpdate {
   latest_version: string;
   channel: string;
   available: boolean;
-}
-
-export interface CliProgress {
-  stage: "fetch_installer" | "run_cli" | "verify_version";
 }
