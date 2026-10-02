@@ -4,8 +4,7 @@ use super::{
     CodexProfileKind, PathBuf, ProfileBalanceInfo,
 };
 use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
-pub(crate) use crate::network::proxy_note;
-use crate::network::Network;
+use crate::network::{proxy_note, Network};
 
 /// 供应商连通性测试结果
 #[derive(Debug, Clone, serde::Serialize)]

@@ -87,8 +87,6 @@ export default {
       http_error: "The server returned an unexpected status. Try again later.",
       parse_error: "Unable to parse the server or CLI response. Try again later.",
       io_error: "Unable to access files or run the command. Check the installation directory and permissions.",
-      auth_error: "Authentication failed. Check the proxy or service credentials.",
-      region_blocked: "The request was blocked by region restrictions. Check your proxy node's region.",
       not_found: "No valid CLI installation was found. Install it first or check the installation path.",
       validation_error: "The configuration or installation state is invalid. Check the proxy, installation paths and update settings.",
       protocol_error: "The response or installation could not be verified. Refresh the installation status and retry.",

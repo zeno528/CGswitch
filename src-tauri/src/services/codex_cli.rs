@@ -9,7 +9,7 @@ use tauri::ipc::Channel;
 use super::cli::*;
 use super::AppContext;
 
-fn file_name() -> &'static str {
+pub(super) fn file_name() -> &'static str {
     if cfg!(windows) {
         "codex.exe"
     } else {
@@ -355,7 +355,7 @@ impl AppContext {
             .codex_run_cli_inner(install, &channel, &task_id, started)
             .await;
         if let Err(error) = &result {
-            tauri_plugin_log::log::warn!("[app.cli.failure] client=\"Codex\" task_id={task_id:?} action={action} stage={} outcome=failure failure_kind={} duration_ms={} error={:?} msg=\"CLI 操作失败\"", error.stage, error.kind, started.elapsed().as_millis(), error.message);
+            log_cli_failure("Codex", &task_id, action, started, error);
         }
         result
     }
@@ -397,7 +397,7 @@ impl AppContext {
         let temp =
             tempfile::tempdir().map_err(|_| failure("prepare", "io_error", "无法创建临时目录"))?;
         let execution = async {
-            progress(channel, task_id, "fetch_installer");
+            progress(channel, "fetch_installer");
             let (script_path, bytes) = fetch_installer(&network, installer_url(&before.platform)?, &["chatgpt.com", "releases.openai.com"], temp.path(), started).await?;
             if install {
                 tauri_plugin_log::log::info!("[app.cli.download] client=\"Codex\" task_id={task_id:?} bytes={bytes} outcome=success msg=\"官方安装脚本已就绪，安装包由安装器校验\"");
@@ -406,11 +406,11 @@ impl AppContext {
             let install_dir = before.path.as_deref().map(Path::new)
                 .filter(|path| !path_key(path).starts_with(&format!("{}/", path_key(&codex_home.join("packages/standalone")))))
                 .and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(|| default_install_dir(&home));
-            progress(channel, task_id, "run_cli");
+            progress(channel, "run_cli");
             let target = update.as_ref().map_or("latest", |update| update.latest_version.as_str());
             let output = run_cli(installer_command(&script_path, &install_dir, &codex_home, &network, target)?, remaining(started, "run_cli")?).await?;
             tauri_plugin_log::log::info!("[app.cli.process] client=\"Codex\" task_id={task_id:?} action={action} exit_code={:?} duration_ms={} outcome=success msg=\"CLI 命令执行完成\"", output.status.code(), started.elapsed().as_millis());
-            progress(channel, task_id, "verify_version");
+            progress(channel, "verify_version");
             remaining(started, "verify_version")?;
             let status_home = home.clone();
             let status_network = network.clone();

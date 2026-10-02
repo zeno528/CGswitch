@@ -14,14 +14,15 @@ interface ManagementPageTitleProps {
   title: string;
   count?: number;
   countLabel?: string;
-  loading?: boolean;
   loadingLabel?: string;
   targets?: ManagementTargetCounts;
   className?: string;
 }
 
 /** 插件、MCP、Skill 入口统一的标题 + 总数；双端计数按页面数据可选展示。 */
-export function ManagementPageTitle({ icon, title, count, countLabel, loading = false, loadingLabel, targets, className = "" }: ManagementPageTitleProps) {
+export function ManagementPageTitle({ icon, title, count, countLabel, loadingLabel, targets, className = "" }: ManagementPageTitleProps) {
+  // count 未就绪即在加载，调用方不必各自推导 loading。
+  const loading = count === undefined;
   return (
     <span className={`management-page-title ${className}`}>
       {icon}

@@ -7,10 +7,8 @@ export default {
     skills: "Skill",
     accounts: "账号",
     settings: "设置",
-    claudeProviders: "供应商",
     groupCodex: "Codex",
     groupClaude: "Claude Code",
-    groupCommon: "通用",
   },
   sidebar: {
     expand: "展开侧边栏",

@@ -91,7 +91,6 @@ export default function PluginsView({ state }: { state: AppState }) {
           title={t("title")}
           count={loaded ? plugins.length : undefined}
           countLabel={loaded ? t("marketDetail.installedCountAria", { count: plugins.length }) : undefined}
-          loading={!loaded}
           loadingLabel={t("marketDetail.loadingAria")}
         />
         <div className="flex items-center gap-2">

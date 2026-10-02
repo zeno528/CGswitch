@@ -242,7 +242,7 @@ impl AppContext {
             .claude_run_cli_inner(install, &channel, &task_id, started)
             .await;
         if let Err(error) = &result {
-            tauri_plugin_log::log::warn!("[app.cli.failure] client=\"Claude Code\" task_id={task_id:?} action={action} stage={} outcome=failure failure_kind={} duration_ms={} error={:?} msg=\"CLI 操作失败\"", error.stage, error.kind, started.elapsed().as_millis(), error.message);
+            log_cli_failure("Claude Code", &task_id, action, started, error);
         }
         result
     }
@@ -293,7 +293,7 @@ impl AppContext {
             tempfile::tempdir().map_err(|_| failure("prepare", "io_error", "无法创建临时目录"))?;
         let execution = async {
             let executable = if install {
-                progress(channel, task_id, "fetch_installer");
+                progress(channel, "fetch_installer");
                 let (path, bytes) = fetch_installer(&network, installer_url(&before.platform)?, &["claude.ai", "downloads.claude.ai"], temp.path(), started).await?;
                 tauri_plugin_log::log::info!("[app.cli.download] client=\"Claude Code\" task_id={task_id:?} bytes={bytes} outcome=success msg=\"官方安装脚本已就绪，安装包由安装器校验\"");
                 path
@@ -310,12 +310,12 @@ impl AppContext {
                 use std::os::unix::fs::PermissionsExt;
                 std::fs::set_permissions(&settings_path, std::fs::Permissions::from_mode(0o600)).map_err(|_| failure("prepare", "io_error", "无法保护临时网络设置"))?;
             }
-            progress(channel, task_id, "run_cli");
+            progress(channel, "run_cli");
             let child_command = execution_command(install, &executable, &settings_path, &network)?;
             let timeout = remaining(started, "run_cli")?;
             let output = run_cli(child_command, timeout).await?;
             tauri_plugin_log::log::info!("[app.cli.process] client=\"Claude Code\" task_id={task_id:?} action={action} exit_code={:?} duration_ms={} outcome=success msg=\"CLI 命令执行完成\"", output.status.code(), started.elapsed().as_millis());
-            progress(channel, task_id, "verify_version");
+            progress(channel, "verify_version");
             let status_home = home.clone();
             let status_network = network.clone();
             remaining(started, "verify_version")?;

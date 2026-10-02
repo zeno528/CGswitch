@@ -636,7 +636,7 @@ pub(super) fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::plugins::cli::codex_cli_file_name;
+    use crate::services::codex_cli::file_name;
     use crate::services::plugins::test_context;
 
     /// CLI 在而 list 失败时必须报错，不能回退缓存扫描：plugins/cache 是全量市场目录
@@ -648,7 +648,7 @@ mod tests {
         // spawn/执行必败，让分支稳定落在"CLI 在但 list 失败"，与本机真实 CLI 解耦
         let bin = home.path().join(".codex").join("bin");
         std::fs::create_dir_all(&bin).unwrap();
-        std::fs::write(bin.join(codex_cli_file_name()), "not an executable").unwrap();
+        std::fs::write(bin.join(file_name()), "not an executable").unwrap();
         // 缓存里放可扫条目：若错误被缓存扫描吞掉，这里会被冒充成已安装列表返回
         let manifest_dir = home
             .path()

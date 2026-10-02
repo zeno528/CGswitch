@@ -2,35 +2,23 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use crate::error::{app_err, AppResult};
 // ==================== codex CLI 执行层 ====================
 
-pub(super) fn codex_cli_file_name() -> &'static str {
-    if cfg!(windows) {
-        "codex.exe"
-    } else {
-        "codex"
-    }
-}
-
 pub(super) fn cli_candidates(
     home: &Path,
     path_dirs: impl IntoIterator<Item = PathBuf>,
 ) -> Vec<PathBuf> {
-    let mut candidates = vec![home.join(".codex").join("bin").join(codex_cli_file_name())];
-    candidates.extend(
-        path_dirs
-            .into_iter()
-            .map(|dir| dir.join(codex_cli_file_name())),
-    );
+    let file_name = super::super::codex_cli::file_name();
+    let mut candidates = vec![home.join(".codex").join("bin").join(file_name)];
+    candidates.extend(path_dirs.into_iter().map(|dir| dir.join(file_name)));
     candidates.push(
         home.join(".codex")
             .join("plugins")
             .join(".plugin-appserver")
-            .join(codex_cli_file_name()),
+            .join(file_name),
     );
     candidates
 }
@@ -227,21 +215,11 @@ pub(super) fn run_codex_plugin_inner(home: &Path, args: &[&str]) -> AppResult<St
             "未找到 codex CLI（已尝试 ~/.codex/bin、PATH 与桌面版 appserver 目录），无法管理插件"
         )
     })?;
-    let mut command = std::process::Command::new(&cli);
+    let mut command = super::super::cli::command(&cli);
     command.arg("plugin").args(args);
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
     crate::network::Network::detect()
         .map_err(|error| app_err!("{error}"))?
         .apply(&mut command);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
     let child = command
         .spawn()
         .map_err(|error| app_err!("执行 codex CLI 失败: {error}"))?;
@@ -285,7 +263,7 @@ mod tests {
             home,
             vec![PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")],
         );
-        let filename = codex_cli_file_name();
+        let filename = crate::services::codex_cli::file_name();
         assert_eq!(candidates[0], home.join(".codex/bin").join(filename));
         assert_eq!(candidates[1], Path::new("/usr/local/bin").join(filename));
         assert_eq!(candidates[2], Path::new("/usr/bin").join(filename));

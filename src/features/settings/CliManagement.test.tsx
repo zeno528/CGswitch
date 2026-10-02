@@ -48,7 +48,7 @@ const management = {
 it("两端卡片共用行为，运行中的 Codex 不会禁用 Claude 按钮", () => {
   const codex = renderToStaticMarkup(<CliCard client="codex" management={{
     ...management, busy: true,
-    progress: { stage: "run_cli", task_id: "codex-task" },
+    progress: { stage: "run_cli" },
   }} />);
   const claude = renderToStaticMarkup(<CliCard client="claude" management={management} />);
   expect(codex.match(/disabled=""/g)).toHaveLength(2);

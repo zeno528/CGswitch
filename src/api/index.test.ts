@@ -63,7 +63,7 @@ it("应用更新经已注册的共享网络命令返回原生资源，浏览器�
 it("CLI 命令全部注册，进度通过 Channel 回传且浏览器禁止执行", async () => {
   mocks.invoke.mockImplementation(async (command: string, args?: { progress?: { onmessage: (value: unknown) => void } }) => {
     expect(registered.has(command)).toBe(true);
-    args?.progress?.onmessage({ stage: "run_cli", task_id: "fixture" });
+    args?.progress?.onmessage({ stage: "run_cli" });
     return { installation: "native", version: "1.2.3" };
   });
   vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });

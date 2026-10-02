@@ -142,7 +142,6 @@ pub(super) fn verify_update(checked: &CliUpdate, after: &CliStatus) -> Result<()
 
 #[derive(Clone, Serialize)]
 pub struct CliProgress {
-    task_id: String,
     stage: &'static str,
 }
 
@@ -283,11 +282,22 @@ pub(super) fn remaining(started: Instant, stage: &'static str) -> Result<Duratio
         .ok_or_else(|| failure(stage, "timeout", "CLI 操作超过 15 分钟，请检查网络后重试"))
 }
 
-pub(super) fn progress(channel: &Channel<CliProgress>, task_id: &str, stage: &'static str) {
-    let _ = channel.send(CliProgress {
-        task_id: task_id.into(),
-        stage,
-    });
+pub(super) fn progress(channel: &Channel<CliProgress>, stage: &'static str) {
+    let _ = channel.send(CliProgress { stage });
+}
+
+/// 两端外壳共用的失败日志行；格式串只此一份，防止两处漂移。
+pub(super) fn log_cli_failure(
+    client: &str,
+    task_id: &str,
+    action: &str,
+    started: Instant,
+    error: &Failure,
+) {
+    tauri_plugin_log::log::warn!(
+        "[app.cli.failure] client={client:?} task_id={task_id:?} action={action} stage={} outcome=failure failure_kind={} duration_ms={} error={:?} msg=\"CLI 操作失败\"",
+        error.stage, error.kind, started.elapsed().as_millis(), error.message
+    );
 }
 
 pub(super) async fn fetch(

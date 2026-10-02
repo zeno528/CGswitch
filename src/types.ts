@@ -406,6 +406,5 @@ export interface CliUpdate {
 }
 
 export interface CliProgress {
-  task_id: string;
   stage: "fetch_installer" | "run_cli" | "verify_version";
 }

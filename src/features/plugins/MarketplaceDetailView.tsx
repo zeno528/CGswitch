@@ -124,7 +124,6 @@ export default function MarketplaceDetailView({
             title={marketplace.display_name ?? marketplace.name}
             count={loaded ? installedPluginCount : undefined}
             countLabel={loaded ? t("marketDetail.installedCountAria", { count: installedPluginCount }) : undefined}
-            loading={!loaded}
             loadingLabel={t("marketDetail.loadingAria")}
           />
         </button>

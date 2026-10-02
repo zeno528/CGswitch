@@ -808,7 +808,7 @@ impl AppContext {
             None
         };
         let route = if is_http {
-            super::connections::proxy_note(&proxy)
+            crate::network::proxy_note(&proxy)
         } else {
             String::new()
         };

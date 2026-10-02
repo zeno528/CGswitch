@@ -87,8 +87,6 @@ export default {
       http_error: "服务器返回异常状态，请稍后重试",
       parse_error: "无法解析服务器或 CLI 返回的信息，请稍后重试",
       io_error: "无法读写文件或运行命令，请检查安装目录和访问权限",
-      auth_error: "认证失败，请检查代理或服务的认证设置",
-      region_blocked: "请求受到地区限制，请检查代理节点所在地区",
       not_found: "未找到有效的 CLI 安装，请先安装或检查安装路径",
       validation_error: "配置或安装状态不符合要求，请检查代理、安装路径及更新设置",
       protocol_error: "返回结果或安装验证未通过，请刷新安装状态后重试",

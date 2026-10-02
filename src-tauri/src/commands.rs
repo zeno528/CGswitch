@@ -19,16 +19,24 @@ use crate::services::{
     PluginSummary, PluginUpdate, ProfileBalance, SkillSummary, SkillTool,
 };
 
-#[tauri::command]
-pub async fn claude_get_cli_status(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+/// CLI 状态检测走阻塞线程池；两端命令共用壳，兜底文案只此一份。
+async fn cli_status_blocking(
+    state: State<'_, AppContext>,
+    detect: fn(&AppContext) -> Result<CliStatus, CliFailure>,
+) -> Result<CliStatus, CliFailure> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || state.claude_get_cli_status())
+    tauri::async_runtime::spawn_blocking(move || detect(&state))
         .await
         .map_err(|_| CliFailure {
             stage: "detect",
             kind: "internal",
             message: "CLI 检测任务失败".into(),
         })?
+}
+
+#[tauri::command]
+pub async fn claude_get_cli_status(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
+    cli_status_blocking(state, AppContext::claude_get_cli_status).await
 }
 
 #[tauri::command]
@@ -56,14 +64,7 @@ pub async fn claude_update_cli(
 
 #[tauri::command]
 pub async fn codex_get_cli_status(state: State<'_, AppContext>) -> Result<CliStatus, CliFailure> {
-    let state = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || state.codex_get_cli_status())
-        .await
-        .map_err(|_| CliFailure {
-            stage: "detect",
-            kind: "internal",
-            message: "CLI 检测任务失败".into(),
-        })?
+    cli_status_blocking(state, AppContext::codex_get_cli_status).await
 }
 
 #[tauri::command]

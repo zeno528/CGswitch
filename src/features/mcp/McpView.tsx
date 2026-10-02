@@ -714,7 +714,6 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
             title={t("list.title")}
             count={header?.count}
             countLabel={header?.count !== undefined ? t("list.serverCount", { count: header.count }) : undefined}
-            loading={header?.count === undefined}
           />
           <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
             {header?.badgeText ? (
