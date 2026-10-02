@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const hooksSource = readFileSync(new URL("./appShellHooks.ts", import.meta.url), "utf8");
-const profileEditSource = readFileSync(new URL("../features/profiles/ProfileEdit.tsx", import.meta.url), "utf8");
+const profileEditSource = readFileSync(new URL("../features/codex/CodexProfileEdit.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 
 describe("AppShell 布局", () => {
@@ -89,7 +89,7 @@ describe("AppShell 布局", () => {
     expect(onActive).toContain("checkMcpDiff()");
     expect(onActive).toContain("void refresh()");
     // 整个 AppShell 里只发这一个请求：复制一份出来就等于两处规则会分家
-    expect(source.split("api.mcpSyncPreview()").length - 1).toBe(1);
+    expect(source.split("api.codexMcpSyncPreview()").length - 1).toBe(1);
   });
 
   it("首屏稳定后统一预热管理页数据，失败无感", () => {
@@ -134,11 +134,11 @@ describe("AppShell 布局", () => {
   });
 
   it("冷启动窗口一路透传到供应商卡：余额刷新只在进程启动期间延后", () => {
-    const profilesViewSource = readFileSync(new URL("../features/profiles/ProfilesView.tsx", import.meta.url), "utf8");
-    const profileCardSource = readFileSync(new URL("../features/profiles/ProfileCard.tsx", import.meta.url), "utf8");
+    const profilesViewSource = readFileSync(new URL("../features/codex/CodexProfilesView.tsx", import.meta.url), "utf8");
+    const codexProfileCardSource = readFileSync(new URL("../features/codex/CodexProfileCard.tsx", import.meta.url), "utf8");
     expect(source).toContain("coldStart={!startupReady}");
     expect(profilesViewSource).toContain("coldStart={coldStart}");
-    expect(profileCardSource).toContain("coldStart: boolean;");
+    expect(codexProfileCardSource).toContain("coldStart: boolean;");
   });
 
   it("首屏完成后才启动自动更新检查", () => {
@@ -284,7 +284,7 @@ describe("AppShell 布局", () => {
   });
 
   it("所有编辑正文复用共享容器，不依赖 apple-group 的嵌套层数", () => {
-    const files = ["profiles/ProfileEdit", "profiles/ProfileIconEdit", "claude/ClaudeProfileEdit", "mcp/McpEdit", "mcp/ClaudeMcpEdit", "plugins/PluginDetailView", "plugins/AddPluginView", "plugins/MarketplaceDetailView"];
+    const files = ["codex/CodexProfileEdit", "profiles/ProfileIconEdit", "claude/ClaudeProfileEdit", "mcp/McpEdit", "mcp/ClaudeMcpEdit", "plugins/PluginDetailView", "plugins/AddPluginView", "plugins/MarketplaceDetailView"];
     // 「必须使用 apple-edit-surface」由 check-style-leaks 的结构检查兜底；这里守另一半：不得再挂 apple-group
     for (const file of files) {
       const page = readFileSync(new URL(`../features/${file}.tsx`, import.meta.url), "utf8");
@@ -342,7 +342,7 @@ describe("AppShell 布局", () => {
   });
 
   it("主区域统一增加左右留白，并从右侧内边距扣除滚动条槽", () => {
-    expect(styles).toContain("--gap-main: 2rem;");
+    expect(styles).toContain("--gap-main: 2.125rem;");
     expect(styles).toContain("padding-right: calc(var(--gap-main) - 8px);");
   });
 
