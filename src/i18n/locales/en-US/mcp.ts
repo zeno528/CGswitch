@@ -1,7 +1,7 @@
 /** MCP server management strings: list page, editor form, and diff page. */
 export default {
   list: {
-    title: "MCP Servers",
+    title: "MCP servers",
     serverCount: "Installed {{count}}",
     resolveDiff: "Update",
     updateDiffAria: "Update {{count}} MCP config differences",
@@ -13,7 +13,7 @@ export default {
     moreTooltip: "More actions",
     enableServer: "Enable {{name}}",
     testConnection: "Test connection",
-    testConnectionDisabled: "This server is disabled; connection cannot be tested",
+    testConnectionDisabled: "Disabled",
     connectionStateConnected: "Connected",
     connectionStateUnavailable: "Unavailable",
     connectionStateChecking: "Checking",

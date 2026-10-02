@@ -8,6 +8,7 @@ import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, get
 import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { ManagementPageTitle } from "../../components/ManagementPageTitle";
 import { McpIcon } from "../../components/McpIcon";
 import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
 import { useMenuDismiss } from "../../components/useMenuDismiss";
@@ -531,15 +532,13 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent">
-            <McpIcon className="h-[22px] w-[22px]" />
-          </span>
-          <div className="flex items-center gap-2">
-            <div className="apple-title">{t("list.title")}</div>
-            {loaded ? <span className="apple-chip">{t("list.serverCount", { count: servers.length })}</span> : null}
-          </div>
-        </div>
+        <ManagementPageTitle
+          icon={<span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent"><McpIcon className="h-[22px] w-[22px]" /></span>}
+          title={t("list.title")}
+          count={loaded ? servers.length : undefined}
+          countLabel={loaded ? t("list.serverCount", { count: servers.length }) : undefined}
+          loading={!loaded}
+        />
         <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
           {badgeText ? (
             <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
@@ -666,17 +665,13 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent">
-            <McpIcon className="h-[22px] w-[22px]" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="apple-title">{t("list.title")}</div>
-              {loaded ? <span className="apple-chip">{t("list.serverCount", { count: servers.length })}</span> : null}
-            </div>
-          </div>
-        </div>
+        <ManagementPageTitle
+          icon={<span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent"><McpIcon className="h-[22px] w-[22px]" /></span>}
+          title={t("list.title")}
+          count={loaded ? servers.length : undefined}
+          countLabel={loaded ? t("list.serverCount", { count: servers.length }) : undefined}
+          loading={!loaded}
+        />
         <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
           <McpTargetSwitch value="claude" onChange={onSwitch} />
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>

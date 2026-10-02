@@ -977,6 +977,59 @@ body.drag-active * {
   line-height: 1.2;
 }
 
+/* 插件 / MCP / Skill 页头统一：名称 · 总数，Skill 额外显示两端启用数。 */
+.management-page-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.management-page-title--compact { gap: 0.375rem; }
+
+.management-page-title__label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+
+.management-page-title__count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  white-space: nowrap;
+}
+
+.management-page-title__targets {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 999px;
+  background: var(--tile-bg);
+  padding: 0.375rem 0.75rem;
+  color: var(--text-secondary);
+}
+
+.management-page-title__target {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+.management-page-title__target + .management-page-title__target {
+  border-left: 1px solid var(--panel-divider);
+  padding-left: 0.75rem;
+}
+
+.management-page-title__target img {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
 /* 页面顶部返回栏：全宽出血越过 main 的 px-8、负上边距顶到窗口顶部，
    设置页 / 编辑供应商 / 选择图标 共用同一布局定义。
    统一最小高度：各页左侧内容高度不同（状态胶囊 28 / 返回按钮 32 / 图标座 36），

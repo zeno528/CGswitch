@@ -1,7 +1,7 @@
 /** MCP 服务器管理文案：列表页、编辑表单与差异二级页。 */
 export default {
   list: {
-    title: "MCP 服务器管理",
+    title: "MCP 服务器",
     serverCount: "已安装 {{count}}",
     resolveDiff: "更新",
     updateDiffAria: "更新 {{count}} 项 MCP 配置差异",
@@ -13,7 +13,7 @@ export default {
     moreTooltip: "更多操作",
     enableServer: "启用 {{name}}",
     testConnection: "测试连通",
-    testConnectionDisabled: "服务器已禁用，无法测试连通性",
+    testConnectionDisabled: "已禁用",
     connectionStateConnected: "已连通",
     connectionStateUnavailable: "未连通",
     connectionStateChecking: "检查中",

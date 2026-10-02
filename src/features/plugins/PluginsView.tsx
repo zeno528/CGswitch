@@ -5,7 +5,7 @@ import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { getCachedPlugins, loadPlugins } from "../../app/managementDataCache";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
-import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { ManagementPageTitle } from "../../components/ManagementPageTitle";
 import { TrashIcon } from "../../components/TrashIcon";
 import PluginDetailView from "./PluginDetailView";
 import PluginMarketplaceView from "./PluginMarketplaceView";
@@ -86,17 +86,14 @@ export default function PluginsView({ state }: { state: AppState }) {
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent">
-            <Blocks className="h-[18px] w-[18px]" strokeWidth={2} />
-          </span>
-          <div className="flex items-center gap-2">
-            <div className="apple-title">{t("title")}</div>
-            {loaded ? (
-              <span className="apple-chip" aria-label={t("marketDetail.installedCountAria", { count: visiblePlugins.length })}>{t("marketDetail.installedCount", { count: visiblePlugins.length })}</span>
-            ) : <span className="text-accent" role="status" aria-label={t("marketDetail.loadingAria")}><LoadingSpinner size="md" /></span>}
-          </div>
-        </div>
+        <ManagementPageTitle
+          icon={<span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent"><Blocks className="h-[18px] w-[18px]" strokeWidth={2} /></span>}
+          title={t("title")}
+          count={loaded ? plugins.length : undefined}
+          countLabel={loaded ? t("marketDetail.installedCountAria", { count: plugins.length }) : undefined}
+          loading={!loaded}
+          loadingLabel={t("marketDetail.loadingAria")}
+        />
         <div className="flex items-center gap-2">
           <PluginSearchInput value={query} onChange={setQuery} />
           <button type="button" className="apple-action-button app-button--primary" onClick={() => setAddingMarketplace(true)}>
