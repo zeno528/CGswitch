@@ -279,7 +279,7 @@ impl AppContext {
     }
 
     /// 读取 live config.toml 中的全部 MCP 服务器（只读，不随供应商切换）。
-    pub fn list_mcp_servers(&self) -> AppResult<Vec<McpServerSpec>> {
+    pub fn codex_list_mcp_servers(&self) -> AppResult<Vec<McpServerSpec>> {
         let document = codex_config::parse_document(&self.read_live_config()?)?;
         let mut servers = codex_config::mcp_servers_from_document(&document);
         for record in self.database.mcp_server_records()? {
@@ -300,7 +300,7 @@ impl AppContext {
     }
 
     /// 读取指定 MCP 服务器的原始片段（含未建模键与注释；编辑页初始化编辑器用）。
-    pub fn mcp_server_toml(&self, name: &str) -> AppResult<Option<String>> {
+    pub fn codex_mcp_server_toml(&self, name: &str) -> AppResult<Option<String>> {
         let document = codex_config::parse_document(&self.read_live_config()?)?;
         if let Some(fragment) = codex_config::mcp_server_fragments_from_document(&document)
             .into_iter()
@@ -318,7 +318,7 @@ impl AppContext {
 
     /// 对比 live config.toml 与数据库镜像的 MCP 差异（只读，不写任何一侧），
     /// 供同步前人工裁决。live 无法解析时返回错误，前端进入“仅可从数据库恢复”降级模式。
-    pub fn mcp_sync_preview(&self) -> AppResult<McpSyncPreview> {
+    pub fn codex_mcp_sync_preview(&self) -> AppResult<McpSyncPreview> {
         let _guard = self
             .operation
             .lock()
@@ -402,6 +402,8 @@ impl AppContext {
 
     /// 用户显式操作：数据库镜像写回 live config.toml（配置损坏/段丢失后的恢复）。
     /// 返回恢复的服务器数量。
+    /// 命名保留不带前缀：它写 Codex 配置的同时会调用 Claude 投影同步（共享镜像工作流），
+    /// 不是纯 Codex 私有操作。
     pub fn restore_mcp_from_database(&self) -> AppResult<usize> {
         let _guard = self
             .operation
@@ -427,7 +429,7 @@ impl AppContext {
     }
 
     /// 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live。
-    pub fn mcp_section_toml(&self) -> AppResult<String> {
+    pub fn codex_mcp_section_toml(&self) -> AppResult<String> {
         Ok(
             codex_config::mcp_server_fragments_from_document(&self.mcp_document_for_new_profile()?)
                 .into_iter()
@@ -438,7 +440,7 @@ impl AppContext {
 
     /// 新增/编辑/重命名一个 MCP 服务器：就地修改 live config.toml，未建模键与注释原样保留；
     /// 激活供应商的快照在下次 get_state 时自动吸收（与地址/密钥回写 live 同机制）。
-    pub fn save_mcp_server(
+    pub fn codex_save_mcp_server(
         &self,
         original_name: Option<&str>,
         spec: McpServerSpec,
@@ -821,7 +823,7 @@ impl AppContext {
 
     /// 差异处理"同步"原语：把若干条目一次写进数据库镜像——fragment=Some 用 live 片段覆盖该条，
     /// fragment=None 删除该条（"外部已删除"的同步）。整批校验通过才落一次盘，任一条非法整批不写。
-    /// 不改 Codex live；Claude 投影跟随共享镜像。不能用 save_mcp_server / delete_mcp_server
+    /// 不改 Codex live；Claude 投影跟随共享镜像。不能用 codex_save_mcp_server / codex_delete_mcp_server
     /// 代替，因为它们会同时修改 live，无法表达仅采纳外部差异。
     pub fn set_mcp_mirror_entries(&self, actions: &[McpDiffEntryAction]) -> AppResult<usize> {
         let _guard = self
@@ -934,7 +936,7 @@ impl AppContext {
     }
 
     /// Codex 页的卸载入口；Claude 页显式选择自己的客户端。
-    pub fn delete_mcp_server(&self, name: &str) -> AppResult<()> {
+    pub fn codex_delete_mcp_server(&self, name: &str) -> AppResult<()> {
         self.delete_mcp_server_for_tool(name, SkillTool::Codex)
     }
 

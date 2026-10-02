@@ -9,7 +9,7 @@ import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
 import { getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
-import ProfilesView from "../features/profiles/ProfilesView";
+import CodexProfilesView from "../features/codex/CodexProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
@@ -31,7 +31,7 @@ const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 /// 失败不静默：写回 error 态，让"config.toml 坏了"在切回窗口那一刻就可见，
 /// 而不是等用户点进 MCP 页才发现。
 const checkMcpDiff = () =>
-  api.mcpSyncPreview()
+  api.codexMcpSyncPreview()
     .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
     .catch(() => setMcpDiffBadge({ count: 0, error: true }));
 
@@ -134,7 +134,7 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
       listen<string>("tray-switch-profile", async ({ payload: id }) => {
         const state = stateRef.current;
         if (busy.current) return;
-        if (!state?.profiles.some((profile) => profile.id === id) || state.active_profile_id === id) {
+        if (!state?.codex_profiles.some((profile) => profile.id === id) || state.active_codex_profile_id === id) {
           await latest.current.refresh();
           return;
         }
@@ -163,9 +163,9 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
 }
 
 export default function AppShell() {
-  const [view, setView] = useState<AppView>("profiles");
+  const [view, setView] = useState<AppView>("codexProfiles");
   // 切页记忆：进过的页面保活（Activity hidden），未访问页连渲染都不发生，冷启动零新增。
-  const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["profiles"]));
+  const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["codexProfiles"]));
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
   // 侧栏角标复用 MCP 页的差异计数文案，避免同一件事在两处各写一份
@@ -176,9 +176,9 @@ export default function AppShell() {
   useEffect(() => {
     const language = setupI18n(state?.settings.language);
     if (isTauri && state) {
-      void api.setTrayMenu(language, state.profiles.map(({ id, name }) => ({ id, name })), state.active_profile_id).catch(() => undefined);
+      void api.setTrayMenu(language, state.codex_profiles.map(({ id, name }) => ({ id, name })), state.active_codex_profile_id).catch(() => undefined);
     }
-  }, [state?.settings.language, state?.profiles, state?.active_profile_id]);
+  }, [state?.settings.language, state?.codex_profiles, state?.active_codex_profile_id]);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
@@ -340,11 +340,11 @@ export default function AppShell() {
   // 清理（不加载、不轮询），state 与 DOM 保留，切回即恢复现场，effects 重跑后数据照常刷新。
   const renderPages = (state: AppState) => {
     const pages: Record<AppView, ReactNode> = {
-      profiles: <ProfilesView state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={() => setView("accounts")} />,
+      codexProfiles: <CodexProfilesView state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={() => setView("accounts")} />,
       mcp: <McpView activationEpoch={activationEpoch} />,
       plugins: <PluginsView state={state} />,
       skills: <SkillsView activationEpoch={activationEpoch} />,
-      claude: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
+      claudeProfiles: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
       accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />,
       settings: <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
     };
@@ -363,7 +363,7 @@ export default function AppShell() {
       key: "codex",
       labelKey: "nav.groupCodex",
       items: [
-        { view: "profiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("profiles") },
+        { view: "codexProfiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("codexProfiles") },
         { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
         { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
       ],
@@ -372,7 +372,7 @@ export default function AppShell() {
       key: "claude",
       labelKey: "nav.groupClaude",
       items: [
-        { view: "claude", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("claude") },
+        { view: "claudeProfiles", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("claudeProfiles") },
       ],
     },
     {

@@ -1,5 +1,5 @@
 import packageJson from "../../package.json";
-import profileEditSource from "../features/profiles/ProfileEdit.tsx?raw";
+import profileEditSource from "../features/codex/CodexProfileEdit.tsx?raw";
 import editorSource from "./ConfigTextEditor.tsx?raw";
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";

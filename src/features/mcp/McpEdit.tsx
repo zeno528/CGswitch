@@ -64,7 +64,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
       try {
         const initial = create
           ? ""
-          : (await api.getMcpServerToml(server?.name ?? "")) ?? await api.patchMcpFragment(`[mcp_servers.${server?.name ?? "server"}]\n`, formSpec());
+          : (await api.codexGetMcpServerToml(server?.name ?? "")) ?? await api.patchMcpFragment(`[mcp_servers.${server?.name ?? "server"}]\n`, formSpec());
         if (!cancelled) { setTomlText(initial); setInitialToml(initial); setInitialized(true); }
       } catch (error) { if (!cancelled) feedback.error(String(error)); }
     })();
@@ -119,7 +119,7 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
     if (startupTimeout !== null && startupTimeout <= 0) { feedback.error(t("feedback.startupTimeoutPositive")); return; }
     if (toolTimeout !== null && toolTimeout <= 0) { feedback.error(t("feedback.toolTimeoutPositive")); return; }
     setSaving(true);
-    try { const savedServer = formSpec(); await api.saveMcpServer(server?.name ?? null, savedServer, tomlText); feedback.success(t("feedback.saved")); onBack(savedServer); }
+    try { const savedServer = formSpec(); await api.codexSaveMcpServer(server?.name ?? null, savedServer, tomlText); feedback.success(t("feedback.saved")); onBack(savedServer); }
     catch (error) { feedback.error(String(error)); }
     finally { setSaving(false); }
   };

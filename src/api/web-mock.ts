@@ -1,4 +1,4 @@
-import { balanceQueryProviders, builtinHasCatalog, builtinPresetByKind, type BuiltinPreset } from "../presets";
+import { balanceQueryProviders, codexBuiltinHasCatalog, codexPresetByKind, type ClientPreset } from "../presets";
 import { splitEnvExtras } from "../features/claude/profileEnvText";
 import type {
   AppState,
@@ -15,13 +15,13 @@ import type {
   SkillSummary,
   SkillCandidate,
   ProfileBalanceInfo,
-  ProfileConnectionResult,
-  ProfileDetail,
-  ProfileSummary,
+  CodexProfileConnectionResult,
+  CodexProfileDetail,
+  CodexProfileSummary,
   Settings,
 } from "../types";
 
-const webProfiles: ProfileSummary[] = [
+const webProfiles: CodexProfileSummary[] = [
   {
     id: "profile-zai-glm-high",
     name: "ZAI GLM 高推理",
@@ -383,7 +383,7 @@ function providerHttpErrorMessage(status: number): string {
   return "请求未成功，请检查 API 端点、API Key 或网络后重试";
 }
 
-function providerEndpointFormatError(baseUrl: string): ProfileConnectionResult | null {
+function providerEndpointFormatError(baseUrl: string): CodexProfileConnectionResult | null {
   let protocol: string | null = null;
   try {
     protocol = new URL(baseUrl).protocol;
@@ -401,7 +401,7 @@ function isOpenCodeGoBaseUrl(baseUrl: string): boolean {
 async function testOpenCodeConnection(
   baseUrl: string,
   apiKey: string,
-): Promise<ProfileConnectionResult> {
+): Promise<CodexProfileConnectionResult> {
   const start = Date.now();
   try {
     const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/responses`, {
@@ -473,7 +473,7 @@ const webDetails: Record<string, WebDetail> = {
   },
 };
 
-function webProfileDetail(id: string): ProfileDetail {
+function webProfileDetail(id: string): CodexProfileDetail {
   const profile = webProfiles.find((item) => item.id === id);
   if (!profile) throw new Error("供应商配置不存在");
   const detail = webDetails[id];
@@ -634,8 +634,8 @@ function databaseBackupName(date = new Date()): string {
 
 function webState(): AppState {
   return {
-    profiles: [...webProfiles],
-    active_profile_id: webActiveProfileId,
+    codex_profiles: [...webProfiles],
+    active_codex_profile_id: webActiveProfileId,
     active_claude_profile_id: webActiveClaudeProfileId,
     codex: {
       running: true,
@@ -716,7 +716,7 @@ function parseClaudeMcpEntryWeb(name: string, text: string): McpServerSpec {
 
 // 浏览器调试模式不查后端命令，用预设的展示元数据合成最小 config 模板
 // （正式运行时由后端 builtin 模板给出完整原文）
-function mockBuiltinFragment(preset: BuiltinPreset, apiKey: string): string {
+function mockBuiltinFragment(preset: ClientPreset, apiKey: string): string {
   return preset.provider
     ? `model = "${preset.model}"\nmodel_provider = "${preset.provider}"\nmodel_reasoning_effort = "high"\n\n[model_providers.${preset.provider}]\nname = "${preset.provider}"\nbase_url = "${preset.base_url}"\nwire_api = "responses"\nexperimental_bearer_token = "${apiKey || "<YOUR_API_KEY>"}"`
     : `model = "${preset.model}"\nmodel_reasoning_effort = "high"`;
@@ -741,9 +741,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     case "get_codex_status":
       return webState().codex as T;
-    case "capture_profile": {
+    case "codex_capture_profile": {
       const now = new Date().toISOString();
-      const profile: ProfileSummary = {
+      const profile: CodexProfileSummary = {
         id: `profile-${Date.now()}`,
         name: String(args?.name ?? "新供应商"),
         kind: "third_party",
@@ -763,8 +763,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webProfiles.push(profile);
       return profile as T;
     }
-    case "add_builtin_profile": {
-      const preset = builtinPresetByKind(String(args?.kind ?? ""));
+    case "codex_add_builtin_profile": {
+      const preset = codexPresetByKind(String(args?.kind ?? ""));
       if (!preset) throw new Error("未知的内置供应商类型");
       const rawKey = String(args?.apiKey ?? "");
       const apiKey = preset.provider ? rawKey : null;
@@ -775,7 +775,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const syntheticFragment = mockBuiltinFragment(preset, rawKey);
       const syntheticModelValues: Record<string, string> = { model: JSON.stringify(preset.model), model_reasoning_effort: '"high"' };
       const now = new Date().toISOString();
-      const profile: ProfileSummary = {
+      const profile: CodexProfileSummary = {
         id: `profile-${Date.now()}`,
         name: preset.name,
         kind: preset.provider ? "third_party" : "official",
@@ -803,13 +803,13 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       };
       return profile as T;
     }
-    case "add_custom_profile": {
+    case "codex_add_custom_profile": {
       const now = new Date().toISOString();
       const configText = String(args?.configText ?? "");
       const provider = /^\s*model_provider\s*=\s*["']([^"']+)["']/m.exec(configText)?.[1] ?? null;
       const baseUrl = typeof args?.baseUrl === "string" ? args.baseUrl.trim() : "";
       const apiKey = typeof args?.apiKey === "string" ? args.apiKey.trim() : "";
-      const profile: ProfileSummary = {
+      const profile: CodexProfileSummary = {
         id: `profile-${Date.now()}`,
         name: String(args?.name ?? "自定义供应商"),
         kind: "third_party",
@@ -841,17 +841,20 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       };
       return profile as T;
     }
-    case "get_builtin_catalog": {
+    case "codex_get_builtin_catalog": {
       const kind = String(args?.kind ?? "");
-      if (!builtinHasCatalog(kind)) return null as T;
+      if (!codexBuiltinHasCatalog(kind)) return null as T;
       return '{\n  "models": [\n    { "id": "preview", "name": "模型目录预览" }\n  ]\n}' as T;
     }
-    case "get_builtin_config": {
-      const preset = builtinPresetByKind(String(args?.kind ?? ""));
+    case "codex_get_builtin_config": {
+      const preset = codexPresetByKind(String(args?.kind ?? ""));
       if (!preset) throw new Error("未知的内置供应商类型");
       return mockBuiltinFragment(preset, String(args?.apiKey ?? "")) as T;
     }
-    case "test_provider_connection": {
+    // 浏览器跨域请求无法可靠模拟供应商模型接口，保持明确失败。
+    case "codex_fetch_provider_models":
+      throw new Error("请在桌面版获取供应商模型列表");
+    case "codex_test_provider_connection": {
       const apiKey = String(args?.apiKey ?? "");
       const baseUrl = String(args?.baseUrl ?? "");
       if (!apiKey.trim()) throw new Error("请填写 API Key");
@@ -877,7 +880,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         throw new Error("网络请求被浏览器拦截，请在桌面版验证连通性");
       }
     }
-    case "test_profile_connection": {
+    case "codex_test_profile_connection": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       if (!profile.provider) {
@@ -931,7 +934,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         } as T;
       }
     }
-    case "get_profile_balance": {
+    case "codex_get_profile_balance": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       // 与后端一致：官方 ChatGPT 配置按其固定登录来源查询额度。
@@ -975,7 +978,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         latency_ms: 210,
       } as T;
     }
-    case "get_claude_profile_balance": {
+    case "claude_get_profile_balance": {
       const profile = webClaudeProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("Claude 供应商配置不存在");
       if (profile.kind !== "deepseek" && profile.kind !== "minimax") throw new Error("该 Claude 供应商不支持用量查询");
@@ -1026,17 +1029,17 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       profile.updated_at = String(Date.now());
       return undefined as T;
     }
-    case "set_profile_icon": {
+    case "codex_set_profile_icon": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (profile) profile.icon = (args?.icon as string | null) ?? null;
       return undefined as T;
     }
-    case "set_profile_show_balance": {
+    case "codex_set_profile_show_balance": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (profile) profile.show_balance = Boolean(args?.enabled);
       return undefined as T;
     }
-    case "set_profile_fetched_models": {
+    case "codex_set_profile_fetched_models": {
       const detail = webDetails[String(args?.id)];
       if (detail) detail.fetched_models = Array.isArray(args?.models) ? args.models.filter((model): model is string => typeof model === "string") : [];
       return undefined as T;
@@ -1050,7 +1053,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "auth_get_quota":
       // 与后端一致：Settings 的 Codex/OAuth 账号均返回官方额度窗口。
       return { is_available: true, balance_infos: [webChatgptQuota], latency_ms: 210 } as T;
-    case "duplicate_profile": {
+    case "codex_duplicate_profile": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const now = new Date().toISOString();
@@ -1061,7 +1064,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         name = `${base} copy ${counter}`;
         counter += 1;
       }
-      const copy: ProfileSummary = {
+      const copy: CodexProfileSummary = {
         ...profile,
         id: `profile-${Date.now()}`,
         name,
@@ -1074,9 +1077,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (webDetails[profile.id]) webDetails[copy.id] = { ...webDetails[profile.id] };
       return copy as T;
     }
-    case "get_profile":
+    case "codex_get_profile":
       return webProfileDetail(String(args?.id)) as T;
-    case "update_profile": {
+    case "codex_update_profile": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       profile.name = String(args?.name ?? profile.name);
@@ -1095,7 +1098,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (typeof args?.adminUrl === "string") profile.admin_url = args.adminUrl || null;
       return { ...profile } as T;
     }
-    case "update_profile_config": {
+    case "codex_update_profile_config": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const source = profile.auth_source ?? (profile.account_id ? "oauth" : profile.kind === "official" ? "desktop" : null);
@@ -1110,18 +1113,18 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       }
       return webProfileDetail(profile.id) as T;
     }
-    case "patch_chatgpt_context_config":
+    case "codex_patch_chatgpt_context_config":
       return patchContextOverrideForWeb(
         String(args?.configText ?? ""),
         Boolean(args?.enabled),
         Number(args?.compactTokenLimit ?? 900_000),
       ) as T;
-    case "patch_system_proxy_config":
+    case "codex_patch_system_proxy_config":
       return patchSystemProxyForWeb(
         String(args?.configText ?? ""),
         Boolean(args?.enabled),
       ) as T;
-    case "patch_context_management_config":
+    case "codex_patch_context_management_config":
       return patchContextManagementForWeb(
         String(args?.configText ?? ""),
         Boolean(args?.enabled),
@@ -1427,7 +1430,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       });
       return undefined as T;
     }
-    case "delete_profile": {
+    case "codex_delete_profile": {
       // 使用中的配置不可删除：与后端守卫一致
       if (webActiveProfileId === String(args?.id)) throw new Error("无法删除使用中的供应商配置，请先切换到其他配置");
       const index = webProfiles.findIndex((item) => item.id === args?.id);
@@ -1435,12 +1438,12 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webDescriptions.delete(String(args?.id));
       return undefined as T;
     }
-    case "reorder_profiles": {
+    case "codex_reorder_profiles": {
       const ids = Array.isArray(args?.ids) ? (args.ids as string[]) : [];
       webProfiles.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
       return undefined as T;
     }
-    case "apply_profile":
+    case "codex_apply_profile":
       // 与后端一致：官方配置的认证来源在创建时固定；Web mock 不操作本机 auth.json。
       webActiveProfileId = typeof args?.id === "string" ? args.id : null;
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1466,7 +1469,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         tokens: { account_id: accountId, access_token: "<preview-only>" },
       }, null, 2) as T;
     }
-    case "set_profile_account": {
+    case "codex_set_profile_account": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const source = profile.auth_source ?? (profile.account_id ? "oauth" : profile.kind === "official" ? "desktop" : null);
@@ -1492,22 +1495,22 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     // Web 调试模式无 Rust 侧格式化器，保持输入透传，供浏览器走查按钮流程
     case "format_toml":
       return String(args?.text ?? "") as T;
-    case "list_mcp_servers":
+    case "codex_list_mcp_servers":
       return [...webMcpServers] as T;
-    case "list_claude_mcp_servers":
+    case "claude_list_mcp_servers":
       return [...webClaudeMcpServers] as T;
-    case "get_claude_mcp_server_json": {
+    case "claude_get_mcp_server_json": {
       const server = webClaudeMcpServers.find((item) => item.name === args?.name);
       return (server ? renderClaudeMcpEntryWeb(server) : null) as unknown as T;
     }
-    case "save_claude_mcp_server": {
+    case "claude_save_mcp_server": {
       const name = String(args?.name ?? "").trim();
       const original = typeof args?.originalName === "string" ? args.originalName : null;
       const spec = parseClaudeMcpEntryWeb(name, String(args?.json ?? "{}"));
       saveWebMcpServer(original, spec, "claude");
       return undefined as T;
     }
-    case "delete_claude_mcp_server":
+    case "claude_delete_mcp_server":
       webClaudeMcpServers = webClaudeMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
     case "probe_mcp_server": {
@@ -1540,13 +1543,13 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       };
       return result as T;
     }
-    case "get_mcp_section_toml": {
+    case "codex_get_mcp_section_toml": {
       // 创建表单预填用：把 mock 列表渲染成 config.toml 片段
       return webMcpServers.map((server) => renderMcpFragmentWeb({ ...server, enabled: null })).join("\n") as T;
     }
     case "restore_mcp_from_database":
       return webMcpServers.length as T;
-    case "mcp_sync_preview": {
+    case "codex_mcp_sync_preview": {
       // web 调试样例：一条“内容不同”+ 一条“仅配置文件”，便于在 pnpm dev 里走查差异页
       const first = webMcpServers[0];
       const changed = first
@@ -1586,7 +1589,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         db_count: webMcpServers.length,
       } as T;
     }
-    case "save_mcp_server": {
+    case "codex_save_mcp_server": {
       const spec = args?.spec as McpServerSpec;
       const original = typeof args?.originalName === "string" ? args.originalName : null;
       saveWebMcpServer(original, spec, "codex");
@@ -1594,7 +1597,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     // —— MCP 编辑页双向同步的 web 调试桩（精度有限：仅渲染/解析建模字段，
     //    未建模键与注释不保留；真实保真逻辑在 Rust 侧 toml_edit）——
-    case "get_mcp_server_toml": {
+    case "codex_get_mcp_server_toml": {
       const server = webMcpServers.find((item) => item.name === args?.name);
       return (server ? renderMcpFragmentWeb({ ...server, enabled: null }) : null) as unknown as T;
     }
@@ -1662,7 +1665,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (!spec.name) throw new Error("Web 调试模式：片段中没有服务器");
       return spec as T;
     }
-    case "delete_mcp_server":
+    case "codex_delete_mcp_server":
       webMcpServers = webMcpServers.filter((server) => server.name !== args?.name);
       return undefined as T;
     case "set_mcp_server_enabled": {

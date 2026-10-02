@@ -780,8 +780,8 @@ impl AppContext {
         // 按用户所在页的引擎解析名单与开关：两侧各自标记自己引擎的禁用状态，
         // Codex 关了不影响 Claude 页探测，反之亦然。
         let server = match tool {
-            SkillTool::Codex => self.list_mcp_servers()?,
-            SkillTool::Claude => self.claude_mcp_servers()?,
+            SkillTool::Codex => self.codex_list_mcp_servers()?,
+            SkillTool::Claude => self.claude_list_mcp_servers()?,
         }
         .into_iter()
         .find(|server| server.name == name)

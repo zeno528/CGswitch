@@ -3,7 +3,7 @@ import type { MutableRefObject } from "react";
 import { api, isTauri } from "../api";
 import type { AppState, AuthStatus, CodexAppStatus, Settings } from "../types";
 
-export type AppView = "profiles" | "mcp" | "plugins" | "skills" | "accounts" | "settings" | "claude";
+export type AppView = "codexProfiles" | "mcp" | "plugins" | "skills" | "accounts" | "settings" | "claudeProfiles";
 
 // 启动期预发 get_state：IPC 与脚本求值、React 挂载并行，首个 refresh 直接吃这份在途结果，
 // 省掉"挂载完 effect 才发请求"的一轮串行等待。只消费一次；激活/聚焦后的 refresh 照常发新请求。

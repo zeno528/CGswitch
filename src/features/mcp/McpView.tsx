@@ -1,4 +1,5 @@
-import { CircleDashed, GitCompare, Globe, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
+import { CircleDashed, GitCompare, Globe, MoreHorizontal, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -8,6 +9,8 @@ import { AppSwitch } from "../../components/AppSwitch";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { McpIcon } from "../../components/McpIcon";
+import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
+import { useMenuDismiss } from "../../components/useMenuDismiss";
 import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
 import ClaudeMcpEdit from "./ClaudeMcpEdit";
 import McpDiffPage from "./McpDiffPage";
@@ -45,7 +48,7 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
 }
 
 /// 差异×动词到外科手术原语的唯一映射——每条命令只碰单个条目的单侧（镜像或 live），
-/// 不得使用 saveMcpServer/deleteMcpServer（它们会同时修改 live，无法表达只采纳镜像）：
+/// 不得使用 codexSaveMcpServer/codexDeleteMcpServer（它们会同时修改 live，无法表达只采纳镜像）：
 /// 同步 = 采纳外部修改（live 片段写入镜像；外部已删除的删除镜像条目）；
 /// 撤销 = 回退外部修改（数据库片段写回 live；外部新增的从 live 移除）。
 export function mcpEntryAction(entry: McpSyncDiffEntry, verb: McpDiffVerb): McpDiffAction | null {
@@ -260,7 +263,27 @@ type McpServerRowProps = {
 export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
   const { t } = useTranslation("mcp");
   const testTitle = t(server.enabled === false ? "list.testConnectionDisabled" : "list.testConnection");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useFixedMenuPosition(menuOpen, menuTriggerRef.current, menuRef, "end");
+  useMenuDismiss(menuOpen, menuTriggerRef, menuRef, setMenuOpen);
   const Icon = transportIcon(server);
+  const toolsTitle = t(detailsVisible ? "list.collapseTools" : "list.toolsButton");
+  const menu = menuOpen ? createPortal(
+    <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("list.moreTooltip")} style={{ ...menuStyle, minWidth: "10rem" }}>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state" onClick={() => { setMenuOpen(false); onEdit(server); }}>
+        <span className="flex items-center gap-2"><Pencil className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("list.editTooltip")}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={probing || server.enabled === false} onClick={() => { setMenuOpen(false); onProbe(server); }}>
+        <span className="flex items-center gap-2"><Wifi className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{testTitle}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={server.enabled === false} onClick={() => { setMenuOpen(false); onToggleTools(server); }}>
+        <span className="flex items-center gap-2"><Wrench className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{toolsTitle}</span>
+      </button>
+    </div>,
+    document.body,
+  ) : null;
 
   return (
     <div onClick={(event) => {
@@ -290,33 +313,15 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
+            ref={menuTriggerRef}
             type="button"
-            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            title={t("list.editTooltip")}
-            aria-label={t("list.editServerAria", { name: server.name })}
-            onClick={() => onEdit(server)}
+            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={t("list.moreTooltip")}
+            onClick={() => setMenuOpen((open) => !open)}
           >
-            <Pencil className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={probing || server.enabled === false}
-            title={testTitle}
-            aria-label={testTitle}
-            onClick={() => onProbe(server)}
-          >
-            {probing ? <LoadingSpinner /> : <Wifi className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
-          </button>
-          <button
-            type="button"
-            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={server.enabled === false}
-            title={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
-            aria-label={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
-            onClick={() => onToggleTools(server)}
-          >
-            <Wrench className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            <MoreHorizontal className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
           </button>
           {onToggleEnabled ? <AppSwitch size="sm" checked={server.enabled !== false} label={t("list.enableServer", { name: server.name })} onCheckedChange={(value) => onToggleEnabled(server, value)} /> : null}
         </div>
@@ -330,6 +335,7 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
           </div>
         </div>
       ) : null}
+      {menu}
     </div>
   );
 }
@@ -355,7 +361,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
     if (previewInFlight.current) return;
     previewInFlight.current = true;
     try {
-      const preview = await api.mcpSyncPreview();
+      const preview = await api.codexMcpSyncPreview();
       setSyncPreview(preview);
       setPreviewError("");
       // 侧栏角标与页面同源：页面查到就写回共享缓存
@@ -411,7 +417,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
     try {
-      await api.deleteMcpServer(server.name);
+      await api.codexDeleteMcpServer(server.name);
       deleteCachedMcpProbe(server.name);
       setEditingServer(null);
       feedback.success(t("feedback.deleted"));
@@ -634,7 +640,7 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
     });
     if (!confirmed) return;
     try {
-      await api.deleteClaudeMcpServer(server.name);
+      await api.claudeDeleteMcpServer(server.name);
       deleteCachedMcpProbe(server.name, "claude");
       feedback.success(t("feedback.deleted"));
       setEditingServer(null);

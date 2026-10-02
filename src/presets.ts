@@ -12,7 +12,7 @@ export interface PresetEndpoint {
   admin_url: string | null;
 }
 
-export interface BuiltinPreset {
+export interface ClientPreset {
   kind: string;
   name: string;
   provider: string | null;
@@ -43,7 +43,7 @@ export function balanceChipClass(usagePercent: number | null, totalBalance: stri
 
 // 地址/密钥留空由表单写入；顶层不带 model 行，模型输入框留空，
 // 用户输入或「获取模型列表」选择后经 patchModelValue 插入
-export const customConfigTemplate = `model_provider = "custom"
+export const codexCustomConfigTemplate = `model_provider = "custom"
 model_reasoning_effort = "high"
 disable_response_storage = true
 model_catalog_json = "~/.codex/models.json"
@@ -57,7 +57,7 @@ experimental_bearer_token = ""`;
 /** 模型目录按 Codex 官方目录的完整字段集（对照 assets/builtin/zhipu-models.json，
  * 每条 21 个字段）：slug 是模型标识；base_instructions 与 supports_reasoning_summaries
  * 为解析器必填字段，缺失会让 Codex 拒载整个目录文件。 */
-export const customCatalogTemplate = `{
+export const codexCustomCatalogTemplate = `{
   "models": [
     {
       "slug": "gpt-5.6-sol",
@@ -90,9 +90,9 @@ export const customCatalogTemplate = `{
 
 // 共享身份信息；只声明实际支持的客户端，每边独立填写地址、模型和区域端点。
 // 中文展示名继续用 getter，避免语言切换后名称停留在模块加载时的语言。
-export interface ProviderPreset extends Pick<BuiltinPreset, "kind" | "name" | "icon"> {
-  codex?: Omit<BuiltinPreset, "kind" | "name" | "icon">;
-  claude?: Omit<BuiltinPreset, "kind" | "name" | "icon">;
+export interface ProviderPreset extends Pick<ClientPreset, "kind" | "name" | "icon"> {
+  codex?: Omit<ClientPreset, "kind" | "name" | "icon">;
+  claude?: Omit<ClientPreset, "kind" | "name" | "icon">;
 }
 
 export const providerPresets: ProviderPreset[] = [
@@ -376,7 +376,7 @@ export const providerPresets: ProviderPreset[] = [
 ];
 
 /** 两个客户端共用列表投影；不从另一客户端继承任何接入默认值。 */
-export function clientPresets(providers: readonly ProviderPreset[], client: "codex" | "claude"): BuiltinPreset[] {
+export function clientPresets(providers: readonly ProviderPreset[], client: "codex" | "claude"): ClientPreset[] {
   return providers.flatMap((preset) => {
     const connection = preset[client];
     return connection ? [{
@@ -388,22 +388,22 @@ export function clientPresets(providers: readonly ProviderPreset[], client: "cod
   });
 }
 
-export const builtinPresets = clientPresets(providerPresets, "codex");
+export const codexPresets = clientPresets(providerPresets, "codex");
 export const claudePresets = clientPresets(providerPresets, "claude");
 
-export function builtinPresetByKind(kind: string): BuiltinPreset | undefined {
-  return builtinPresets.find((preset) => preset.kind === kind);
+export function codexPresetByKind(kind: string): ClientPreset | undefined {
+  return codexPresets.find((preset) => preset.kind === kind);
 }
 
-export function claudePresetByKind(kind: string | null | undefined): BuiltinPreset | undefined {
+export function claudePresetByKind(kind: string | null | undefined): ClientPreset | undefined {
   return kind ? claudePresets.find((preset) => preset.kind === kind) : undefined;
 }
 
 /** 哪些内置供应商自带静态模型目录档。models.json 槽位的存在判定统一走这里。 */
-export const BUILTINS_WITH_CATALOG: ReadonlySet<string> = new Set([
+export const CODEX_BUILTINS_WITH_CATALOG: ReadonlySet<string> = new Set([
   "deepseek", "minimax", "zhipu", "opencode", "mimo",
 ]);
 
-export function builtinHasCatalog(kind: string | null | undefined): boolean {
-  return kind != null && BUILTINS_WITH_CATALOG.has(kind);
+export function codexBuiltinHasCatalog(kind: string | null | undefined): boolean {
+  return kind != null && CODEX_BUILTINS_WITH_CATALOG.has(kind);
 }

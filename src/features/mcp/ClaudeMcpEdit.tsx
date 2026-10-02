@@ -54,7 +54,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
   useEffect(() => {
     if (create || !server) return;
     let cancelled = false;
-    void api.getClaudeMcpServerJson(server.name).then((value) => {
+    void api.claudeGetMcpServerJson(server.name).then((value) => {
       if (cancelled) return;
       if (value) { setInitialJson(value); editJson(value); }
       setInitialized(true);
@@ -103,7 +103,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
     }
     setSaving(true);
     try {
-      await api.saveClaudeMcpServer(server?.name ?? null, trimmedName, jsonText);
+      await api.claudeSaveMcpServer(server?.name ?? null, trimmedName, jsonText);
       feedback.success(t("feedback.saved"));
       onSaved(trimmedName);
     } catch (error) {

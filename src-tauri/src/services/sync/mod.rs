@@ -6,7 +6,7 @@
 
 use std::sync::OnceLock;
 
-use super::profiles::LiveReadError;
+use super::codex_profiles::LiveReadError;
 use super::AppContext;
 use crate::error::AppResult;
 
@@ -219,7 +219,7 @@ fn codex_guarded(kind: SyncKind, ctx: &AppContext) -> SyncOutcome {
         .active_profile_state()
         .ok()
         .flatten()
-        .and_then(|id| ctx.database.profile(&id).ok())
+        .and_then(|id| ctx.database.codex_profile(&id).ok())
         .map(|profile| profile.name);
     match name {
         Some(name) => SyncOutcome::of(kind, &name),
@@ -456,8 +456,8 @@ mod tests {
     #[test]
     fn passive_harvest_converges_external_drift_into_active_snapshot() {
         let (_home, context) = test_context();
-        let profile = context.capture_profile("A").unwrap();
-        context.apply_profile(&profile.id).unwrap();
+        let profile = context.codex_capture_profile("A").unwrap();
+        context.codex_apply_profile(&profile.id).unwrap();
         // 外部改写 live：被动收割后激活快照必须收敛到最新内容
         std::fs::write(context.paths.codex_config(), "model = \"glm-5.4\"\n").unwrap();
         registry().harvest_passive(
@@ -465,7 +465,7 @@ mod tests {
             &SyncTrigger::StateRefresh,
             SyncMaterial::default(),
         );
-        let stored = context.database.profile(&profile.id).unwrap();
+        let stored = context.database.codex_profile(&profile.id).unwrap();
         assert!(stored
             .payload
             .raw_config
@@ -486,8 +486,8 @@ mod tests {
     #[test]
     fn loose_read_failures_are_distinguishable_and_carry_profile_name() {
         let (_home, context) = test_context();
-        let profile = context.capture_profile("A").unwrap();
-        context.apply_profile(&profile.id).unwrap();
+        let profile = context.codex_capture_profile("A").unwrap();
+        context.codex_apply_profile(&profile.id).unwrap();
 
         // live 不存在是正常态，但结局仍要带出配置名
         std::fs::remove_file(context.paths.codex_config()).unwrap();
@@ -538,6 +538,6 @@ mod tests {
                 SyncMaterial::default(),
             )
             .unwrap();
-        assert!(context.database.profiles().unwrap().is_empty());
+        assert!(context.database.codex_profiles().unwrap().is_empty());
     }
 }

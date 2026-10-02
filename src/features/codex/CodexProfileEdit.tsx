@@ -14,10 +14,10 @@ import PresetGrid from "../../components/PresetGrid";
 import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
 import {
   balanceQueryProviders,
-  builtinHasCatalog,
-  builtinPresets,
-  customCatalogTemplate,
-  customConfigTemplate,
+  codexBuiltinHasCatalog,
+  codexPresets,
+  codexCustomCatalogTemplate,
+  codexCustomConfigTemplate,
 } from "../../presets";
 import {
   patchModelValue,
@@ -31,15 +31,15 @@ import {
 import ProfileAdvancedControls from "./editor/ProfileAdvancedControls";
 import TabFileControls from "./editor/TabFileControls";
 import { useProfileAdvancedPatches } from "./editor/useProfileAdvancedPatches";
-import type { AuthStatus, EditorDiagnosticSummary, ProfileDetail, ProfileSummary } from "../../types";
-import ProfileIconEdit from "./ProfileIconEdit";
+import type { AuthStatus, EditorDiagnosticSummary, CodexProfileDetail, CodexProfileSummary } from "../../types";
+import ProfileIconEdit from "../profiles/ProfileIconEdit";
 
 type EditTab = "config" | "auth" | "models";
 
-interface ProfileEditProps {
-  profile: ProfileSummary | null;
+interface CodexProfileEditProps {
+  profile: CodexProfileSummary | null;
   create?: boolean;
-  initialDetail?: ProfileDetail | null;
+  initialDetail?: CodexProfileDetail | null;
   authStatus: AuthStatus;
   authStatusReady: boolean;
   onBack: () => void;
@@ -53,7 +53,7 @@ function normalizeNewlines(text: string) {
   return text.replace(/\r\n/g, "\n");
 }
 
-export default function ProfileEdit({ profile, create = false, initialDetail = null, authStatus, authStatusReady, onBack, onChanged, onManageChatgptAccounts }: ProfileEditProps) {
+export default function CodexProfileEdit({ profile, create = false, initialDetail = null, authStatus, authStatusReady, onBack, onChanged, onManageChatgptAccounts }: CodexProfileEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
   const initialConfigText = useMemo(
@@ -62,7 +62,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   );
   // 详情由调用方预载（openEdit）：门控与表单/编辑器内容状态全部同源初始化（初始化器与挂载 effect
   // 同一数据源），首帧即完整内容；挂载后 effect 仍会重取最新值，值未变时 React 跳过重渲染。
-  const [detail, setDetail] = useState<ProfileDetail | null>(initialDetail);
+  const [detail, setDetail] = useState<CodexProfileDetail | null>(initialDetail);
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [formatting, setFormatting] = useState(false);
@@ -103,12 +103,12 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   const editorRef = useRef<ConfigTextEditorHandle>(null);
   const editorMinLines = Math.max(configText.split(/\r?\n/).length, catalogText.split(/\r?\n/).length, authText.split(/\r?\n/).length);
 
-  const selectedPreset = useMemo(() => builtinPresets.find((preset) => preset.kind === presetKind) ?? null, [presetKind]);
+  const selectedPreset = useMemo(() => codexPresets.find((preset) => preset.kind === presetKind) ?? null, [presetKind]);
   // 双区域供应商的端点档：创建态取所选预设；编辑态 profile 不携带预设 kind，按 provider id 反查
   // （5 家双端点供应商的 provider id 互不相同）
   const presetEndpoints = (create
     ? selectedPreset?.endpoints
-    : builtinPresets.find((item) => item.provider != null && item.provider === detail?.provider)?.endpoints) ?? null;
+    : codexPresets.find((item) => item.provider != null && item.provider === detail?.provider)?.endpoints) ?? null;
   // 端点地址输入：双区域档（EndpointField combobox）与普通输入共用同一受控值，只差形态
   const baseUrlField = (className: string) => (
     <input className={className} placeholder="https://api.example.com/v1" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
@@ -211,20 +211,20 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     void (async () => {
       if (create) {
         let initialMcpSection = "";
-        try { initialMcpSection = (await api.getMcpSectionToml()).trim(); setMcpSection(initialMcpSection); } catch { /* backend falls back on save */ }
+        try { initialMcpSection = (await api.codexGetMcpSectionToml()).trim(); setMcpSection(initialMcpSection); } catch { /* backend falls back on save */ }
         setPresetKind("custom");
         setName("");
         setDescription("");
         setSelectedIcon("custom");
-        setConfigText(withMcpSection(customConfigTemplate, initialMcpSection));
-        setPresetFragment(customConfigTemplate);
-        setCatalogText(customCatalogTemplate);
-        setConfigInitial(withMcpSection(customConfigTemplate, initialMcpSection));
-        setCatalogInitial(customCatalogTemplate);
+        setConfigText(withMcpSection(codexCustomConfigTemplate, initialMcpSection));
+        setPresetFragment(codexCustomConfigTemplate);
+        setCatalogText(codexCustomCatalogTemplate);
+        setConfigInitial(withMcpSection(codexCustomConfigTemplate, initialMcpSection));
+        setCatalogInitial(codexCustomCatalogTemplate);
         setModelValue("");
       } else if (profile) {
         try {
-          const loaded = await api.getProfile(profile.id);
+          const loaded = await api.codexGetProfile(profile.id);
           if (cancelled) return;
           const loadedConfigText = withoutApiKeyPlaceholder(
             loaded.raw_config ?? loaded.config_fragment,
@@ -277,11 +277,11 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
       if (create && !isCustom) setCatalogText("");
       return;
     }
-    if (!builtinHasCatalog(presetKind)) {
+    if (!codexBuiltinHasCatalog(presetKind)) {
       setCatalogText("");
       return;
     }
-    void api.getBuiltinCatalog(presetKind).then((text) => {
+    void api.codexGetBuiltinCatalog(presetKind).then((text) => {
       setCatalogText(text ?? "");
       setCatalogInitial(text ?? "");
     }).catch(() => setCatalogText(""));
@@ -328,14 +328,14 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
   }, [configText, create, liveConfigFragment]);
 
   const selectPreset = async (kind: string) => {
-    const preset = builtinPresets.find((item) => item.kind === kind);
+    const preset = codexPresets.find((item) => item.kind === kind);
     if (!preset) return;
     // 模板取回后才一次性更新全部状态：避免"表单已切、configText 未切"的中间渲染
     // 触发 configText !== liveConfigFragment 的 configTouched 误判
     const requestId = ++presetTemplateRequest.current;
     let template: string;
     try {
-      template = kind === "custom" ? customConfigTemplate : await api.getBuiltinConfig(kind);
+      template = kind === "custom" ? codexCustomConfigTemplate : await api.codexGetBuiltinConfig(kind);
     } catch (error) {
       if (requestId === presetTemplateRequest.current) feedback.error(t("edit.errorTemplateRead", { error: String(error) }));
       return;
@@ -396,7 +396,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     if (!apiKey.trim()) { feedback.warning(t("edit.apiKeyRequired")); return; }
     setTesting(true);
     try {
-      const result = create ? await api.testProviderConnection(baseUrl.trim(), apiKey.trim()) : await api.testProfileConnection(profile!.id, baseUrl.trim(), apiKey.trim());
+      const result = create ? await api.codexTestProviderConnection(baseUrl.trim(), apiKey.trim()) : await api.codexTestProfileConnection(profile!.id, baseUrl.trim(), apiKey.trim());
       if (result.ok) feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
       else feedback.error(connectionFailureToast(result.error ?? t("connection.unknownError")));
     } catch (error) { feedback.error(connectionFailureToast(String(error))); }
@@ -409,9 +409,9 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     if (!apiKey.trim()) { feedback.warning(t("edit.apiKeyRequired")); return; }
     setFetchingModels(true);
     try {
-      const models = await api.fetchProviderModels(baseUrl.trim(), apiKey.trim());
+      const models = await api.codexFetchProviderModels(baseUrl.trim(), apiKey.trim());
       setFetchedModels(models);
-      if (!create && profile) await api.setProfileFetchedModels(profile.id, models);
+      if (!create && profile) await api.codexSetProfileFetchedModels(profile.id, models);
       if (models.length === 0) feedback.info(t("edit.noModelsReturned"));
       else feedback.success(t("edit.modelsFetched", { count: models.length }));
     } catch (error) { feedback.error(t("edit.fetchFailed", { error: String(error) })); }
@@ -423,7 +423,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     setSaving(true);
     try {
       if (create) setSelectedIcon(icon);
-      else await api.setProfileIcon(profile!.id, icon);
+      else await api.codexSetProfileIcon(profile!.id, icon);
       setSelectedIcon(icon);
       onChanged();
       setPickingIcon(false);
@@ -436,7 +436,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     setShowBalance(enabled);
     if (create || !profile) return;
     setSavingBalance(true);
-    try { await api.setProfileShowBalance(profile.id, enabled); }
+    try { await api.codexSetProfileShowBalance(profile.id, enabled); }
     catch (error) { setShowBalance(!enabled); feedback.error(String(error)); }
     finally { setSavingBalance(false); }
   };
@@ -465,29 +465,29 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
     setSaving(true);
     try {
       if (create && isCustom) {
-        const created = await api.addCustomProfile(name.trim() || t("edit.customProviderName"), description, configText, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, liveCatalogPath && catalogText.trim() ? catalogText : null, authText.trim() ? authText : null);
-        if (fetchedModels.length) await api.setProfileFetchedModels(created.id, fetchedModels);
+        const created = await api.codexAddCustomProfile(name.trim() || t("edit.customProviderName"), description, configText, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, liveCatalogPath && catalogText.trim() ? catalogText : null, authText.trim() ? authText : null);
+        if (fetchedModels.length) await api.codexSetProfileFetchedModels(created.id, fetchedModels);
         notifySaved(t("edit.customProviderAdded"));
       } else if (create) {
-        const created = await api.addBuiltinProfile(presetKind, description, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
+        const created = await api.codexAddBuiltinProfile(presetKind, description, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
         const customName = name.trim();
         if (customName && customName !== selectedPreset?.name) await api.renameProfile(created.id, customName);
         const authTextToSave = isOfficial && authSource === "desktop" && authDirty ? authText : null;
         if (configTouched || catalogTouched || authTextToSave !== null) {
-          await api.updateProfileConfig(created.id, configText, liveCatalogPath ? catalogText || null : null, authTextToSave);
+          await api.codexUpdateProfileConfig(created.id, configText, liveCatalogPath ? catalogText || null : null, authTextToSave);
         }
-        if (fetchedModels.length) await api.setProfileFetchedModels(created.id, fetchedModels);
-        if (showBalance) await api.setProfileShowBalance(created.id, true);
+        if (fetchedModels.length) await api.codexSetProfileFetchedModels(created.id, fetchedModels);
+        if (showBalance) await api.codexSetProfileShowBalance(created.id, true);
         notifySaved(t("edit.builtinProviderAdded"));
       } else {
         const hasProvider = Boolean(detail?.provider);
-        await api.updateProfile(profile!.id, name, description, hasProvider ? baseUrl : undefined, hasProvider ? apiKey : undefined, adminUrl.trim() || undefined);
+        await api.codexUpdateProfile(profile!.id, name, description, hasProvider ? baseUrl : undefined, hasProvider ? apiKey : undefined, adminUrl.trim() || undefined);
         const authTextToSave = isOfficial && authSource === "desktop" && authDirty ? authText : null;
         // 清空目录要传空串（后端归一为解除托管）；`|| null` 会把清空吞成"不动目录"
-        await api.updateProfileConfig(profile!.id, configText, liveCatalogPath && catalogDirty ? catalogText : null, authTextToSave);
+        await api.codexUpdateProfileConfig(profile!.id, configText, liveCatalogPath && catalogDirty ? catalogText : null, authTextToSave);
         if (isOfficial && authSource === "oauth") {
           if (!boundAccountId) throw new Error(t("edit.oauthAccountRequired"));
-          await api.setProfileAccount(profile!.id, boundAccountId);
+          await api.codexSetProfileAccount(profile!.id, boundAccountId);
         }
         notifySaved(t("edit.providerUpdated"));
       }
@@ -515,7 +515,7 @@ export default function ProfileEdit({ profile, create = false, initialDetail = n
       <div className="apple-edit-content">
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
         <div className="apple-edit-surface">
-          {create ? <PresetGrid presets={builtinPresets} selectedKind={presetKind} onSelect={(kind) => void selectPreset(kind)} title={t("edit.selectProvider")} /> : null}
+          {create ? <PresetGrid presets={codexPresets} selectedKind={presetKind} onSelect={(kind) => void selectPreset(kind)} title={t("edit.selectProvider")} /> : null}
           <div className="apple-panel-section">
             <ProviderIdentityFields
               idPrefix="profile" name={name} description={description} icon={selectedIcon}

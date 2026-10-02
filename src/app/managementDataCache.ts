@@ -97,11 +97,11 @@ const skills = createManagementCache<SkillSummary[]>(api.listSkills, {
   key: "cgswitch.skills-cache-v2", // v2：SkillSummary 增加 claude_enabled，旧缓存缺字段直接弃用
   restore: restoreNamedList<SkillSummary>,
 });
-const mcpServers = createManagementCache<McpServerSpec[]>(api.listMcpServers, {
+const mcpServers = createManagementCache<McpServerSpec[]>(api.codexListMcpServers, {
   key: "cgswitch.mcp-servers-cache-v1",
   restore: restoreNamedList<McpServerSpec>,
 });
-const claudeMcpServers = createManagementCache<McpServerSpec[]>(api.listClaudeMcpServers, {
+const claudeMcpServers = createManagementCache<McpServerSpec[]>(api.claudeListMcpServers, {
   key: "cgswitch.claude-mcp-servers-cache-v1",
   restore: restoreNamedList<McpServerSpec>,
 });

@@ -10,8 +10,8 @@ import { getCachedClaudeProfiles, loadClaudeProfiles, setClaudeProfilesCache } f
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import SortableCard from "../../components/SortableCard";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
-import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, connectionGate, getCachedProfileBalance, getCachedProfileBalanceError } from "../profiles/ProfileCard";
-import { useProfileBalance } from "../profiles/useProfileBalance";
+import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, connectionGate } from "../profiles/ProfileCard";
+import { getCachedProfileBalance, getCachedProfileBalanceError, useProfileBalance } from "../profiles/useProfileBalance";
 import ProfileNameDialog from "../profiles/ProfileNameDialog";
 import { claudeBalanceQueryKinds } from "../../presets";
 import ClaudeProfileEdit from "./ClaudeProfileEdit";
@@ -194,7 +194,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     );
   }
 
-  const applyProfile = async (profile: ClaudeProfileSummary) => {
+  const claudeApplyProfile = async (profile: ClaudeProfileSummary) => {
     if (busy) return;
     setBusy(true);
     try {
@@ -208,7 +208,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     }
   };
 
-  const duplicateProfile = async (profile: ClaudeProfileSummary) => {
+  const claudeDuplicateProfile = async (profile: ClaudeProfileSummary) => {
     if (busy) return;
     setBusy(true);
     try {
@@ -236,7 +236,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     }
   };
 
-  const deleteProfile = async (profile: ClaudeProfileSummary) => {
+  const claudeDeleteProfile = async (profile: ClaudeProfileSummary) => {
     if (busy) return;
     const confirmed = await feedback.confirm({
       title: tProfiles("confirm.deleteTitle"),
@@ -289,7 +289,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
               <div className="profile-list relative space-y-[var(--gap-page)]">
                 {items.map((profile) => {
                   return (
-                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} dragHover={profile.id === dragHoverId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void applyProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void deleteProfile(profile)} />
+                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} dragHover={profile.id === dragHoverId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void claudeApplyProfile(profile)} onDuplicate={() => void claudeDuplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void claudeDeleteProfile(profile)} />
                   );
                 })}
               </div>

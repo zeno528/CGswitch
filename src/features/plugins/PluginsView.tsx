@@ -26,7 +26,7 @@ export default function PluginsView({ state }: { state: AppState }) {
   const [addingMarketplace, setAddingMarketplace] = useState(false);
   const [query, setQuery] = useState("");
   const thirdPartyProfile =
-    state.profiles.find((profile) => profile.id === state.active_profile_id)?.kind === "third_party";
+    state.codex_profiles.find((profile) => profile.id === state.active_codex_profile_id)?.kind === "third_party";
 
   const refresh = async (force = false) => {
     try {

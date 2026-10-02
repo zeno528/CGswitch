@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { TFunction } from "i18next";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
-import type { ProfileSummary } from "../../types";
-import { connectionGate, profileConnectionGate } from "./ProfileCard";
+import type { CodexProfileSummary } from "../../types";
+import { connectionGate } from "./ProfileCard";
+import { profileConnectionGate } from "../codex/CodexProfileCard";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
 const hookSource = readFileSync(new URL("./useProfileBalance.ts", import.meta.url), "utf8");
@@ -108,10 +109,10 @@ describe("ProfileCard 官网入口", () => {
     // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案；
     // 无 provider 的官方订阅永不禁用，第三方供应商才走缺什么报什么
     const t = ((key: string) => key) as unknown as TFunction<"profiles">;
-    expect(profileConnectionGate({ provider: null } as ProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
-    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: true } as ProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
-    expect(profileConnectionGate({ provider: "gw", has_base_url: false, has_key: true } as ProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiEndpointWarning" });
-    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: false } as ProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiKeyWarning" });
+    expect(profileConnectionGate({ provider: null } as CodexProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: true } as CodexProfileSummary, t)).toEqual({ disabled: false, title: "connection.test" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: false, has_key: true } as CodexProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiEndpointWarning" });
+    expect(profileConnectionGate({ provider: "gw", has_base_url: true, has_key: false } as CodexProfileSummary, t)).toEqual({ disabled: true, title: "connection.missingApiKeyWarning" });
     expect(source).not.toContain("connection.testSubscription");
   });
 

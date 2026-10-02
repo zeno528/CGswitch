@@ -4,14 +4,14 @@ import type { AppState } from "../types";
 import { switchProfileFromTray } from "./traySwitch";
 
 vi.mock("../api", () => ({
-  api: { applyProfile: vi.fn(), restartCodex: vi.fn() },
+  api: { codexApplyProfile: vi.fn(), restartCodex: vi.fn() },
 }));
 
 beforeEach(() => vi.clearAllMocks());
 
 it("applies, refreshes, then follows the auto restart setting", async () => {
   const calls: string[] = [];
-  vi.mocked(api.applyProfile).mockImplementation(async () => { calls.push("apply"); });
+  vi.mocked(api.codexApplyProfile).mockImplementation(async () => { calls.push("apply"); });
   vi.mocked(api.restartCodex).mockImplementation(async () => { calls.push("restart"); });
   const refresh = async () => { calls.push("refresh"); };
   const state = { settings: { auto_restart: true }, codex: { running: true } } as AppState;

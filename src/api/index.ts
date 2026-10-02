@@ -23,9 +23,9 @@ import type {
   SkillTool,
   ProfileBalance,
   ProfileBalanceInfo,
-  ProfileDetail,
-  ProfileConnectionResult,
-  ProfileSummary,
+  CodexProfileDetail,
+  CodexProfileConnectionResult,
+  CodexProfileSummary,
   Settings,
   TomlDiagnostic,
 } from "../types";
@@ -54,18 +54,18 @@ export const api = {
   reportStartupMark: (stage: string, frontendElapsedMs: number, detail?: string) =>
     call<void>("report_startup_mark", { stage, frontendElapsedMs, detail }),
   getCodexStatus: () => call<CodexAppStatus>("get_codex_status"),
-  fetchProviderModels: (baseUrl: string, apiKey: string) =>
-    call<string[]>("fetch_provider_models", { baseUrl, apiKey }),
-  captureProfile: (name: string) => call<ProfileSummary>("capture_profile", { name }),
-  addBuiltinProfile: (
+  codexFetchProviderModels: (baseUrl: string, apiKey: string) =>
+    call<string[]>("codex_fetch_provider_models", { baseUrl, apiKey }),
+  codexCaptureProfile: (name: string) => call<CodexProfileSummary>("codex_capture_profile", { name }),
+  codexAddBuiltinProfile: (
     kind: string,
     description: string,
     baseUrl?: string,
     apiKey?: string,
     adminUrl?: string,
     accountId?: string,
-  ) => call<ProfileSummary>("add_builtin_profile", { kind, description, baseUrl, apiKey, adminUrl, accountId }),
-  addCustomProfile: (
+  ) => call<CodexProfileSummary>("codex_add_builtin_profile", { kind, description, baseUrl, apiKey, adminUrl, accountId }),
+  codexAddCustomProfile: (
     name: string,
     description: string,
     configText: string,
@@ -75,7 +75,7 @@ export const api = {
     catalogText?: string | null,
     authText?: string | null,
   ) =>
-    call<ProfileSummary>("add_custom_profile", {
+    call<CodexProfileSummary>("codex_add_custom_profile", {
       name,
       description,
       configText,
@@ -85,17 +85,17 @@ export const api = {
       catalogText,
       authText,
     }),
-  getBuiltinCatalog: (kind: string) => call<string | null>("get_builtin_catalog", { kind }),
-  getBuiltinConfig: (kind: string) => call<string>("get_builtin_config", { kind }),
-  testProfileConnection: (id: string, baseUrl?: string, apiKey?: string) =>
-    call<ProfileConnectionResult>("test_profile_connection", { id, baseUrl, apiKey }),
+  codexGetBuiltinCatalog: (kind: string) => call<string | null>("codex_get_builtin_catalog", { kind }),
+  codexGetBuiltinConfig: (kind: string) => call<string>("codex_get_builtin_config", { kind }),
+  codexTestProfileConnection: (id: string, baseUrl?: string, apiKey?: string) =>
+    call<CodexProfileConnectionResult>("codex_test_profile_connection", { id, baseUrl, apiKey }),
   // 创建态表单测试：供应商尚未保存，直接用表单里的地址/密钥
-  testProviderConnection: (baseUrl: string, apiKey: string) =>
-    call<ProfileConnectionResult>("test_provider_connection", { baseUrl, apiKey }),
-  getProfileBalance: (id: string) =>
-    call<ProfileBalance>("get_profile_balance", { id }),
-  getClaudeProfileBalance: (id: string) =>
-    call<ProfileBalance>("get_claude_profile_balance", { id }),
+  codexTestProviderConnection: (baseUrl: string, apiKey: string) =>
+    call<CodexProfileConnectionResult>("codex_test_provider_connection", { baseUrl, apiKey }),
+  codexGetProfileBalance: (id: string) =>
+    call<ProfileBalance>("codex_get_profile_balance", { id }),
+  claudeGetProfileBalance: (id: string) =>
+    call<ProfileBalance>("claude_get_profile_balance", { id }),
   exportDatabase: () => call<string>("export_database"),
   exportDatabaseTo: (directory: string) => call<string>("export_database_to", { directory }),
   importDatabase: (path: string) => call<void>("import_database", { path }),
@@ -105,31 +105,31 @@ export const api = {
   renameDatabaseBackup: (oldName: string, title: string) =>
     call<void>("rename_database_backup", { oldName, title }),
   renameProfile: (id: string, name: string, tool: SkillTool = "codex") => call<void>("rename_profile", { id, name, tool }),
-  setProfileIcon: (id: string, icon: string | null) => call<void>("set_profile_icon", { id, icon }),
-  setProfileShowBalance: (id: string, enabled: boolean) =>
-    call<void>("set_profile_show_balance", { id, enabled }),
-  setProfileFetchedModels: (id: string, models: string[]) =>
-    call<void>("set_profile_fetched_models", { id, models }),
+  codexSetProfileIcon: (id: string, icon: string | null) => call<void>("codex_set_profile_icon", { id, icon }),
+  codexSetProfileShowBalance: (id: string, enabled: boolean) =>
+    call<void>("codex_set_profile_show_balance", { id, enabled }),
+  codexSetProfileFetchedModels: (id: string, models: string[]) =>
+    call<void>("codex_set_profile_fetched_models", { id, models }),
   setProfileBalance: (id: string, info: ProfileBalanceInfo) =>
     call<void>("set_profile_balance", { id, info }),
-  setProfileAccount: (id: string, accountId: string | null) =>
-    call<void>("set_profile_account", { id, accountId }),
-  duplicateProfile: (id: string) => call<ProfileSummary>("duplicate_profile", { id }),
-  getProfile: (id: string) => call<ProfileDetail>("get_profile", { id }),
-  updateProfile: (id: string, name: string, description: string, baseUrl?: string, apiKey?: string, adminUrl?: string) =>
-    call<ProfileSummary>("update_profile", { id, name, description, baseUrl, apiKey, adminUrl }),
-  updateProfileConfig: (
+  codexSetProfileAccount: (id: string, accountId: string | null) =>
+    call<void>("codex_set_profile_account", { id, accountId }),
+  codexDuplicateProfile: (id: string) => call<CodexProfileSummary>("codex_duplicate_profile", { id }),
+  codexGetProfile: (id: string) => call<CodexProfileDetail>("codex_get_profile", { id }),
+  codexUpdateProfile: (id: string, name: string, description: string, baseUrl?: string, apiKey?: string, adminUrl?: string) =>
+    call<CodexProfileSummary>("codex_update_profile", { id, name, description, baseUrl, apiKey, adminUrl }),
+  codexUpdateProfileConfig: (
     id: string,
     configText: string,
     catalogText: string | null,
     authText: string | null,
-  ) => call<ProfileDetail>("update_profile_config", { id, configText, catalogText, authText }),
-  patchChatgptContextConfig: (configText: string, enabled: boolean, compactTokenLimit: number) =>
-    call<string>("patch_chatgpt_context_config", { configText, enabled, compactTokenLimit }),
-  patchSystemProxyConfig: (configText: string, enabled: boolean) =>
-    call<string>("patch_system_proxy_config", { configText, enabled }),
-  patchContextManagementConfig: (configText: string, enabled: boolean) =>
-    call<string>("patch_context_management_config", { configText, enabled }),
+  ) => call<CodexProfileDetail>("codex_update_profile_config", { id, configText, catalogText, authText }),
+  codexPatchChatgptContextConfig: (configText: string, enabled: boolean, compactTokenLimit: number) =>
+    call<string>("codex_patch_chatgpt_context_config", { configText, enabled, compactTokenLimit }),
+  codexPatchSystemProxyConfig: (configText: string, enabled: boolean) =>
+    call<string>("codex_patch_system_proxy_config", { configText, enabled }),
+  codexPatchContextManagementConfig: (configText: string, enabled: boolean) =>
+    call<string>("codex_patch_context_management_config", { configText, enabled }),
   validateToml: (text: string) => call<TomlDiagnostic[]>("validate_toml", { text }),
   formatToml: (text: string) => call<string>("format_toml", { text }),
   listPlugins: () => call<PluginSummary[]>("list_plugins"),
@@ -171,34 +171,34 @@ export const api = {
   installPlugin: (url: string, subPath: string | null) =>
     call<PluginSummary>("install_plugin", { url, subPath }),
   uninstallPlugin: (name: string) => call<void>("uninstall_plugin", { name }),
-  deleteProfile: (id: string) => call<void>("delete_profile", { id }),
-  reorderProfiles: (ids: string[]) => call<void>("reorder_profiles", { ids }),
-  applyProfile: (id: string) => call<void>("apply_profile", { id }),
-  listMcpServers: () => call<McpServerSpec[]>("list_mcp_servers"),
-  listClaudeMcpServers: () => call<McpServerSpec[]>("list_claude_mcp_servers"),
-  getClaudeMcpServerJson: (name: string) => call<string | null>("get_claude_mcp_server_json", { name }),
-  saveClaudeMcpServer: (originalName: string | null, name: string, json: string) =>
-    call<void>("save_claude_mcp_server", { originalName, name, json }),
-  deleteClaudeMcpServer: (name: string) => call<void>("delete_claude_mcp_server", { name }),
+  codexDeleteProfile: (id: string) => call<void>("codex_delete_profile", { id }),
+  codexReorderProfiles: (ids: string[]) => call<void>("codex_reorder_profiles", { ids }),
+  codexApplyProfile: (id: string) => call<void>("codex_apply_profile", { id }),
+  codexListMcpServers: () => call<McpServerSpec[]>("codex_list_mcp_servers"),
+  claudeListMcpServers: () => call<McpServerSpec[]>("claude_list_mcp_servers"),
+  claudeGetMcpServerJson: (name: string) => call<string | null>("claude_get_mcp_server_json", { name }),
+  claudeSaveMcpServer: (originalName: string | null, name: string, json: string) =>
+    call<void>("claude_save_mcp_server", { originalName, name, json }),
+  claudeDeleteMcpServer: (name: string) => call<void>("claude_delete_mcp_server", { name }),
   // manual 用于后端日志分级：手动测试记 Info，进页静默探测只记 Debug；tool 决定按哪侧引擎的名单与开关判定
   probeMcpServer: (name: string, includeTools = false, manual = true, tool: "codex" | "claude" = "codex") =>
     call<McpProbeResult>("probe_mcp_server", { name, includeTools, manual, tool }),
   // 创建表单预填用：优先数据库 MCP 镜像，首次无镜像时回退 live
-  getMcpSectionToml: () => call<string>("get_mcp_section_toml"),
+  codexGetMcpSectionToml: () => call<string>("codex_get_mcp_section_toml"),
   // 显式恢复：数据库镜像写回 live config.toml，返回恢复数量
   restoreMcpFromDatabase: () => call<number>("restore_mcp_from_database"),
   // 同步预览：对比 live 与数据库镜像的 MCP 差异（只读），供同步前人工裁决
-  mcpSyncPreview: () => call<McpSyncPreview>("mcp_sync_preview"),
-  saveMcpServer: (originalName: string | null, spec: McpServerSpec, fragment?: string) =>
-    call<void>("save_mcp_server", { originalName, spec, fragment }),
+  codexMcpSyncPreview: () => call<McpSyncPreview>("codex_mcp_sync_preview"),
+  codexSaveMcpServer: (originalName: string | null, spec: McpServerSpec, fragment?: string) =>
+    call<void>("codex_save_mcp_server", { originalName, spec, fragment }),
   // MCP 编辑页：读取 live 原始片段（含未建模键与注释），初始化编辑器用
-  getMcpServerToml: (name: string) => call<string | null>("get_mcp_server_toml", { name }),
+  codexGetMcpServerToml: (name: string) => call<string | null>("codex_get_mcp_server_toml", { name }),
   // MCP 编辑页实时同步：表单建模字段写进片段（表单 → 编辑器）
   patchMcpFragment: (toml: string, spec: McpServerSpec) =>
     call<string>("patch_mcp_fragment", { toml, spec }),
   // MCP 编辑页实时同步：片段解析回建模字段（编辑器 → 表单）
   parseMcpFragment: (toml: string) => call<McpServerSpec>("parse_mcp_fragment", { toml }),
-  deleteMcpServer: (name: string) => call<void>("delete_mcp_server", { name }),
+  codexDeleteMcpServer: (name: string) => call<void>("codex_delete_mcp_server", { name }),
   setMcpServerEnabled: (name: string, tool: "codex" | "claude", enabled: boolean) => call<void>("set_mcp_server_enabled", { name, tool, enabled }),
   setMcpMirror: (name: string, fragment: string | null) => call<void>("set_mcp_mirror", { name, fragment }),
   revertMcpLive: (name: string, fragment: string | null) => call<void>("revert_mcp_live", { name, fragment }),
@@ -207,7 +207,7 @@ export const api = {
   revertMcpLiveEntries: (actions: McpDiffEntryAction[]) => call<number>("revert_mcp_live_entries", { actions }),
   restartCodex: () => call<void>("restart_codex"),
   setWindowTheme: (dark: boolean) => call<void>("set_window_theme", { dark }),
-  setTrayMenu: (language: string, profiles: Pick<ProfileSummary, "id" | "name">[], activeProfileId: string | null) =>
+  setTrayMenu: (language: string, profiles: Pick<CodexProfileSummary, "id" | "name">[], activeProfileId: string | null) =>
     call<void>("set_tray_menu", { language, profiles, activeProfileId }),
   authStartBrowserLogin: () => call<BrowserLoginStart>("auth_start_browser_login"),
   authPollBrowserLogin: () => call<ManagedAccount | null>("auth_poll_browser_login"),

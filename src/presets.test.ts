@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import i18next from "i18next";
-import { builtinPresets, claudePresets, clientPresets, customCatalogTemplate, providerPresets, type ProviderPreset } from "./presets";
+import { codexPresets, claudePresets, clientPresets, codexCustomCatalogTemplate, providerPresets, type ProviderPreset } from "./presets";
 
 describe("供应商目录的客户端边界", () => {
   it("双客户端各用自己的配置，单客户端条目只出现在对应列表", () => {
@@ -25,7 +25,7 @@ describe("供应商目录的客户端边界", () => {
     expect(claude[0]).toMatchObject(providers[0].claude!);
     expect(claude[0].endpoints).toBeUndefined();
     expect(claude[0].model).toBe("");
-    expect(builtinPresets.some(({ kind }) => kind === "claude-account" || kind === "anthropic")).toBe(false);
+    expect(codexPresets.some(({ kind }) => kind === "claude-account" || kind === "anthropic")).toBe(false);
     expect(claudePresets.some(({ kind }) => kind === "chatgpt")).toBe(false);
     expect(new Set(providerPresets.map(({ kind }) => kind)).size).toBe(providerPresets.length);
   });
@@ -60,11 +60,11 @@ it("Claude 官方账号与 API 是独立卡片，紧随自定义", () => {
   expect(claudePresets[1].base_url).toBe("");
 });
 
-describe("customCatalogTemplate", () => {
+describe("codexCustomCatalogTemplate", () => {
   it("follows the Codex catalog schema with parser-required fields", () => {
     // 回归：旧模板用 id/name（Codex 目录格式是 slug），且 base_instructions 与
     // supports_reasoning_summaries 缺失会让 Codex 拒载整个目录文件
-    const catalog = JSON.parse(customCatalogTemplate) as { models: Array<Record<string, unknown>> };
+    const catalog = JSON.parse(codexCustomCatalogTemplate) as { models: Array<Record<string, unknown>> };
     expect(catalog.models.length).toBeGreaterThan(0);
     for (const model of catalog.models) {
       expect(model.slug).toBeTruthy();
@@ -85,7 +85,7 @@ describe("customCatalogTemplate", () => {
       "effective_context_window_percent", "supports_parallel_tool_calls",
       "experimental_supported_tools", "input_modalities",
     ];
-    const catalog = JSON.parse(customCatalogTemplate) as { models: Array<Record<string, unknown>> };
+    const catalog = JSON.parse(codexCustomCatalogTemplate) as { models: Array<Record<string, unknown>> };
     for (const field of expected) {
       expect(catalog.models[0]).toHaveProperty(field);
     }
@@ -109,7 +109,7 @@ describe("balanceChipClass", () => {
   });
 });
 
-describe("builtinPresets 新增 responses 供应商", () => {
+describe("codexPresets 新增 responses 供应商", () => {
   it("内置 kimi / qwen / hunyuan / doubao 四条预设且 base_url 为官方端点", () => {
     const expected: Record<string, string> = {
       kimi: "https://api.moonshot.cn/v1",
@@ -118,7 +118,7 @@ describe("builtinPresets 新增 responses 供应商", () => {
       doubao: "https://ark.cn-beijing.volces.com/api/coding/v3",
     };
     for (const [kind, base] of Object.entries(expected)) {
-      const preset = builtinPresets.find((p) => p.kind === kind);
+      const preset = codexPresets.find((p) => p.kind === kind);
       expect(preset, `缺少内置预设 ${kind}`).toBeDefined();
       expect(preset?.base_url).toBe(base);
       expect(preset?.model).toBeTruthy();
@@ -126,13 +126,13 @@ describe("builtinPresets 新增 responses 供应商", () => {
   });
 });
 
-describe("builtinPresets 双区域端点档", () => {
+describe("codexPresets 双区域端点档", () => {
   it("仅官方双端点供应商携带 cn+global 档，且首项与默认 base_url/admin_url 一致", () => {
     const dual = ["doubao", "hunyuan", "kimi", "minimax", "qwen", "zhipu"];
-    const carried = builtinPresets.filter((p) => p.endpoints).map((p) => p.kind).sort();
+    const carried = codexPresets.filter((p) => p.endpoints).map((p) => p.kind).sort();
     expect(carried, "只有官方文档确认的双区域供应商才带端点档").toEqual(dual);
 
-    for (const preset of builtinPresets) {
+    for (const preset of codexPresets) {
       const endpoints = preset.endpoints ?? [];
       const urls = endpoints.map((ep) => ep.base_url);
       expect(new Set(urls).size, `${preset.kind} 端点档 URL 应互不相同`).toBe(urls.length);
@@ -148,7 +148,7 @@ describe("builtinPresets 双区域端点档", () => {
   });
 
   it("火山方舟提供国内双套餐与海外 BytePlus Coding Plan 档", () => {
-    const doubao = builtinPresets.find((p) => p.kind === "doubao");
+    const doubao = codexPresets.find((p) => p.kind === "doubao");
     const endpoints = doubao?.endpoints ?? [];
     expect(endpoints.map((ep) => `${ep.region}/${ep.base_url}`)).toEqual([
       "cn/https://ark.cn-beijing.volces.com/api/coding/v3",

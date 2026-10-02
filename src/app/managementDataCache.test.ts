@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listMcpServers, listClaudeMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
-  listMcpServers: vi.fn(),
-  listClaudeMcpServers: vi.fn(),
+const { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } = vi.hoisted(() => ({
+  codexListMcpServers: vi.fn(),
+  claudeListMcpServers: vi.fn(),
   claudeListProfiles: vi.fn(),
   listMarketplacePlugins: vi.fn(),
   listPlugins: vi.fn(),
@@ -14,13 +14,13 @@ const localStorageMock = {
   setItem: (key: string, value: string) => persistedStorage.set(key, value),
 };
 
-vi.mock("../api", () => ({ api: { listMcpServers, listClaudeMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
+vi.mock("../api", () => ({ api: { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups } }));
 
 describe("managementDataCache", () => {
   beforeEach(() => {
     vi.resetModules();
-    listMcpServers.mockReset();
-    listClaudeMcpServers.mockReset();
+    codexListMcpServers.mockReset();
+    claudeListMcpServers.mockReset();
     claudeListProfiles.mockReset();
     listDatabaseBackups.mockReset();
     persistedStorage.clear();
@@ -31,7 +31,7 @@ describe("managementDataCache", () => {
 
   it("returns the cached MCP list when the management page remounts", async () => {
     const servers = [{ name: "github", command: "github-mcp-server", args: [], env: {}, enabled: null }];
-    listMcpServers.mockResolvedValue(servers);
+    codexListMcpServers.mockResolvedValue(servers);
     const cache = await import("./managementDataCache");
 
     expect(cache.getCachedMcpServers()).toBeNull();
@@ -39,12 +39,12 @@ describe("managementDataCache", () => {
     await cache.loadMcpServers();
 
     expect(cache.getCachedMcpServers()).toEqual(servers);
-    expect(listMcpServers).toHaveBeenCalledTimes(1);
+    expect(codexListMcpServers).toHaveBeenCalledTimes(1);
   });
 
   it("returns the cached Claude MCP list when the management page remounts", async () => {
     const servers = [{ name: "github", command: "github-mcp-server", args: [], env: {}, enabled: null }];
-    listClaudeMcpServers.mockResolvedValue(servers);
+    claudeListMcpServers.mockResolvedValue(servers);
     const cache = await import("./managementDataCache");
 
     expect(cache.getCachedClaudeMcpServers()).toBeNull();
@@ -52,7 +52,7 @@ describe("managementDataCache", () => {
     await cache.loadClaudeMcpServers();
 
     expect(cache.getCachedClaudeMcpServers()).toEqual(servers);
-    expect(listClaudeMcpServers).toHaveBeenCalledTimes(1);
+    expect(claudeListMcpServers).toHaveBeenCalledTimes(1);
   });
 
   it("returns the cached Claude profile list when the management page remounts", async () => {

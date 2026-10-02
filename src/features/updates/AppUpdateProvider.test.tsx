@@ -107,7 +107,7 @@ describe("AppUpdateProvider", () => {
 
   it("更新入口固定在侧栏底部，供应商页头展示产品标识", () => {
     const appShellSource = readFileSync(new URL("../../app/AppShell.tsx", import.meta.url), "utf8");
-    const profilesSource = readFileSync(new URL("../profiles/ProfilesView.tsx", import.meta.url), "utf8");
+    const profilesSource = readFileSync(new URL("../codex/CodexProfilesView.tsx", import.meta.url), "utf8");
     expect(appShellSource).toContain("UpdateNotice");
     expect(appShellSource).toContain("update-notice--sidebar");
     expect(profilesSource).not.toContain("<UpdateNotice />");

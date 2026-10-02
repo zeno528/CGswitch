@@ -1,10 +1,10 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { codexActionFor } from "./ProfilesView";
+import { codexActionFor } from "./CodexProfilesView";
 
-const source = readFileSync(new URL("./ProfilesView.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-const cardSource = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
+const source = readFileSync(new URL("./CodexProfilesView.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const cardSource = readFileSync(new URL("../profiles/ProfileCard.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 
 describe("ProfilesView 拖拽预览", () => {
@@ -36,8 +36,8 @@ describe("ProfilesView 拖拽预览", () => {
   });
 
   it("进入编辑页先预载详情再切换，首帧不空窗", () => {
-    expect(source).toContain("const openEdit = async (profile: ProfileSummary) => {");
-    expect(source).toContain("detail = await api.getProfile(profile.id);");
+    expect(source).toContain("const openEdit = async (profile: CodexProfileSummary) => {");
+    expect(source).toContain("detail = await api.codexGetProfile(profile.id);");
     expect(source).toContain("onEdit={() => void openEdit(profile)}");
     expect(source).toContain("initialDetail={editDetail}");
   });
@@ -53,11 +53,11 @@ describe("ProfilesView 拖拽预览", () => {
   });
 
   it("排序保存成功后同步父级状态，切页回来仍保留新顺序", () => {
-    expect(source).toContain("await api.reorderProfiles(next.map((item) => item.id));\n      await onRefresh();");
+    expect(source).toContain("await api.codexReorderProfiles(next.map((item) => item.id));\n      await onRefresh();");
   });
 
   it("切换后先更新激活高亮，再按需重启并合并成功通知", () => {
-    const applyStart = source.indexOf("const applyProfile = async");
+    const applyStart = source.indexOf("const codexApplyProfile = async");
     const applyEnd = source.indexOf("const removeProfile = async", applyStart);
     const applySource = source.slice(applyStart, applyEnd);
     const refreshIndex = applySource.indexOf("await onRefresh();");
@@ -92,7 +92,7 @@ describe("ProfilesView 拖拽预览", () => {
 
 describe("ProfilesView 编辑器加载策略", () => {
   it("ProfileEdit 静态加载：进编辑页零延迟，不出现懒加载骨架", () => {
-    expect(source).toContain('import ProfileEdit from "./ProfileEdit";');
+    expect(source).toContain('import CodexProfileEdit from "./CodexProfileEdit";');
     expect(source).not.toContain("lazy(");
     expect(source).not.toContain("Suspense");
   });

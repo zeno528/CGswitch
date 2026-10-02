@@ -1,4 +1,4 @@
-export interface ProfileSummary {
+export interface CodexProfileSummary {
   id: string;
   name: string;
   kind: "official" | "third_party";
@@ -24,7 +24,7 @@ export interface ProfileSummary {
   updated_at: string;
 }
 
-export interface ProfileDetail {
+export interface CodexProfileDetail {
   id: string;
   name: string;
   description: string | null;
@@ -54,7 +54,7 @@ export interface ProfileDetail {
   updated_at: string;
 }
 
-export interface ProfileConnectionResult {
+export interface CodexProfileConnectionResult {
   ok: boolean;
   latency_ms: number | null;
   status: number | null;
@@ -366,8 +366,8 @@ export interface PathInfo {
 }
 
 export interface AppState {
-  profiles: ProfileSummary[];
-  active_profile_id: string | null;
+  codex_profiles: CodexProfileSummary[];
+  active_codex_profile_id: string | null;
   /** Claude Code 侧当前激活的供应商（claude_profiles 表）。 */
   active_claude_profile_id: string | null;
   codex: CodexAppStatus;

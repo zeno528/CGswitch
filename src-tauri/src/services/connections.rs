@@ -1,13 +1,13 @@
-use super::profile_config::{parse_provider_detail, stored_provider_api_key};
+use super::codex_profile_config::{parse_provider_detail, stored_provider_api_key};
 use super::{
     app_err, atomic_write, detect_system_proxy, AppContext, AppResult, AuthSource, BTreeMap,
-    ChatgptResetCredit, PathBuf, ProfileBalanceInfo, ProfileKind,
+    ChatgptResetCredit, CodexProfileKind, PathBuf, ProfileBalanceInfo,
 };
 use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
 
 /// 供应商连通性测试结果
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ProfileConnectionResult {
+pub struct CodexProfileConnectionResult {
     pub ok: bool,
     pub latency_ms: Option<u128>,
     pub status: Option<u16>,
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn opencode_probe_model_is_in_responses_catalog() {
         let catalog: serde_json::Value =
-            serde_json::from_slice(crate::builtin::OPENCODE_MODELS).unwrap();
+            serde_json::from_slice(crate::codex_builtin::OPENCODE_MODELS).unwrap();
         let in_catalog = catalog["models"]
             .as_array()
             .unwrap()
@@ -435,7 +435,7 @@ async fn test_opencode_connection(
     base_url: &str,
     api_key: &str,
     context: &str,
-) -> AppResult<ProfileConnectionResult> {
+) -> AppResult<CodexProfileConnectionResult> {
     let responses_url = format!("{}/responses", base_url.trim_end_matches('/'));
     let (client, proxy) = http_client()?;
     let start = std::time::Instant::now();
@@ -465,14 +465,14 @@ async fn test_opencode_connection(
             if ok {
                 log_provider_connect_success(context, status, start.elapsed().as_millis(), &proxy);
             }
-            Ok(ProfileConnectionResult {
+            Ok(CodexProfileConnectionResult {
                 ok,
                 latency_ms,
                 status: Some(status.as_u16()),
                 error,
             })
         }
-        Err(error) => Ok(ProfileConnectionResult {
+        Err(error) => Ok(CodexProfileConnectionResult {
             ok: false,
             latency_ms: None,
             status: error.status().map(|status| status.as_u16()),
@@ -494,7 +494,7 @@ fn log_provider_connect_success(
     );
 }
 
-fn log_provider_connect_failure(context: &str, result: &ProfileConnectionResult) {
+fn log_provider_connect_failure(context: &str, result: &CodexProfileConnectionResult) {
     let failure_kind = match result.status {
         Some(401 | 403) => "auth_error",
         Some(_) => "http_error",
@@ -606,7 +606,7 @@ async fn test_models_endpoint(
     base_url: &str,
     api_key: &str,
     context: &str,
-) -> AppResult<ProfileConnectionResult> {
+) -> AppResult<CodexProfileConnectionResult> {
     if base_url
         .trim_end_matches('/')
         .eq_ignore_ascii_case("https://opencode.ai/zen/go/v1")
@@ -629,7 +629,7 @@ async fn test_models_endpoint(
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(json) => {
                         if let Some(error) = connection_error_from_body(&json) {
-                            Ok(ProfileConnectionResult {
+                            Ok(CodexProfileConnectionResult {
                                 ok: false,
                                 latency_ms,
                                 status: Some(status.as_u16()),
@@ -642,7 +642,7 @@ async fn test_models_endpoint(
                                 start.elapsed().as_millis(),
                                 &proxy,
                             );
-                            Ok(ProfileConnectionResult {
+                            Ok(CodexProfileConnectionResult {
                                 ok: true,
                                 latency_ms,
                                 status: Some(status.as_u16()),
@@ -650,7 +650,7 @@ async fn test_models_endpoint(
                             })
                         }
                     }
-                    Err(_) => Ok(ProfileConnectionResult {
+                    Err(_) => Ok(CodexProfileConnectionResult {
                         ok: false,
                         latency_ms,
                         status: Some(status.as_u16()),
@@ -660,7 +660,7 @@ async fn test_models_endpoint(
                     }),
                 }
             } else {
-                Ok(ProfileConnectionResult {
+                Ok(CodexProfileConnectionResult {
                     ok: false,
                     latency_ms,
                     status: Some(status.as_u16()),
@@ -670,7 +670,7 @@ async fn test_models_endpoint(
         }
         Err(error) => {
             let status = error.status().map(|status| status.as_u16());
-            Ok(ProfileConnectionResult {
+            Ok(CodexProfileConnectionResult {
                 ok: false,
                 latency_ms: None,
                 status,
@@ -684,7 +684,7 @@ async fn test_models_endpoint(
 pub async fn test_provider_connection(
     base_url: &str,
     api_key: &str,
-) -> AppResult<ProfileConnectionResult> {
+) -> AppResult<CodexProfileConnectionResult> {
     let base_url = base_url.trim();
     if base_url.is_empty() {
         return Err(app_err!("请填写 API 端点"));
@@ -1195,13 +1195,13 @@ impl AppContext {
     /// 2xx 视为可用，401/403 视为密钥无效，返回延迟 / HTTP 状态 / 错误信息。
     /// 表单传入的地址/密钥实时生效（传了就用传的，空的直接报错）；
     /// 不传才回退已保存值（卡片上的测试按钮走这条）。
-    pub async fn test_profile_connection(
+    pub async fn codex_test_profile_connection(
         &self,
         id: &str,
         base_url_override: Option<&str>,
         api_key_override: Option<&str>,
-    ) -> AppResult<ProfileConnectionResult> {
-        let stored = self.database.profile(id)?;
+    ) -> AppResult<CodexProfileConnectionResult> {
+        let stored = self.database.codex_profile(id)?;
         let payload = &stored.payload;
         if payload.provider_id.is_none() {
             return Err(app_err!("该供应商缺少配置，无法测试连通性"));
@@ -1254,7 +1254,7 @@ impl AppContext {
         &self,
         access_token: &str,
         context: &str,
-    ) -> AppResult<ProfileConnectionResult> {
+    ) -> AppResult<CodexProfileConnectionResult> {
         let (client, proxy) = http_client().map_err(|error| {
             tauri_plugin_log::log::warn!(
                 "[chatgpt.connect.test] {context} outcome=failure failure_kind=internal error={error:?} msg=\"测试连通客户端初始化失败\""
@@ -1281,7 +1281,7 @@ impl AppContext {
                         status.as_u16(),
                         proxy.as_deref().unwrap_or("None")
                     );
-                    Ok(ProfileConnectionResult {
+                    Ok(CodexProfileConnectionResult {
                         ok: true,
                         latency_ms: Some(latency_ms),
                         status: Some(status.as_u16()),
@@ -1311,7 +1311,7 @@ impl AppContext {
                         status.as_u16(),
                         proxy.as_deref().unwrap_or("None")
                     );
-                    Ok(ProfileConnectionResult {
+                    Ok(CodexProfileConnectionResult {
                         ok: false,
                         latency_ms: Some(latency_ms),
                         status: Some(status.as_u16()),
@@ -1326,7 +1326,7 @@ impl AppContext {
                     proxy.as_deref().unwrap_or("None"),
                     subscription_request_error_message(&error)
                 );
-                Ok(ProfileConnectionResult {
+                Ok(CodexProfileConnectionResult {
                     ok: false,
                     latency_ms: None,
                     status,
@@ -1393,14 +1393,14 @@ impl AppContext {
     }
 
     /// 按配置查询余额/用量；ChatGPT 配置只读自身认证来源，不读取 live auth.json。
-    pub async fn get_profile_balance(
+    pub async fn codex_get_profile_balance(
         &self,
         id: &str,
         oauth: &CodexOAuthManager,
     ) -> AppResult<ProfileBalance> {
-        let stored = self.database.profile(id)?;
+        let stored = self.database.codex_profile(id)?;
         let payload = &stored.payload;
-        if stored.kind == ProfileKind::Official {
+        if stored.kind == CodexProfileKind::Official {
             // 配置主键和认证来源足以定位；中文 msg 负责快速扫读。
             let auth_source =
                 payload.effective_auth_source(stored.kind, stored.account_id.as_deref());
@@ -1456,7 +1456,7 @@ impl AppContext {
         query_supported_provider_balance(provider, base.unwrap_or(default_base), &api_key).await
     }
 
-    pub async fn get_claude_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
+    pub async fn claude_get_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
         let profile = self.database.claude_profile(id)?;
         let kind = profile.kind.as_deref().unwrap_or_default();
         if kind != "deepseek" && kind != "minimax" {

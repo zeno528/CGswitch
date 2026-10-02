@@ -6,12 +6,12 @@ use crate::auth::codex_oauth::AuthStatus;
 /// 供应商类型：官方订阅（ChatGPT）或第三方供应商（Codex 协议）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ProfileKind {
+pub enum CodexProfileKind {
     Official,
     ThirdParty,
 }
 
-impl ProfileKind {
+impl CodexProfileKind {
     pub fn from_db(raw: &str) -> Option<Self> {
         match raw {
             "official" => Some(Self::Official),
@@ -37,7 +37,7 @@ pub enum AuthSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct ProfilePayload {
+pub struct CodexProfilePayload {
     /// 仅供 CGswitch 卡片展示，不写入 Codex 配置。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -76,13 +76,13 @@ pub struct ProfilePayload {
     pub fetched_models: Vec<String>,
 }
 
-impl ProfilePayload {
+impl CodexProfilePayload {
     pub fn effective_auth_source(
         &self,
-        kind: ProfileKind,
+        kind: CodexProfileKind,
         account_id: Option<&str>,
     ) -> Option<AuthSource> {
-        if kind != ProfileKind::Official {
+        if kind != CodexProfileKind::Official {
             return None;
         }
         Some(self.auth_source.unwrap_or(if account_id.is_some() {
@@ -192,10 +192,10 @@ pub struct McpSyncPreview {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ProfileSummary {
+pub struct CodexProfileSummary {
     pub id: String,
     pub name: String,
-    pub kind: ProfileKind,
+    pub kind: CodexProfileKind,
     /// 官方配置绑定的订阅账号；第三方恒为 None。
     pub account_id: Option<String>,
     pub auth_source: Option<AuthSource>,
@@ -265,7 +265,7 @@ pub struct ProfileBalanceInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ProfileDetail {
+pub struct CodexProfileDetail {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
@@ -386,8 +386,8 @@ pub struct CodexAppStatus {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AppState {
-    pub profiles: Vec<ProfileSummary>,
-    pub active_profile_id: Option<String>,
+    pub codex_profiles: Vec<CodexProfileSummary>,
+    pub active_codex_profile_id: Option<String>,
     /// Claude Code 侧当前激活的供应商（claude_profiles 表）。
     pub active_claude_profile_id: Option<String>,
     pub codex: CodexAppStatus,
@@ -416,7 +416,7 @@ pub struct ClaudeProfileSummary {
     pub updated_at: String,
 }
 
-/// Claude Code 供应商详情：编辑回显含 token 明文（与 Codex ProfileDetail.api_key 同语义）。
+/// Claude Code 供应商详情：编辑回显含 token 明文（与 Codex CodexProfileDetail.api_key 同语义）。
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct ClaudeProfileDetail {
     pub id: String,
