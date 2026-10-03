@@ -134,7 +134,7 @@ export function UpdateNotice({
       >
         <span className="relative flex shrink-0">
           <span className="grid h-[var(--sidebar-icon-size)] w-[var(--sidebar-icon-size)] shrink-0 place-items-center rounded-full bg-accent text-white">
-            <Download className="!h-4 !w-4" strokeWidth={2.5} aria-hidden="true" />
+            <Download className="!h-3.5 !w-3.5" strokeWidth={2.5} aria-hidden="true" />
           </span>
         </span>
         <span className="apple-sidebar-label" aria-hidden={sidebarCollapsed}>{t("notice.available")}</span>
