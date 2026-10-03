@@ -325,7 +325,12 @@ mod tests {
             let start = std::time::Instant::now();
             let mut stream = loop {
                 match listener.accept() {
-                    Ok((stream, _)) => break stream,
+                    // macOS 的 accept 会继承 listener 的非阻塞标志，必须显式
+                    // 恢复阻塞，否则请求字节未到时 read 立刻 WouldBlock。
+                    Ok((stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        break stream;
+                    }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                         assert!(start.elapsed() < Duration::from_secs(5), "未收到预期请求");
                         std::thread::sleep(Duration::from_millis(10));

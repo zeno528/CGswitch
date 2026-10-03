@@ -11,7 +11,7 @@
   color-scheme: light;
   --accent: #007aff;
   --primary-button-bg: #2d2d2b;
-  --primary-button-hover-bg: #222220;
+  --primary-button-hover-bg: #1c1c1e;
   --primary-button-text: #ffffff;
   --secondary-button-bg: #efefed;
   --secondary-button-hover-bg: #e5e5e3;
@@ -112,7 +112,7 @@
   /* VS Code Dark+：编辑区/侧栏/标题栏/输入框/选中项/主按钮 */
   --accent: #007aff;
   --primary-button-bg: #f0f0ee;
-  --primary-button-hover-bg: #e2e2df;
+  --primary-button-hover-bg: #d6d6d3;
   --primary-button-text: #1c1c1e;
   --secondary-button-bg: #3b3c41;
   --secondary-button-hover-bg: #46474d;
@@ -2444,7 +2444,7 @@ button:focus-visible {
   color: var(--primary-button-text);
 }
 
-.app-button--primary:hover {
+.app-button--primary:hover:not(:disabled) {
   background: var(--primary-button-hover-bg);
 }
 

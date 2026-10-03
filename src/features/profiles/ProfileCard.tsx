@@ -1,4 +1,4 @@
-import { Check, Copy, Gauge, Globe, GripVertical, Power, Wifi } from "lucide-react";
+import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
@@ -113,8 +113,9 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
         </span>
       ) : null}
       <div className={dragging ? "profile-card-action-buttons flex shrink-0 items-center gap-2" : "profile-card-action-buttons pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"}>
-        <button type="button" className={`apple-icon-button ${active ? "app-button--primary" : "border border-(--panel-border) bg-(--secondary-button-bg) text-(--text-primary) enabled:hover:text-accent disabled:opacity-50"}`} disabled={busy || active} aria-pressed={active} aria-label={active ? t("actions.inUse") : t("actions.switch")} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>
-          {active ? <Check size={16} strokeWidth={2} aria-hidden="true" /> : <Power size={16} strokeWidth={2} aria-hidden="true" />}
+        <button type="button" className={`apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary ${active ? "disabled:opacity-100" : "disabled:opacity-50"}`} disabled={busy || active} aria-pressed={active} aria-label={active ? t("actions.inUse") : t("actions.switch")} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>
+          <span className={active ? "invisible" : ""} aria-hidden="true">{t("actions.switch")}</span>
+          {active ? <Check className="absolute inset-0 m-auto" size={18} strokeWidth={2} aria-hidden="true" /> : null}
         </button>
         <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
         <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>

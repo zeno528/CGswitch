@@ -145,12 +145,13 @@ describe("ProfileCard 官网入口", () => {
         active, busy, testing: false, connectionDisabled: false, connectionTitle: "Test",
       })));
       const button = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/)?.[0] ?? "";
-      expect(button).toContain('class="apple-icon-button ');
+      expect(button).toContain('class="apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary');
       expect(button).toContain(`aria-pressed="${active}"`);
       expect(button.includes('disabled=""')).toBe(active || busy);
-      expect(button).toContain('<svg');
-      expect(button).toContain('width="16" height="16"');
-      expect(button).toContain(active ? 'app-button--primary' : 'border border-(--panel-border) bg-(--secondary-button-bg) text-(--text-primary)');
+      expect(button.includes('<svg')).toBe(active);
+      if (active) expect(button).toContain('width="18" height="18"');
+      expect(button).toContain("actions.switch");
+      expect(button).toContain(active ? "absolute inset-0 m-auto" : 'class=""');
     }
     expect(styles).toMatch(/\.apple-icon-button\s*\{[^}]*width: var\(--icon-button-size\);[^}]*height: var\(--icon-button-size\);/);
   });
