@@ -209,8 +209,6 @@ If the problem persists, search existing [Issues](https://github.com/zeno528/CGs
 - pnpm `11.9.0`
 - Rust toolchain pinned by [`rust-toolchain.toml`](rust-toolchain.toml)
 - The platform prerequisites required by Tauri 2
-- CMake and libclang for the subscription HTTP transport; Windows also needs NASM (`choco install cmake llvm nasm`).
-  On macOS: `brew install cmake llvm` and set `LIBCLANG_PATH` to `$(brew --prefix llvm)/lib`.
 
 ### Install and run
 

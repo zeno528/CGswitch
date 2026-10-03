@@ -161,8 +161,6 @@ export interface ProfileBalanceInfo {
   reset_credits_available?: number | null;
   /** 可用主动重置卡的到期时间。 */
   reset_credits?: ChatgptResetCredit[] | null;
-  /** 在线订阅续订时间（Unix 毫秒），独立于凭证内的订阅快照。 */
-  subscription_renews_at?: number | null;
 }
 
 export interface ChatgptResetCredit {

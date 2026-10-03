@@ -48,6 +48,7 @@ export default {
     minimizeDescription: "点击关闭按钮时隐藏到托盘而不是退出",
   },
   view: {
+    title: "设置",
     sectionsLabel: "设置分区",
     tabGeneral: "常规",
     tabApp: "应用",

@@ -63,7 +63,7 @@ const management = {
 // 清空全部微任务：effect 里检测 → 静默更新检查是链式异步，单次微任务等不完。
 const flush = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
 
-it.each(["codex", "claude"] as const)("%s 首次进入完成检测并静默检查更新，重进不重复查询", async (client) => {
+it.each(["codex", "claude"] as const)("%s 每次重新进入都刷新本地并静默检查更新", async (client) => {
   const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement(client, active); hooks.effects[hooks.effects.length - 1](); return current; };
   render(false);
   expect(hooks.command).not.toHaveBeenCalled();
@@ -75,16 +75,23 @@ it.each(["codex", "claude"] as const)("%s 首次进入完成检测并静默检�
   const restored = render(true);
   expect(restored.status).toEqual(status);
   expect(restored.update).toEqual(checked); // 静默检查发现新版本 → 升级胶囊就位
+  const refreshed = { ...status, version: "1.2.4", path: "/fixture/bin/cli-v2" };
+  const checkedAgain = { status: refreshed, latest_version: "1.2.5", channel: "latest", available: false };
+  hooks.command.mockResolvedValueOnce(refreshed);
+  hooks.serviceQuiet.mockResolvedValueOnce(checkedAgain);
   render(false);
   render(true);
-  expect(hooks.command).toHaveBeenCalledOnce(); // 重进沿用已检状态，不重复查询
-  const html = renderToStaticMarkup(<CliCard client={client} management={restored} />);
-  expect(html).toContain(status.path!);
-  const checkedAgain = { status, latest_version: "1.2.4", channel: "latest", available: false };
+  await flush();
+  const reentered = render(true);
+  expect(hooks.command).toHaveBeenCalledTimes(2);
+  expect(hooks.serviceQuiet).toHaveBeenCalledTimes(2);
+  expect(reentered.status).toEqual(refreshed);
+  const html = renderToStaticMarkup(<CliCard client={client} management={reentered} />);
+  expect(html).toContain(refreshed.path!);
   hooks.serviceCheck.mockResolvedValueOnce(checkedAgain);
-  await restored.check(); // 主动检查更新仍可用（走共享服务）
+  await reentered.check(); // 主动检查更新仍可用（走共享服务）
   expect(render(true).update).toEqual(checkedAgain);
-  expect(hooks.command).toHaveBeenCalledOnce();
+  expect(hooks.command).toHaveBeenCalledTimes(2);
 });
 
 it("进入分区首帧直出缓存状态不闪骨架，静默刷新补齐最新值并写穿缓存", async () => {
@@ -102,10 +109,13 @@ it("进入分区首帧直出缓存状态不闪骨架，静默刷新补齐最新�
   expect(settled.status).toEqual(status);
   expect(hooks.command).toHaveBeenCalledOnce();
   expect(hooks.cacheSet).toHaveBeenCalledWith("codex", status);
+  hooks.command.mockResolvedValueOnce(status);
+  hooks.serviceQuiet.mockResolvedValueOnce(checked);
   render(false);
   const reentered = render(true);
   expect(reentered.status).toEqual(status);
-  expect(hooks.command).toHaveBeenCalledOnce();
+  await flush();
+  expect(hooks.command).toHaveBeenCalledTimes(2);
 });
 
 it("静默更新检查失败不打扰界面，主动检查失败才透出", async () => {
@@ -138,12 +148,13 @@ it("离开分区丢弃一次性无更新反馈，升级胶囊保留", async () =
   await current.check(); // 主动检查的无更新反馈是瞬时状态
   expect(render(true).update).toEqual(noUpdate);
   render(false); // 离开分区
-  expect(render(true).update).toBeNull(); // 无更新反馈不常驻
+  expect(render(false).update).toBeNull(); // 无更新反馈不常驻
   const upgrade = { status, latest_version: "1.2.4", channel: "latest", available: true };
-  hooks.serviceCheck.mockResolvedValueOnce(upgrade);
-  const again = render(true);
-  await again.check();
+  hooks.command.mockResolvedValueOnce(status);
+  hooks.serviceQuiet.mockResolvedValueOnce(upgrade);
   render(false);
+  render(true);
+  await flush();
   expect(render(true).update).toEqual(upgrade); // 可行动的升级胶囊保留
 });
 
@@ -157,7 +168,6 @@ it("首次检测失败后再次进入仍可重试，未安装结果也会保留"
   hooks.command.mockResolvedValueOnce(missing);
   render(true);
   await Promise.resolve();
-  render(false);
   expect(render(true).status).toEqual(missing);
   expect(hooks.command).toHaveBeenCalledTimes(2);
 });

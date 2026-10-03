@@ -63,87 +63,6 @@ mod tests {
     };
     use crate::models::ProfileBalanceInfo;
 
-    #[test]
-    fn subscription_renewal_uses_matching_active_workspace_and_renews_at_only() {
-        let mut payload = serde_json::json!({"accounts": {
-            "other": {"account": {"account_id": "other"}, "entitlement": {
-                "has_active_subscription": true, "renews_at": "2030-02-01T00:00:00Z"
-            }},
-            "selected": {"account": {"account_id": "workspace"}, "entitlement": {
-                "has_active_subscription": true, "renews_at": "2030-01-01T00:00:00Z",
-                "expires_at": "2030-01-01T06:00:00Z"
-            }}
-        }});
-        assert_eq!(
-            super::chatgpt_subscription_renewal(&payload, "missing"),
-            None
-        );
-        for (date, active, expected) in [
-            (Some("2030-01-01T00:00:00Z"), true, Some(1_893_456_000_000)),
-            (None, true, None),
-            (Some("invalid"), true, None),
-            (Some("1960-01-01T00:00:00Z"), true, None),
-            (Some("2030-01-01T00:00:00Z"), false, None),
-        ] {
-            payload["accounts"]["selected"]["entitlement"]["renews_at"] = serde_json::json!(date);
-            payload["accounts"]["selected"]["entitlement"]["has_active_subscription"] =
-                serde_json::json!(active);
-            assert_eq!(
-                super::chatgpt_subscription_renewal(&payload, "workspace"),
-                expected
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn subscription_query_handles_success_challenge_and_parse_failure_with_one_user_agent() {
-        let success = r#"{"accounts":{"selected":{"account":{"account_id":"workspace"},"entitlement":{"has_active_subscription":true,"renews_at":"2030-01-01T00:00:00Z"}}}}"#;
-        for (status, body, challenge) in [
-            (200, success, false),
-            (403, "{}", true),
-            (403, "{}", false),
-            (200, "invalid-json", false),
-            (200, "{}", false),
-        ] {
-            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-            let url = format!("http://{}/subscription", listener.local_addr().unwrap());
-            let server = std::thread::spawn(move || {
-                use std::io::{Read, Write};
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut bytes = [0; 4096];
-                let size = stream.read(&mut bytes).unwrap();
-                let request = String::from_utf8_lossy(&bytes[..size]);
-                assert!(request.starts_with("GET /subscription "));
-                let agents: Vec<_> = request
-                    .lines()
-                    .filter(|line| line.to_ascii_lowercase().starts_with("user-agent:"))
-                    .collect();
-                assert_eq!(agents.len(), 1);
-                assert!(agents[0].contains("Mozilla/5.0"));
-                let challenge_header = if challenge {
-                    "cf-mitigated: challenge\r\n"
-                } else {
-                    ""
-                };
-                write!(stream, "HTTP/1.1 {status} Status\r\n{challenge_header}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
-            });
-            let request = reqwest::Client::builder()
-                .no_proxy()
-                .build()
-                .unwrap()
-                .get(url)
-                .header("User-Agent", "codex-cli");
-            let result = super::query_chatgpt_subscription(
-                request,
-                "workspace",
-                "account_id=workspace source=desktop",
-            )
-            .await;
-            assert_eq!(result, (body == success).then_some(1_893_456_000_000));
-            server.join().unwrap();
-        }
-    }
-
     fn balance(currency: &str, total: &str) -> ProfileBalanceInfo {
         ProfileBalanceInfo {
             currency: currency.into(),
@@ -158,7 +77,6 @@ mod tests {
             weekly_label: None,
             reset_credits_available: None,
             reset_credits: None,
-            subscription_renews_at: None,
         }
     }
 
@@ -310,7 +228,6 @@ struct ZhipuQuotaWindow {
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ChatgptUsageResponse {
-    pub(crate) plan_type: Option<String>,
     pub(crate) rate_limit: Option<ChatgptRateLimit>,
     pub(crate) rate_limit_reset_credits: Option<ChatgptResetCreditsSummary>,
 }
@@ -382,7 +299,7 @@ pub(crate) struct MiniMaxModelRemains {
 /// Client 按「检测到的代理地址」缓存复用：代理没变就命中连接池，省掉每次
 /// TCP→CONNECT→TLS 全套握手；代理开关/换端口时键变化，自动重建，仍反映当次走向。
 /// 缓存条目：键 = 检测到的代理地址，值 = 按它构建的 Client。
-type CachedHttpclient<C = reqwest::Client> = (Option<String>, C);
+type CachedHttpclient = (Option<String>, reqwest::Client);
 
 pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient>>> =
@@ -404,30 +321,6 @@ pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
         .map_err(|error| app_err!("创建 HTTP 客户端失败: {error}"))?;
     *cached = Some((proxy.clone(), client.clone()));
     Ok((client, network.display))
-}
-
-// 只用于续期网页接口，按现有网络策略缓存；用量与凭证请求继续使用 reqwest。
-fn subscription_http_client() -> AppResult<wreq::Client> {
-    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient<wreq::Client>>>> =
-        std::sync::OnceLock::new();
-    let mut cached = CACHE
-        .get_or_init(|| std::sync::Mutex::new(None))
-        .lock()
-        .map_err(|_| app_err!("订阅 HTTP 客户端缓存锁已损坏"))?;
-    let network = Network::detect().map_err(|error| app_err!("{error}"))?;
-    if let Some((key, client)) = cached.as_ref() {
-        if *key == network.proxy {
-            return Ok(client.clone());
-        }
-    }
-    let client = network
-        .subscription_builder()
-        .map_err(|error| app_err!("{error}"))?
-        .emulation(wreq_util::Emulation::Chrome145)
-        .build()
-        .map_err(|_| app_err!("创建订阅 HTTP 客户端失败"))?;
-    *cached = Some((network.proxy, client.clone()));
-    Ok(client)
 }
 
 /// reqwest 错误转可读提示。
@@ -846,7 +739,6 @@ async fn query_minimax_balance(
                     weekly_label: None,
                     reset_credits_available: None,
                     reset_credits: None,
-                    subscription_renews_at: None,
                 }],
                 latency_ms,
             })
@@ -967,7 +859,6 @@ pub(crate) fn zhipu_quota_info(
         weekly_label: weekly.map(|_| "7天".to_string()),
         reset_credits_available: None,
         reset_credits: None,
-        subscription_renews_at: None,
     })
 }
 
@@ -1129,7 +1020,6 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
         }),
         reset_credits_available,
         reset_credits: None,
-        subscription_renews_at: None,
     })
 }
 
@@ -1154,72 +1044,6 @@ pub(crate) fn chatgpt_reset_credit_expiry(value: Option<&str>) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(value?)
         .ok()
         .map(|time| time.timestamp_millis())
-}
-
-fn chatgpt_subscription_renewal(payload: &serde_json::Value, account_id: &str) -> Option<i64> {
-    payload
-        .get("accounts")?
-        .as_object()?
-        .values()
-        .filter(|record| {
-            record["account"]["account_id"].as_str() == Some(account_id)
-                && record["entitlement"]["has_active_subscription"].as_bool() == Some(true)
-        })
-        .find_map(|record| {
-            // 权益到期时间 expires_at 不等于续订日期。
-            chatgpt_reset_credit_expiry(record["entitlement"]["renews_at"].as_str())
-                .filter(|time| *time > 0)
-        })
-}
-
-async fn query_chatgpt_subscription(
-    request: reqwest::RequestBuilder,
-    account_id: &str,
-    context: &str,
-) -> Option<i64> {
-    let (Ok(mut request), Ok(client)) = (request.build(), subscription_http_client()) else {
-        tauri_plugin_log::log::warn!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=failure failure_kind=internal msg=\"ChatGPT 续订日期请求初始化失败，保留已有信息\"");
-        return None;
-    };
-    // 身份和业务请求头保持不变；User-Agent 与 TLS/HTTP2 由同一个浏览器配置提供。
-    request.headers_mut().remove(reqwest::header::USER_AGENT);
-    let mut challenge = false;
-    let result = async {
-        let response = client
-            .request(request.method().clone(), request.url().as_str())
-            .headers(request.headers().clone())
-            .timeout(std::time::Duration::from_secs(5))
-            .send()
-            .await?;
-        challenge = response
-            .headers()
-            .get("cf-mitigated")
-            .is_some_and(|value| value == "challenge");
-        let payload = response
-            .error_for_status()?
-            .json::<serde_json::Value>()
-            .await?;
-        Ok::<_, wreq::Error>(chatgpt_subscription_renewal(&payload, account_id))
-    }
-    .await;
-    match &result {
-        Ok(Some(renewal)) => {
-            let date = chrono::DateTime::from_timestamp_millis(*renewal)
-                .map(|date| date.with_timezone(&chrono::Local).to_rfc3339())
-                .unwrap_or_else(|| renewal.to_string());
-            tauri_plugin_log::log::info!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=success renews_at={date:?} msg=\"ChatGPT 续订日期刷新成功\"");
-        }
-        Ok(None) => tauri_plugin_log::log::debug!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=skipped reason=renewal_unavailable msg=\"ChatGPT 接口未返回续订日期，保留已有信息\""),
-        Err(error) => {
-            let failure_kind = if error.is_timeout() { "timeout" }
-                else if error.is_decode() { "parse_error" }
-                else if error.is_status() { "http_error" }
-                else { "network_error" };
-            let status = error.status().map(|status| status.as_u16().to_string()).unwrap_or_else(|| "-".into());
-            tauri_plugin_log::log::warn!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=failure failure_kind={failure_kind} status_code={status} cloudflare_challenge={challenge} msg=\"ChatGPT 续订日期查询失败，保留已有信息\"");
-        }
-    }
-    result.ok().flatten()
 }
 
 async fn query_chatgpt_reset_credits(
@@ -1285,7 +1109,6 @@ async fn query_chatgpt_quota(
     access_token: &str,
     account_id: Option<&str>,
     context: &str,
-    include_subscription: bool,
 ) -> AppResult<ProfileBalance> {
     let (client, proxy) = http_client().map_err(|error| {
         tauri_plugin_log::log::warn!(
@@ -1333,11 +1156,6 @@ async fn query_chatgpt_quota(
         );
         app_err!("用量接口响应解析失败: {error}")
     })?;
-    let query_subscription = include_subscription
-        && !response
-            .plan_type
-            .as_deref()
-            .is_some_and(|plan| plan.eq_ignore_ascii_case("free"));
     let mut info = chatgpt_quota_info(response).ok_or_else(|| {
         tauri_plugin_log::log::warn!(
             "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=parse_error status_code={} msg=\"用量接口未返回可用的限额窗口\"",
@@ -1356,17 +1174,6 @@ async fn query_chatgpt_quota(
         "[chatgpt.quota.query] client=\"Codex\" {context} outcome=success latency_ms={latency} proxy={} msg=\"用量查询成功\"",
         proxy.as_deref().unwrap_or("-")
     );
-    if let Some(account_id) = account_id.filter(|_| query_subscription) {
-        const PATH: &str = "/backend-api/accounts/check/v4-2023-04-27";
-        let offset = -chrono::Local::now().offset().local_minus_utc() / 60;
-        let url = format!("https://chatgpt.com{PATH}?timezone_offset_min={offset}");
-        let request = chatgpt_request(&client, &url, access_token, None)
-            .header("Referer", "https://chatgpt.com/")
-            .header("x-openai-target-path", PATH)
-            .header("x-openai-target-route", PATH);
-        info.subscription_renews_at =
-            query_chatgpt_subscription(request, account_id, context).await;
-    }
     Ok(ProfileBalance {
         is_available: true,
         balance_infos: vec![info],
@@ -1580,7 +1387,7 @@ impl AppContext {
                 None => format!("source={source_label}"),
             },
         };
-        query_chatgpt_quota(&access_token, account_id.as_deref(), &context, true).await
+        query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await
     }
 
     /// 按配置查询余额/用量；ChatGPT 配置只读自身认证来源，不读取 live auth.json。
@@ -1626,8 +1433,7 @@ impl AppContext {
                     }
                     None => return Err(app_err!("官方配置缺少登录方式")),
                 };
-            return query_chatgpt_quota(&access_token, account_id.as_deref(), &context, false)
-                .await;
+            return query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await;
         }
         let provider = payload.provider_id.as_deref().unwrap_or_default();
         if provider != "deepseek" && provider != "minimax" && provider != "ZAI" {
@@ -1677,11 +1483,7 @@ impl AppContext {
         info: &ProfileBalanceInfo,
     ) -> AppResult<()> {
         let mut cache = self.load_balance_cache();
-        let mut info = info.clone();
-        info.subscription_renews_at = info.subscription_renews_at.or(cache
-            .get(profile_id)
-            .and_then(|saved| saved.subscription_renews_at));
-        cache.insert(profile_id.to_string(), info);
+        cache.insert(profile_id.to_string(), info.clone());
         self.save_balance_cache(&cache)
     }
 

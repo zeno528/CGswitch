@@ -190,6 +190,11 @@ describe("SettingsSections", () => {
     expect(settingsViewSource).not.toContain("border-b border-[var(--panel-border)]");
   });
 
+  it("设置页复用全局标题栏并显示设置标题", () => {
+    expect(settingsViewSource).toContain('<header className="apple-page-bar">');
+    expect(settingsViewSource).toContain('<h1 className="apple-title">{t("view.title")}</h1>');
+  });
+
   it("更新检查支持启动自动检查（可开关）与关于页手动触发并存", () => {
     const appShellPath = new URL("../../app/AppShell.tsx", import.meta.url);
     const appShellSource = readFileSync(appShellPath, "utf8");

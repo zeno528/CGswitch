@@ -354,7 +354,7 @@ export default function AppShell() {
       skills: <SkillsView activationEpoch={activationEpoch} />,
       claudeProfiles: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
       accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />,
-      settings: <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
+      settings: <SettingsView state={state} active={view === "settings"} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
     };
     return (Object.keys(pages) as AppView[]).map((pageView) =>
       visitedViews.has(pageView) ? (

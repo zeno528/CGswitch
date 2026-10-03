@@ -51,13 +51,13 @@ export function useCliManagement(client: Client, active: boolean) {
   // 缓存写穿：检测/安装/升级的每个落点都同步进缓存，下次进页直出最新状态。
   const applyStatus = (next: CliStatus) => { setCliStatusCache(client, next); setStatus(next); };
 
-  const refresh = async (): Promise<CliStatus | null> => {
+  const refresh = async (keepUpdate = false): Promise<CliStatus | null> => {
     if (running.current) return null;
     running.current = true;
     setBusy(true);
     setOperation("refresh");
     setError(null);
-    setUpdate(null);
+    if (!keepUpdate) setUpdate(null);
     try {
       const next = await commands.status();
       applyStatus(next);
@@ -77,25 +77,25 @@ export function useCliManagement(client: Client, active: boolean) {
     const result = await runCliUpdateCheckQuietly(client);
     if (result) {
       applyStatus(result.status);
-      if (result.available) setUpdate(result);
+      setUpdate(result.available ? result : null);
     }
     running.current = false;
   };
 
-  // 与 MCP 页 probedOnceRef 同语义：首次进入分区检测一次（缓存可能过期，外部安装
-  // 靠它纠正），检测成功且为原生安装时顺带静默检查更新；之后重进沿用已检状态
-  // 不重复查询；上次检测失败（status 仍空）保留重试。
+  // 每次重新进入 Agent 工具分区都检测一次，纠正外部安装/升级造成的本地缓存过期；
+  // 检测成功且为原生安装时顺带静默检查线上更新。
   // 离开分区时丢弃"当前没有更新"这类一次性反馈（常驻只会变成视觉噪音）；
   // 升级胶囊是可行动状态，保留到真正升级或版本变化。
   useEffect(() => {
     if (!active) {
+      detected.current = false;
       if (update && !update.available) setUpdate(null);
       return;
     }
     if (detected.current && status) return;
     detected.current = true;
     void (async () => {
-      const next = await refresh();
+      const next = await refresh(true);
       if (next?.installation === "native") await silentCheck();
     })();
   }, [active, status]);

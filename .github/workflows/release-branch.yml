@@ -81,7 +81,6 @@ jobs:
               src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-native-tls
       - run: corepack enable
         shell: bash
       - uses: actions/setup-node@v7

@@ -36,9 +36,6 @@ thiserror = "2.0.21"
 tempfile = "3.27.0"
 directories = "6.0.0"
 reqwest = { version = "0.13.5", features = ["form", "json", "system-proxy"] }
-# 仅续期网页接口需要浏览器协议匹配；不替换用量或 OAuth 客户端。
-wreq = { version = "=0.16.1", features = ["json"] }
-wreq-util = "=0.2.0"
 tokio = { version = "1.53.1", features = ["sync", "time", "macros", "rt"] }
 base64 = "0.23.1"
 chrono = "0.4"
