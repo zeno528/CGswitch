@@ -1737,7 +1737,7 @@ body.drag-active * {
   background: rgb(255 255 255 / 0.06);
 }
 
-/* 附属条内 ghost 控件：无描边、hover 才显底、选中转 accent，保持比 tab 低一档的权重 */
+/* 附属条内 ghost 控件：无描边、hover 才显底，保持比 tab 低一档的权重 */
 .editor-ghost {
   display: inline-flex;
   align-items: center;
@@ -1803,10 +1803,6 @@ body.drag-active * {
 /* 组内子控件不单独刷底色，hover 只亮整组一层 */
 .editor-ghost-group > .editor-ghost:hover {
   background: transparent;
-}
-
-.editor-ghost.on {
-  color: var(--accent);
 }
 
 .editor-ghost:disabled,
