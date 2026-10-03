@@ -1,6 +1,6 @@
 import { Activity, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
+import { Minus, Blocks, BookOpenText, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { api, isTauri } from "../api";
@@ -382,7 +382,7 @@ export default function AppShell() {
         { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
         { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
         { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
-        { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
+        { view: "skills", labelKey: "nav.skills", icon: <BookOpenText strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
         { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
       ],
     },
