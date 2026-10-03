@@ -53,7 +53,7 @@ describe("SettingsSections", () => {
     expect(html).toContain("数据备份");
     expect(html).toContain("备份记录");
     // 首帧无缓存时不渲染空态文案：切分页重挂载靠缓存直出，不闪"还没有备份记录"
-    expect(html).not.toContain("还没有备份记录。");
+    expect(html).not.toContain("还没有备份记录");
     // 外围一张大卡分节，内嵌卡片只给备份频率/最多保留选项与每条备份记录，备份记录不再折叠
     expect(html.match(/role="switch"/g)).toHaveLength(1);
     expect(settingsSectionsSource).toContain("onCheckedChange={(on) => onPatch({ auto_backup_interval_hours: on ? 6 : 0 })}");

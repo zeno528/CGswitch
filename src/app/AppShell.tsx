@@ -379,7 +379,7 @@ export default function AppShell() {
       items: [
         { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
         { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
-        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
+        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
         { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
         { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
       ],

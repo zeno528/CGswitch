@@ -32,7 +32,7 @@ export default {
   },
   error: {
     title: "界面加载失败",
-    description: "当前页面遇到异常，可以重新加载后继续使用。",
+    description: "当前页面遇到异常，可以重新加载后继续使用",
     reload: "重新加载",
     details: "查看错误详情",
   },

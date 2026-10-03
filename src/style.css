@@ -75,7 +75,7 @@
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
   --sidebar-icon-size: 1.25rem; /* 20px CSS 像素，150% 缩放下约 30px 物理像素 */
-  --brand-logo-size: 1.75rem;
+  --brand-logo-size: 1.625rem; /* 26px CSS 像素，150% 缩放下约 39px 物理像素 */
   --control-height: 2.25rem;
   /* 标题栏内的按钮、搜索和状态胶囊统一高度；普通表单控件仍使用 --control-height。 */
   --toolbar-control-height: calc(var(--control-height) + 2px);
@@ -313,11 +313,16 @@ body {
 .profile-card-meta .apple-chip {
   background: var(--main-surface-bg);
   font-size: 12px;
+}
+
+.profile-card-meta .apple-chip,
+.cli-upgrade-action {
   transition: border-color var(--motion-fast) ease;
 }
 
 /* 余额/用量药丸悬停：只提亮细描边，不改变尺寸、背景、文字或布局。 */
-.profile-card-meta .apple-chip:hover {
+.profile-card-meta .apple-chip:hover,
+.cli-upgrade-action:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
@@ -497,29 +502,6 @@ body {
 
 :root.dark .setting-description {
   color: var(--text-secondary);
-}
-
-/* CLI 升级按钮：尺寸复用订阅等级徽标，交互态只覆盖颜色与按钮行为。 */
-.cli-upgrade-pill {
-  align-items: center;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  color: var(--accent);
-  cursor: pointer;
-  display: inline-flex;
-  gap: 0.375rem;
-  transition: background-color var(--motion-fast) ease-out;
-  white-space: nowrap;
-}
-
-.cli-upgrade-pill:hover {
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-}
-
-.cli-upgrade-pill:disabled {
-  cursor: default;
-  opacity: 0.5;
 }
 
 /* CLI 管理卡事实行：头部下发丝线分隔的「图标 + 灰标签 + 值」并排小字 */
@@ -946,19 +928,6 @@ body.drag-active * {
   position: relative;
 }
 
-.update-notice-trigger__icon {
-  transition: transform var(--motion-fast) ease-out;
-}
-
-.update-notice-trigger:hover .update-notice-trigger__icon,
-.update-notice-trigger:focus-visible .update-notice-trigger__icon {
-  transform: scale(1.04);
-}
-
-.update-notice-trigger:active .update-notice-trigger__icon {
-  transform: scale(0.94);
-}
-
 /* 供应商页头的产品标识与侧栏分组共用现有 logo 资源，保持同一品牌层级。 */
 .provider-page-brand {
   display: inline-flex;
@@ -1007,7 +976,8 @@ body.drag-active * {
 
 /* 品牌按钮（logo+名字）：复用导航按钮的固定图标锚点，收缩时只保留 Logo */
 .apple-sidebar-brand {
-  gap: 0.1875rem;
+  /* logo 缩小 2px 后补 1px 间距，保持 CGswitch 文本的起始位置不变 */
+  gap: 0.25rem;
   height: 2.25rem;
   transform: translateY(-0.375rem);
   /* logo 放大后按尺寸差减半，保持中心与导航按钮图标共线 */

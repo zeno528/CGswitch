@@ -126,15 +126,15 @@ export function UpdateNotice({
     <div className={`update-notice ${className}`.trim()} onMouseEnter={onMouseEnter}>
       <button
         type="button"
-        className="apple-sidebar-nav-button update-notice-trigger"
+        className="apple-sidebar-nav-button app-selection-state"
         aria-label={t("notice.title", { version: update.version })}
         aria-expanded={confirming}
         aria-haspopup="dialog"
         onClick={() => setConfirming(true)}
       >
         <span className="relative flex shrink-0">
-          <span className="update-notice-trigger__icon grid h-[var(--sidebar-icon-size)] w-[var(--sidebar-icon-size)] shrink-0 place-items-center rounded-full bg-success text-[var(--text-primary)]">
-            <Download className="!h-3.5 !w-3.5" strokeWidth={2.5} aria-hidden="true" />
+          <span className="grid h-[var(--sidebar-icon-size)] w-[var(--sidebar-icon-size)] shrink-0 place-items-center rounded-full bg-accent text-white">
+            <Download className="!h-4 !w-4" strokeWidth={2.5} aria-hidden="true" />
           </span>
         </span>
         <span className="apple-sidebar-label" aria-hidden={sidebarCollapsed}>{t("notice.available")}</span>

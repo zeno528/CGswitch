@@ -126,6 +126,19 @@ describe("managementDataCache", () => {
     expect(stale.cliUpdateCheckStale("claude")).toBe(true);
   });
 
+  it("无更新结果只推进冷却，不跨页面或重启恢复结果", async () => {
+    claudeCheckCliUpdate.mockResolvedValueOnce({ status: {}, latest_version: "2.0.0", channel: "latest", available: false });
+    const cache = await import("./managementDataCache");
+    await cache.runCliUpdateCheckQuietly("claude");
+    expect(cache.getCachedCliUpdate("claude")).toBeNull();
+    expect(cache.cliUpdateCheckStale("claude")).toBe(false);
+
+    vi.resetModules();
+    const restored = await import("./managementDataCache");
+    expect(restored.getCachedCliUpdate("claude")).toBeNull();
+    expect(restored.cliUpdateCheckStale("claude")).toBe(false);
+  });
+
   it("恢复前发生的静默失败也保留持久化的旧升级结果", async () => {
     // 重启后未读过缓存就遇静默失败（离线）：冷却推进，旧结果不能被清成 null
     persistedStorage.set("cgswitch.codex-cli-update-v1", JSON.stringify({

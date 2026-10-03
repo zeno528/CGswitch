@@ -112,7 +112,7 @@ export default function CodexProfileCard({
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />
-      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
+      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} allowInactiveDeleteWhileBusy testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
     </SortableCard>
   );
 }

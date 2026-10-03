@@ -107,6 +107,20 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
 
+  it("Codex 非激活卡在启动期间仍可测试和删除，激活卡保留保护", () => {
+    const i18n = createInstance();
+    void i18n.init({ lng: "en", resources: { en: { profiles: {} } }, initAsync: false });
+    const renderActions = (active: boolean) => renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(ProfileCardActions, {
+      active, busy: true, testing: false, allowInactiveDeleteWhileBusy: true, connectionDisabled: false, connectionTitle: "Test",
+    })));
+    const inactiveButtons = renderActions(false).match(/<button\b[^>]*>/g) ?? [];
+    expect(inactiveButtons[2]).not.toContain('disabled=""');
+    expect(inactiveButtons[3]).not.toContain('disabled=""');
+    const activeButtons = renderActions(true).match(/<button\b[^>]*>/g) ?? [];
+    expect(activeButtons[2]).not.toContain('disabled=""');
+    expect(activeButtons[3]).toContain('disabled=""');
+  });
+
   it("订阅与普通供应商共用同一套连通性悬停文案", () => {
     // 订阅不再单独定义一份「测试订阅认证连通性」，避免同一动作两套文案；
     // 无 provider 的官方订阅永不禁用，第三方供应商才走缺什么报什么

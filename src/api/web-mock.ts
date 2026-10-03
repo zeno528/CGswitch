@@ -243,7 +243,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "official",
     source_url: null,
     display_name: "OpenAI Bundled",
-    description: "Codex 官方捆绑插件市场。",
+    description: "Codex 官方捆绑插件市场",
   },
   {
     name: "ponytail",
@@ -251,7 +251,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "third-party",
     source_url: "https://github.com/DietrichGebert/ponytail.git",
     display_name: "Ponytail",
-    description: "第三方插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流。",
+    description: "第三方插件市场，提供精简实现、YAGNI 和标准库优先的开发工作流",
   },
   {
     name: "youmind",
@@ -259,7 +259,7 @@ let webMarketplaces: PluginMarketplace[] = [
     kind: "third-party",
     source_url: "https://github.com/YouMind-OpenLab/plugin-marketplace.git",
     display_name: "YouMind",
-    description: "YouMind 第三方插件市场，收录创作、设计和内容工作流插件。",
+    description: "YouMind 第三方插件市场，收录创作、设计和内容工作流插件",
   },
 ];
 
@@ -273,7 +273,7 @@ let webMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_INSTALL",
       source: "https://github.com/DietrichGebert/ponytail.git",
       display_name: "Ponytail",
-      description: "Prefer YAGNI, the standard library, native platform features, and the smallest correct implementation.",
+      description: "Prefer YAGNI, the standard library, native platform features, and the smallest correct implementation",
       category: "Productivity",
       capabilities: ["Instructions", "Lifecycle hooks"],
       contains: ["skills", "hooks"],
@@ -293,7 +293,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_USE",
       source: "https://github.com/xiaolai/grill-for-claude.git",
       display_name: "Grill",
-      description: "用于代码工作流与开发辅助的第三方插件。",
+      description: "用于代码工作流与开发辅助的第三方插件",
       category: "Development",
       capabilities: ["Instructions"],
       contains: ["skills"],
@@ -306,7 +306,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_USE",
       source: "https://github.com/xiaolai/xros.git",
       display_name: "XROS",
-      description: "面向终端工作流的第三方插件。",
+      description: "面向终端工作流的第三方插件",
       category: "Productivity",
       capabilities: ["Instructions"],
       contains: ["skills"],
@@ -321,7 +321,7 @@ const webRecommendedMarketplacePlugins: Record<string, MarketplacePlugin[]> = {
       auth_policy: "ON_INSTALL",
       source: "./plugins/hyperframes",
       display_name: "HyperFrames by HeyGen",
-      description: "Write HTML, render video, and create interactive motion graphics with HeyGen's HyperFrames.",
+      description: "Write HTML, render video, and create interactive motion graphics with HeyGen's HyperFrames",
       category: "Design",
       capabilities: ["Read", "Write"],
       contains: ["app"],
@@ -1353,8 +1353,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         source_url: source,
         display_name: name === "xiaolai" ? "xiaolai (Codex)" : name,
         description: name === "xiaolai"
-          ? "第三方 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件。"
-          : "第三方 Codex 插件市场。",
+          ? "第三方 Codex 插件市场，收录 xiaolai 维护的 Claude/Codex 插件"
+          : "第三方 Codex 插件市场",
       };
       webMarketplaces = [...webMarketplaces.filter((item) => item.name !== name), marketplace];
       webMarketplacePlugins[name] ??= (webRecommendedMarketplacePlugins[name] ?? []).map((plugin) => ({ ...plugin }));
@@ -1551,13 +1551,13 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
           {
             name: "search",
             title: "Search",
-            description: "Search available sources.",
+            description: "Search available sources",
             input_schema: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
           },
           {
             name: "fetch",
             title: "Fetch",
-            description: "Fetch a source by URL.",
+            description: "Fetch a source by URL",
             input_schema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
           },
         ] : [],

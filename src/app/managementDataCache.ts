@@ -308,7 +308,7 @@ function restoreCliUpdateEntry(raw: unknown): CliUpdateEntry | null {
   if (typeof candidate.checked_at !== "number") return null;
   const update = candidate.update;
   if (update !== null && (typeof update !== "object" || typeof (update as CliUpdateInfo).latest_version !== "string" || typeof (update as CliUpdateInfo).channel !== "string" || typeof (update as CliUpdateInfo).available !== "boolean")) return null;
-  return { checked_at: candidate.checked_at, update: update === null ? null : { ...(update as CliUpdateInfo) } };
+  return { checked_at: candidate.checked_at, update: update && (update as CliUpdateInfo).available ? { ...(update as CliUpdateInfo) } : null };
 }
 
 function notifyCliUpdate(): void {
@@ -325,9 +325,9 @@ export function getCachedCliUpdate(client: CliClient): CliUpdateInfo | null {
 
 /// 升级/安装成功的权威落点：本机版本已追平官方（后端 verify_update 校验过），
 /// 直接翻转缓存让所有页面的胶囊同步消失，不再发网络请求确认。
-export function setCachedCliUpdate(client: CliClient, update: CliUpdateInfo): void {
+export function clearCachedCliUpdate(client: CliClient): void {
   if (!cliUpdateRestored[client]) getCachedCliUpdate(client);
-  setCliUpdateEntry(client, { checked_at: Date.now(), update: { ...update } });
+  setCliUpdateEntry(client, { checked_at: Date.now(), update: null });
 }
 
 function setCliUpdateEntry(client: CliClient, entry: CliUpdateEntry): void {
@@ -353,7 +353,7 @@ export async function runCliUpdateCheck(client: CliClient) {
   const result = await (client === "codex" ? api.codexCheckCliUpdate : api.claudeCheckCliUpdate)();
   setCliUpdateEntry(client, {
     checked_at: Date.now(),
-    update: { available: result.available, latest_version: result.latest_version, channel: result.channel },
+    update: result.available ? { available: true, latest_version: result.latest_version, channel: result.channel } : null,
   });
   return result;
 }

@@ -33,13 +33,13 @@ export default {
   },
   error: {
     title: "Failed to load the interface",
-    description: "This page ran into an error. Reload to continue using the app.",
+    description: "This page ran into an error. Reload to continue using the app",
     reload: "Reload",
     details: "View error details",
   },
   editor: {
     placeholder: "Edit the configuration here...",
-    jsonSyntaxError: "JSON syntax error. Check the comma, brackets, or value here.",
+    jsonSyntaxError: "JSON syntax error. Check the comma, brackets, or value here",
   },
   preset: {
     custom: "Custom",
