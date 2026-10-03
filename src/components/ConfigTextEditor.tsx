@@ -215,6 +215,14 @@ export function findConfigFieldPosition(text: string, field: string, from: numbe
   return match ? start + match.index + match[0].search(/\S/) : null;
 }
 
+/**
+ * 滚轮路由决策：只有向下滚且页面未到底时才把滚动交给页面；上滑永远滚编辑器。
+ * 页面距底 ≤1px 视为已到底。
+ */
+export function routeEditorWheel(deltaY: number, pageDistanceToBottom: number): boolean {
+  return deltaY > 0 && pageDistanceToBottom > 1;
+}
+
 // canvas 文本测量上下文只读共享：多个编辑器、多次显隐重挂复用，不随 effect 重建
 let measureContext: CanvasRenderingContext2D | null | undefined;
 
@@ -430,6 +438,16 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     viewRef.current = editor;
     destroyedRef.current = false;
     creationDepsRef.current = creationDeps;
+    // 页面没滚到底时，编辑器里的向下滚轮先滚页面（露出完整编辑器），页面到底后编辑器
+    // 才接管内容滚动；上滑不受影响，横向滚动与缩放手势照常原生。cm-scroller 自带
+    // 边界链式滚动拦截（见 style.css 滚动容器规则），页面到底前必须在这里显式转发。
+    // 监听挂在实例的 scrollDOM 上，保活复显原样挂回时随实例一起存活，无需摘除。
+    editor.scrollDOM.addEventListener("wheel", (event) => {
+      const page = editor.dom.closest<HTMLElement>(".apple-edit-content");
+      if (!page || !routeEditorWheel(event.deltaY, page.scrollHeight - page.clientHeight - page.scrollTop)) return;
+      event.preventDefault();
+      page.scrollTop += event.deltaY; // scrollTop 赋值自带 [0, maxScroll] 钳制，无需封顶
+    }, { passive: false });
     const resizeObserver = new ResizeObserver(() => scheduleContentWidthSync(editor));
     resizeObserver.observe(editor.dom);
     if (scrollContent) resizeObserver.observe(scrollContent);
@@ -466,6 +484,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     if (editor.state.doc.toString() === value) return;
     const change = computeTextChange(editor.state.doc.toString(), value);
     const revealPosition = reveal?.text === value ? findConfigFieldPosition(value, reveal.field, change.from) : null;
+    const scrollContent = editor.dom.closest<HTMLElement>(".apple-edit-content");
+    const previousContentScrollTop = scrollContent?.scrollTop ?? 0;
     const previousScrollTop = editor.scrollDOM.scrollTop;
     const previousScrollLeft = editor.scrollDOM.scrollLeft;
     let restoreFrame = 0;
@@ -478,6 +498,15 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       editor.dispatch({ changes: change });
       if (revealPosition !== null) {
         editor.dispatch({ selection: { anchor: revealPosition }, scrollIntoView: true });
+        if (scrollContent) {
+          restoreFrame = requestAnimationFrame(() => {
+            const targetScrollTop = scrollContent.scrollTop;
+            if (targetScrollTop !== previousContentScrollTop) {
+              scrollContent.scrollTop = previousContentScrollTop;
+              scrollContent.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+            }
+          });
+        }
       } else {
         restoreScrollPosition();
         restoreFrame = requestAnimationFrame(restoreScrollPosition);
