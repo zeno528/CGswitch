@@ -482,11 +482,11 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                         <input className={`app-input app-input--compact compact-token-input ${autoCompactDisabled ? "" : "compact-token-input--on"} h-6 text-center`} type="number" min={100000} max={1000000} step={100000} inputMode="numeric" value={autoCompactWindow} placeholder={t("advanced.compactWindowPlaceholder")} disabled={autoCompactDisabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_AUTO_COMPACT_WINDOW", event.target.value, "autoCompactWindow")} />
                       </label>
                     </div>
-                    <label className={`editor-ghost ${gitAttributionHidden ? "on" : ""}`} title={t("advanced.gitAttributionTitle")}>
+                    <label className="editor-ghost" title={t("advanced.gitAttributionTitle")}>
                       <input type="checkbox" checked={gitAttributionHidden} onChange={(event) => toggleGitAttribution(event.target.checked)} />
                       <span className="whitespace-nowrap font-medium">{t("advanced.gitAttributionLabel")}</span>
                     </label>
-                    <label className={`editor-ghost ${agentTeamsEnabled ? "on" : ""}`} title={t("advanced.agentTeamsTitle")}>
+                    <label className="editor-ghost" title={t("advanced.agentTeamsTitle")}>
                       <input type="checkbox" checked={agentTeamsEnabled} onChange={(event) => updateEnvValue("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", event.target.checked ? "1" : null)} />
                       <span className="whitespace-nowrap font-medium">{t("advanced.agentTeamsLabel")}</span>
                     </label>

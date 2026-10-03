@@ -1,10 +1,10 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { createElement } from "react";
+import { Children, createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
 import { setupI18n } from "../../i18n";
-import { compareMcpServers, McpServerRow } from "./McpView";
+import McpView, { compareMcpServers, McpTargetSwitch } from "./McpView";
 
 const viewSource = readFileSync(new URL("./McpView.tsx", import.meta.url), "utf8");
 const editSource = readFileSync(new URL("./McpEdit.tsx", import.meta.url), "utf8");
@@ -12,6 +12,49 @@ const claudeEditSource = readFileSync(new URL("./ClaudeMcpEdit.tsx", import.meta
 const sharedFormSource = readFileSync(new URL("./McpConnectionForm.tsx", import.meta.url), "utf8");
 
 describe("MCP 操作入口", () => {
+  it("真实客户端切换只替换内容组件，页头与切换器保留相同类型、位置和 key", () => {
+    setupI18n("zh-CN");
+    const frames: { headerType: unknown; switchType: unknown; key: string | null; value: string; contentType: unknown }[] = [];
+    function Capture() {
+      // 在 React 的真实服务端渲染中执行父组件，触发同一个 setTarget；不模拟组件状态。
+      const tree = McpView({ activationEpoch: 0 });
+      const [header, content] = Children.toArray(tree.props.children) as ReactElement<{ children: ReactNode }>[];
+      const toolbar = Children.toArray(header!.props.children)[1] as ReactElement<{ children: ReactNode }>;
+      const control = Children.toArray(toolbar.props.children).find((child) => isValidElement(child) && child.type === McpTargetSwitch) as ReactElement<Parameters<typeof McpTargetSwitch>[0]>;
+      frames.push({ headerType: header!.type, switchType: control.type, key: control.key, value: control.props.value, contentType: content!.type });
+      if (control.props.value === "codex") control.props.onChange("claude");
+      return null;
+    }
+    renderToStaticMarkup(createElement(Capture));
+    expect(frames.map((frame) => frame.value)).toEqual(["codex", "claude"]);
+    expect(frames[0]!.headerType).toBe("header");
+    expect(frames[1]!.headerType).toBe(frames[0]!.headerType);
+    expect(frames[1]!.switchType).toBe(frames[0]!.switchType);
+    expect(frames.map((frame) => frame.key)).toEqual([".$target-switch", ".$target-switch"]);
+    expect(frames[1]!.contentType).not.toBe(frames[0]!.contentType);
+    expect(viewSource.match(/<McpTargetSwitch\b/g)).toHaveLength(1);
+  });
+
+  it("客户端页签复用共享滑块，保留图标、选中语义和页头尺寸", () => {
+    setupI18n("zh-CN");
+    for (const [index, value] of (["codex", "claude"] as const).entries()) {
+      const html = renderToStaticMarkup(createElement(McpTargetSwitch, { value, onChange: () => undefined }));
+      expect(html).toContain('class="app-segmented-control h-[var(--toolbar-control-height)] shrink-0"');
+      expect(html).toContain('role="tablist"');
+      expect(html).toContain(`style="--segment-count:2;--segment-index:${index}"`);
+      const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*aria-selected="(true|false)"[^>]*>(.*?)<\/button>/g)];
+      expect(tabs).toHaveLength(2);
+      tabs.forEach((tab, tabIndex) => expect(tab[1]).toBe(tabIndex === index ? "true" : "false"));
+      expect(tabs[0]![2]).toContain('/codex.svg');
+      expect(tabs[1]![2]).toContain('/claude-code.svg');
+      expect(html).not.toContain("app-button--primary");
+    }
+    const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
+    expect(styles).not.toContain("mcp-target-switch");
+    expect(viewSource).not.toContain("mcp-target-switch");
+    expect(viewSource).toContain("onClick={() => onChange(target)}");
+  });
+
   it("两个客户端共用编辑标题、按钮、通知和卸载确认文案", () => {
     for (const key of [
       "edit.back", "edit.createTitle", "edit.editTitle", "edit.uninstall",
@@ -29,15 +72,16 @@ describe("MCP 操作入口", () => {
     expect(claudeEditSource + viewSource).not.toContain('"claude.');
   });
 
-  it("列表只保留右侧编辑、测试、工具和开关操作", () => {
+  it("列表把编辑、测试、工具收进三点菜单，开关仍在最右侧", () => {
+    expect(viewSource).toContain("<MoreHorizontal");
+    expect(viewSource).toContain('className="app-select-menu"');
+    expect(viewSource).toContain('aria-label={t("list.moreTooltip")}');
     expect(viewSource).toContain("<Pencil");
     expect(viewSource).toContain("<Wrench");
     expect(viewSource).toContain('className="apple-icon-button');
-    expect(viewSource).not.toContain('t("list.editButton")');
+    expect(viewSource).toContain("<AppSwitch");
+    expect(viewSource).toContain("menuTriggerRef");
     expect(viewSource).toContain('onDelete={editingServer ? () => removeServer(editingServer) : undefined}');
-    expect(viewSource).not.toContain("cursor-pointer");
-    expect(viewSource).not.toContain("group-hover");
-    expect(viewSource).not.toContain("<TrashIcon");
   });
 
   it("编辑页为已有 MCP 提供卸载入口", () => {
@@ -58,7 +102,7 @@ describe("MCP 操作入口", () => {
     expect(claudeEditSource).toContain("patchClaudeMcpForm(jsonText, next, field)");
     expect(claudeEditSource).toContain("onChange={editJson}");
     expect(claudeEditSource).toContain("disabled={!initialized || !formValid || saving}");
-    expect(claudeEditSource).toContain("api.saveClaudeMcpServer(server?.name ?? null, trimmedName, jsonText)");
+    expect(claudeEditSource).toContain("api.claudeSaveMcpServer(server?.name ?? null, trimmedName, jsonText)");
     expect(claudeEditSource).toContain("min={1000} step={1000}");
     expect(claudeEditSource).not.toContain("startupTimeout");
   });
@@ -127,20 +171,10 @@ describe("MCP 操作入口", () => {
     expect(viewSource).toContain("if (toolsLoading[name])");
   });
 
-  it.each([false, true, null])("服务器 enabled=%s 时，测试和工具按钮同步禁用，编辑仍可用", (enabled) => {
-    setupI18n("en-US");
-    const markup = renderToStaticMarkup(createElement(McpServerRow, {
-      server: {
-        name: "fixture", enabled, command: null, args: [], env: {}, url: "https://example.test/mcp",
-        startup_timeout_sec: null, tool_timeout_sec: null, bearer_token_env_var: null,
-        http_headers: {}, env_http_headers: {},
-      },
-      result: undefined, probing: false, detailsVisible: false, toolsBusy: true, toolsLoaded: false,
-      onEdit: () => {}, onProbe: () => {}, onToggleTools: () => {},
-    }));
-    const buttons = markup.match(/<button\b[^>]*>/g) ?? [];
-    expect(buttons.map((button) => button.includes(' disabled=""')))
-      .toEqual([false, enabled === false, enabled === false]);
+  it("服务器禁用或测试中时，三点菜单中的测试和工具动作仍禁用，编辑可用", () => {
+    expect(viewSource).toContain("disabled={probing || server.enabled === false}");
+    expect(viewSource).toContain("disabled={server.enabled === false}");
+    expect(viewSource).toContain("onEdit(server)");
   });
 
   it("列表按类型分组（stdio → http → unknown）优先、组内按名称", () => {

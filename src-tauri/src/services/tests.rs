@@ -139,16 +139,22 @@ fn connection_error_body_detects_provider_level_failures() {
 #[test]
 fn fetched_models_survive_profile_reload() {
     let (_home, context) = chatgpt_test_context();
-    let profile = context.capture_profile("模型缓存").unwrap();
+    let profile = context.codex_capture_profile("模型缓存").unwrap();
 
     context
-        .set_profile_fetched_models(&profile.id, vec!["gpt-5.6".into(), "gpt-5.6-mini".into()])
+        .codex_set_profile_fetched_models(
+            &profile.id,
+            vec!["gpt-5.6".into(), "gpt-5.6-mini".into()],
+        )
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     context.get_state().unwrap();
 
     assert_eq!(
-        context.get_profile(&profile.id).unwrap().fetched_models,
+        context
+            .codex_get_profile(&profile.id)
+            .unwrap()
+            .fetched_models,
         vec!["gpt-5.6", "gpt-5.6-mini"]
     );
 }
@@ -178,7 +184,7 @@ experimental_bearer_token = "secret"
     .unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("GLM High").unwrap();
+    let profile = context.codex_capture_profile("GLM High").unwrap();
     std::fs::write(
         context.paths.codex_config(),
         r#"
@@ -197,12 +203,12 @@ experimental_bearer_token = "old"
     )
     .unwrap();
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     let state = context.get_state().unwrap();
     let text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
 
     assert_eq!(
-        state.active_profile_id.as_deref(),
+        state.active_codex_profile_id.as_deref(),
         Some(profile.id.as_str())
     );
     assert!(text.contains("glm-5.3"));
@@ -232,9 +238,9 @@ base_url = "https://api.example"
 experimental_bearer_token = "secret"
 "#,
     );
-    let profile_a = context.capture_profile("A").unwrap();
+    let profile_a = context.codex_capture_profile("A").unwrap();
     // A 显式激活，成为唯一“使用中”来源
-    context.apply_profile(&profile_a.id).unwrap();
+    context.codex_apply_profile(&profile_a.id).unwrap();
 
     // A 使用期间 live 配置累计了新的模型键和 provider 字段
     write(
@@ -255,12 +261,12 @@ new_field = "accumulated"
 "#,
     );
     std::thread::sleep(std::time::Duration::from_millis(2));
-    let profile_b = context.capture_profile("B").unwrap();
+    let profile_b = context.codex_capture_profile("B").unwrap();
 
     // 切到 B：autosync 应把 A 使用期间的累计改动写回 A 的快照
-    context.apply_profile(&profile_b.id).unwrap();
+    context.codex_apply_profile(&profile_b.id).unwrap();
 
-    let stored_a = context.database.profile(&profile_a.id).unwrap();
+    let stored_a = context.database.codex_profile(&profile_a.id).unwrap();
     assert_eq!(
         stored_a
             .payload
@@ -276,7 +282,11 @@ new_field = "accumulated"
         .unwrap()
         .contains("new_field = \"accumulated\""));
     assert_eq!(
-        context.get_state().unwrap().active_profile_id.as_deref(),
+        context
+            .get_state()
+            .unwrap()
+            .active_codex_profile_id
+            .as_deref(),
         Some(profile_b.id.as_str())
     );
 }
@@ -285,13 +295,13 @@ new_field = "accumulated"
 fn desktop_profile_plan_badge_reads_own_database_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    let mut stored = context.database.profile(&profile.id).unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth_with_plan("desktop-ws", "token-1", "plus"));
     context
         .database
-        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
         .unwrap();
 
     // 回归：live auth.json 被切换覆写为 free 账号后，卡片套餐仍来自自身快照
@@ -302,7 +312,7 @@ fn desktop_profile_plan_badge_reads_own_database_snapshot() {
     .unwrap();
     let state = context.get_state().unwrap();
     let summary = state
-        .profiles
+        .codex_profiles
         .iter()
         .find(|summary| summary.id == profile.id)
         .unwrap();
@@ -313,13 +323,13 @@ fn desktop_profile_plan_badge_reads_own_database_snapshot() {
 fn desktop_accounts_derive_from_database_snapshot_not_live_auth() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    let mut stored = context.database.profile(&profile.id).unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth("desktop-ws", "token-1"));
     context
         .database
-        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
         .unwrap();
 
     // 身份来自数据库快照
@@ -356,13 +366,13 @@ fn desktop_accounts_dedupe_same_login_across_profiles() {
     let (_home, context) = chatgpt_test_context();
     for updated_at in ["2", "3"] {
         let profile = context
-            .add_builtin_profile("chatgpt", None, None, None, None, None)
+            .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
             .unwrap();
-        let mut stored = context.database.profile(&profile.id).unwrap();
+        let mut stored = context.database.codex_profile(&profile.id).unwrap();
         stored.payload.raw_auth = Some(chatgpt_auth("desktop-ws", "token-1"));
         context
             .database
-            .update_profile(&profile.id, &stored.name, &stored.payload, updated_at)
+            .codex_update_profile(&profile.id, &stored.name, &stored.payload, updated_at)
             .unwrap();
     }
     // 同一登录存在于多个 Desktop 配置：账号页只出一张卡
@@ -375,12 +385,12 @@ fn desktop_accounts_dedupe_same_login_across_profiles() {
 fn desktop_profile_syncs_and_restores_auth_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .auth_source,
@@ -390,7 +400,7 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
     // 创建只写数据库；激活空快照会清理当前 live 认证。
     let initial_live = chatgpt_auth("desktop-account", "initial-live");
     std::fs::write(context.paths.codex_home.join("auth.json"), &initial_live).unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     assert!(!context.paths.codex_home.join("auth.json").exists());
 
     // 官方认证完成后，聚焦/刷新把新文件回写当前 Desktop 配置。
@@ -400,7 +410,7 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .raw_auth,
@@ -408,7 +418,7 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
     );
     assert_eq!(
         context
-            .get_profile(&profile.id)
+            .codex_get_profile(&profile.id)
             .unwrap()
             .desktop_login
             .as_deref(),
@@ -417,7 +427,7 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
 
     // 再次激活恢复数据库快照。
     std::fs::remove_file(context.paths.codex_home.join("auth.json")).unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     assert_eq!(
         std::fs::read_to_string(context.paths.codex_home.join("auth.json")).unwrap(),
         refreshed_live
@@ -428,19 +438,19 @@ fn desktop_profile_syncs_and_restores_auth_snapshot() {
 fn desktop_profile_restores_saved_auth_snapshot_even_when_manual() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    let mut stored = context.database.profile(&profile.id).unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth("desktop-account", "stale-snapshot"));
     stored.payload.auth_auto_sync = Some(false);
     context
         .database
-        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
         .unwrap();
     let live_auth = chatgpt_auth("desktop-account", "desktop-live");
     std::fs::write(context.paths.codex_home.join("auth.json"), &live_auth).unwrap();
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     assert_eq!(
         std::fs::read_to_string(context.paths.codex_home.join("auth.json")).unwrap(),
@@ -466,28 +476,28 @@ fn apply_bound_oauth_profile_leaves_auth_for_oauth_writer() {
         })
         .unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-account"))
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-account"))
         .unwrap();
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .auth_source,
         Some(crate::models::AuthSource::Oauth)
     );
-    let mut stored = context.database.profile(&profile.id).unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
     stored.payload.raw_auth = Some(chatgpt_auth("oauth-account", "stale-snapshot"));
     stored.payload.auth_auto_sync = Some(false);
     context
         .database
-        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
         .unwrap();
     let live_auth = chatgpt_auth("desktop-account", "desktop-live");
     std::fs::write(context.paths.codex_home.join("auth.json"), &live_auth).unwrap();
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     assert_eq!(
         std::fs::read_to_string(context.paths.codex_home.join("auth.json")).unwrap(),
@@ -515,24 +525,24 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
             .unwrap();
     }
     let desktop = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
     assert!(context
-        .set_profile_account(&desktop.id, Some("oauth-one"))
+        .codex_set_profile_account(&desktop.id, Some("oauth-one"))
         .is_err());
     assert_eq!(context.bound_account_id(&desktop.id).unwrap(), None);
 
     let oauth = context
-        .add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-one"))
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-one"))
         .unwrap();
     context
-        .set_profile_account(&oauth.id, Some("oauth-two"))
+        .codex_set_profile_account(&oauth.id, Some("oauth-two"))
         .unwrap();
     assert_eq!(
         context.bound_account_id(&oauth.id).unwrap().as_deref(),
         Some("oauth-two")
     );
-    assert!(context.set_profile_account(&oauth.id, None).is_err());
+    assert!(context.codex_set_profile_account(&oauth.id, None).is_err());
     assert_eq!(
         context.profile_auth_source(&oauth.id).unwrap(),
         Some(crate::models::AuthSource::Oauth)
@@ -543,9 +553,9 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
 fn get_state_syncs_desktop_auth_into_profile_snapshot() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     std::fs::write(
         context.paths.codex_home.join("auth.json"),
@@ -554,7 +564,7 @@ fn get_state_syncs_desktop_auth_into_profile_snapshot() {
     .unwrap();
     context.get_state().unwrap();
 
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(
         stored.payload.raw_auth,
         Some(r#"{"auth_mode":"chatgpt","tokens":{"access_token":"account-1"}}"#.into())
@@ -565,9 +575,9 @@ fn get_state_syncs_desktop_auth_into_profile_snapshot() {
 fn focus_refresh_keeps_last_desktop_snapshot_when_live_auth_is_invalid() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     let valid_auth = chatgpt_auth("desktop-account", "valid-access");
     std::fs::write(context.paths.codex_home.join("auth.json"), &valid_auth).unwrap();
@@ -579,7 +589,7 @@ fn focus_refresh_keeps_last_desktop_snapshot_when_live_auth_is_invalid() {
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .raw_auth,
@@ -631,7 +641,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
         })
         .unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-account"))
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-account"))
         .unwrap();
     let oauth = crate::auth::codex_oauth::CodexOAuthManager::new(context.database.clone());
     oauth
@@ -639,7 +649,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
         .await;
 
     context
-        .apply_profile_with_auth(&profile.id, &oauth)
+        .codex_apply_profile_with_auth(&profile.id, &oauth)
         .await
         .unwrap();
 
@@ -652,7 +662,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .raw_auth,
@@ -682,7 +692,7 @@ async fn oauth_activation_and_account_switch_write_only_the_bound_account_snapsh
         .await;
 
     context
-        .set_profile_account_and_apply_active(&profile.id, Some("oauth-second"), &oauth)
+        .codex_set_profile_account_and_apply_active(&profile.id, Some("oauth-second"), &oauth)
         .await
         .unwrap();
     assert_eq!(
@@ -729,9 +739,9 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
         })
         .unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, Some("account-1"))
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, Some("account-1"))
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     let id_token = |account_id: &str| {
         let payload = URL_SAFE_NO_PAD
             .encode(format!(r#"{{"chatgpt_account_id":"{account_id}"}}"#).as_bytes());
@@ -757,7 +767,7 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
     .unwrap();
     context.get_state().unwrap();
 
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(stored.payload.raw_auth, None);
 }
 
@@ -765,9 +775,9 @@ fn focus_refresh_keeps_oauth_auth_out_of_profile_snapshot() {
 fn desktop_auth_clear_repopulates_after_focus_refresh() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     std::fs::write(
         context.paths.codex_home.join("auth.json"),
         r#"{"auth_mode":"chatgpt","tokens":{"access_token":"manual-source"}}"#,
@@ -777,7 +787,7 @@ fn desktop_auth_clear_repopulates_after_focus_refresh() {
 
     let config = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     context
-        .update_profile_config(&profile.id, &config, None, Some(""))
+        .codex_update_profile_config(&profile.id, &config, None, Some(""))
         .unwrap();
     std::fs::write(
         context.paths.codex_home.join("auth.json"),
@@ -786,7 +796,7 @@ fn desktop_auth_clear_repopulates_after_focus_refresh() {
     .unwrap();
     context.get_state().unwrap();
 
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(stored.payload.auth_auto_sync, Some(true));
     assert_eq!(
         stored.payload.raw_auth,
@@ -798,15 +808,15 @@ fn desktop_auth_clear_repopulates_after_focus_refresh() {
 fn legacy_empty_desktop_auth_snapshot_repopulates_after_focus_refresh() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
-    let mut stored = context.database.profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
     stored.payload.auth_auto_sync = Some(false);
     stored.payload.raw_auth = None;
     context
         .database
-        .update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
         .unwrap();
 
     std::fs::write(
@@ -816,7 +826,7 @@ fn legacy_empty_desktop_auth_snapshot_repopulates_after_focus_refresh() {
     .unwrap();
     context.get_state().unwrap();
 
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(stored.payload.auth_auto_sync, Some(true));
     assert_eq!(
         stored.payload.raw_auth,
@@ -845,12 +855,16 @@ base_url = "https://api.example"
 experimental_bearer_token = "secret"
 "#,
     );
-    let profile_a = context.capture_profile("A").unwrap();
+    let profile_a = context.codex_capture_profile("A").unwrap();
     assert_eq!(
-        context.get_state().unwrap().active_profile_id.as_deref(),
+        context
+            .get_state()
+            .unwrap()
+            .active_codex_profile_id
+            .as_deref(),
         None
     );
-    context.apply_profile(&profile_a.id).unwrap();
+    context.codex_apply_profile(&profile_a.id).unwrap();
 
     // A 使用期间 live 累计了新键，再次捕获 B：A 快照被同步，激活仍保持在 A
     write(
@@ -867,18 +881,18 @@ experimental_bearer_token = "secret"
 new_field = "accumulated"
 "#,
     );
-    let profile_b = context.capture_profile("B").unwrap();
+    let profile_b = context.codex_capture_profile("B").unwrap();
 
     let state = context.get_state().unwrap();
     assert_eq!(
-        state.active_profile_id.as_deref(),
+        state.active_codex_profile_id.as_deref(),
         Some(profile_a.id.as_str())
     );
     assert_ne!(
-        state.active_profile_id.as_deref(),
+        state.active_codex_profile_id.as_deref(),
         Some(profile_b.id.as_str())
     );
-    let stored_a = context.database.profile(&profile_a.id).unwrap();
+    let stored_a = context.database.codex_profile(&profile_a.id).unwrap();
     assert!(stored_a
         .payload
         .provider_body
@@ -919,15 +933,15 @@ experimental_bearer_token = "secret-token"
     .unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("ZAI").unwrap();
+    let profile = context.codex_capture_profile("ZAI").unwrap();
 
     // 捕获默认不设为使用中；验证“未使用”只读库快照
-    let inactive = context.get_profile(&profile.id).unwrap();
+    let inactive = context.codex_get_profile(&profile.id).unwrap();
     assert_eq!(inactive.catalog_content, None);
 
     // 使用中：live 文件是唯一事实源
-    context.apply_profile(&profile.id).unwrap();
-    let detail = context.get_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
 
     assert!(detail.config_fragment.contains("experimental_bearer_token"));
     assert!(detail.config_fragment.contains("secret-token"));
@@ -954,13 +968,13 @@ fn update_profile_config_clears_active_live_auth_when_editor_is_empty() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
-    let detail = context.get_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
 
     let updated = context
-        .update_profile_config(&profile.id, &detail.config_fragment, None, Some(""))
+        .codex_update_profile_config(&profile.id, &detail.config_fragment, None, Some(""))
         .unwrap();
 
     assert_eq!(updated.raw_auth, None);
@@ -988,10 +1002,10 @@ experimental_bearer_token = "old-key"
     .unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("ZAI").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("ZAI").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             "ZAI",
             None,
@@ -1006,7 +1020,7 @@ experimental_bearer_token = "old-key"
     assert!(text.contains(r#"experimental_bearer_token = "new-key""#));
     assert!(!text.contains("old-key"));
 
-    let detail = context.get_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
     assert_eq!(detail.base_url.as_deref(), Some("https://new.example"));
     assert_eq!(detail.api_key.as_deref(), Some("new-key"));
 }
@@ -1024,8 +1038,8 @@ fn sync_active_profile_from_live_persists_external_mcp_changes() {
     .unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("电脑自动化").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("电脑自动化").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     std::fs::write(
         context.paths.codex_config(),
         "model = \"gpt-5.6\"\n\n[mcp_servers.computer-use]\ncommand = \"SkyComputerUseClient\"\nenabled = false\n",
@@ -1035,7 +1049,7 @@ fn sync_active_profile_from_live_persists_external_mcp_changes() {
     if let Some(document) = context.live_document() {
         context.sync_active_profile_document(&document).unwrap();
     }
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert!(stored
         .payload
         .raw_config
@@ -1052,8 +1066,8 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     std::fs::write(paths.codex_config(), "model = \"gpt-5.6\"\n").unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("A").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("A").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     // 正常外部漂移：应当收敛
     std::fs::write(context.paths.codex_config(), "model = \"gpt-5.7\"\n").unwrap();
@@ -1064,7 +1078,7 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     assert_eq!(outcome.profile.as_deref(), Some("A"));
     let last_valid = context
         .database
-        .profile(&profile.id)
+        .codex_profile(&profile.id)
         .unwrap()
         .payload
         .raw_config
@@ -1074,7 +1088,7 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     std::fs::write(context.paths.codex_config(), "model = \n").unwrap();
     assert!(matches!(
         context.live_document_checked(),
-        Err(super::profiles::LiveReadError::Parse)
+        Err(super::codex_profiles::LiveReadError::Parse)
     ));
 
     // 走真实被动收割（get_state 同一条路径）：损坏内容不得覆盖最后一次有效快照
@@ -1086,7 +1100,7 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .raw_config,
@@ -1099,7 +1113,7 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     std::fs::create_dir(context.paths.codex_config()).unwrap();
     assert!(matches!(
         context.live_document_checked(),
-        Err(super::profiles::LiveReadError::Unreadable)
+        Err(super::codex_profiles::LiveReadError::Unreadable)
     ));
     crate::services::sync::registry().harvest_passive(
         &context,
@@ -1109,7 +1123,7 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .raw_config,
@@ -1126,7 +1140,7 @@ fn corrupted_live_config_reports_parse_error_and_keeps_last_valid_snapshot() {
     );
     assert!(context
         .database
-        .profile(&profile.id)
+        .codex_profile(&profile.id)
         .unwrap()
         .payload
         .raw_config
@@ -1158,31 +1172,29 @@ fn update_profile_allows_duplicate_name() {
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    context.capture_profile("First").unwrap();
+    context.codex_capture_profile("First").unwrap();
     // 供应商 id 取毫秒时间戳，同毫秒内二次捕获会撞 id；真实 UI 不可能，测试里隔开
     std::thread::sleep(std::time::Duration::from_millis(2));
-    let second = context.capture_profile("Second").unwrap();
+    let second = context.codex_capture_profile("Second").unwrap();
 
     // 名字不是唯一键，重命名为已存在的名字应允许，靠 ID 区分
     let updated = context
-        .update_profile(&second.id, "first", None, None, None, None)
+        .codex_update_profile(&second.id, "first", None, None, None, None)
         .unwrap();
     assert_eq!(updated.name, "first");
 }
 
 #[test]
 fn icon_ids_are_validated() {
-    assert_eq!(profiles::validated_icon(None).unwrap(), None);
-    assert_eq!(profiles::validated_icon(Some("  ")).unwrap(), None);
+    assert_eq!(validated_icon(None).unwrap(), None);
+    assert_eq!(validated_icon(Some("  ")).unwrap(), None);
     assert_eq!(
-        profiles::validated_icon(Some(" zhipu "))
-            .unwrap()
-            .as_deref(),
+        validated_icon(Some(" zhipu ")).unwrap().as_deref(),
         Some("zhipu")
     );
-    assert!(profiles::validated_icon(Some("Zhipu")).is_err());
-    assert!(profiles::validated_icon(Some("a!b")).is_err());
-    assert!(profiles::validated_icon(Some(&"x".repeat(41))).is_err());
+    assert!(validated_icon(Some("Zhipu")).is_err());
+    assert!(validated_icon(Some("a!b")).is_err());
+    assert!(validated_icon(Some(&"x".repeat(41))).is_err());
 }
 
 #[test]
@@ -1196,7 +1208,7 @@ fn add_builtin_profile_creates_snapshot_only() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile(
+        .codex_add_builtin_profile(
             "deepseek",
             None,
             Some("https://custom.example"),
@@ -1213,7 +1225,7 @@ fn add_builtin_profile_creates_snapshot_only() {
     assert_eq!(profile.icon.as_deref(), Some("deepseek"));
     assert!(profile.has_key);
 
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(stored.payload.builtin.as_deref(), Some("deepseek"));
     assert_eq!(
         stored
@@ -1244,7 +1256,7 @@ fn add_builtin_profile_creates_snapshot_only() {
 
     // 同名模板允许重复添加，名字相同，靠 ID 区分
     let duplicate = context
-        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
     assert_eq!(duplicate.name, "DeepSeek");
     assert_ne!(duplicate.id, profile.id);
@@ -1256,19 +1268,19 @@ fn get_builtin_catalog_returns_embedded_file_content() {
     let context = AppContext::new(crate::paths::from_home(home.path()).unwrap()).unwrap();
 
     assert_eq!(
-        context.get_builtin_catalog("deepseek").unwrap(),
-        Some(String::from_utf8_lossy(crate::builtin::DEEPSEEK_MODELS).into_owned())
+        context.codex_get_builtin_catalog("deepseek").unwrap(),
+        Some(String::from_utf8_lossy(crate::codex_builtin::DEEPSEEK_MODELS).into_owned())
     );
     assert_eq!(
-        context.get_builtin_catalog("zhipu").unwrap(),
-        Some(String::from_utf8_lossy(crate::builtin::ZHIPU_MODELS).into_owned())
+        context.codex_get_builtin_catalog("zhipu").unwrap(),
+        Some(String::from_utf8_lossy(crate::codex_builtin::ZHIPU_MODELS).into_owned())
     );
     assert_eq!(
-        context.get_builtin_catalog("minimax").unwrap(),
-        Some(String::from_utf8_lossy(crate::builtin::MINIMAX_CATALOG).into_owned())
+        context.codex_get_builtin_catalog("minimax").unwrap(),
+        Some(String::from_utf8_lossy(crate::codex_builtin::MINIMAX_CATALOG).into_owned())
     );
-    assert_eq!(context.get_builtin_catalog("chatgpt").unwrap(), None);
-    assert!(context.get_builtin_catalog("unknown").is_err());
+    assert_eq!(context.codex_get_builtin_catalog("chatgpt").unwrap(), None);
+    assert!(context.codex_get_builtin_catalog("unknown").is_err());
 }
 
 #[tokio::test]
@@ -1283,20 +1295,20 @@ async fn balance_rejects_unsupported_or_keyless() {
 
     // 不支持余额/用量查询的供应商拒绝
     let unsupported = context
-        .add_builtin_profile("opencode", None, None, Some("opencode-key"), None, None)
+        .codex_add_builtin_profile("opencode", None, None, Some("opencode-key"), None, None)
         .unwrap();
     let error = context
-        .get_profile_balance(&unsupported.id, &oauth)
+        .codex_get_profile_balance(&unsupported.id, &oauth)
         .await
         .unwrap_err();
     assert!(error.0.contains("该供应商不支持余额/用量查询"));
 
     // MiniMax 但只有占位符密钥（未配置真实密钥）拒绝
     let keyless = context
-        .add_builtin_profile("minimax", None, None, None, None, None)
+        .codex_add_builtin_profile("minimax", None, None, None, None, None)
         .unwrap();
     let error = context
-        .get_profile_balance(&keyless.id, &oauth)
+        .codex_get_profile_balance(&keyless.id, &oauth)
         .await
         .unwrap_err();
     assert!(error.0.contains("没有配置 API Key"));
@@ -1532,17 +1544,17 @@ fn get_state_tags_active_profile_from_live_config() {
     .unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("ZAI High").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("ZAI High").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     // 数据库快照滞后：DB 里推理强度是 old，live 配置手动改成 medium 并累计新键
-    let mut payload = context.database.profile(&profile.id).unwrap().payload;
+    let mut payload = context.database.codex_profile(&profile.id).unwrap().payload;
     payload
         .model_values
         .insert("model_reasoning_effort".into(), "\"old\"".into());
     context
         .database
-        .update_profile(&profile.id, "ZAI High", &payload, &now_ms().to_string())
+        .codex_update_profile(&profile.id, "ZAI High", &payload, &now_ms().to_string())
         .unwrap();
     std::fs::write(
         context.paths.codex_config(),
@@ -1552,11 +1564,11 @@ fn get_state_tags_active_profile_from_live_config() {
 
     let state = context.get_state().unwrap();
     assert_eq!(
-        state.active_profile_id.as_deref(),
+        state.active_codex_profile_id.as_deref(),
         Some(profile.id.as_str())
     );
     let summary = state
-        .profiles
+        .codex_profiles
         .iter()
         .find(|item| item.id == profile.id)
         .unwrap();
@@ -1567,7 +1579,7 @@ fn get_state_tags_active_profile_from_live_config() {
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .model_values
@@ -1598,8 +1610,8 @@ base_url = "https://api.example"
 experimental_bearer_token = "secret"
 "#,
     );
-    let profile = context.capture_profile("ZAI").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("ZAI").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     // 外部把 live 换成另一套配置
     write(
@@ -1616,8 +1628,8 @@ experimental_bearer_token = "secret"
 "#,
     );
 
-    // 打开编辑页（get_profile）即触发同步：DB 快照跟随 live
-    let detail = context.get_profile(&profile.id).unwrap();
+    // 打开编辑页（codex_get_profile）即触发同步：DB 快照跟随 live
+    let detail = context.codex_get_profile(&profile.id).unwrap();
     assert_eq!(
         detail
             .model_values
@@ -1625,7 +1637,7 @@ experimental_bearer_token = "secret"
             .map(|value| value.trim().trim_matches('"')),
         Some("glm-5.3-pro")
     );
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(
         stored
             .payload
@@ -1656,12 +1668,12 @@ experimental_bearer_token = "secret"
     );
     let state = context.get_state().unwrap();
     let summary = state
-        .profiles
+        .codex_profiles
         .iter()
         .find(|item| item.id == profile.id)
         .unwrap();
     assert_eq!(summary.model.as_deref(), Some("glm-5.4"));
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert_eq!(
         stored
             .payload
@@ -1685,12 +1697,12 @@ fn show_balance_toggle_survives_live_sync() {
     .unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("ZAI").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("ZAI").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     assert!(!profile.show_balance); // 默认关闭
 
     context
-        .set_profile_show_balance(&profile.id, false)
+        .codex_set_profile_show_balance(&profile.id, false)
         .unwrap();
 
     // 外部改 live 后触发同步，供应商级开关不能被重置回默认值
@@ -1701,12 +1713,12 @@ fn show_balance_toggle_survives_live_sync() {
     .unwrap();
     let state = context.get_state().unwrap();
     let summary = state
-        .profiles
+        .codex_profiles
         .iter()
         .find(|item| item.id == profile.id)
         .unwrap();
     assert!(!summary.show_balance);
-    let stored = context.database.profile(&profile.id).unwrap();
+    let stored = context.database.codex_profile(&profile.id).unwrap();
     assert!(!stored.payload.show_balance);
 }
 
@@ -1721,11 +1733,11 @@ fn adding_preset_does_not_activate() {
     let context = AppContext::new(paths).unwrap();
     // 添加供应商是纯入库动作，绝不激活（只有手动应用才建立使用中）
     context
-        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
     let state = context.get_state().unwrap();
-    assert_eq!(state.active_profile_id, None);
-    assert_eq!(state.profiles.len(), 1);
+    assert_eq!(state.active_codex_profile_id, None);
+    assert_eq!(state.codex_profiles.len(), 1);
 }
 
 #[test]
@@ -1736,11 +1748,11 @@ fn deleting_active_profile_is_rejected() {
     std::fs::create_dir_all(&paths.codex_home).unwrap();
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
     let context = AppContext::new(paths.clone()).unwrap();
-    let profile = context.capture_profile("A").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("A").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     // 使用中的配置不可删除（前端删除按钮对激活卡片禁用）：拒绝后配置仍在库中
-    assert!(context.delete_profile(&profile.id).is_err());
-    assert!(context.database.profile(&profile.id).is_ok());
+    assert!(context.codex_delete_profile(&profile.id).is_err());
+    assert!(context.database.codex_profile(&profile.id).is_ok());
 }
 
 #[test]
@@ -1752,7 +1764,7 @@ fn export_and_restore_database_round_trip() {
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
 
     let context = AppContext::new(paths.clone()).unwrap();
-    let profile = context.capture_profile("A").unwrap();
+    let profile = context.codex_capture_profile("A").unwrap();
 
     let exported = context.export_database().unwrap();
     assert!(exported.exists());
@@ -1764,10 +1776,10 @@ fn export_and_restore_database_round_trip() {
         .any(|backup| backup.name == name));
 
     // 把当前库改乱，再从备份恢复
-    context.database.delete_profile(&profile.id).unwrap();
-    assert!(context.database.profiles().unwrap().is_empty());
+    context.database.codex_delete_profile(&profile.id).unwrap();
+    assert!(context.database.codex_profiles().unwrap().is_empty());
     context.restore_database(&name).unwrap();
-    assert_eq!(context.database.profiles().unwrap().len(), 1);
+    assert_eq!(context.database.codex_profiles().unwrap().len(), 1);
 
     // 非法文件名拒绝
     assert!(context.restore_database("../evil.db").is_err());
@@ -1787,25 +1799,25 @@ fn restore_database_preserves_profile_order() {
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    let a = context.capture_profile("A").unwrap();
-    let b = context.capture_profile("B").unwrap();
-    let c = context.capture_profile("C").unwrap();
+    let a = context.codex_capture_profile("A").unwrap();
+    let b = context.codex_capture_profile("B").unwrap();
+    let c = context.codex_capture_profile("C").unwrap();
     // 拖成 C、A、B 并落库
     context
-        .reorder_profiles(&[c.id.clone(), a.id.clone(), b.id.clone()])
+        .codex_reorder_profiles(&[c.id.clone(), a.id.clone(), b.id.clone()])
         .unwrap();
     let exported = context.export_database().unwrap();
     let name = exported.file_name().unwrap().to_string_lossy().into_owned();
 
     // 破坏现场：改回创建顺序，确保恢复结果只能来自备份而不是巧合
     context
-        .reorder_profiles(&[a.id.clone(), b.id.clone(), c.id.clone()])
+        .codex_reorder_profiles(&[a.id.clone(), b.id.clone(), c.id.clone()])
         .unwrap();
 
     context.restore_database(&name).unwrap();
     let names: Vec<String> = context
         .database
-        .profiles()
+        .codex_profiles()
         .unwrap()
         .into_iter()
         .map(|profile| profile.name)
@@ -1978,7 +1990,7 @@ fn restore_legacy_backup_without_claude_tables_starts_claude_empty() {
     context.restore_database("cg-backup-legacy.db").unwrap();
 
     // Codex 数据照常恢复；Claude 表为空、激活位为空
-    assert_eq!(context.database.profiles().unwrap()[0].name, "GLM");
+    assert_eq!(context.database.codex_profiles().unwrap()[0].name, "GLM");
     let (codex_active, _default) = context.database.app_state().unwrap();
     assert_eq!(codex_active.as_deref(), Some("p-1"));
     assert!(context.database.claude_profiles().unwrap().is_empty());
@@ -2074,14 +2086,14 @@ fn apply_builtin_profile_writes_exact_config_and_catalog() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     // 整文件替换，模板之外的键全部清掉，仅密钥占位符被替换；
     // MCP 段例外——跟随 live 携带（全局生效，不随供应商模板丢失）
     let config = std::fs::read(context.paths.codex_config()).unwrap();
-    let rendered = crate::builtin::template("deepseek")
+    let rendered = crate::codex_builtin::template("deepseek")
         .unwrap()
         .render_config(Some("sk-test"))
         .unwrap();
@@ -2094,7 +2106,7 @@ fn apply_builtin_profile_writes_exact_config_and_catalog() {
     assert!(!String::from_utf8_lossy(&config).contains("<YOUR_API_KEY>"));
     // 关联文件按本供应商字节写入，旧文件已备份
     let models = std::fs::read(context.paths.codex_home.join("models.json")).unwrap();
-    assert_eq!(models, crate::builtin::DEEPSEEK_MODELS);
+    assert_eq!(models, crate::codex_builtin::DEEPSEEK_MODELS);
     let backup = std::fs::read_dir(context.paths.codex_files_backup.clone())
         .unwrap()
         .next()
@@ -2147,7 +2159,7 @@ CODEX_HOME = "C:\\.codex"
     );
 
     context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             Some("dev_repl"),
             McpServerSpec {
                 name: "dev_repl".into(),
@@ -2167,7 +2179,7 @@ CODEX_HOME = "C:\\.codex"
     assert!(config.contains("\"--verbose\""), "{config}");
     assert!(context.paths.config_backup.read_dir().unwrap().count() > 0);
 
-    let servers = context.list_mcp_servers().unwrap();
+    let servers = context.codex_list_mcp_servers().unwrap();
     assert_eq!(servers.len(), 1);
     assert_eq!(servers[0].args, ["--verbose"]);
     assert_eq!(servers[0].startup_timeout_sec, Some(120));
@@ -2179,7 +2191,7 @@ fn mcp_save_renames_server() {
         mcp_test_context("[mcp_servers.old]\nurl = \"https://mcp.example/mcp\"\n");
 
     context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             Some("old"),
             McpServerSpec {
                 name: "fresh".into(),
@@ -2208,34 +2220,34 @@ fn mcp_save_rejects_invalid_input() {
 
     // 重名（新建）
     assert!(context
-        .save_mcp_server(None, spec("tavily", Some("https://other/mcp"), None))
+        .codex_save_mcp_server(None, spec("tavily", Some("https://other/mcp"), None))
         .is_err());
     // 非法名称：点号嵌套 / 空格 / 中文 / 空
     assert!(context
-        .save_mcp_server(None, spec("a.b", None, Some("node")))
+        .codex_save_mcp_server(None, spec("a.b", None, Some("node")))
         .is_err());
     assert!(context
-        .save_mcp_server(None, spec("a b", None, Some("node")))
+        .codex_save_mcp_server(None, spec("a b", None, Some("node")))
         .is_err());
     assert!(context
-        .save_mcp_server(None, spec("中文", None, Some("node")))
+        .codex_save_mcp_server(None, spec("中文", None, Some("node")))
         .is_err());
     assert!(context
-        .save_mcp_server(None, spec("", None, Some("node")))
+        .codex_save_mcp_server(None, spec("", None, Some("node")))
         .is_err());
     // 传输互斥与必填
     assert!(context
-        .save_mcp_server(None, spec("x", Some("https://a/mcp"), Some("node")))
+        .codex_save_mcp_server(None, spec("x", Some("https://a/mcp"), Some("node")))
         .is_err());
     assert!(context
-        .save_mcp_server(None, spec("x", None, None))
+        .codex_save_mcp_server(None, spec("x", None, None))
         .is_err());
     assert!(context
-        .save_mcp_server(None, spec("x", Some("ftp://a"), None))
+        .codex_save_mcp_server(None, spec("x", Some("ftp://a"), None))
         .is_err());
     // 超时为正
     assert!(context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             None,
             McpServerSpec {
                 name: "x".into(),
@@ -2256,12 +2268,12 @@ fn mcp_app_operations_leave_no_sync_diff() {
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\nenabled = false\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
     import_mcp_from_live(&context);
-    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
+    assert!(context.codex_mcp_sync_preview().unwrap().entries.is_empty());
 
     context
         .set_mcp_server_enabled("a", SkillTool::Codex, true)
         .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(
         preview.entries.is_empty(),
         "app 开关制造了幻影差异: {:?}",
@@ -2283,7 +2295,7 @@ fn mcp_app_operations_leave_no_sync_diff() {
     context
         .set_mcp_server_enabled("b", SkillTool::Claude, true)
         .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(
         preview.entries.is_empty(),
         "开关循环留下差异: {:?}",
@@ -2303,7 +2315,7 @@ fn mcp_adopt_external_readd_clears_diff_and_reenables() {
     // 外部把同名片段写回 live：应报告"仅 live 有"
     let external = "[mcp_servers.a]\nurl = \"https://a/mcp\"\ncommand = \"node\"\n";
     std::fs::write(context.paths.codex_config(), external).unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert_eq!(preview.entries.len(), 1);
     assert_eq!(preview.entries[0].kind, McpSyncEntryKind::LiveOnly);
 
@@ -2314,7 +2326,7 @@ fn mcp_adopt_external_readd_clears_diff_and_reenables() {
             Some("[mcp_servers.a]\nurl = \"https://a/mcp\"\ncommand = \"node\"\n"),
         )
         .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(
         preview.entries.is_empty(),
         "采纳后差异未清空: {:?}",
@@ -2328,7 +2340,7 @@ fn mcp_adopt_external_readd_clears_diff_and_reenables() {
             .unwrap()
             .codex_enabled
     );
-    let listed = context.list_mcp_servers().unwrap();
+    let listed = context.codex_list_mcp_servers().unwrap();
     assert_eq!(
         listed
             .iter()
@@ -2347,7 +2359,7 @@ fn mcp_managed_entry_hidden_and_untouchable() {
     );
 
     // 列表不显示托管条目
-    let servers = context.list_mcp_servers().unwrap();
+    let servers = context.codex_list_mcp_servers().unwrap();
     let names: Vec<&str> = servers.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, ["github"]);
 
@@ -2364,12 +2376,12 @@ fn mcp_managed_entry_hidden_and_untouchable() {
         .unwrap();
 
     // 差异对比对两侧的托管条目都视而不见：无差异
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries.len());
 
     // 不能以托管名创建/编辑，也不能删除
     assert!(context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             None,
             McpServerSpec {
                 name: "node_repl".into(),
@@ -2378,7 +2390,7 @@ fn mcp_managed_entry_hidden_and_untouchable() {
             }
         )
         .is_err());
-    assert!(context.delete_mcp_server("node_repl").is_err());
+    assert!(context.codex_delete_mcp_server("node_repl").is_err());
 
     // 镜像写回 live：托管条目原样保留（不被 stale 片段覆盖、也不被删除）
     context.restore_mcp_from_database().unwrap();
@@ -2423,13 +2435,13 @@ fn mcp_delete_removes_only_target() {
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
 
-    context.delete_mcp_server("a").unwrap();
+    context.codex_delete_mcp_server("a").unwrap();
 
     let config = read_config_text(&context);
     assert!(!config.contains("mcp_servers.a"), "{config}");
     assert!(config.contains("mcp_servers.b"), "{config}");
     // 不存在的服务器报错（外部并发修改时让用户看见）
-    assert!(context.delete_mcp_server("nothere").is_err());
+    assert!(context.codex_delete_mcp_server("nothere").is_err());
 }
 
 #[test]
@@ -2448,10 +2460,10 @@ fn apply_raw_profile_carries_live_mcp_section() {
         "[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n",
     );
     let profile = context
-        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
+        .codex_add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     let config = read_config_text(&context);
     // live 的 MCP 段被携带进快照供应商；快照里的陈旧段被替换
@@ -2474,7 +2486,7 @@ fn mcp_list_does_not_write_database_mirror() {
         "cwd = \"/srv\"\n",
     ));
 
-    let servers = context.list_mcp_servers().unwrap();
+    let servers = context.codex_list_mcp_servers().unwrap();
     assert_eq!(servers.len(), 1);
 
     assert!(context.database.mcp_server_fragments().unwrap().is_empty());
@@ -2508,7 +2520,7 @@ fn restore_database_writes_mcp_back_to_live() {
 fn context_with_profile(context: &AppContext) {
     let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
     context
-        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
+        .codex_add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
 }
 
@@ -2526,18 +2538,18 @@ fn created_profiles_snapshot_prefers_database_mcp_mirror() {
     // 自定义供应商：粘贴的配置没有 MCP，保存后快照带上全局段（编辑器打开即见）
     let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
     let custom = context
-        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
+        .codex_add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
-    let detail = context.get_profile(&custom.id).unwrap();
+    let detail = context.codex_get_profile(&custom.id).unwrap();
     let stored = detail.raw_config.expect("自定义快照应有 raw_config");
     assert!(stored.contains("mcp_servers.mirrored"), "{stored}");
     assert!(!stored.contains("mcp_servers.live"), "{stored}");
 
     // 内置供应商：快照同样带上全局段
     let builtin = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    let detail = context.get_profile(&builtin.id).unwrap();
+    let detail = context.codex_get_profile(&builtin.id).unwrap();
     let stored = detail.raw_config.expect("内置快照应有 raw_config");
     assert!(stored.contains("mcp_servers.mirrored"), "{stored}");
     assert!(!stored.contains("mcp_servers.live"), "{stored}");
@@ -2549,15 +2561,15 @@ fn created_profiles_fall_back_to_live_mcp_when_mirror_empty() {
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
     let raw = "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n\n[model_providers.ZAI]\nname = \"ZAI\"\nbase_url = \"https://api.z.ai\"\nwire_api = \"responses\"\n";
     let custom = context
-        .add_custom_profile("智谱", None, raw, None, None, None, None, None)
+        .codex_add_custom_profile("智谱", None, raw, None, None, None, None, None)
         .unwrap();
     let builtin = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
 
     for profile in [custom, builtin] {
         let stored = context
-            .get_profile(&profile.id)
+            .codex_get_profile(&profile.id)
             .unwrap()
             .raw_config
             .unwrap();
@@ -2571,12 +2583,12 @@ fn mcp_delete_via_app_clears_database_mirror() {
         mcp_test_context("[mcp_servers.tavily]\nurl = \"https://mcp.tavily.com/mcp\"\n");
 
     // 应用内的删除是明确意图：live 与数据库镜像一起清空
-    context.delete_mcp_server("tavily").unwrap();
+    context.codex_delete_mcp_server("tavily").unwrap();
     assert!(context.database.mcp_server_fragments().unwrap().is_empty());
 
     // 应用内的保存/删除持续整表对齐镜像。
     context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             None,
             McpServerSpec {
                 name: "a".into(),
@@ -2586,7 +2598,7 @@ fn mcp_delete_via_app_clears_database_mirror() {
         )
         .unwrap();
     context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             None,
             McpServerSpec {
                 name: "b".into(),
@@ -2595,7 +2607,7 @@ fn mcp_delete_via_app_clears_database_mirror() {
             },
         )
         .unwrap();
-    context.delete_mcp_server("a").unwrap();
+    context.codex_delete_mcp_server("a").unwrap();
     let fragments = context.database.mcp_server_fragments().unwrap();
     assert_eq!(fragments.len(), 1);
     assert_eq!(fragments[0].0, "b");
@@ -2720,7 +2732,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
         "[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     )
     .unwrap();
-    assert_eq!(context.list_mcp_servers().unwrap().len(), 1);
+    assert_eq!(context.codex_list_mcp_servers().unwrap().len(), 1);
     assert_eq!(context.database.mcp_server_fragments().unwrap().len(), 2);
 
     // 显式“以配置文件为准”才收敛：a 从数据库清除，预览归零
@@ -2729,7 +2741,7 @@ fn mcp_list_does_not_absorb_externally_deleted_rows() {
     let fragments = context.database.mcp_server_fragments().unwrap();
     assert_eq!(fragments.len(), 1);
     assert_eq!(fragments[0].0, "b");
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
 }
 
@@ -2753,7 +2765,7 @@ fn mcp_engine_toggle_only_touches_its_own_live_file() {
     let record = context.database.mcp_server_record("a").unwrap().unwrap();
     assert!(!record.codex_enabled);
     assert!(record.claude_enabled);
-    let listed = context.list_mcp_servers().unwrap();
+    let listed = context.codex_list_mcp_servers().unwrap();
     assert_eq!(
         listed
             .iter()
@@ -2762,7 +2774,7 @@ fn mcp_engine_toggle_only_touches_its_own_live_file() {
             .enabled,
         Some(false)
     );
-    let claude_listed = context.claude_mcp_servers().unwrap();
+    let claude_listed = context.claude_list_mcp_servers().unwrap();
     assert_eq!(
         claude_listed
             .iter()
@@ -2823,7 +2835,7 @@ fn mcp_mirror_rewrite_preserves_engine_flags_across_saves() {
 
     // 保存与 a/b 无关的第三台：整表重写后两个关闭行原样保留，开关不被重置
     context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             None,
             McpServerSpec {
                 name: "c".into(),
@@ -2859,7 +2871,7 @@ fn mcp_preview_flags_live_only_db_only_and_changed() {
         "[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     )
     .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert_eq!(preview.live_count, 2);
     assert_eq!(preview.db_count, 1);
     assert_eq!(preview.entries.len(), 2, "{:?}", preview.entries);
@@ -2884,7 +2896,7 @@ fn mcp_preview_flags_live_only_db_only_and_changed() {
         "[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
     )
     .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     let db_only = preview
         .entries
         .iter()
@@ -2906,7 +2918,7 @@ fn mcp_diff_verbs_are_surgical_to_one_entry() {
         "[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[mcp_servers.b]\nurl = \"https://b/v2\"\n",
     )
     .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert_eq!(preview.entries.len(), 2, "{:?}", preview.entries);
 
     // 只同步 a：镜像仅收 a，b 的差异必须原样保留（回归：单条操作不得全量重写镜像）
@@ -2918,17 +2930,17 @@ fn mcp_diff_verbs_are_surgical_to_one_entry() {
     context
         .set_mcp_mirror_entry("a", Some(entry_a.live_toml.as_deref().unwrap()))
         .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert_eq!(preview.entries.len(), 1, "{:?}", preview.entries);
     assert_eq!(preview.entries[0].name, "b");
-    let mirror = context.list_mcp_servers().unwrap();
+    let mirror = context.codex_list_mcp_servers().unwrap();
     let a = mirror.iter().find(|server| server.name == "a").unwrap();
     assert_eq!(a.url.as_deref(), Some("https://a/v2"));
 
     // 只撤销 b：live 的 b 恢复为数据库旧值，镜像不动
     let db_b = preview.entries[0].db_toml.as_deref().unwrap();
     context.revert_mcp_live_entry("b", Some(db_b)).unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
     let live_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     assert!(live_text.contains("https://b/mcp"), "{live_text}");
@@ -2940,10 +2952,10 @@ fn mcp_diff_verbs_are_surgical_to_one_entry() {
         "[mcp_servers.a]\nurl = \"https://a/v2\"\n\n[mcp_servers.c]\nurl = \"https://c/mcp\"\n",
     )
     .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert_eq!(preview.entries.len(), 2, "{:?}", preview.entries);
     context.revert_mcp_live_entry("c", None).unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert_eq!(preview.entries.len(), 1, "{:?}", preview.entries);
     assert_eq!(preview.entries[0].kind, McpSyncEntryKind::DbOnly);
     let live_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
@@ -2951,7 +2963,7 @@ fn mcp_diff_verbs_are_surgical_to_one_entry() {
 
     // db_only 的同步 = 仅删镜像条目，live 不动
     context.set_mcp_mirror_entry("b", None).unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
     let live_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     assert!(live_text.contains("https://a/v2"), "{live_text}");
@@ -2988,7 +3000,7 @@ fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
     .unwrap();
 
     let actions: Vec<McpDiffEntryAction> = context
-        .mcp_sync_preview()
+        .codex_mcp_sync_preview()
         .unwrap()
         .entries
         .iter()
@@ -3019,7 +3031,7 @@ fn mcp_batch_diff_reverts_in_one_write_keeping_live_layout() {
         "{live}"
     );
     assert!(!live.contains("/v2"), "{live}");
-    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
+    assert!(context.codex_mcp_sync_preview().unwrap().entries.is_empty());
 }
 
 #[test]
@@ -3064,7 +3076,7 @@ fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
     .unwrap();
 
     let actions: Vec<McpDiffEntryAction> = context
-        .mcp_sync_preview()
+        .codex_mcp_sync_preview()
         .unwrap()
         .entries
         .iter()
@@ -3075,12 +3087,12 @@ fn mcp_batch_mirror_adopt_writes_once_and_keeps_untouched_entries() {
         .collect();
     assert_eq!(context.set_mcp_mirror_entries(&actions).unwrap(), 2);
 
-    let mirror = context.list_mcp_servers().unwrap();
+    let mirror = context.codex_list_mcp_servers().unwrap();
     let server = |name: &str| mirror.iter().find(|server| server.name == name).unwrap();
     assert_eq!(server("a").url.as_deref(), Some("https://a/v2"));
     assert_eq!(server("b").url.as_deref(), Some("https://b/v2"));
     assert_eq!(server("c").url.as_deref(), Some("https://c/mcp"));
-    assert!(context.mcp_sync_preview().unwrap().entries.is_empty());
+    assert!(context.codex_mcp_sync_preview().unwrap().entries.is_empty());
 }
 
 #[test]
@@ -3094,7 +3106,7 @@ fn mcp_preview_ignores_comment_only_difference() {
         "[mcp_servers.a]\n# 手动维护\nurl = \"https://a/mcp\"\n",
     )
     .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
 }
 
@@ -3136,7 +3148,7 @@ fn mcp_preview_ignores_blank_line_only_difference() {
         "[mcp_servers.a]\n\n\nurl = \"https://a/mcp\"\n\n",
     )
     .unwrap();
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
 }
 
@@ -3154,7 +3166,7 @@ fn mcp_preview_ignores_legacy_empty_mcp_root_header() {
         )
         .unwrap();
 
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
 }
 
@@ -3163,7 +3175,7 @@ fn mcp_preview_empty_when_mirror_matches_live() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
     import_mcp_from_live(&context);
 
-    let preview = context.mcp_sync_preview().unwrap();
+    let preview = context.codex_mcp_sync_preview().unwrap();
     assert!(preview.entries.is_empty(), "{:?}", preview.entries);
     assert_eq!(preview.live_count, 1);
     assert_eq!(preview.db_count, 1);
@@ -3176,7 +3188,7 @@ fn mcp_preview_fails_when_live_unparseable() {
 
     // live 无法解析：预览报错，前端进入“仅可从数据库恢复”降级模式
     std::fs::write(context.paths.codex_config(), "not [ valid").unwrap();
-    assert!(context.mcp_sync_preview().is_err());
+    assert!(context.codex_mcp_sync_preview().is_err());
 }
 
 #[test]
@@ -3189,7 +3201,7 @@ fn mcp_save_consolidates_scattered_live_section() {
         "[features]\njs = false\n",
     ));
     context
-        .save_mcp_server(
+        .codex_save_mcp_server(
             None,
             McpServerSpec {
                 name: "fresh".into(),
@@ -3235,16 +3247,20 @@ fn update_builtin_profile_writes_key_back_when_active() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, None, Some("sk-old"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-old"), None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     assert_eq!(
-        context.get_state().unwrap().active_profile_id.as_deref(),
+        context
+            .get_state()
+            .unwrap()
+            .active_codex_profile_id
+            .as_deref(),
         Some(profile.id.as_str())
     );
 
     context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             "DeepSeek 官方",
             None,
@@ -3261,7 +3277,7 @@ fn update_builtin_profile_writes_key_back_when_active() {
     assert!(!config.contains("sk-old"));
     assert!(!config.contains("<YOUR_API_KEY>"));
 
-    let detail = context.get_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
     assert_eq!(detail.api_key.as_deref(), Some("sk-real"));
     // 所见即所得：编辑器直接展示真实密钥
     assert!(detail
@@ -3280,14 +3296,14 @@ fn unused_builtin_edit_save_writes_db_only_without_key_prompt() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
 
     // 未使用：编辑保存只写库，不要求密钥占位符、不碰 live 配置
-    let detail = context.get_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
     let edited = detail.config_fragment.replace("sk-test", "sk-edited");
     context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             "DeepSeek",
             None,
@@ -3297,7 +3313,7 @@ fn unused_builtin_edit_save_writes_db_only_without_key_prompt() {
         )
         .unwrap();
     let updated = context
-        .update_profile_config(&profile.id, &edited, None, None)
+        .codex_update_profile_config(&profile.id, &edited, None, None)
         .unwrap();
     assert!(updated.raw_config.as_deref().unwrap().contains("sk-edited"));
     assert_eq!(
@@ -3316,14 +3332,14 @@ fn keyless_builtin_saves_to_db_but_apply_requires_key() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, None, None, None, None)
+        .codex_add_builtin_profile("deepseek", None, None, None, None, None)
         .unwrap();
     assert!(!profile.has_key);
-    let detail = context.get_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
     assert_eq!(detail.api_key.as_deref(), None);
     assert!(detail.config_fragment.contains("<YOUR_API_KEY>"));
 
-    let error = context.apply_profile(&profile.id).unwrap_err();
+    let error = context.codex_apply_profile(&profile.id).unwrap_err();
     assert!(error.0.contains("尚未配置 API Key"));
     assert_eq!(
         std::fs::read_to_string(context.paths.codex_config()).unwrap(),
@@ -3341,9 +3357,9 @@ fn active_builtin_save_without_placeholder_keeps_edited_text() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     // 编辑文本里用户已把占位符改成真实密钥：保存不再报“缺少密钥占位符”
     let edited = r#"
@@ -3362,7 +3378,7 @@ wire_api = "responses"
 experimental_bearer_token = "sk-in-editor"
 "#;
     context
-        .update_profile_config(&profile.id, edited, None, None)
+        .codex_update_profile_config(&profile.id, edited, None, None)
         .unwrap();
     let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     assert!(live.contains("sk-in-editor"));
@@ -3379,23 +3395,23 @@ fn builtin_catalogs_are_not_mixed() {
 
     let context = AppContext::new(paths).unwrap();
     let deepseek = context
-        .add_builtin_profile("deepseek", None, None, Some("sk-d"), None, None)
+        .codex_add_builtin_profile("deepseek", None, None, Some("sk-d"), None, None)
         .unwrap();
     std::thread::sleep(std::time::Duration::from_millis(2));
     let zhipu = context
-        .add_builtin_profile("zhipu", None, None, Some("sk-z"), None, None)
+        .codex_add_builtin_profile("zhipu", None, None, Some("sk-z"), None, None)
         .unwrap();
 
-    context.apply_profile(&deepseek.id).unwrap();
+    context.codex_apply_profile(&deepseek.id).unwrap();
     assert_eq!(
         std::fs::read(context.paths.codex_home.join("models.json")).unwrap(),
-        crate::builtin::DEEPSEEK_MODELS
+        crate::codex_builtin::DEEPSEEK_MODELS
     );
 
-    context.apply_profile(&zhipu.id).unwrap();
+    context.codex_apply_profile(&zhipu.id).unwrap();
     assert_eq!(
         std::fs::read(context.paths.codex_home.join("models.json")).unwrap(),
-        crate::builtin::ZHIPU_MODELS
+        crate::codex_builtin::ZHIPU_MODELS
     );
 }
 
@@ -3409,12 +3425,12 @@ fn apply_minimax_inserts_catalog_line_and_writes_catalog() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("minimax", None, None, Some("mm-key"), None, None)
+        .codex_add_builtin_profile("minimax", None, None, Some("mm-key"), None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     let config = std::fs::read(context.paths.codex_config()).unwrap();
-    let rendered = crate::builtin::template("minimax")
+    let rendered = crate::codex_builtin::template("minimax")
         .unwrap()
         .render_config(Some("mm-key"))
         .unwrap();
@@ -3435,7 +3451,7 @@ fn apply_minimax_inserts_catalog_line_and_writes_catalog() {
             .join("custom-catalog.json"),
     )
     .unwrap();
-    assert_eq!(catalog, crate::builtin::MINIMAX_CATALOG);
+    assert_eq!(catalog, crate::codex_builtin::MINIMAX_CATALOG);
 }
 
 #[test]
@@ -3453,13 +3469,13 @@ fn apply_chatgpt_writes_official_default_and_clears_empty_desktop_auth() {
 
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile("chatgpt", None, None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
         .unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     assert_eq!(
         std::fs::read(context.paths.codex_config()).unwrap(),
-        crate::builtin::CHATGPT_CONFIG
+        crate::codex_builtin::CHATGPT_CONFIG
     );
     assert!(!context.paths.codex_home.join("auth.json").exists());
     assert!(!context.paths.codex_home.join("models.json").exists());
@@ -3474,8 +3490,8 @@ fn builtin_placeholder_key_is_not_exposed_as_api_key() {
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
 
     let context = AppContext::new(paths).unwrap();
-    // 占位符密钥不算已填写：get_profile 不应把占位符当成密钥回显
-    let payload = ProfilePayload {
+    // 占位符密钥不算已填写：codex_get_profile 不应把占位符当成密钥回显
+    let payload = CodexProfilePayload {
         builtin: Some("deepseek".into()),
         model_values: [
             ("model".to_string(), "\"deepseek-flash\"".into()),
@@ -3493,15 +3509,15 @@ fn builtin_placeholder_key_is_not_exposed_as_api_key() {
     };
     let summary = context
         .database
-        .insert_profile("DeepSeek 占位符", &payload, &now_ms().to_string())
+        .codex_insert_profile("DeepSeek 占位符", &payload, &now_ms().to_string())
         .unwrap();
 
-    let detail = context.get_profile(&summary.id).unwrap();
+    let detail = context.codex_get_profile(&summary.id).unwrap();
     assert_eq!(detail.api_key, None);
     assert!(detail.config_fragment.contains("<YOUR_API_KEY>"));
     let state = context.get_state().unwrap();
     let stored_summary = state
-        .profiles
+        .codex_profiles
         .iter()
         .find(|item| item.id == summary.id)
         .unwrap();
@@ -3529,7 +3545,7 @@ experimental_bearer_token = "secret"
     )
     .unwrap();
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("GLM").unwrap();
+    let profile = context.codex_capture_profile("GLM").unwrap();
 
     let edited = r#"
 model = "glm-5.5"
@@ -3542,7 +3558,7 @@ base_url = "https://new.example"
 experimental_bearer_token = "new-key"
 "#;
     let detail = context
-        .update_profile_config(&profile.id, edited, None, None)
+        .codex_update_profile_config(&profile.id, edited, None, None)
         .unwrap();
     assert_eq!(detail.raw_config.as_deref(), Some(edited));
     assert_eq!(
@@ -3554,7 +3570,7 @@ experimental_bearer_token = "new-key"
     );
     assert!(detail.config_fragment.contains("https://new.example"));
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     assert!(live.contains("glm-5.5"));
     assert!(live.contains("https://new.example"));
@@ -3568,8 +3584,8 @@ fn clearing_catalog_text_untracks_custom_catalog_and_restores_builtin_models_jso
     std::fs::create_dir_all(&paths.codex_home).unwrap();
     let context = AppContext::new(paths).unwrap();
     let profile = context
-        .add_builtin_profile(
-            crate::builtin::KIND_DEEPSEEK,
+        .codex_add_builtin_profile(
+            crate::codex_builtin::KIND_DEEPSEEK,
             None,
             None,
             Some("sk-test"),
@@ -3578,7 +3594,7 @@ fn clearing_catalog_text_untracks_custom_catalog_and_restores_builtin_models_jso
         )
         .unwrap();
     std::fs::write(context.paths.codex_config(), "model = \"other\"\n").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     let catalog_path = context.paths.codex_home.join("models.json");
     assert!(catalog_path.exists());
@@ -3586,16 +3602,16 @@ fn clearing_catalog_text_untracks_custom_catalog_and_restores_builtin_models_jso
 
     let config_text = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     let detail = context
-        .update_profile_config(&profile.id, &config_text, Some(""), None)
+        .codex_update_profile_config(&profile.id, &config_text, Some(""), None)
         .unwrap();
 
-    // live 文件立即回写内置资产而不是留着用户改过的内容；激活档 get_profile 再把
+    // live 文件立即回写内置资产而不是留着用户改过的内容；激活档 codex_get_profile 再把
     // live 回写进快照，所以编辑器看到的是内置目录原文
     let live = std::fs::read_to_string(&catalog_path).unwrap();
-    assert_eq!(live.as_bytes(), crate::builtin::DEEPSEEK_MODELS);
+    assert_eq!(live.as_bytes(), crate::codex_builtin::DEEPSEEK_MODELS);
     assert_eq!(
         detail.raw_catalog.as_deref().map(str::as_bytes),
-        Some(crate::builtin::DEEPSEEK_MODELS)
+        Some(crate::codex_builtin::DEEPSEEK_MODELS)
     );
 }
 
@@ -3611,11 +3627,11 @@ fn updating_active_profile_config_preserves_computer_use_server() {
     )
     .unwrap();
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("GLM").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("GLM").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
 
     context
-        .update_profile_config(&profile.id, "model = \"glm-5.5\"\n", None, None)
+        .codex_update_profile_config(&profile.id, "model = \"glm-5.5\"\n", None, None)
         .unwrap();
 
     let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
@@ -3643,9 +3659,9 @@ name = "ZAI"
     let context = AppContext::new(paths).unwrap();
 
     // 捕获配置：model_provider 指向不存在的段 → 宽容保存，段体留空
-    let profile = context.capture_profile("GLM").unwrap();
+    let profile = context.codex_capture_profile("GLM").unwrap();
     let saved = context
-        .update_profile_config(
+        .codex_update_profile_config(
             &profile.id,
             "model = \"glm-5.3\"\nmodel_provider = \"ZAI\"\n",
             None,
@@ -3656,7 +3672,7 @@ name = "ZAI"
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .provider_body,
@@ -3665,7 +3681,7 @@ name = "ZAI"
 
     // 捕获配置：供应商名与段一致改名 → 供应商身份跟随配置
     let updated = context
-        .update_profile_config(
+        .codex_update_profile_config(
             &profile.id,
             "model = \"glm-5.3\"\nmodel_provider = \"OTHER\"\n\n[model_providers.OTHER]\nname = \"OTHER\"\n",
             None,
@@ -3676,7 +3692,7 @@ name = "ZAI"
     assert_eq!(
         context
             .database
-            .profile(&profile.id)
+            .codex_profile(&profile.id)
             .unwrap()
             .payload
             .provider_id
@@ -3686,10 +3702,10 @@ name = "ZAI"
 
     // 内置配置：改名后脱离内置模板，按完整配置快照处理
     let builtin = context
-        .add_builtin_profile("zhipu", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("zhipu", None, None, Some("sk-test"), None, None)
         .unwrap();
     let updated = context
-        .update_profile_config(
+        .codex_update_profile_config(
             &builtin.id,
             "model = \"glm-5.3\"\nmodel_provider = \"OTHER\"\n\n[model_providers.OTHER]\nname = \"OTHER\"\nbase_url = \"https://api.example\"\nexperimental_bearer_token = \"sk-test\"\n",
             None,
@@ -3697,7 +3713,7 @@ name = "ZAI"
         )
         .unwrap();
     assert_eq!(updated.provider.as_deref(), Some("OTHER"));
-    let stored = context.database.profile(&builtin.id).unwrap();
+    let stored = context.database.codex_profile(&builtin.id).unwrap();
     assert_eq!(stored.payload.provider_id.as_deref(), Some("OTHER"));
     assert_eq!(stored.payload.builtin, None);
 }
@@ -3711,7 +3727,7 @@ fn update_profile_config_builtin_raw_applies_with_key_and_catalog() {
     let context = AppContext::new(paths).unwrap();
     std::fs::write(context.paths.codex_config(), "model = \"other\"\n").unwrap();
     let profile = context
-        .add_builtin_profile("zhipu", None, None, Some("sk-test"), None, None)
+        .codex_add_builtin_profile("zhipu", None, None, Some("sk-test"), None, None)
         .unwrap();
 
     let edited = r#"
@@ -3728,11 +3744,11 @@ extra = "edited"
 "#;
     let catalog = r#"{"models":[{"id":"glm-5.3","name":"GLM 5.3"}]}"#;
     let detail = context
-        .update_profile_config(&profile.id, edited, Some(catalog), None)
+        .codex_update_profile_config(&profile.id, edited, Some(catalog), None)
         .unwrap();
     assert_eq!(detail.raw_config.as_deref(), Some(edited));
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
     assert!(live.contains("extra = \"edited\""));
     assert!(live.contains(r#"experimental_bearer_token = "sk-test""#));
@@ -3762,7 +3778,7 @@ name = "ZAI"
 base_url = "https://api.example"
 "#,
     );
-    let profile_a = context.capture_profile("A").unwrap();
+    let profile_a = context.codex_capture_profile("A").unwrap();
     std::thread::sleep(std::time::Duration::from_millis(2));
     write(
         r#"
@@ -3775,12 +3791,12 @@ name = "ZAI"
 base_url = "https://api.example"
 "#,
     );
-    let profile_b = context.capture_profile("B").unwrap();
+    let profile_b = context.codex_capture_profile("B").unwrap();
 
-    let detail_a = context.get_profile(&profile_a.id).unwrap();
+    let detail_a = context.codex_get_profile(&profile_a.id).unwrap();
     let catalog = r#"{"models":[{"id":"edited"}]}"#;
     context
-        .update_profile_config(
+        .codex_update_profile_config(
             &profile_a.id,
             &detail_a.config_fragment,
             Some(catalog),
@@ -3788,8 +3804,8 @@ base_url = "https://api.example"
         )
         .unwrap();
 
-    context.apply_profile(&profile_b.id).unwrap();
-    let stored_a = context.database.profile(&profile_a.id).unwrap();
+    context.codex_apply_profile(&profile_b.id).unwrap();
+    let stored_a = context.database.codex_profile(&profile_a.id).unwrap();
     assert_eq!(stored_a.payload.raw_catalog.as_deref(), Some(catalog));
 }
 
@@ -3797,21 +3813,21 @@ base_url = "https://api.example"
 fn profile_description_survives_live_sync_and_can_be_cleared() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
-        .add_builtin_profile("chatgpt", Some("  工作配置  "), None, None, None, None)
+        .codex_add_builtin_profile("chatgpt", Some("  工作配置  "), None, None, None, None)
         .unwrap();
     assert_eq!(
         context
-            .get_profile(&profile.id)
+            .codex_get_profile(&profile.id)
             .unwrap()
             .description
             .as_deref(),
         Some("工作配置")
     );
 
-    context.apply_profile(&profile.id).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     let active = context.get_state().unwrap();
     let active_profile = active
-        .profiles
+        .codex_profiles
         .iter()
         .find(|item| item.id == profile.id)
         .unwrap();
@@ -3821,7 +3837,7 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
         .is_none());
     assert_eq!(
         context
-            .get_profile(&profile.id)
+            .codex_get_profile(&profile.id)
             .unwrap()
             .description
             .as_deref(),
@@ -3829,33 +3845,36 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
     );
 
     context
-        .update_profile(&profile.id, &profile.name, Some("新描述"), None, None, None)
+        .codex_update_profile(&profile.id, &profile.name, Some("新描述"), None, None, None)
         .unwrap();
     assert_eq!(
         context
-            .get_profile(&profile.id)
+            .codex_get_profile(&profile.id)
             .unwrap()
             .description
             .as_deref(),
         Some("新描述")
     );
     context
-        .update_profile(&profile.id, &profile.name, None, None, None, None)
+        .codex_update_profile(&profile.id, &profile.name, None, None, None, None)
         .unwrap();
     assert_eq!(
         context
-            .get_profile(&profile.id)
+            .codex_get_profile(&profile.id)
             .unwrap()
             .description
             .as_deref(),
         Some("新描述")
     );
     context
-        .update_profile(&profile.id, &profile.name, Some("  "), None, None, None)
+        .codex_update_profile(&profile.id, &profile.name, Some("  "), None, None, None)
         .unwrap();
-    assert_eq!(context.get_profile(&profile.id).unwrap().description, None);
+    assert_eq!(
+        context.codex_get_profile(&profile.id).unwrap().description,
+        None
+    );
     assert!(context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             &profile.name,
             Some(&"x".repeat(201)),
@@ -3866,7 +3885,7 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
         .is_err());
 
     let custom = context
-        .add_custom_profile(
+        .codex_add_custom_profile(
             "自定义",
             Some("备注"),
             "model = \"gpt-5.6\"\n",
@@ -3879,7 +3898,7 @@ fn profile_description_survives_live_sync_and_can_be_cleared() {
         .unwrap();
     assert_eq!(
         context
-            .get_profile(&custom.id)
+            .codex_get_profile(&custom.id)
             .unwrap()
             .description
             .as_deref(),
@@ -3895,10 +3914,10 @@ fn update_profile_saves_and_clears_admin_url() {
     std::fs::create_dir_all(&paths.codex_home).unwrap();
     std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
     let context = AppContext::new(paths).unwrap();
-    let profile = context.capture_profile("GLM").unwrap();
+    let profile = context.codex_capture_profile("GLM").unwrap();
 
     let summary = context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             "GLM",
             None,
@@ -3913,7 +3932,7 @@ fn update_profile_saves_and_clears_admin_url() {
     );
 
     let invalid = context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             "GLM",
             None,
@@ -3925,9 +3944,9 @@ fn update_profile_saves_and_clears_admin_url() {
     assert!(invalid.0.contains("http"));
 
     context
-        .update_profile(&profile.id, "GLM", None, None, None, Some(""))
+        .codex_update_profile(&profile.id, "GLM", None, None, None, Some(""))
         .unwrap();
-    let detail = context.get_profile(&profile.id).unwrap();
+    let detail = context.codex_get_profile(&profile.id).unwrap();
     assert_eq!(detail.admin_url, None);
 }
 
@@ -3951,14 +3970,14 @@ base_url = "https://api.example"
     )
     .unwrap();
     let context = AppContext::new(paths).unwrap();
-    let before = context.capture_profile("Before").unwrap();
-    let profile = context.capture_profile("GLM").unwrap();
-    let after = context.capture_profile("After").unwrap();
+    let before = context.codex_capture_profile("Before").unwrap();
+    let profile = context.codex_capture_profile("GLM").unwrap();
+    let after = context.codex_capture_profile("After").unwrap();
     context
-        .reorder_profiles(&[before.id.clone(), profile.id.clone(), after.id.clone()])
+        .codex_reorder_profiles(&[before.id.clone(), profile.id.clone(), after.id.clone()])
         .unwrap();
     context
-        .update_profile(
+        .codex_update_profile(
             &profile.id,
             "GLM",
             None,
@@ -3968,14 +3987,14 @@ base_url = "https://api.example"
         )
         .unwrap();
     context
-        .set_profile_icon(&profile.id, Some("zhipu"))
+        .codex_set_profile_icon(&profile.id, Some("zhipu"))
         .unwrap();
 
-    let dup = context.duplicate_profile(&profile.id).unwrap();
+    let dup = context.codex_duplicate_profile(&profile.id).unwrap();
     assert_eq!(dup.name, "GLM copy");
     let ordered_names: Vec<String> = context
         .database
-        .profiles()
+        .codex_profiles()
         .unwrap()
         .into_iter()
         .map(|item| item.name)
@@ -3986,12 +4005,12 @@ base_url = "https://api.example"
         Some("https://console.example.com")
     );
     assert_eq!(dup.icon.as_deref(), Some("zhipu"));
-    let original = context.database.profile(&profile.id).unwrap();
-    let copied = context.database.profile(&dup.id).unwrap();
+    let original = context.database.codex_profile(&profile.id).unwrap();
+    let copied = context.database.codex_profile(&dup.id).unwrap();
     assert_eq!(copied.payload, original.payload);
 
     std::thread::sleep(std::time::Duration::from_millis(2));
-    let dup2 = context.duplicate_profile(&profile.id).unwrap();
+    let dup2 = context.codex_duplicate_profile(&profile.id).unwrap();
     assert_eq!(dup2.name, "GLM copy 2");
 }
 
@@ -4020,20 +4039,20 @@ base_url = "https://api.example"
     .unwrap();
     let context = AppContext::new(paths).unwrap();
     // 捕获的第三方供应商默认未使用；显式应用后复制时应带上当前 live auth.json
-    let profile = context.capture_profile("GLM").unwrap();
-    context.apply_profile(&profile.id).unwrap();
+    let profile = context.codex_capture_profile("GLM").unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
     assert!(context
         .database
-        .profile(&profile.id)
+        .codex_profile(&profile.id)
         .unwrap()
         .payload
         .raw_auth
         .is_none());
-    let dup = context.duplicate_profile(&profile.id).unwrap();
+    let dup = context.codex_duplicate_profile(&profile.id).unwrap();
     assert_eq!(
         context
             .database
-            .profile(&dup.id)
+            .codex_profile(&dup.id)
             .unwrap()
             .payload
             .raw_auth
@@ -4057,13 +4076,13 @@ base_url = "https://api.example"
         })
         .unwrap();
     let official = context
-        .add_builtin_profile("chatgpt", None, None, None, None, Some("acc-1"))
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, Some("acc-1"))
         .unwrap();
-    let dup2 = context.duplicate_profile(&official.id).unwrap();
+    let dup2 = context.codex_duplicate_profile(&official.id).unwrap();
     assert_eq!(
         context
             .database
-            .profile(&dup2.id)
+            .codex_profile(&dup2.id)
             .unwrap()
             .account_id
             .as_deref(),

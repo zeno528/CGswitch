@@ -214,7 +214,7 @@ mod ops;
 mod skills;
 mod store;
 
-pub use cli::detect_system_proxy;
+pub(crate) use cli::{wait_child_with_timeout, ChildOutput};
 
 #[cfg(test)]
 pub(super) fn test_context() -> (tempfile::TempDir, AppContext) {

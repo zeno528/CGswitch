@@ -107,14 +107,17 @@ describe("AppUpdateProvider", () => {
 
   it("更新入口固定在侧栏底部，供应商页头展示产品标识", () => {
     const appShellSource = readFileSync(new URL("../../app/AppShell.tsx", import.meta.url), "utf8");
-    const profilesSource = readFileSync(new URL("../profiles/ProfilesView.tsx", import.meta.url), "utf8");
+    const profilesSource = readFileSync(new URL("../codex/CodexProfilesView.tsx", import.meta.url), "utf8");
     expect(appShellSource).toContain("UpdateNotice");
     expect(appShellSource).toContain("update-notice--sidebar");
     expect(profilesSource).not.toContain("<UpdateNotice />");
     expect(profilesSource).toContain("provider-page-brand");
-    expect(providerSource).toContain('className="apple-sidebar-nav-button update-notice-trigger"');
+    expect(providerSource).toContain('className="apple-sidebar-nav-button app-selection-state"');
     expect(providerSource).toContain('className="apple-sidebar-label"');
     expect(providerSource).toContain("sidebarCollapsed && sidebarFlyoutArmed");
     expect(providerSource).toContain("w-[var(--sidebar-icon-size)]");
+    expect(providerSource).toContain('<Download className="!h-3.5 !w-3.5" strokeWidth={2.5}');
+    expect(appShellSource).toContain("icon: <McpIcon />");
+    expect(appShellSource).not.toContain("McpIcon className=\"h-[18px] w-[18px]\"");
   });
 });

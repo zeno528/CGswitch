@@ -426,16 +426,14 @@ async fn probe_http_inner(
         Ok(value) => value,
         Err(error) => return failed_result(start, None, error),
     };
-    // 与 connections::http_client 同理：显式配置检测到的系统代理，
-    // 探测请求走哪个代理由应用自己掌握（走向在探测结果行里一并输出）
-    let mut client_builder = reqwest::Client::builder()
+    let network = match crate::network::Network::new(proxy.map(str::to_owned)) {
+        Ok(network) => network,
+        Err(error) => return failed_result(start, None, error.to_string()),
+    };
+    let client_builder = network
+        .builder()
         .user_agent(format!("CGswitch/{}", env!("CARGO_PKG_VERSION")))
         .timeout(PROBE_TIMEOUT);
-    if let Some(url) = proxy {
-        if let Ok(parsed) = reqwest::Proxy::all(url) {
-            client_builder = client_builder.proxy(parsed);
-        }
-    }
     let client = match client_builder.build() {
         Ok(client) => client,
         Err(error) => {
@@ -780,8 +778,8 @@ impl AppContext {
         // 按用户所在页的引擎解析名单与开关：两侧各自标记自己引擎的禁用状态，
         // Codex 关了不影响 Claude 页探测，反之亦然。
         let server = match tool {
-            SkillTool::Codex => self.list_mcp_servers()?,
-            SkillTool::Claude => self.claude_mcp_servers()?,
+            SkillTool::Codex => self.codex_list_mcp_servers()?,
+            SkillTool::Claude => self.claude_list_mcp_servers()?,
         }
         .into_iter()
         .find(|server| server.name == name)
@@ -792,12 +790,25 @@ impl AppContext {
         let is_http = server.url.is_some() && server.command.is_none();
         // HTTP 探测需要代理归因；stdio 子进程的网络不受应用控制，日志不标注走向
         let proxy = if is_http {
-            super::detect_system_proxy()
+            match crate::network::Network::current().await {
+                Ok(network) => network.proxy,
+                Err(error) => {
+                    let result = failed_result(std::time::Instant::now(), None, error.to_string());
+                    log_probe_outcome(
+                        &server.name,
+                        include_tools,
+                        manual,
+                        &result,
+                        " proxy=invalid",
+                    );
+                    return Ok(result);
+                }
+            }
         } else {
             None
         };
         let route = if is_http {
-            super::connections::proxy_note(&proxy)
+            crate::network::proxy_note(&proxy)
         } else {
             String::new()
         };

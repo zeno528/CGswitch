@@ -15,7 +15,7 @@ const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.met
 const accountsViewSource = readFileSync(new URL("../accounts/AccountsView.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 // 各用例只读不写，共用同一份通用设置表单，新增字段只改这一行。
-const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5 };
+const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5, proxy_mode: "auto", proxy_url: "" };
 
 describe("SettingsSections", () => {
   it("formats backup titles", () => {
@@ -53,7 +53,7 @@ describe("SettingsSections", () => {
     expect(html).toContain("数据备份");
     expect(html).toContain("备份记录");
     // 首帧无缓存时不渲染空态文案：切分页重挂载靠缓存直出，不闪"还没有备份记录"
-    expect(html).not.toContain("还没有备份记录。");
+    expect(html).not.toContain("还没有备份记录");
     // 外围一张大卡分节，内嵌卡片只给备份频率/最多保留选项与每条备份记录，备份记录不再折叠
     expect(html.match(/role="switch"/g)).toHaveLength(1);
     expect(settingsSectionsSource).toContain("onCheckedChange={(on) => onPatch({ auto_backup_interval_hours: on ? 6 : 0 })}");
@@ -93,18 +93,6 @@ describe("SettingsSections", () => {
     expect(settingsSectionsSource).toContain("apple-inline-btn--quiet");
     expect(settingsSectionsSource).toContain('aria-haspopup="menu"');
     expect(settingsSectionsSource).toContain('role="menuitem"');
-  });
-
-  it("keeps the active theme option at normal weight", () => {
-    const html = renderToStaticMarkup(
-      <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
-    );
-    const activeButton = html.match(/<button[^>]*aria-pressed="true"[^>]*>/)?.[0];
-    expect(activeButton).toContain("font-normal");
-    expect(activeButton).toContain("app-selection-state");
-    expect(activeButton).toContain('data-active="true"');
-    expect(activeButton).not.toContain("bg-(--selection-bg)");
-    expect(activeButton).not.toContain("font-semibold");
   });
 
   it("provides a manual app update check in the about section", () => {
@@ -174,14 +162,14 @@ describe("SettingsSections", () => {
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
     expect(settingsSectionsSource).toContain('<span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span>');
     expect(settingsSectionsSource).not.toContain("settings-about__update-description");
-    expect(settingsSectionsSource).toContain('t("about.upgradeTo")');
+    expect(settingsSectionsSource).toContain('t("about.updateTo")');
     expect(settingsSectionsSource).not.toContain('t("about.updateNow")');
     expect(settingsSectionsSource).toContain('t("about.changelog")');
     expect(settingsSectionsSource).toContain("releaseNotesUrl(update?.version ?? version.trim())");
     expect(settingsSectionsSource).toContain("if (found) {");
     expect(settingsSectionsSource).toContain("setConfirming(true);");
     expect(settingsSectionsSource).toContain('feedback.success(t("about.upToDate"))');
-    expect(settingsSectionsSource).toMatch(/t\("about\.upgradeTo"\)\}\s+v\{update\.version\}/);
+    expect(settingsSectionsSource).toMatch(/t\("about\.updateTo"\)\}\s+v\{update\.version\}/);
     expect(settingsSectionsSource).not.toContain('className="app-version" title={t("about.updateAvailable"');
     expect(settingsSectionsSource).not.toContain("update-available-card");
     expect(settingsSectionsSource).not.toContain("update-available-reveal");
@@ -200,6 +188,11 @@ describe("SettingsSections", () => {
     expect(styles).toContain(".settings-tab-bar {");
     expect(settingsViewSource).not.toContain("border-b border-[var(--panel-divider)]");
     expect(settingsViewSource).not.toContain("border-b border-[var(--panel-border)]");
+  });
+
+  it("设置页复用全局标题栏并显示设置标题", () => {
+    expect(settingsViewSource).toContain('<header className="apple-page-bar">');
+    expect(settingsViewSource).toContain('<h1 className="apple-title">{t("view.title")}</h1>');
   });
 
   it("更新检查支持启动自动检查（可开关）与关于页手动触发并存", () => {
@@ -259,10 +252,25 @@ describe("SettingsSections", () => {
 
   it("外观与语言设置共享统一的右侧控制列宽度", () => {
     expect(settingsSectionsSource).toContain('<div className="w-72 shrink-0">');
-    expect(settingsSectionsSource).toContain('className="apple-group apple-segmented-control inline-flex h-9 w-72 shrink-0 gap-0.5 p-0.5"');
-    expect(settingsSectionsSource).toContain('className="app-selection-state inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
+    expect(settingsSectionsSource).toContain('<AppSegmentedControl\n                className="h-9 w-72 shrink-0"');
     expect(settingsSectionsSource).not.toContain('<div className="w-44 shrink-0">');
-    expect(settingsSectionsSource).not.toContain('className="app-selection-state inline-flex h-9 w-28 items-center justify-center gap-1.5 rounded-full text-sm font-normal"');
+  });
+
+  it("主题切换复用共享胶囊，按已保存选项定位并保留原有字体", () => {
+    setupI18n("zh-CN");
+    const labels = ["跟随系统", "浅色", "深色"];
+    for (const [index, theme] of (["system", "light", "dark"] as const).entries()) {
+      const html = renderToStaticMarkup(<SettingsGeneral form={{ ...form, theme }} onPatch={() => undefined} />);
+      expect(html).toContain('class="app-segmented-control h-9 w-72 shrink-0"');
+      expect(html).toContain(`style="--segment-count:3;--segment-index:${index}"`);
+      const buttons = [...html.matchAll(/<button[^>]*font-normal[^>]*aria-pressed="(true|false)"[^>]*>(.*?)<\/button>/g)];
+      expect(buttons).toHaveLength(3);
+      buttons.forEach((button, buttonIndex) => {
+        expect(button[1]).toBe(buttonIndex === index ? "true" : "false");
+        expect(button[2]).toContain(labels[buttonIndex]);
+      });
+    }
+    expect(settingsSectionsSource).not.toContain("theme-segmented-control");
   });
 
   it("通用设置卡片的分割线位于选项间距中央", () => {

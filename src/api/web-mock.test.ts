@@ -1,22 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { webInvoke } from "./web-mock";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../features/claude/profileEnvText";
-import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, ProfileDetail, ProfileSummary, SkillSummary } from "../types";
+import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
   it("关闭的 MCP 编辑源码不包含应用开关状态", async () => {
-    const fixture = (await webInvoke<McpServerSpec[]>("list_mcp_servers"))[0];
+    const fixture = (await webInvoke<McpServerSpec[]>("codex_list_mcp_servers"))[0];
     const name = "editor-disabled-fixture";
     try {
-      await webInvoke("save_mcp_server", { spec: { ...fixture, name } });
+      await webInvoke("codex_save_mcp_server", { spec: { ...fixture, name } });
       await webInvoke("set_mcp_server_enabled", { name, tool: "codex", enabled: false });
-      const source = await webInvoke<string>("get_mcp_server_toml", { name });
-      const server = (await webInvoke<McpServerSpec[]>("list_mcp_servers")).find((item) => item.name === name)!;
+      const source = await webInvoke<string>("codex_get_mcp_server_toml", { name });
+      const server = (await webInvoke<McpServerSpec[]>("codex_list_mcp_servers")).find((item) => item.name === name)!;
       const patched = await webInvoke<string>("patch_mcp_fragment", { toml: source, spec: server });
       expect(patched).toBe(source);
       expect(patched).not.toContain("enabled = false");
     } finally {
-      await webInvoke("delete_mcp_server", { name });
+      await webInvoke("codex_delete_mcp_server", { name });
     }
   });
 
@@ -31,29 +31,29 @@ describe("web mock", () => {
   });
 
   it("MCP 开关与卸载只影响所选客户端，共用编辑不重新安装另一端", async () => {
-    const fixture = (await webInvoke<McpServerSpec[]>("list_mcp_servers"))[0];
+    const fixture = (await webInvoke<McpServerSpec[]>("codex_list_mcp_servers"))[0];
     for (const tool of ["codex", "claude"] as const) {
       const name = `uninstall-${tool}`;
-      const list = tool === "codex" ? "list_mcp_servers" : "list_claude_mcp_servers";
-      const otherList = tool === "codex" ? "list_claude_mcp_servers" : "list_mcp_servers";
+      const list = tool === "codex" ? "codex_list_mcp_servers" : "claude_list_mcp_servers";
+      const otherList = tool === "codex" ? "claude_list_mcp_servers" : "codex_list_mcp_servers";
       try {
-        await webInvoke("save_mcp_server", { spec: { ...fixture, name } });
+        await webInvoke("codex_save_mcp_server", { spec: { ...fixture, name } });
         const other = await webInvoke<McpServerSpec[]>(otherList);
         await webInvoke("set_mcp_server_enabled", { name, tool, enabled: false });
         expect((await webInvoke<McpServerSpec[]>(list)).find((server) => server.name === name)?.enabled).toBe(false);
         expect(await webInvoke(otherList)).toEqual(other);
-        await webInvoke(tool === "codex" ? "delete_mcp_server" : "delete_claude_mcp_server", { name });
+        await webInvoke(tool === "codex" ? "codex_delete_mcp_server" : "claude_delete_mcp_server", { name });
         expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
         expect(await webInvoke(otherList)).toEqual(other);
         if (tool === "claude") {
-          await webInvoke("save_mcp_server", { originalName: name, spec: { ...fixture, name, command: "updated" } });
+          await webInvoke("codex_save_mcp_server", { originalName: name, spec: { ...fixture, name, command: "updated" } });
         } else {
-          await webInvoke("save_claude_mcp_server", { originalName: name, name, json: '{"type":"stdio","command":"updated"}' });
+          await webInvoke("claude_save_mcp_server", { originalName: name, name, json: '{"type":"stdio","command":"updated"}' });
         }
         expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
       } finally {
-        await webInvoke("delete_mcp_server", { name });
-        await webInvoke("delete_claude_mcp_server", { name });
+        await webInvoke("codex_delete_mcp_server", { name });
+        await webInvoke("claude_delete_mcp_server", { name });
       }
     }
   });
@@ -63,12 +63,12 @@ describe("web mock", () => {
       name: "rename-fixture", rawSettings: '{"env":{"CUSTOM":"keep"},"permissions":{"deny":["Write"]}}',
       description: "keep", icon: "custom", showBalance: true,
     });
-    const codex = (await webInvoke<AppState>("get_state")).profiles;
+    const codex = (await webInvoke<AppState>("get_state")).codex_profiles;
     try {
       await webInvoke("rename_profile", { id: created.id, name: "  renamed  ", tool: "claude" });
       const after = await webInvoke<ClaudeProfileDetail>("claude_get_profile", { id: created.id });
       expect(after).toEqual({ ...created, name: "renamed", updated_at: after.updated_at });
-      expect((await webInvoke<AppState>("get_state")).profiles).toEqual(codex);
+      expect((await webInvoke<AppState>("get_state")).codex_profiles).toEqual(codex);
       for (const name of [" ", "a".repeat(51)]) {
         await expect(webInvoke("rename_profile", { id: created.id, name, tool: "claude" })).rejects.toThrow("供应商名称长度");
       }
@@ -131,21 +131,21 @@ describe("web mock", () => {
     await expect(webInvoke("claude_get_common_settings")).resolves.toBeNull();
   });
   it("keeps a provider description across create, edit and detail reads", async () => {
-    const created = await webInvoke<ProfileSummary>("add_custom_profile", { name: "Demo", description: "  First note  ", configText: 'model = "demo"' });
+    const created = await webInvoke<CodexProfileSummary>("codex_add_custom_profile", { name: "Demo", description: "  First note  ", configText: 'model = "demo"' });
     try {
       expect(created).not.toHaveProperty("description");
-      expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("First note");
-      await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo", description: "Second note" });
-      expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("Second note");
-      await webInvoke<ProfileSummary>("update_profile", { id: created.id, name: "Demo" });
-      expect((await webInvoke<ProfileDetail>("get_profile", { id: created.id })).description).toBe("Second note");
+      expect((await webInvoke<CodexProfileDetail>("codex_get_profile", { id: created.id })).description).toBe("First note");
+      await webInvoke<CodexProfileSummary>("codex_update_profile", { id: created.id, name: "Demo", description: "Second note" });
+      expect((await webInvoke<CodexProfileDetail>("codex_get_profile", { id: created.id })).description).toBe("Second note");
+      await webInvoke<CodexProfileSummary>("codex_update_profile", { id: created.id, name: "Demo" });
+      expect((await webInvoke<CodexProfileDetail>("codex_get_profile", { id: created.id })).description).toBe("Second note");
     } finally {
-      await webInvoke("delete_profile", { id: created.id });
+      await webInvoke("codex_delete_profile", { id: created.id });
     }
   });
 
   it("round-trips MCP env entries", async () => {
-    const fragment = await webInvoke<string>("get_mcp_server_toml", { name: "github" });
+    const fragment = await webInvoke<string>("codex_get_mcp_server_toml", { name: "github" });
     const spec = await webInvoke<{ env: Record<string, string> }>("parse_mcp_fragment", { toml: fragment });
 
     expect(spec.env).toEqual({ GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_demo" });

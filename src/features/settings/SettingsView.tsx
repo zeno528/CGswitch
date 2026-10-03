@@ -6,6 +6,7 @@ import {
   MousePointerClick,
   RotateCw,
   Wrench,
+  Bot,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -14,17 +15,21 @@ import { useFeedback } from "../../app/Feedback";
 import { AppSwitch } from "../../components/AppSwitch";
 import { AppSelect } from "../../components/AppSelect";
 import type { AppState, PathInfo, Settings } from "../../types";
+import { CliCard, useCliManagement } from "./CliManagement";
+import { ProxySettings } from "./ProxySettings";
 import { SettingsAbout, SettingsAdvanced, SettingsGeneral, SettingsPanelSection } from "./SettingsSections";
 
-type Section = "general" | "codex" | "advanced" | "about";
-interface SettingsViewProps { state: AppState; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; }
+type Section = "general" | "codex" | "cli" | "advanced" | "about";
+interface SettingsViewProps { state: AppState; active: boolean; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; }
 
-export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved }: SettingsViewProps) {
+export default function SettingsView({ state, active, onPreviewTheme, onRefresh, onSaved }: SettingsViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("settings");
   const [form, setForm] = useState<Settings>(state.settings);
   const [section, setSection] = useState<Section>("general");
   const [saving, setSaving] = useState(false);
+  const codexCli = useCliManagement("codex", active && section === "cli");
+  const claudeCli = useCliManagement("claude", active && section === "cli");
   const [backupsEpoch, setBackupsEpoch] = useState(0);
   const [openingPath, setOpeningPath] = useState<string | null>(null);
   const tabBar = useRef<HTMLDivElement>(null);
@@ -35,22 +40,37 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   useEffect(() => { const button = tabBar.current?.querySelector<HTMLElement>(`[data-section="${section}"]`); if (button) setIndicator({ left: button.offsetLeft, width: button.offsetWidth }); }, [section]);
 
   const saveGeneral = async (patch: Partial<Settings>) => {
-    if (saving) return;
+    if (saving) return false;
     const previous = form;
     const next = { ...form, ...patch };
     setForm(next);
     if (patch.theme) onPreviewTheme(patch.theme);
     setSaving(true);
-    try { const saved = await api.saveSettings(next); onSaved(saved); if (saved.database_backup_keep_count !== previous.database_backup_keep_count) setBackupsEpoch((epoch) => epoch + 1); }
-    catch (error) { setForm(previous); onPreviewTheme(previous.theme); feedback.error(String(error)); }
+    try { const saved = await api.saveSettings(next); setForm(saved); onSaved(saved); if (saved.database_backup_keep_count !== previous.database_backup_keep_count) setBackupsEpoch((epoch) => epoch + 1); return true; }
+    catch (error) { setForm(previous); onPreviewTheme(previous.theme); feedback.error(String(error)); return false; }
     finally { setSaving(false); }
   };
 
   const openPath = async (item: PathInfo) => { if (openingPath) return; setOpeningPath(item.path); try { await api.openPath(item.path); } catch (error) { feedback.error(String(error)); } finally { setOpeningPath(null); } };
   const tab = (id: Section, label: string, Icon: typeof Cog) => <button type="button" data-section={id} className={`settings-tab relative flex h-10 items-center gap-1.5 rounded-md px-3 transition-colors ${section === id ? "text-accent" : "text-[var(--text-secondary)] hover:text-accent"}`} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon className="h-4 w-4 shrink-0" strokeWidth={2} />{label}</button>;
 
-  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
-    {section === "general" ? <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} /> : null}
+  return <section className="settings-page mx-auto flex w-full max-w-none flex-col">
+    <header className="apple-page-bar">
+      <h1 className="apple-title">{t("view.title")}</h1>
+    </header>
+    <div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("cli", t("view.tabCli"), Bot)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
+    {section === "general" ? (
+      <div className="flex flex-col gap-[var(--gap-section)]">
+        <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} />
+        <ProxySettings settings={state.settings} saving={saving} onSave={saveGeneral} />
+      </div>
+    ) : null}
+    {section === "cli" ? (
+      <SettingsPanelSection id="cli" label={t("view.tabCli")}>
+        <CliCard client="codex" management={codexCli} />
+        <CliCard client="claude" management={claudeCli} />
+      </SettingsPanelSection>
+    ) : null}
     {section === "codex" ? (
       <SettingsPanelSection id="codex" label={t("codex.sectionTitle")}>
         <div className="apple-group px-[var(--gap-card-inline)]">

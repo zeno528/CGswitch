@@ -87,7 +87,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # 必须在 src-tauri 下执行：rust-toolchain.toml 固定了工具链，目标要装到该工具链
+      # 仓库根目录的 rust-toolchain.toml 统一固定检查与构建工具链。
       - run: rustup target add ${{ matrix.rust-target }}
         shell: bash
         working-directory: src-tauri

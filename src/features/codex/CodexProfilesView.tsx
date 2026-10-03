@@ -9,11 +9,14 @@ import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuot
 import { useFeedback } from "../../app/Feedback";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { CliUpgradePill } from "../../components/CliUpgradePill";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
-import type { AppState, ProfileBalanceInfo, ProfileDetail, ProfileSummary } from "../../types";
-import ProfileCard, { getCachedProfileBalance, getCachedProfileBalanceError, ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, profileConnectionGate } from "./ProfileCard";
-import ProfileEdit from "./ProfileEdit";
-import ProfileNameDialog from "./ProfileNameDialog";
+import type { AppState, ProfileBalanceInfo, CodexProfileDetail, CodexProfileSummary } from "../../types";
+import CodexProfileCard, { profileConnectionGate } from "./CodexProfileCard";
+import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell } from "../profiles/ProfileCard";
+import { getCachedProfileBalance, getCachedProfileBalanceError } from "../profiles/useProfileBalance";
+import CodexProfileEdit from "./CodexProfileEdit";
+import ProfileNameDialog from "../profiles/ProfileNameDialog";
 
 interface ProfilesViewProps {
   state: AppState;
@@ -30,42 +33,43 @@ export function codexActionFor(running: boolean) {
   return running ? "restart" : "start";
 }
 
-function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: ProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
+function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: CodexProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
   const { t } = useTranslation("profiles");
   const connection = profileConnectionGate(profile, t);
   return (
     <ProfileDragPreviewShell width={width} height={height} active={active}>
       <ProfileCardContent
         profile={profile}
+        hideModel
         balanceInfos={balanceInfos}
         balanceError={balanceError}
         balanceRefreshing={false}
         onOpenAdmin={onOpenAdmin}
       />
-      <ProfileCardActions active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
+      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
     </ProfileDragPreviewShell>
   );
 }
 
-export default function ProfilesView({ state, authStatusReady, activationEpoch, coldStart, onRefresh, onManageChatgptAccounts }: ProfilesViewProps) {
+export default function CodexProfilesView({ state, authStatusReady, activationEpoch, coldStart, onRefresh, onManageChatgptAccounts }: ProfilesViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
-  const [items, setItems] = useState(state.profiles);
+  const [items, setItems] = useState(state.codex_profiles);
   const [busy, setBusy] = useState(false);
   const [codexAction, setCodexAction] = useState<"restart" | "start" | null>(null);
-  const [editingProfile, setEditingProfile] = useState<ProfileSummary | null>(null);
-  const [editDetail, setEditDetail] = useState<ProfileDetail | null>(null);
+  const [editingProfile, setEditingProfile] = useState<CodexProfileSummary | null>(null);
+  const [editDetail, setEditDetail] = useState<CodexProfileDetail | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [modal, setModal] = useState<"capture" | "rename" | null>(null);
-  const [modalProfile, setModalProfile] = useState<ProfileSummary | null>(null);
+  const [modalProfile, setModalProfile] = useState<CodexProfileSummary | null>(null);
   const [profileName, setProfileName] = useState("");
   const duplicatingProfileRef = useRef(false);
 
-  useEffect(() => setItems(state.profiles), [state.profiles]);
+  useEffect(() => setItems(state.codex_profiles), [state.codex_profiles]);
 
-  const persistOrder = async (previous: ProfileSummary[], next: ProfileSummary[]) => {
+  const persistOrder = async (previous: CodexProfileSummary[], next: CodexProfileSummary[]) => {
     try {
-      await api.reorderProfiles(next.map((item) => item.id));
+      await api.codexReorderProfiles(next.map((item) => item.id));
       await onRefresh();
     } catch (error) {
       setItems(previous);
@@ -76,14 +80,14 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   const { sensors, draggedId: draggedProfileId, dragHoverId: dragHoverProfileId, dragWidth: draggedProfileWidth, dragHeight: draggedProfileHeight, onDragStart, onDragEnd, onDragCancel } = useCardDragReorder(items, setItems, persistOrder);
 
   const openCapture = () => { setModal("capture"); setModalProfile(null); setProfileName(""); };
-  const openRename = (profile: ProfileSummary) => { setModal("rename"); setModalProfile(profile); setProfileName(profile.name); };
+  const openRename = (profile: CodexProfileSummary) => { setModal("rename"); setModalProfile(profile); setProfileName(profile.name); };
 
   const submitModal = async () => {
     if (busy || !modal) return;
     setBusy(true);
     try {
       if (modal === "capture") {
-        await api.captureProfile(profileName.trim());
+        await api.codexCaptureProfile(profileName.trim());
         feedback.success(t("feedback.captureSuccess"));
       } else if (modalProfile) {
         await api.renameProfile(modalProfile.id, profileName.trim());
@@ -116,11 +120,11 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
     }
   };
 
-  const applyProfile = async (profile: ProfileSummary) => {
+  const codexApplyProfile = async (profile: CodexProfileSummary) => {
     if (busy) return;
     setBusy(true);
     try {
-      await api.applyProfile(profile.id);
+      await api.codexApplyProfile(profile.id);
       await onRefresh();
       if (state.settings.auto_restart) {
         const action = await restart(true, false);
@@ -136,13 +140,13 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
     finally { setBusy(false); }
   };
 
-  const removeProfile = async (profile: ProfileSummary) => {
+  const removeProfile = async (profile: CodexProfileSummary) => {
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="profiles" i18nKey="confirm.deleteConfirm" values={{ name: profile.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
     const previousIndex = items.findIndex((item) => item.id === profile.id);
     setItems((current) => current.filter((item) => item.id !== profile.id));
     try {
-      await api.deleteProfile(profile.id);
+      await api.codexDeleteProfile(profile.id);
       feedback.success(t("feedback.providerDeleted"));
       await onRefresh();
     } catch (error) {
@@ -155,10 +159,10 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
     }
   };
 
-  const duplicateProfile = async (profile: ProfileSummary) => {
+  const codexDuplicateProfile = async (profile: CodexProfileSummary) => {
     if (busy || duplicatingProfileRef.current) return;
     duplicatingProfileRef.current = true;
-    try { await api.duplicateProfile(profile.id); feedback.success(t("feedback.providerDuplicated")); await onRefresh(); }
+    try { await api.codexDuplicateProfile(profile.id); feedback.success(t("feedback.providerDuplicated")); await onRefresh(); }
     catch (error) { feedback.error(String(error)); }
     finally { duplicatingProfileRef.current = false; }
   };
@@ -166,10 +170,10 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   const closeEdit = async () => { setEditingProfile(null); setEditDetail(null); setCreatingProfile(false); await onRefresh(); };
   // 先预载详情再切换：ProfileEdit 在详情未就绪时整页返回 null，直接切换会空一帧（进入编辑页的闪烁）。
   // 预载失败不拦截切换，ProfileEdit 内部按原有失败路径展示错误。
-  const openEdit = async (profile: ProfileSummary) => {
-    let detail: ProfileDetail | null = null;
+  const openEdit = async (profile: CodexProfileSummary) => {
+    let detail: CodexProfileDetail | null = null;
     try {
-      detail = await api.getProfile(profile.id);
+      detail = await api.codexGetProfile(profile.id);
     } catch { /* 详情由 ProfileEdit 挂载后重取 */ }
     setEditDetail(detail);
     setEditingProfile(profile);
@@ -178,7 +182,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
   const draggedQuotaKey = draggedProfile ? profileAuthQuotaCacheKey(draggedProfile) : null;
 
   if (editingProfile || creatingProfile) {
-    return <ProfileEdit profile={editingProfile} create={creatingProfile} initialDetail={editDetail} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
+    return <CodexProfileEdit profile={editingProfile} create={creatingProfile} initialDetail={editDetail} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
   }
 
   const nextCodexAction = codexActionFor(state.codex.running);
@@ -189,6 +193,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
         <div className="provider-page-brand">
           <img src="/codex.svg" alt="" className="provider-page-brand__logo" draggable="false" />
           <span>Codex</span>
+          <CliUpgradePill client="codex" />
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
           <div className={`codex-status-control codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}>
@@ -210,7 +215,7 @@ export default function ProfilesView({ state, authStatusReady, activationEpoch, 
         </div>
       </header>
       <div className="apple-edit-content">
-            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)]">{items.map((profile) => <ProfileCard key={profile.id} profile={profile} active={profile.id === state.active_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={state.balance_cache} onApply={() => void applyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void duplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
+            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)]">{items.map((profile) => <CodexProfileCard key={profile.id} profile={profile} active={profile.id === state.active_codex_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={state.balance_cache} onApply={() => void codexApplyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void codexDuplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_codex_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
       </div>
       <ProfileNameDialog mode={modal} name={profileName} busy={busy} onName={setProfileName} onClose={() => setModal(null)} onSubmit={() => void submitModal()} />
     </section>

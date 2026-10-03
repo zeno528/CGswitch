@@ -1,13 +1,14 @@
-use super::profile_config::{parse_provider_detail, stored_provider_api_key};
+use super::codex_profile_config::{parse_provider_detail, stored_provider_api_key};
 use super::{
-    app_err, atomic_write, detect_system_proxy, AppContext, AppResult, AuthSource, BTreeMap,
-    ChatgptResetCredit, PathBuf, ProfileBalanceInfo, ProfileKind,
+    app_err, atomic_write, AppContext, AppResult, AuthSource, BTreeMap, ChatgptResetCredit,
+    CodexProfileKind, PathBuf, ProfileBalanceInfo,
 };
-use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
+use crate::auth::codex_oauth::{account_subject, parse_external_auth_json, CodexOAuthManager};
+use crate::network::{proxy_note, Network};
 
 /// 供应商连通性测试结果
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ProfileConnectionResult {
+pub struct CodexProfileConnectionResult {
     pub ok: bool,
     pub latency_ms: Option<u128>,
     pub status: Option<u16>,
@@ -105,7 +106,7 @@ mod tests {
     #[test]
     fn opencode_probe_model_is_in_responses_catalog() {
         let catalog: serde_json::Value =
-            serde_json::from_slice(crate::builtin::OPENCODE_MODELS).unwrap();
+            serde_json::from_slice(crate::codex_builtin::OPENCODE_MODELS).unwrap();
         let in_catalog = catalog["models"]
             .as_array()
             .unwrap()
@@ -163,7 +164,7 @@ mod tests {
 
         // 其他 HTTP 错误按普通失败处理
         let other = quota_failure_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "", "test");
-        assert!(other.0.starts_with("额度查询失败："));
+        assert!(other.0.starts_with("用量查询失败："));
     }
 
     #[test]
@@ -307,34 +308,19 @@ pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     let mut cached = cache
         .lock()
         .map_err(|_| app_err!("HTTP 客户端缓存锁已损坏"))?;
-    let proxy = detect_system_proxy();
+    let network = Network::detect().map_err(|error| app_err!("{error}"))?;
+    let proxy = network.proxy.clone();
     if let Some((key, client)) = cached.as_ref() {
         if *key == proxy {
-            return Ok((client.clone(), proxy));
+            return Ok((client.clone(), network.display));
         }
     }
-    let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(8));
-    if let Some(url) = &proxy {
-        let parsed = reqwest::Proxy::all(url)
-            .map_err(|error| app_err!("系统代理地址无效 {url}: {error}"))?
-            // 环回地址不出代理：本机回环服务（本地连通测试 fixture 等）必须直连，
-            // 交给系统代理转发不可靠（代理可能拒绝环回目标）也污染代理访问日志。
-            .no_proxy(reqwest::NoProxy::from_string("localhost,127.0.0.1,::1"));
-        builder = builder.proxy(parsed);
-    }
+    let builder = network.builder().timeout(std::time::Duration::from_secs(8));
     let client = builder
         .build()
         .map_err(|error| app_err!("创建 HTTP 客户端失败: {error}"))?;
     *cached = Some((proxy.clone(), client.clone()));
-    Ok((client, proxy))
-}
-
-/// 日志归因后缀：原样输出检测结果——有代理是 URL 原文，无代理是 None，不做措辞加工。
-pub(crate) fn proxy_note(proxy: &Option<String>) -> String {
-    match proxy {
-        Some(url) => format!(" proxy={url}"),
-        None => " proxy=None".to_string(),
-    }
+    Ok((client, network.display))
 }
 
 /// reqwest 错误转可读提示。
@@ -435,7 +421,7 @@ async fn test_opencode_connection(
     base_url: &str,
     api_key: &str,
     context: &str,
-) -> AppResult<ProfileConnectionResult> {
+) -> AppResult<CodexProfileConnectionResult> {
     let responses_url = format!("{}/responses", base_url.trim_end_matches('/'));
     let (client, proxy) = http_client()?;
     let start = std::time::Instant::now();
@@ -465,14 +451,14 @@ async fn test_opencode_connection(
             if ok {
                 log_provider_connect_success(context, status, start.elapsed().as_millis(), &proxy);
             }
-            Ok(ProfileConnectionResult {
+            Ok(CodexProfileConnectionResult {
                 ok,
                 latency_ms,
                 status: Some(status.as_u16()),
                 error,
             })
         }
-        Err(error) => Ok(ProfileConnectionResult {
+        Err(error) => Ok(CodexProfileConnectionResult {
             ok: false,
             latency_ms: None,
             status: error.status().map(|status| status.as_u16()),
@@ -494,7 +480,7 @@ fn log_provider_connect_success(
     );
 }
 
-fn log_provider_connect_failure(context: &str, result: &ProfileConnectionResult) {
+fn log_provider_connect_failure(context: &str, result: &CodexProfileConnectionResult) {
     let failure_kind = match result.status {
         Some(401 | 403) => "auth_error",
         Some(_) => "http_error",
@@ -504,7 +490,10 @@ fn log_provider_connect_failure(context: &str, result: &ProfileConnectionResult)
         .status
         .map(|status| format!(" status_code={status}"))
         .unwrap_or_default();
-    let proxy = proxy_note(&detect_system_proxy());
+    let proxy = match Network::detect() {
+        Ok(network) => proxy_note(&network.proxy),
+        Err(_) => " proxy=invalid".into(),
+    };
     let error = result.error.as_deref().unwrap_or("未知错误");
     tauri_plugin_log::log::warn!(
         "[provider.connect.test] {context} outcome=failure failure_kind={failure_kind}{status}{proxy} error={error:?} msg=\"测试连通失败\""
@@ -606,7 +595,7 @@ async fn test_models_endpoint(
     base_url: &str,
     api_key: &str,
     context: &str,
-) -> AppResult<ProfileConnectionResult> {
+) -> AppResult<CodexProfileConnectionResult> {
     if base_url
         .trim_end_matches('/')
         .eq_ignore_ascii_case("https://opencode.ai/zen/go/v1")
@@ -629,7 +618,7 @@ async fn test_models_endpoint(
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(json) => {
                         if let Some(error) = connection_error_from_body(&json) {
-                            Ok(ProfileConnectionResult {
+                            Ok(CodexProfileConnectionResult {
                                 ok: false,
                                 latency_ms,
                                 status: Some(status.as_u16()),
@@ -642,7 +631,7 @@ async fn test_models_endpoint(
                                 start.elapsed().as_millis(),
                                 &proxy,
                             );
-                            Ok(ProfileConnectionResult {
+                            Ok(CodexProfileConnectionResult {
                                 ok: true,
                                 latency_ms,
                                 status: Some(status.as_u16()),
@@ -650,7 +639,7 @@ async fn test_models_endpoint(
                             })
                         }
                     }
-                    Err(_) => Ok(ProfileConnectionResult {
+                    Err(_) => Ok(CodexProfileConnectionResult {
                         ok: false,
                         latency_ms,
                         status: Some(status.as_u16()),
@@ -660,7 +649,7 @@ async fn test_models_endpoint(
                     }),
                 }
             } else {
-                Ok(ProfileConnectionResult {
+                Ok(CodexProfileConnectionResult {
                     ok: false,
                     latency_ms,
                     status: Some(status.as_u16()),
@@ -670,7 +659,7 @@ async fn test_models_endpoint(
         }
         Err(error) => {
             let status = error.status().map(|status| status.as_u16());
-            Ok(ProfileConnectionResult {
+            Ok(CodexProfileConnectionResult {
                 ok: false,
                 latency_ms: None,
                 status,
@@ -684,7 +673,7 @@ async fn test_models_endpoint(
 pub async fn test_provider_connection(
     base_url: &str,
     api_key: &str,
-) -> AppResult<ProfileConnectionResult> {
+) -> AppResult<CodexProfileConnectionResult> {
     let base_url = base_url.trim();
     if base_url.is_empty() {
         return Err(app_err!("请填写 API 端点"));
@@ -1097,23 +1086,23 @@ fn quota_failure_error(
         status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN;
     if auth_status && body.contains("unsupported_country_region_territory") {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=region_blocked status_code={} msg=\"额度查询被地区限制拦截\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=region_blocked status_code={} msg=\"用量查询因地区限制被拦截\"",
             status.as_u16()
         );
         return app_err!("认证请求被地区限制拦截，请开启系统代理后重试");
     }
     if auth_status {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=auth_error status_code={} msg=\"登录凭证已失效，需要重新登录\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=auth_error status_code={} msg=\"ChatGPT 登录凭证已失效，需重新登录\"",
             status.as_u16()
         );
         return app_err!("ChatGPT 登录已失效，请重新登录");
     }
     tauri_plugin_log::log::warn!(
-        "[chatgpt.quota.query] {context} outcome=failure failure_kind=http_error status_code={} msg=\"额度查询失败\"",
+        "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=http_error status_code={} msg=\"用量查询失败\"",
         status.as_u16()
     );
-    app_err!("额度查询失败：接口返回 HTTP {status}")
+    app_err!("用量查询失败：接口返回 HTTP {status}")
 }
 
 async fn query_chatgpt_quota(
@@ -1123,7 +1112,7 @@ async fn query_chatgpt_quota(
 ) -> AppResult<ProfileBalance> {
     let (client, proxy) = http_client().map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=internal error={error:?} msg=\"额度查询客户端初始化失败\""
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=internal error={error:?} msg=\"用量查询客户端初始化失败\""
         );
         error
     })?;
@@ -1137,40 +1126,42 @@ async fn query_chatgpt_quota(
     .send()
     .await
     .map_err(|error| {
-        // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕
+        // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕；
+        // 超时落 timeout 枚举，其余网络故障才是 network_error
+        let kind = if error.is_timeout() { "timeout" } else { "network_error" };
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=network_error proxy={} error={:?} msg=\"额度查询网络错误\"",
-            proxy.as_deref().unwrap_or("None"),
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind={kind} proxy={} error={:?} msg=\"用量查询网络错误\"",
+            proxy.as_deref().unwrap_or("-"),
             reqwest_error_message(&error),
         );
-        app_err!("额度查询失败：{}", reqwest_error_message(&error))
+        app_err!("用量查询失败：{}", reqwest_error_message(&error))
     })?;
     let latency = start.elapsed().as_millis();
     let latency_ms = Some(latency);
     let status = response.status();
     let body = response.text().await.map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"额度接口响应读取失败\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"用量接口响应读取失败\"",
             status.as_u16()
         );
-        app_err!("额度接口响应读取失败: {error}")
+        app_err!("用量接口响应读取失败: {error}")
     })?;
     if !status.is_success() {
         return Err(quota_failure_error(status, &body, context));
     }
     let response = serde_json::from_str::<ChatgptUsageResponse>(&body).map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=parse_error status_code={} error={error:?} msg=\"额度接口响应解析失败\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=parse_error status_code={} error={error:?} msg=\"用量接口响应解析失败\"",
             status.as_u16()
         );
-        app_err!("额度接口响应解析失败: {error}")
+        app_err!("用量接口响应解析失败: {error}")
     })?;
     let mut info = chatgpt_quota_info(response).ok_or_else(|| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=parse_error status_code={} msg=\"额度查询响应缺少可用的限额窗口\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=parse_error status_code={} msg=\"用量接口未返回可用的限额窗口\"",
             status.as_u16()
         );
-        app_err!("额度接口未返回可用的限额窗口")
+        app_err!("用量接口未返回可用的限额窗口")
     })?;
     if let Some((available_count, credits)) =
         query_chatgpt_reset_credits(&client, access_token, account_id).await
@@ -1178,10 +1169,10 @@ async fn query_chatgpt_quota(
         info.reset_credits_available = available_count.or(info.reset_credits_available);
         info.reset_credits = Some(credits);
     }
-    // 成功也留痕：额度数字不对/没刷新时，靠这行确认最后一次成功查询的时间
+    // 成功也留痕：用量数字不对/没刷新时，靠这行确认最后一次成功查询的时间
     tauri_plugin_log::log::debug!(
-        "[chatgpt.quota.query] {context} outcome=success latency_ms={latency} proxy={} msg=\"额度查询成功\"",
-        proxy.as_deref().unwrap_or("None")
+        "[chatgpt.quota.query] client=\"Codex\" {context} outcome=success latency_ms={latency} proxy={} msg=\"用量查询成功\"",
+        proxy.as_deref().unwrap_or("-")
     );
     Ok(ProfileBalance {
         is_available: true,
@@ -1195,13 +1186,13 @@ impl AppContext {
     /// 2xx 视为可用，401/403 视为密钥无效，返回延迟 / HTTP 状态 / 错误信息。
     /// 表单传入的地址/密钥实时生效（传了就用传的，空的直接报错）；
     /// 不传才回退已保存值（卡片上的测试按钮走这条）。
-    pub async fn test_profile_connection(
+    pub async fn codex_test_profile_connection(
         &self,
         id: &str,
         base_url_override: Option<&str>,
         api_key_override: Option<&str>,
-    ) -> AppResult<ProfileConnectionResult> {
-        let stored = self.database.profile(id)?;
+    ) -> AppResult<CodexProfileConnectionResult> {
+        let stored = self.database.codex_profile(id)?;
         let payload = &stored.payload;
         if payload.provider_id.is_none() {
             return Err(app_err!("该供应商缺少配置，无法测试连通性"));
@@ -1254,7 +1245,7 @@ impl AppContext {
         &self,
         access_token: &str,
         context: &str,
-    ) -> AppResult<ProfileConnectionResult> {
+    ) -> AppResult<CodexProfileConnectionResult> {
         let (client, proxy) = http_client().map_err(|error| {
             tauri_plugin_log::log::warn!(
                 "[chatgpt.connect.test] {context} outcome=failure failure_kind=internal error={error:?} msg=\"测试连通客户端初始化失败\""
@@ -1281,7 +1272,7 @@ impl AppContext {
                         status.as_u16(),
                         proxy.as_deref().unwrap_or("None")
                     );
-                    Ok(ProfileConnectionResult {
+                    Ok(CodexProfileConnectionResult {
                         ok: true,
                         latency_ms: Some(latency_ms),
                         status: Some(status.as_u16()),
@@ -1311,7 +1302,7 @@ impl AppContext {
                         status.as_u16(),
                         proxy.as_deref().unwrap_or("None")
                     );
-                    Ok(ProfileConnectionResult {
+                    Ok(CodexProfileConnectionResult {
                         ok: false,
                         latency_ms: Some(latency_ms),
                         status: Some(status.as_u16()),
@@ -1326,7 +1317,7 @@ impl AppContext {
                     proxy.as_deref().unwrap_or("None"),
                     subscription_request_error_message(&error)
                 );
-                Ok(ProfileConnectionResult {
+                Ok(CodexProfileConnectionResult {
                     ok: false,
                     latency_ms: None,
                     status,
@@ -1347,7 +1338,7 @@ impl AppContext {
             AuthSource::Desktop => "desktop",
             AuthSource::Oauth => "oauth",
         };
-        let mut oauth_subject = None;
+        let subject;
         let (access_token, account_id) = match source {
             AuthSource::Desktop => {
                 // Desktop 额度优先按请求身份取数据库认证快照（与账号页同源，
@@ -1358,7 +1349,10 @@ impl AppContext {
                     None => None,
                 };
                 match db_snapshot {
-                    Some((token, _)) => (token, account_id.map(str::to_string)),
+                    Some((token, email)) => {
+                        subject = account_id.map(|id| account_subject(id, email.as_deref()));
+                        (token, account_id.map(str::to_string))
+                    }
                     None => {
                         let account = self
                             .read_external_codex_auth()
@@ -1366,6 +1360,10 @@ impl AppContext {
                         let token = self
                             .external_codex_access_token_for_account(&account.account_id)?
                             .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
+                        subject = Some(account_subject(
+                            &account.account_id,
+                            account.email.as_deref(),
+                        ));
                         (token, Some(account.account_id))
                     }
                 }
@@ -1377,12 +1375,12 @@ impl AppContext {
                     .await
                     .map_err(|error| app_err!("{error}"))?;
                 // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
-                oauth_subject = Some(oauth.account_subject_for(row_id).await);
+                subject = Some(oauth.account_subject_for(row_id).await);
                 (token, Some(oauth.workspace_of(row_id).await))
             }
         };
-        // OAuth 行为标注到具体账号（行 id + debug 门控 email）；desktop 沿用原字段
-        let context = match &oauth_subject {
+        // 两种来源共用账号日志格式，邮箱仅开发版输出。
+        let context = match &subject {
             Some(subject) => format!("{subject} source={source_label}"),
             None => match account_id.as_deref() {
                 Some(id) => format!("account_id={id} source={source_label}"),
@@ -1393,14 +1391,14 @@ impl AppContext {
     }
 
     /// 按配置查询余额/用量；ChatGPT 配置只读自身认证来源，不读取 live auth.json。
-    pub async fn get_profile_balance(
+    pub async fn codex_get_profile_balance(
         &self,
         id: &str,
         oauth: &CodexOAuthManager,
     ) -> AppResult<ProfileBalance> {
-        let stored = self.database.profile(id)?;
+        let stored = self.database.codex_profile(id)?;
         let payload = &stored.payload;
-        if stored.kind == ProfileKind::Official {
+        if stored.kind == CodexProfileKind::Official {
             // 配置主键和认证来源足以定位；中文 msg 负责快速扫读。
             let auth_source =
                 payload.effective_auth_source(stored.kind, stored.account_id.as_deref());
@@ -1456,7 +1454,7 @@ impl AppContext {
         query_supported_provider_balance(provider, base.unwrap_or(default_base), &api_key).await
     }
 
-    pub async fn get_claude_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
+    pub async fn claude_get_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
         let profile = self.database.claude_profile(id)?;
         let kind = profile.kind.as_deref().unwrap_or_default();
         if kind != "deepseek" && kind != "minimax" {

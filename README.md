@@ -207,7 +207,7 @@ If the problem persists, search existing [Issues](https://github.com/zeno528/CGs
 
 - Node.js
 - pnpm `11.9.0`
-- Rust toolchain pinned by [`src-tauri/rust-toolchain.toml`](src-tauri/rust-toolchain.toml)
+- Rust toolchain pinned by [`rust-toolchain.toml`](rust-toolchain.toml)
 - The platform prerequisites required by Tauri 2
 
 ### Install and run

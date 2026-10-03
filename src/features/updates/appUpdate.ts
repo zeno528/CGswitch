@@ -1,4 +1,4 @@
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { api, isTauri, type UpdateLogEvent } from "../../api";
 import i18n from "../../i18n";
@@ -58,13 +58,13 @@ export function toAppUpdate(update: Pick<Update, "version" | "body" | "download"
 export async function checkForAppUpdate(): Promise<AppUpdate | null> {
   if (!isTauri) return webUpdate();
   try {
-    const update = await check({ timeout: 10_000 });
-    if (!update) {
+    const metadata = await api.checkAppUpdate();
+    if (!metadata) {
       await logUpdateEvent("check_latest");
       return null;
     }
-    await logUpdateEvent("check_available", update.version);
-    return toAppUpdate(update);
+    await logUpdateEvent("check_available", metadata.version);
+    return toAppUpdate(new Update(metadata));
   } catch (error) {
     await logUpdateEvent("check_failure");
     throw error;

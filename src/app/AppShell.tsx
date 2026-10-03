@@ -1,15 +1,15 @@
 import { Activity, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Layers2, Minus, Blocks, Puzzle, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
+import { Minus, Blocks, BookOpenText, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
-import { getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { armCliUpdateTicker, getCachedCliUpdate, getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeCliUpdate, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
-import ProfilesView from "../features/profiles/ProfilesView";
+import CodexProfilesView from "../features/codex/CodexProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
 import SkillsView from "../features/skills/SkillsView";
@@ -31,7 +31,7 @@ const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 /// 失败不静默：写回 error 态，让"config.toml 坏了"在切回窗口那一刻就可见，
 /// 而不是等用户点进 MCP 页才发现。
 const checkMcpDiff = () =>
-  api.mcpSyncPreview()
+  api.codexMcpSyncPreview()
     .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
     .catch(() => setMcpDiffBadge({ count: 0, error: true }));
 
@@ -39,7 +39,7 @@ const checkMcpDiff = () =>
 const PAGE_ENTER_TARGET =
   ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
 
-/// 侧栏条目/分组标题的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
+/// 侧栏条目的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
 type SidebarLabelKey = `nav.${keyof (typeof resources)["zh-CN"]["common"]["nav"]}`;
 
 /// 页面进场动画：沿原 cubic-bezier(0.16,1,0.35,1) 曲线做 8px 上浮，但位移逐帧量化到整设备像素。
@@ -134,7 +134,7 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
       listen<string>("tray-switch-profile", async ({ payload: id }) => {
         const state = stateRef.current;
         if (busy.current) return;
-        if (!state?.profiles.some((profile) => profile.id === id) || state.active_profile_id === id) {
+        if (!state?.codex_profiles.some((profile) => profile.id === id) || state.active_codex_profile_id === id) {
           await latest.current.refresh();
           return;
         }
@@ -163,9 +163,9 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
 }
 
 export default function AppShell() {
-  const [view, setView] = useState<AppView>("profiles");
+  const [view, setView] = useState<AppView>("codexProfiles");
   // 切页记忆：进过的页面保活（Activity hidden），未访问页连渲染都不发生，冷启动零新增。
-  const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["profiles"]));
+  const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["codexProfiles"]));
   const [startupReady, setStartupReady] = useState(false);
   const { t } = useTranslation();
   // 侧栏角标复用 MCP 页的差异计数文案，避免同一件事在两处各写一份
@@ -176,9 +176,9 @@ export default function AppShell() {
   useEffect(() => {
     const language = setupI18n(state?.settings.language);
     if (isTauri && state) {
-      void api.setTrayMenu(language, state.profiles.map(({ id, name }) => ({ id, name })), state.active_profile_id).catch(() => undefined);
+      void api.setTrayMenu(language, state.codex_profiles.map(({ id, name }) => ({ id, name })), state.active_codex_profile_id).catch(() => undefined);
     }
-  }, [state?.settings.language, state?.profiles, state?.active_profile_id]);
+  }, [state?.settings.language, state?.codex_profiles, state?.active_codex_profile_id]);
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
@@ -200,6 +200,8 @@ export default function AppShell() {
   const mcpBadgeTitle = mcpDiffBadge?.count
     ? tMcp("list.updateDiffAria", { count: mcpDiffBadge.count })
     : mcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;
+  const codexCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("codex"), () => getCachedCliUpdate("codex"));
+  const claudeCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("claude"), () => getCachedCliUpdate("claude"));
 
   useEffect(() => {
     let cancelled = false;
@@ -322,6 +324,14 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [startupReady]);
 
+  // CLI 更新胶囊的全局检查时机（首帧后 10 秒首轮 + 每小时懒 tick，6h 冷却闸在
+  // service 内）：覆盖从不进 Agent 工具页、也极少重启的常驻用户。app 层一次
+  // 挂载活整个会话，不绑页面生命周期；失败全部静默，只留后端日志。
+  useEffect(() => {
+    if (!startupReady) return;
+    armCliUpdateTicker(10_000);
+  }, [startupReady]);
+
   useEffect(() => {
     const main = document.querySelector("main");
     if (!main) return;
@@ -340,13 +350,13 @@ export default function AppShell() {
   // 清理（不加载、不轮询），state 与 DOM 保留，切回即恢复现场，effects 重跑后数据照常刷新。
   const renderPages = (state: AppState) => {
     const pages: Record<AppView, ReactNode> = {
-      profiles: <ProfilesView state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={() => setView("accounts")} />,
+      codexProfiles: <CodexProfilesView state={state} authStatusReady={authStatusReady} activationEpoch={activationEpoch} coldStart={!startupReady} onRefresh={refresh} onManageChatgptAccounts={() => setView("accounts")} />,
       mcp: <McpView activationEpoch={activationEpoch} />,
       plugins: <PluginsView state={state} />,
       skills: <SkillsView activationEpoch={activationEpoch} />,
-      claude: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
-      accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />,
-      settings: <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
+      claudeProfiles: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
+      accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} active={view === "accounts"} />,
+      settings: <SettingsView state={state} active={view === "settings"} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
     };
     return (Object.keys(pages) as AppView[]).map((pageView) =>
       visitedViews.has(pageView) ? (
@@ -355,32 +365,24 @@ export default function AppShell() {
     );
   };
 
-  // 侧栏分组（C 方案）：Codex / Claude / 通用导航。新增页面 = 数组加一条，不再手写按钮块；
-  // 产品分组标识在收缩态仍可见，通用导航不显示多余分组标题。icon 存 ReactNode 以保留各页现有图标形态。
+  // 侧栏分组（C 方案）：客户端 / 功能入口。新增页面 = 数组加一条，不再手写按钮块；
+  // 客户端与功能入口沿用同一组按钮间距。icon 存 ReactNode 以保留各页现有图标形态。
   // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
-  const sidebarGroups: { key: string; labelKey: SidebarLabelKey; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; titleText?: string; onSelect: () => void }[] }[] = [
+  const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; badgeDot?: boolean; titleText?: string; onSelect: () => void }[] }[] = [
     {
-      key: "codex",
-      labelKey: "nav.groupCodex",
+      key: "clients",
       items: [
-        { view: "profiles", labelKey: "nav.providers", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("profiles") },
-        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
-        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
-      ],
-    },
-    {
-      key: "claude",
-      labelKey: "nav.groupClaude",
-      items: [
-        { view: "claude", labelKey: "nav.claudeProviders", icon: <Layers2 strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("claude") },
+        { view: "codexProfiles", labelKey: "nav.groupCodex", icon: <img src="/codex.svg" alt="" />, badgeDot: Boolean(codexCliUpdate?.available), titleText: codexCliUpdate ? t("cliUpdate.upgradeTitle", { client: "Codex", version: codexCliUpdate.latest_version, channel: codexCliUpdate.channel }) : undefined, onSelect: () => setView("codexProfiles") },
+        { view: "claudeProfiles", labelKey: "nav.groupClaude", icon: <img src="/claude-code.svg" alt="" />, badgeDot: Boolean(claudeCliUpdate?.available), titleText: claudeCliUpdate ? t("cliUpdate.upgradeTitle", { client: "Claude Code", version: claudeCliUpdate.latest_version, channel: claudeCliUpdate.channel }) : undefined, onSelect: () => setView("claudeProfiles") },
       ],
     },
     {
       key: "common",
-      labelKey: "nav.groupCommon",
       items: [
-        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon className="h-[18px] w-[18px]" />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
-        { view: "skills", labelKey: "nav.skills", icon: <Puzzle strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
+        { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
+        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
+        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
+        { view: "skills", labelKey: "nav.skills", icon: <BookOpenText strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
         { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
       ],
     },
@@ -390,7 +392,7 @@ export default function AppShell() {
     <FeedbackProvider>
       <TrayActions stateRef={stateRef} refresh={refresh} openSettings={() => setView("settings")} openAccounts={() => setView("accounts")} />
       {/* 首次窗口完成显示后才启动静默检查，避免更新链路进入首屏/冷启动关键路径。 */}
-      <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady}>
+      <AppUpdateProvider enabled={Boolean(state?.settings.auto_check_update) && startupReady} ready={startupReady} proxyMode={state?.settings.proxy_mode} proxyUrl={state?.settings.proxy_url}>
       <div className={`flex h-full min-h-0 flex-col ${isMacWindow ? "is-mac" : ""}`}>
         <div className="apple-window-chrome">
           {isMacWindow ? <div className="apple-chrome-inset" data-tauri-drag-region aria-hidden="true" /> : null}
@@ -428,17 +430,13 @@ export default function AppShell() {
             </div>
             <nav className="mx-1.5 mt-3 space-y-3">
               {sidebarGroups.map((group) => (
-                <div key={group.key} className="apple-sidebar-group" role="group" aria-label={group.key === "common" ? undefined : t(group.labelKey)}>
-                  {group.key !== "common" ? <div className="apple-sidebar-group-label" aria-hidden="true">
-                    {group.key === "codex" ? <img src="/codex.svg" alt="" /> : null}
-                    {group.key === "claude" ? <img src="/claude-code.svg" alt="" /> : null}
-                    <span className="apple-sidebar-label">{t(group.labelKey)}</span>
-                  </div> : null}
+                <div key={group.key} className={`apple-sidebar-group ${group.key === "common" ? "apple-sidebar-group--content" : ""}`} role="group">
                   <div className="space-y-1">
                     {group.items.map((item) => (
                       <button key={item.view} type="button" className={navClass} data-active={view === item.view ? "true" : undefined} aria-label={t(item.labelKey)} title={item.titleText} onClick={item.onSelect} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                         <span className="relative flex shrink-0">
                           {item.icon}
+                          {item.badgeDot ? <span className="apple-sidebar-update-dot" aria-hidden="true" /> : null}
                           {item.badgeText ? <span className="apple-count-badge" aria-hidden="true">{item.badgeText}</span> : null}
                         </span>
                         <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>

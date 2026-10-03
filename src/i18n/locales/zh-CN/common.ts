@@ -7,10 +7,8 @@ export default {
     skills: "Skill",
     accounts: "账号",
     settings: "设置",
-    claudeProviders: "供应商",
     groupCodex: "Codex",
-    groupClaude: "Claude",
-    groupCommon: "通用",
+    groupClaude: "Claude Code",
   },
   sidebar: {
     expand: "展开侧边栏",
@@ -34,7 +32,7 @@ export default {
   },
   error: {
     title: "界面加载失败",
-    description: "当前页面遇到异常，可以重新加载后继续使用。",
+    description: "当前页面遇到异常，可以重新加载后继续使用",
     reload: "重新加载",
     details: "查看错误详情",
   },
@@ -44,7 +42,7 @@ export default {
   },
   preset: {
     custom: "自定义",
-    zhipu: "智谱",
+    zhipu: "智谱（Z.AI）",
     qwen: "通义千问",
     hunyuan: "腾讯混元",
     doubao: "火山方舟豆包",
@@ -61,5 +59,10 @@ export default {
   providerName: {
     hunyuan: "腾讯混元",
     volcengine: "火山方舟",
+  },
+  cliUpdate: {
+    upgrade: "更新到 {{version}}",
+    upgradeTitle: "发现 {{client}} CLI 新版本 {{version}}（{{channel}} 通道），点击更新",
+    upgradeDone: "{{client}} CLI 已更新至 v{{version}}",
   },
 } as const;
