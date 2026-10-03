@@ -78,8 +78,8 @@ describe("ProfileCard 官网入口", () => {
   it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {
     expect(styles).toContain("--chip-bg: #e9e9e6;");
     expect(styles).toContain(".apple-chip {\n  align-items: center;\n  background: var(--chip-bg);");
-    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--main-surface-bg);\n  font-size: 12px;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);\n  background: var(--main-surface-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--main-surface-bg);\n  border-color: transparent;\n  font-size: 12px;");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: transparent;\n  background: var(--main-surface-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
   });
 
   it("让浅色模式的用量成功百分比使用高对比度绿色", () => {
@@ -175,7 +175,7 @@ describe("ProfileCard 官网入口", () => {
     expect(hookSource).toContain("if (balanceInFlightRef.current) return balanceInFlightRef.current;");
   });
 
-  it("静默额度刷新只在冷启动窗口内延后，其余场景零等待", () => {
+  it("静默用量刷新只在冷启动窗口内延后，其余场景零等待", () => {
     // 延迟的唯一理由是"别跟首屏抢资源"；窗口已经起来之后，切页和聚焦都不该再等。
     // 两条路各自独立：冷启动走 900/1200，日常走 0（setTimeout 立即宏任务）；逻辑在 useProfileBalance
     expect(hookSource).toContain("window.setTimeout(() => void fetchBalance(), coldStart ? (active ? 900 : 1200) : 0);");

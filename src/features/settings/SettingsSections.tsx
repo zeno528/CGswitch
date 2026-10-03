@@ -394,7 +394,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
             {update ? (
               <button type="button" className="apple-action-button app-button--primary" disabled={installing} onClick={() => setConfirming(true)}>
                 {installing ? <LoaderCircle className="h-4 w-4 animate-spin" strokeWidth={2} aria-hidden="true" /> : <Download className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}
-                {installing ? t("about.installing") : t("about.upgradeTo")} v{update.version}
+                {installing ? t("about.installing") : t("about.updateTo")} v{update.version}
               </button>
             ) : (
               <button type="button" className="apple-action-button app-button--primary" disabled={checking} onClick={() => void checkUpdate()}>

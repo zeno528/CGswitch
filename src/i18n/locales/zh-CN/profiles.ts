@@ -51,7 +51,6 @@ export default {
     dragToReorder: "拖动排序",
     balance: "余额",
     usage: "用量",
-    quota: "额度",
   },
   balance: {
     // 用量窗口标签：既是后端未回传时的兜底，也是后端回传中文值时的换词目标
@@ -61,7 +60,7 @@ export default {
     period: "周期",
     queryFailedRetry: "查询失败（点击重试）",
     clickToRefresh: "点击刷新",
-    chatgptQuota: "ChatGPT额度",
+    chatgptQuota: "ChatGPT用量",
     queryFailed: "查询失败",
     authInvalidToast: "登录凭证无法续期，请重新登录后重试",
     queryFailedToast: "用量查询失败，请检查网络后重试",

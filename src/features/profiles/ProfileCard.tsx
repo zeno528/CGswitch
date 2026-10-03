@@ -36,9 +36,9 @@ export function ProfileCardContent({
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
-  const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.quota"));
+  const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.usage"));
   const weeklyLabel = localizeBalanceLabel(balanceInfo?.weekly_label, t) ?? (isUsageProvider ? t("balance.window7d") : t("balance.period"));
-  const balanceLabel = isSubscriptionProfile ? t("card.quota") : isUsageProvider ? t("card.usage") : t("card.balance");
+  const balanceLabel = isSubscriptionProfile || isUsageProvider ? t("card.usage") : t("card.balance");
   const primaryUsagePercent = balanceInfo?.usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.usage_percent : balanceInfo.usage_percent) : null;
   const weeklyUsagePercent = balanceInfo?.weekly_usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.weekly_usage_percent : balanceInfo.weekly_usage_percent) : null;
   const primaryUsageText = isSubscriptionProfile ? t("card.usageRemaining", { label: primaryLabel }) : isUsageProvider ? `${primaryLabel}:` : `${primaryLabel} `;
@@ -50,7 +50,7 @@ export function ProfileCardContent({
         profile.admin_url ? (
           <button
             type="button"
-            className="absolute inset-0 grid cursor-pointer place-items-center rounded-xl bg-(--panel-bg) text-accent opacity-0 outline-none transition-opacity duration-150 group-hover/tile:opacity-100 focus-visible:opacity-100"
+            className="absolute inset-0 grid cursor-pointer place-items-center rounded-xl bg-(--main-surface-bg) text-accent opacity-0 outline-none transition-opacity duration-150 group-hover/tile:opacity-100 focus-visible:opacity-100"
             title={t("card.openWebsite")}
             aria-label={t("card.openWebsite")}
             onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}

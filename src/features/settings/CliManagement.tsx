@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderOpen, Globe, Zap } from "lucide-react";
+import { FolderOpen, Globe } from "lucide-react";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { clearCachedCliUpdate, getCachedCliStatus, runCliUpdateCheck, runCliUpdateCheckQuietly, setCliStatusCache, touchCliUpdateCheckedAt } from "../../app/managementDataCache";
@@ -92,9 +92,11 @@ export function useCliManagement(client: Client, active: boolean) {
     try {
       const result = await runCliUpdateCheck(client);
       applyStatus(result.status);
-      info(result.available
-        ? t("cli.updateAvailable", { version: result.latest_version, channel: result.channel })
-        : t("cli.noUpdate", { version: result.latest_version, channel: result.channel }));
+      if (result.available) {
+        info(t("cli.updateAvailable", { version: result.latest_version, channel: result.channel }));
+      } else {
+        success(t("cli.noUpdate", { version: result.status.version ?? result.latest_version }));
+      }
     } catch (error) {
       touchCliUpdateCheckedAt(client); // 手动失败的检查也推进冷却，定时器不立刻重试
       reportError(cliFailureMessage(cliFailure(error, "fetch_version"), client, t));
@@ -147,12 +149,11 @@ export function CliCard({ client, management }: { client: Client; management: Re
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="setting-title">{clients[client].label}</span>
-            {status?.source ? (
+            {status?.source && status.source !== "embedded" ? (
               <span className="plan-badge">
                 {t(`cli.sources.${client}.${status.source}`, { defaultValue: status.source })}
               </span>
             ) : null}
-            {status?.installation === "missing" ? <span className="apple-chip">{t("cli.missing")}</span> : null}
             {status?.version ? <span className="plan-badge">{status.version}</span> : null}
             {status?.installation === "native" ? (
               <CliUpgradePill
@@ -180,12 +181,6 @@ export function CliCard({ client, management }: { client: Client; management: Re
       </div>
       {status ? (
         <div className="cli-facts">
-          {status.embedded_paths?.length ? (
-            <span className="cli-fact">
-              <Zap size={14} strokeWidth={2} aria-hidden="true" />
-              <span>{t("cli.embedded")}</span>
-            </span>
-          ) : null}
           {status.path ? (
             <span className="cli-fact">
               <FolderOpen size={14} strokeWidth={2} aria-hidden="true" />

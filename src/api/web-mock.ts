@@ -948,7 +948,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "codex_get_profile_balance": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
-      // 与后端一致：官方 ChatGPT 配置按其固定登录来源查询额度。
+      // 与后端一致：官方 ChatGPT 配置按其固定登录来源查询用量。
       if (profile.kind === "official") {
         return { is_available: true, balance_infos: [webChatgptQuota], latency_ms: 210 } as T;
       }
@@ -1062,7 +1062,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return undefined as T;
     }
     case "auth_get_quota":
-      // 与后端一致：Settings 的 Codex/OAuth 账号均返回官方额度窗口。
+      // 与后端一致：Settings 的 Codex/OAuth 账号均返回官方用量窗口。
       return { is_available: true, balance_infos: [webChatgptQuota], latency_ms: 210 } as T;
     case "codex_duplicate_profile": {
       const profile = webProfiles.find((item) => item.id === args?.id);

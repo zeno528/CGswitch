@@ -51,7 +51,6 @@ export default {
     dragToReorder: "Drag to reorder",
     balance: "Balance",
     usage: "Usage",
-    quota: "Quota",
   },
   balance: {
     // Usage window labels: fallback when the backend omits them, and the target when it sends Chinese
@@ -61,7 +60,7 @@ export default {
     period: "Period",
     queryFailedRetry: "Query failed (click to retry)",
     clickToRefresh: "Click to refresh",
-    chatgptQuota: "ChatGPT quota",
+    chatgptQuota: "ChatGPT usage",
     queryFailed: "Query failed",
     authInvalidToast: "The login credentials could not be renewed. Sign in again and retry",
     queryFailedToast: "Usage query failed. Check your network and retry",

@@ -597,7 +597,11 @@ pub(super) fn list_plugins_sync(home: &Path, codex_home: &Path) -> AppResult<Vec
                 plugin_store_path(codex_home, &marketplace, &name, version.as_deref(), &path);
             let manifest = read_manifest(&plugin_path);
             summaries.push(PluginSummary {
-                version: version.or(manifest.as_ref().and_then(|item| item.version.clone())),
+                // 版本以 manifest 为准（根因见 store.rs），读不到才回落 CLI 版本。
+                version: manifest
+                    .as_ref()
+                    .and_then(|item| item.version.clone())
+                    .or(version),
                 display_name: manifest
                     .as_ref()
                     .and_then(|item| item.interface.as_ref())

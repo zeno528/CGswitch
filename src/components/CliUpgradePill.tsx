@@ -76,12 +76,12 @@ export function CliUpgradePill({ client, onUpdated }: CliUpgradePillProps) {
   return (
     <button
       type="button"
-      className="plan-badge gap-1 cli-upgrade-action"
+      className="plan-badge gap-1"
       disabled={upgrading}
       title={tCommon("cliUpdate.upgradeTitle", { client: label, version: update.latest_version, channel: update.channel })}
       onClick={() => void upgrade()}
     >
-      {upgrading ? <><LoadingSpinner size="md" /><span className="meta-xs">{tSettings("cli.updating")}</span></> : <><Download size={12} strokeWidth={2} aria-hidden="true" />{tCommon("cliUpdate.upgrade", { version: update.latest_version })}</>}
+      {upgrading ? <><LoadingSpinner /><span className="meta-xs">{tSettings("cli.updating")}</span></> : <><Download size={12} strokeWidth={2} aria-hidden="true" />{tCommon("cliUpdate.upgrade", { version: update.latest_version })}</>}
     </button>
   );
 }

@@ -162,14 +162,14 @@ describe("SettingsSections", () => {
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
     expect(settingsSectionsSource).toContain('<span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span>');
     expect(settingsSectionsSource).not.toContain("settings-about__update-description");
-    expect(settingsSectionsSource).toContain('t("about.upgradeTo")');
+    expect(settingsSectionsSource).toContain('t("about.updateTo")');
     expect(settingsSectionsSource).not.toContain('t("about.updateNow")');
     expect(settingsSectionsSource).toContain('t("about.changelog")');
     expect(settingsSectionsSource).toContain("releaseNotesUrl(update?.version ?? version.trim())");
     expect(settingsSectionsSource).toContain("if (found) {");
     expect(settingsSectionsSource).toContain("setConfirming(true);");
     expect(settingsSectionsSource).toContain('feedback.success(t("about.upToDate"))');
-    expect(settingsSectionsSource).toMatch(/t\("about\.upgradeTo"\)\}\s+v\{update\.version\}/);
+    expect(settingsSectionsSource).toMatch(/t\("about\.updateTo"\)\}\s+v\{update\.version\}/);
     expect(settingsSectionsSource).not.toContain('className="app-version" title={t("about.updateAvailable"');
     expect(settingsSectionsSource).not.toContain("update-available-card");
     expect(settingsSectionsSource).not.toContain("update-available-reveal");

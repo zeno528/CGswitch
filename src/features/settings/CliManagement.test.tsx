@@ -95,7 +95,11 @@ it.each(["codex", "claude"] as const)("%s 每次重新进入都刷新本地并�
   const html = renderToStaticMarkup(<CliCard client={client} management={reentered} />);
   expect(html).toContain(refreshed.path!);
   hooks.serviceCheck.mockResolvedValueOnce(checkedAgain);
+  hooks.info.mockClear();
+  hooks.success.mockClear();
   await reentered.check(); // 主动检查更新仍可用（走共享服务）
+  expect(hooks.info).not.toHaveBeenCalled();
+  expect(hooks.success).toHaveBeenCalledWith("cli.noUpdate1.2.4");
   expect(hooks.command).toHaveBeenCalledTimes(2);
 });
 
@@ -180,7 +184,7 @@ it("进行中反馈按动作显示对应文案", () => {
   expect(render("install")).toContain("cli.installing");
 });
 
-it("按客户端显示实际安装来源", () => {
+it("只显示可管理的安装来源", () => {
   const claude = renderToStaticMarkup(<CliCard client="claude" management={{
     ...management, status: { ...status, source: "native" },
   }} />);
@@ -190,8 +194,8 @@ it("按客户端显示实际安装来源", () => {
   expect(claude).toContain("cli.sources.claude.native");
   expect(claude).toContain('class="plan-badge">cli.sources.claude.native</span>');
   expect(claude).not.toContain("apple-chip--success");
-  expect(codex).toContain("cli.sources.codex.embedded");
-  expect(codex.indexOf("cli.sources.codex.embedded")).toBeLessThan(codex.indexOf("cli.missing"));
+  expect(codex).not.toContain("cli.sources.codex.embedded");
+  expect(codex).not.toContain("cli.missing");
 });
 
 it("网络地址复用路径高亮块，连接方式与网络标签分层", () => {
@@ -280,7 +284,7 @@ it("检查只查询，发现更新后仍需单独点击升级；没有更新时�
       hooks.cachedUpdate.mockReturnValue(available ? { latest_version: "1.2.4", channel: "latest", available: true } : null);
       const checked = CliCard({ client, management: actions });
       const html = renderToStaticMarkup(checked);
-      expect(html.includes('class="plan-badge gap-1 cli-upgrade-action"')).toBe(available);
+      expect(html.includes('class="plan-badge gap-1"')).toBe(available);
       expect(html).not.toContain("cli.noUpdate");
       if (available) expect(html).toContain("cliUpdate.upgradeTitle1.2.4");
       expect(actions.run).not.toHaveBeenCalled();
@@ -293,7 +297,7 @@ it("版本号与升级动作复用同一徽标样式", () => {
   hooks.cachedUpdate.mockReturnValue({ latest_version: "1.2.4", channel: "latest", available: true });
   const html = renderToStaticMarkup(<CliCard client="claude" management={management} />);
   expect(html).toContain('class="plan-badge">1.2.3</span>');
-  expect(html).toContain('<button type="button" class="plan-badge gap-1 cli-upgrade-action"');
+  expect(html).toContain('<button type="button" class="plan-badge gap-1"');
 });
 
 it("混装与其他任务阻止安装，桌面内置副本可以共存", () => {
@@ -309,7 +313,7 @@ it("混装与其他任务阻止安装，桌面内置副本可以共存", () => {
   expect(card).not.toContain('disabled=""');
   expect(card).toContain("cli.install");
   expect(card).toContain("app-button--primary");
-  expect(card).toContain("cli.embedded");
+  expect(card).not.toContain("/fixture/desktop");
   const remoteTask = renderToStaticMarkup(<CliCard client="claude" management={{
     ...management, status: { ...status, busy: true },
   }} />);

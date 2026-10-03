@@ -75,6 +75,14 @@ describe("AppShell 布局", () => {
     expect(source).toContain("if (activationEpoch > 0) return;");
   });
 
+  it("客户端更新缓存驱动展开/收缩侧栏的状态圆点", () => {
+    expect(source).toContain("subscribeCliUpdate");
+    expect(source).toContain("badgeDot: Boolean(codexCliUpdate?.available)");
+    expect(source).toContain("badgeDot: Boolean(claudeCliUpdate?.available)");
+    expect(source).toContain('className="apple-sidebar-update-dot"');
+    expect(styles).toContain(".apple-sidebar-update-dot {");
+  });
+
   it("MCP 页查到差异后写回共享缓存，侧栏与页面同源", () => {
     const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
     expect(mcpViewSource).toContain("setMcpDiffBadge({ count: preview.entries.length, error: false })");

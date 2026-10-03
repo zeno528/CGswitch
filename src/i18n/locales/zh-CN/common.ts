@@ -42,7 +42,7 @@ export default {
   },
   preset: {
     custom: "自定义",
-    zhipu: "智谱",
+    zhipu: "智谱（Z.AI）",
     qwen: "通义千问",
     hunyuan: "腾讯混元",
     doubao: "火山方舟豆包",
@@ -61,8 +61,8 @@ export default {
     volcengine: "火山方舟",
   },
   cliUpdate: {
-    upgrade: "升级到 {{version}}",
-    upgradeTitle: "发现 {{client}} CLI 新版本 {{version}}（{{channel}} 通道），点击升级",
-    upgradeDone: "{{client}} CLI 已升级至 v{{version}}",
+    upgrade: "更新到 {{version}}",
+    upgradeTitle: "发现 {{client}} CLI 新版本 {{version}}（{{channel}} 通道），点击更新",
+    upgradeDone: "{{client}} CLI 已更新至 v{{version}}",
   },
 } as const;

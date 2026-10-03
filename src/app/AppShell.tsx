@@ -7,7 +7,7 @@ import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
-import { armCliUpdateTicker, getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { armCliUpdateTicker, getCachedCliUpdate, getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeCliUpdate, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import CodexProfilesView from "../features/codex/CodexProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -200,6 +200,8 @@ export default function AppShell() {
   const mcpBadgeTitle = mcpDiffBadge?.count
     ? tMcp("list.updateDiffAria", { count: mcpDiffBadge.count })
     : mcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;
+  const codexCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("codex"), () => getCachedCliUpdate("codex"));
+  const claudeCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("claude"), () => getCachedCliUpdate("claude"));
 
   useEffect(() => {
     let cancelled = false;
@@ -353,7 +355,7 @@ export default function AppShell() {
       plugins: <PluginsView state={state} />,
       skills: <SkillsView activationEpoch={activationEpoch} />,
       claudeProfiles: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
-      accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} />,
+      accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} active={view === "accounts"} />,
       settings: <SettingsView state={state} active={view === "settings"} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
     };
     return (Object.keys(pages) as AppView[]).map((pageView) =>
@@ -366,12 +368,12 @@ export default function AppShell() {
   // 侧栏分组（C 方案）：客户端 / 功能入口。新增页面 = 数组加一条，不再手写按钮块；
   // 客户端与功能入口沿用同一组按钮间距。icon 存 ReactNode 以保留各页现有图标形态。
   // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
-  const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; titleText?: string; onSelect: () => void }[] }[] = [
+  const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; badgeDot?: boolean; titleText?: string; onSelect: () => void }[] }[] = [
     {
       key: "clients",
       items: [
-        { view: "codexProfiles", labelKey: "nav.groupCodex", icon: <img src="/codex.svg" alt="" />, onSelect: () => setView("codexProfiles") },
-        { view: "claudeProfiles", labelKey: "nav.groupClaude", icon: <img src="/claude-code.svg" alt="" />, onSelect: () => setView("claudeProfiles") },
+        { view: "codexProfiles", labelKey: "nav.groupCodex", icon: <img src="/codex.svg" alt="" />, badgeDot: Boolean(codexCliUpdate?.available), titleText: codexCliUpdate ? t("cliUpdate.upgradeTitle", { client: "Codex", version: codexCliUpdate.latest_version, channel: codexCliUpdate.channel }) : undefined, onSelect: () => setView("codexProfiles") },
+        { view: "claudeProfiles", labelKey: "nav.groupClaude", icon: <img src="/claude-code.svg" alt="" />, badgeDot: Boolean(claudeCliUpdate?.available), titleText: claudeCliUpdate ? t("cliUpdate.upgradeTitle", { client: "Claude Code", version: claudeCliUpdate.latest_version, channel: claudeCliUpdate.channel }) : undefined, onSelect: () => setView("claudeProfiles") },
       ],
     },
     {
@@ -434,6 +436,7 @@ export default function AppShell() {
                       <button key={item.view} type="button" className={navClass} data-active={view === item.view ? "true" : undefined} aria-label={t(item.labelKey)} title={item.titleText} onClick={item.onSelect} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
                         <span className="relative flex shrink-0">
                           {item.icon}
+                          {item.badgeDot ? <span className="apple-sidebar-update-dot" aria-hidden="true" /> : null}
                           {item.badgeText ? <span className="apple-count-badge" aria-hidden="true">{item.badgeText}</span> : null}
                         </span>
                         <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>

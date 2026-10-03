@@ -43,7 +43,7 @@ export default {
   },
   preset: {
     custom: "Custom",
-    zhipu: "Zhipu",
+    zhipu: "Z.ai",
     qwen: "Qwen",
     hunyuan: "Tencent Hunyuan",
     doubao: "Volcengine Doubao",
@@ -62,8 +62,8 @@ export default {
     volcengine: "Volcengine Ark",
   },
   cliUpdate: {
-    upgrade: "Upgrade to {{version}}",
-    upgradeTitle: "{{client}} CLI {{version}} available ({{channel}} channel). Click to upgrade",
+    upgrade: "Update to {{version}}",
+    upgradeTitle: "{{client}} CLI {{version}} available ({{channel}} channel). Click to update",
     upgradeDone: "{{client}} CLI updated to v{{version}}",
   },
 } as const;

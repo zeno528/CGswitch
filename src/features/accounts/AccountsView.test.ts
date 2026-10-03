@@ -60,6 +60,12 @@ describe("OAuth account quota recovery", () => {
     expect(successPath.indexOf("await onRefreshed();")).toBeGreaterThan(successPath.indexOf('setError("");'));
     expect(source.match(/<AccountQuota[^\n]*onRefreshed=\{refreshStatus\}/g)).toHaveLength(2);
   });
+
+  it("切回账号页时即使已有错误也会静默重试用量", () => {
+    expect(source).toContain("active?: boolean");
+    expect(source).toContain("if (active) void refresh();");
+    expect(source).not.toContain("if (!knownError) void refresh();");
+  });
 });
 
 describe("Add account dialog wiring", () => {

@@ -309,21 +309,22 @@ body {
   color: var(--text-primary);
 }
 
-/* 供应商卡片余额/用量药丸统一复用主容器底色，主题只需调整 --main-surface-bg。 */
+/* 供应商卡片余额/用量药丸统一复用主容器底色、去描边，主题只需调整 --main-surface-bg。 */
 .profile-card-meta .apple-chip {
   background: var(--main-surface-bg);
+  border-color: transparent;
   font-size: 12px;
 }
 
 .profile-card-meta .apple-chip,
-.cli-upgrade-action {
-  transition: border-color var(--motion-fast) ease;
+button.plan-badge {
+  transition: background-color var(--motion-fast) ease;
 }
 
-/* 余额/用量药丸悬停：只提亮细描边，不改变尺寸、背景、文字或布局。 */
+/* 余额/用量药丸去描边；更新药丸默认沿用 .plan-badge 的版本号样式。 */
 .profile-card-meta .apple-chip:hover,
-.cli-upgrade-action:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+button.plan-badge:hover:not(:disabled) {
+  background: var(--hover-bg);
 }
 
 .profile-card-meta {
@@ -1409,14 +1410,15 @@ body.drag-active * {
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
 .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
-  border-color: color-mix(in srgb, var(--primary-button-bg) 22%, transparent);
+  border-color: transparent;
   background: var(--main-surface-bg);
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip:hover,
 .profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip:hover {
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-color: transparent;
+  background: var(--hover-bg);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
@@ -1545,6 +1547,17 @@ body.drag-active * {
   height: 0.875rem;
   border-width: 1.5px;
   font-size: 9px;
+}
+
+.apple-sidebar-update-dot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1.5px solid var(--sidebar-bg);
+  border-radius: 999px;
+  background: var(--accent);
 }
 
 .apple-action-button:disabled {

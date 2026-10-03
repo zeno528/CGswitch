@@ -92,11 +92,12 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   </div>;
 }
 
-function AccountQuota({ source, accountId, cachedBalance, onRefreshed, onRelogin, reloginDisabled }: {
+function AccountQuota({ source, accountId, cachedBalance, onRefreshed, active, onRelogin, reloginDisabled }: {
   source: "desktop" | "oauth";
   accountId: string;
   cachedBalance?: ProfileBalanceInfo;
   onRefreshed: () => Promise<void>;
+  active: boolean;
   onRelogin?: () => void;
   reloginDisabled?: boolean;
 }) {
@@ -121,7 +122,7 @@ function AccountQuota({ source, accountId, cachedBalance, onRefreshed, onRelogin
     try {
       const result = await api.authGetQuota(source, accountId);
       const info = result.balance_infos[0];
-      if (!info) throw new Error("额度查询未返回数据"); // i18n-exempt: 内部错误信息，界面只按 error 真假渲染固定文案
+      if (!info) throw new Error("用量查询未返回数据"); // i18n-exempt: 内部错误信息，界面只按 error 真假渲染固定文案
       const previousQuota = displayedQuotaRef.current;
       displayedQuotaRef.current = info;
       setAnimationFromQuota(previousQuota);
@@ -154,11 +155,11 @@ function AccountQuota({ source, accountId, cachedBalance, onRefreshed, onRelogin
     displayedQuotaRef.current = nextQuota;
     setQuota(knownError ? null : nextQuota);
     setError(knownError);
-    // 已知错误（尤其登录失效）挂载即重试必然再失败，还会让按钮闪一下禁用态；留给手动刷新
-    if (!knownError) void refresh();
-    // Cache identity changes are the only reload trigger; refresh keeps the latest value.
+    // 页面切入时静默重试一次；失败仍留在当前错误态，不打扰用户。
+    if (active) void refresh();
+    // Cache identity changes and page activation are the reload triggers; refresh keeps the latest value.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cacheKey]);
+  }, [active, cacheKey]);
 
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
   const primaryLabel = localizeBalanceLabel(quota?.usage_label, tBalance) ?? t("account.quotaLabel");
@@ -222,7 +223,7 @@ function ResetCredits({ availableCount, credits }: { availableCount: number; cre
       <CreditCard className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
       <div className="flex min-w-0 items-baseline gap-2"><div className="setting-title">{t("account.resetCreditsTitle")}</div><span className="apple-chip muted shrink-0">{t("account.resetCredits", { count: availableCount })}</span></div>
     </div>
-    {/* 复用额度失败卡的同款内嵌卡片容器，一张次数一张卡 */}
+    {/* 复用用量失败卡的同款内嵌卡片容器，一张次数一张卡 */}
     {credits?.length ? <div className="mt-3 space-y-2">
       {credits.map((credit) => {
         const days = daysRemaining(credit.expires_at);
@@ -248,7 +249,7 @@ function SubscriptionExpiry({ plan, expiresAt }: { plan?: string | null; expires
   return <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1"><PlanBadge plan={plan ?? null} />{subscriptionExpiry ? <span className="meta-xs muted">{t("account.subscriptionRenewal", { time: formatLocalTime(subscriptionExpiry, i18n.language), timeZone: localTimeZone(i18n.language) })}{days == null ? null : <> · <span className={expiryColorClass(days)}>{t("account.subscriptionDaysRemaining", { count: days })}</span></>}</span> : null}</div>;
 }
 
-export default function AccountsView({ initialStatus, balanceCache, onAuthStatusChange }: { initialStatus: AuthStatus; balanceCache?: Record<string, ProfileBalanceInfo>; onAuthStatusChange?: (status: AuthStatus) => void }) {
+export default function AccountsView({ initialStatus, balanceCache, onAuthStatusChange, active = true }: { initialStatus: AuthStatus; balanceCache?: Record<string, ProfileBalanceInfo>; onAuthStatusChange?: (status: AuthStatus) => void; active?: boolean }) {
   const feedback = useFeedback();
   const { t } = useTranslation("settings");
   const [status, setStatus] = useState(initialStatus);
@@ -355,7 +356,7 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
             </div>
           </div>
           <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-          <AccountQuota source="desktop" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} onRefreshed={refreshStatus} />
+          <AccountQuota source="desktop" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} onRefreshed={refreshStatus} active={active} />
         </div>
       ))}
       {status.accounts.map((account) => <div key={`${account.id}:${account.authenticated_at}`} className="apple-group p-3">
@@ -368,7 +369,7 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
           <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id, account.login)}><TrashIcon /></button>
         </div>
         <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRefreshed={refreshStatus} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />
+        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRefreshed={refreshStatus} active={active} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />
       </div>)}
     </div>
   );
