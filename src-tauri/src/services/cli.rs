@@ -88,17 +88,67 @@ pub(super) async fn check_for_update(
     })
 }
 
+/// 两端共用的 CLI 检测中文结论；安装方式措辞与设置页 UI 一致，主语写全称。
+pub(super) fn status_summary(client: &str, installation: &str) -> String {
+    match installation {
+        "missing" => format!("尚未安装 {client} CLI"),
+        "native" => format!("{client} CLI 为原生安装"),
+        "broken" => format!("{client} CLI 原生安装无法运行"),
+        "other" => format!("{client} CLI 为其他方式安装"),
+        _ => format!("检测到多份 {client} CLI 安装"),
+    }
+}
+
+/// 安装/升级动作的中文结论；action 取值只有 install/update 两种。
+pub(super) fn action_summary(client: &str, action: &str, stage: ActionStage) -> String {
+    let verb = if action == "install" {
+        "安装"
+    } else {
+        "升级"
+    };
+    match stage {
+        ActionStage::Start => format!("开始{verb} {client} CLI"),
+        ActionStage::Complete => format!("{client} CLI {verb}完成并通过验证"),
+        ActionStage::Failed => format!("{client} CLI {verb}失败"),
+    }
+}
+
+pub(super) enum ActionStage {
+    Start,
+    Complete,
+    Failed,
+}
+
 pub(super) fn finish_update_check(
     client: &str,
     result: Result<CliUpdate, Failure>,
 ) -> Result<CliUpdate, Failure> {
     match result {
         Ok(update) => {
-            tauri_plugin_log::log::info!("[app.cli.check] client={client:?} version={:?} latest_version={:?} channel={:?} available={} network={} proxy={:?} outcome=success msg=\"CLI 更新检查完成\"", update.status.version, update.latest_version, update.channel, update.available, update.status.network, update.status.proxy);
+            // 有无更新同落一条 check 事件，结论按 available 分两态；
+            // 空版本/空代理落 "-"，network 字段砍（proxy 在场即走了代理）。
+            let summary = if update.available {
+                format!("发现 {client} CLI 新版本")
+            } else {
+                format!("{client} CLI 已是最新版本")
+            };
+            tauri_plugin_log::log::info!(
+                "[app.cli.check] client={client:?} version={} latest_version={} channel={} available={} proxy={} outcome=success msg={summary:?}",
+                update.status.version.as_deref().unwrap_or("-"),
+                update.latest_version,
+                update.channel,
+                update.available,
+                update.status.proxy.as_deref().unwrap_or("-"),
+            );
             Ok(update)
         }
         Err(error) => {
-            tauri_plugin_log::log::warn!("[app.cli.failure] client={client:?} action=check stage={} outcome=failure failure_kind={} error={:?} msg=\"CLI 更新检查失败\"", error.stage, error.kind, error.message);
+            // 失败并回同一事件标签：rg '[app.cli.check]' 必须同时命中成败两态。
+            let summary = format!("{client} CLI 检查更新失败");
+            tauri_plugin_log::log::warn!(
+                "[app.cli.check] client={client:?} stage={} outcome=failure failure_kind={} error={:?} msg={summary:?}",
+                error.stage, error.kind, error.message
+            );
             Err(error)
         }
     }
@@ -297,8 +347,9 @@ pub(super) fn log_cli_failure(
     started: Instant,
     error: &Failure,
 ) {
+    let summary = action_summary(client, action, ActionStage::Failed);
     tauri_plugin_log::log::warn!(
-        "[app.cli.failure] client={client:?} task_id={task_id:?} action={action} stage={} outcome=failure failure_kind={} duration_ms={} error={:?} msg=\"CLI 操作失败\"",
+        "[app.cli.failure] client={client:?} task_id={task_id:?} action={action} stage={} outcome=failure failure_kind={} duration_ms={} error={:?} msg={summary:?}",
         error.stage, error.kind, started.elapsed().as_millis(), error.message
     );
 }

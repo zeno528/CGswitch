@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { getCachedClaudeProfiles, loadClaudeProfiles, setClaudeProfilesCache } from "../../app/managementDataCache";
+import { CliUpgradePill } from "../../components/CliUpgradePill";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import SortableCard from "../../components/SortableCard";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
@@ -266,6 +267,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
         <div className="provider-page-brand">
           <img src="/claude-code.svg" alt="" className="provider-page-brand__logo" draggable="false" />
           <span>Claude Code</span>
+          <CliUpgradePill client="claude" />
         </div>
         <div className="flex items-center gap-2">
           <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCreate}>

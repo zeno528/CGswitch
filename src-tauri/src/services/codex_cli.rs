@@ -366,7 +366,8 @@ impl AppContext {
             .ok_or_else(|| failure("detect", "io_error", "无法定位用户目录"))?;
         let mut status = status(home, &self.paths.codex_home, &network, false)?;
         status.busy = self.codex_cli_operation.try_lock().is_err();
-        tauri_plugin_log::log::debug!("[app.cli.status] client=\"Codex\" installation={} version={:?} network={} outcome=success msg=\"已检测 CLI\"", status.installation, status.version, status.network);
+        let summary = status_summary("Codex", status.installation);
+        tauri_plugin_log::log::debug!("[app.cli.status] client=\"Codex\" installation={} version={} outcome=success msg={summary:?}", status.installation, status.version.as_deref().unwrap_or("-"));
         Ok(status)
     }
 
@@ -406,7 +407,8 @@ impl AppContext {
         .await
         .map_err(|_| failure("detect", "internal", "CLI 检测任务失败"))??;
         let action = if install { "install" } else { "update" };
-        tauri_plugin_log::log::info!("[app.cli.start] client=\"Codex\" task_id={task_id:?} action={action} platform={:?} network={} proxy={:?} version={:?} outcome=success msg=\"开始 CLI 操作\"", before.platform, network.mode(), network.display, before.version);
+        let summary = action_summary("Codex", action, ActionStage::Start);
+        tauri_plugin_log::log::info!("[app.cli.start] client=\"Codex\" task_id={task_id:?} action={action} platform={:?} proxy={} version={} outcome=success msg={summary:?}", before.platform, network.display.as_deref().unwrap_or("-"), before.version.as_deref().unwrap_or("-"));
         check_installation(&before, install)?;
         let update = if install {
             *checked = None;
@@ -419,7 +421,7 @@ impl AppContext {
         let execution = async {
             let (script_path, bytes) = fetch_installer(&network, installer_url(&before.platform)?, &["chatgpt.com", "releases.openai.com"], temp.path(), started).await?;
             if install {
-                tauri_plugin_log::log::info!("[app.cli.download] client=\"Codex\" task_id={task_id:?} bytes={bytes} outcome=success msg=\"官方安装脚本已就绪，安装包由安装器校验\"");
+                tauri_plugin_log::log::info!("[app.cli.download] client=\"Codex\" task_id={task_id:?} bytes={bytes} outcome=success msg=\"Codex CLI 安装脚本已就绪，由官方安装器校验\"");
             }
             // 当前版本缓存目录不是可见入口；若只找到缓存，使用官方默认入口。
             let install_dir = before.path.as_deref().map(Path::new)
@@ -427,7 +429,7 @@ impl AppContext {
                 .and_then(Path::parent).map(Path::to_path_buf).unwrap_or_else(|| default_install_dir(&home));
             let target = update.as_ref().map_or("latest", |update| update.latest_version.as_str());
             let output = run_cli(installer_command(&script_path, &install_dir, &codex_home, &network, target)?, remaining(started, "run_cli")?).await?;
-            tauri_plugin_log::log::info!("[app.cli.process] client=\"Codex\" task_id={task_id:?} action={action} exit_code={:?} duration_ms={} outcome=success msg=\"CLI 命令执行完成\"", output.status.code(), started.elapsed().as_millis());
+            tauri_plugin_log::log::info!("[app.cli.process] client=\"Codex\" task_id={task_id:?} action={action} exit_code={} duration_ms={} outcome=success msg=\"Codex CLI 安装器命令执行完成\"", output.status.code().unwrap_or(-1), started.elapsed().as_millis());
             remaining(started, "verify_version")?;
             let status_home = home.clone();
             let status_network = network.clone();
@@ -440,11 +442,12 @@ impl AppContext {
                 return Err(failure("verify_version", "protocol_error", "命令完成，但没有检测到有效的独立 CLI 入口"));
             }
             if let Some(update) = &update { verify_update(update, &after)?; }
-            tauri_plugin_log::log::info!("[app.cli.complete] client=\"Codex\" task_id={task_id:?} action={action} previous_version={:?} version={:?} changed={} duration_ms={} outcome=success msg=\"CLI 操作已验证完成\"", before.version, after.version, before.version != after.version, started.elapsed().as_millis());
+            let summary = action_summary("Codex", action, ActionStage::Complete);
+            tauri_plugin_log::log::info!("[app.cli.complete] client=\"Codex\" task_id={task_id:?} action={action} previous_version={} version={} duration_ms={} outcome=success msg={summary:?}", before.version.as_deref().unwrap_or("-"), after.version.as_deref().unwrap_or("-"), started.elapsed().as_millis());
             Ok(after)
         }.await;
         if temp.close().is_err() {
-            tauri_plugin_log::log::warn!("[app.cli.cleanup] client=\"Codex\" task_id={task_id:?} outcome=failure failure_kind=io_error msg=\"临时文件清理失败\"");
+            tauri_plugin_log::log::warn!("[app.cli.cleanup] client=\"Codex\" task_id={task_id:?} outcome=failure failure_kind=io_error msg=\"Codex CLI 临时文件清理失败\"");
         }
         execution
     }

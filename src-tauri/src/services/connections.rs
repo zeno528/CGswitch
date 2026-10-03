@@ -3,7 +3,7 @@ use super::{
     app_err, atomic_write, AppContext, AppResult, AuthSource, BTreeMap, ChatgptResetCredit,
     CodexProfileKind, PathBuf, ProfileBalanceInfo,
 };
-use crate::auth::codex_oauth::{parse_external_auth_json, CodexOAuthManager};
+use crate::auth::codex_oauth::{account_subject, parse_external_auth_json, CodexOAuthManager};
 use crate::network::{proxy_note, Network};
 
 /// 供应商连通性测试结果
@@ -63,6 +63,87 @@ mod tests {
     };
     use crate::models::ProfileBalanceInfo;
 
+    #[test]
+    fn subscription_renewal_uses_matching_active_workspace_and_renews_at_only() {
+        let mut payload = serde_json::json!({"accounts": {
+            "other": {"account": {"account_id": "other"}, "entitlement": {
+                "has_active_subscription": true, "renews_at": "2030-02-01T00:00:00Z"
+            }},
+            "selected": {"account": {"account_id": "workspace"}, "entitlement": {
+                "has_active_subscription": true, "renews_at": "2030-01-01T00:00:00Z",
+                "expires_at": "2030-01-01T06:00:00Z"
+            }}
+        }});
+        assert_eq!(
+            super::chatgpt_subscription_renewal(&payload, "missing"),
+            None
+        );
+        for (date, active, expected) in [
+            (Some("2030-01-01T00:00:00Z"), true, Some(1_893_456_000_000)),
+            (None, true, None),
+            (Some("invalid"), true, None),
+            (Some("1960-01-01T00:00:00Z"), true, None),
+            (Some("2030-01-01T00:00:00Z"), false, None),
+        ] {
+            payload["accounts"]["selected"]["entitlement"]["renews_at"] = serde_json::json!(date);
+            payload["accounts"]["selected"]["entitlement"]["has_active_subscription"] =
+                serde_json::json!(active);
+            assert_eq!(
+                super::chatgpt_subscription_renewal(&payload, "workspace"),
+                expected
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn subscription_query_handles_success_challenge_and_parse_failure_with_one_user_agent() {
+        let success = r#"{"accounts":{"selected":{"account":{"account_id":"workspace"},"entitlement":{"has_active_subscription":true,"renews_at":"2030-01-01T00:00:00Z"}}}}"#;
+        for (status, body, challenge) in [
+            (200, success, false),
+            (403, "{}", true),
+            (403, "{}", false),
+            (200, "invalid-json", false),
+            (200, "{}", false),
+        ] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/subscription", listener.local_addr().unwrap());
+            let server = std::thread::spawn(move || {
+                use std::io::{Read, Write};
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut bytes = [0; 4096];
+                let size = stream.read(&mut bytes).unwrap();
+                let request = String::from_utf8_lossy(&bytes[..size]);
+                assert!(request.starts_with("GET /subscription "));
+                let agents: Vec<_> = request
+                    .lines()
+                    .filter(|line| line.to_ascii_lowercase().starts_with("user-agent:"))
+                    .collect();
+                assert_eq!(agents.len(), 1);
+                assert!(agents[0].contains("Mozilla/5.0"));
+                let challenge_header = if challenge {
+                    "cf-mitigated: challenge\r\n"
+                } else {
+                    ""
+                };
+                write!(stream, "HTTP/1.1 {status} Status\r\n{challenge_header}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            });
+            let request = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .unwrap()
+                .get(url)
+                .header("User-Agent", "codex-cli");
+            let result = super::query_chatgpt_subscription(
+                request,
+                "workspace",
+                "account_id=workspace source=desktop",
+            )
+            .await;
+            assert_eq!(result, (body == success).then_some(1_893_456_000_000));
+            server.join().unwrap();
+        }
+    }
+
     fn balance(currency: &str, total: &str) -> ProfileBalanceInfo {
         ProfileBalanceInfo {
             currency: currency.into(),
@@ -77,6 +158,7 @@ mod tests {
             weekly_label: None,
             reset_credits_available: None,
             reset_credits: None,
+            subscription_renews_at: None,
         }
     }
 
@@ -164,7 +246,7 @@ mod tests {
 
         // 其他 HTTP 错误按普通失败处理
         let other = quota_failure_error(reqwest::StatusCode::TOO_MANY_REQUESTS, "", "test");
-        assert!(other.0.starts_with("额度查询失败："));
+        assert!(other.0.starts_with("用量查询失败："));
     }
 
     #[test]
@@ -228,6 +310,7 @@ struct ZhipuQuotaWindow {
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct ChatgptUsageResponse {
+    pub(crate) plan_type: Option<String>,
     pub(crate) rate_limit: Option<ChatgptRateLimit>,
     pub(crate) rate_limit_reset_credits: Option<ChatgptResetCreditsSummary>,
 }
@@ -739,6 +822,7 @@ async fn query_minimax_balance(
                     weekly_label: None,
                     reset_credits_available: None,
                     reset_credits: None,
+                    subscription_renews_at: None,
                 }],
                 latency_ms,
             })
@@ -859,6 +943,7 @@ pub(crate) fn zhipu_quota_info(
         weekly_label: weekly.map(|_| "7天".to_string()),
         reset_credits_available: None,
         reset_credits: None,
+        subscription_renews_at: None,
     })
 }
 
@@ -1020,6 +1105,7 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
         }),
         reset_credits_available,
         reset_credits: None,
+        subscription_renews_at: None,
     })
 }
 
@@ -1044,6 +1130,70 @@ pub(crate) fn chatgpt_reset_credit_expiry(value: Option<&str>) -> Option<i64> {
     chrono::DateTime::parse_from_rfc3339(value?)
         .ok()
         .map(|time| time.timestamp_millis())
+}
+
+fn chatgpt_subscription_renewal(payload: &serde_json::Value, account_id: &str) -> Option<i64> {
+    payload
+        .get("accounts")?
+        .as_object()?
+        .values()
+        .filter(|record| {
+            record["account"]["account_id"].as_str() == Some(account_id)
+                && record["entitlement"]["has_active_subscription"].as_bool() == Some(true)
+        })
+        .find_map(|record| {
+            // 权益到期时间 expires_at 不等于续订日期。
+            chatgpt_reset_credit_expiry(record["entitlement"]["renews_at"].as_str())
+                .filter(|time| *time > 0)
+        })
+}
+
+async fn query_chatgpt_subscription(
+    request: reqwest::RequestBuilder,
+    account_id: &str,
+    context: &str,
+) -> Option<i64> {
+    // headers 替换既有 User-Agent，避免与用量请求的 codex-cli 重复。
+    let headers = reqwest::header::HeaderMap::from_iter([(
+        reqwest::header::USER_AGENT,
+        reqwest::header::HeaderValue::from_static("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"),
+    )]);
+    let mut challenge = false;
+    let result = async {
+        let response = request
+            .headers(headers)
+            .timeout(std::time::Duration::from_secs(5))
+            .send()
+            .await?;
+        challenge = response
+            .headers()
+            .get("cf-mitigated")
+            .is_some_and(|value| value == "challenge");
+        let payload = response
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await?;
+        Ok::<_, reqwest::Error>(chatgpt_subscription_renewal(&payload, account_id))
+    }
+    .await;
+    match &result {
+        Ok(Some(renewal)) => {
+            let date = chrono::DateTime::from_timestamp_millis(*renewal)
+                .map(|date| date.with_timezone(&chrono::Local).to_rfc3339())
+                .unwrap_or_else(|| renewal.to_string());
+            tauri_plugin_log::log::info!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=success renews_at={date:?} msg=\"ChatGPT 续订日期刷新成功\"");
+        }
+        Ok(None) => tauri_plugin_log::log::debug!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=skipped reason=renewal_unavailable msg=\"ChatGPT 接口未返回续订日期，保留已有信息\""),
+        Err(error) => {
+            let failure_kind = if error.is_timeout() { "timeout" }
+                else if error.is_decode() { "parse_error" }
+                else if error.is_status() { "http_error" }
+                else { "network_error" };
+            let status = error.status().map(|status| status.as_u16().to_string()).unwrap_or_else(|| "-".into());
+            tauri_plugin_log::log::warn!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=failure failure_kind={failure_kind} status_code={status} cloudflare_challenge={challenge} msg=\"ChatGPT 续订日期查询失败，保留已有信息\"");
+        }
+    }
+    result.ok().flatten()
 }
 
 async fn query_chatgpt_reset_credits(
@@ -1086,33 +1236,34 @@ fn quota_failure_error(
         status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN;
     if auth_status && body.contains("unsupported_country_region_territory") {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=region_blocked status_code={} msg=\"额度查询被地区限制拦截\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=region_blocked status_code={} msg=\"用量查询因地区限制被拦截\"",
             status.as_u16()
         );
         return app_err!("认证请求被地区限制拦截，请开启系统代理后重试");
     }
     if auth_status {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=auth_error status_code={} msg=\"登录凭证已失效，需要重新登录\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=auth_error status_code={} msg=\"ChatGPT 登录凭证已失效，需重新登录\"",
             status.as_u16()
         );
         return app_err!("ChatGPT 登录已失效，请重新登录");
     }
     tauri_plugin_log::log::warn!(
-        "[chatgpt.quota.query] {context} outcome=failure failure_kind=http_error status_code={} msg=\"额度查询失败\"",
+        "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=http_error status_code={} msg=\"用量查询失败\"",
         status.as_u16()
     );
-    app_err!("额度查询失败：接口返回 HTTP {status}")
+    app_err!("用量查询失败：接口返回 HTTP {status}")
 }
 
 async fn query_chatgpt_quota(
     access_token: &str,
     account_id: Option<&str>,
     context: &str,
+    include_subscription: bool,
 ) -> AppResult<ProfileBalance> {
     let (client, proxy) = http_client().map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=internal error={error:?} msg=\"额度查询客户端初始化失败\""
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=internal error={error:?} msg=\"用量查询客户端初始化失败\""
         );
         error
     })?;
@@ -1126,40 +1277,47 @@ async fn query_chatgpt_quota(
     .send()
     .await
     .map_err(|error| {
-        // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕
+        // ChatGPT 订阅链路是唯一没有标准错误码可依赖的路径，失败必须留痕；
+        // 超时落 timeout 枚举，其余网络故障才是 network_error
+        let kind = if error.is_timeout() { "timeout" } else { "network_error" };
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=network_error proxy={} error={:?} msg=\"额度查询网络错误\"",
-            proxy.as_deref().unwrap_or("None"),
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind={kind} proxy={} error={:?} msg=\"用量查询网络错误\"",
+            proxy.as_deref().unwrap_or("-"),
             reqwest_error_message(&error),
         );
-        app_err!("额度查询失败：{}", reqwest_error_message(&error))
+        app_err!("用量查询失败：{}", reqwest_error_message(&error))
     })?;
     let latency = start.elapsed().as_millis();
     let latency_ms = Some(latency);
     let status = response.status();
     let body = response.text().await.map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"额度接口响应读取失败\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"用量接口响应读取失败\"",
             status.as_u16()
         );
-        app_err!("额度接口响应读取失败: {error}")
+        app_err!("用量接口响应读取失败: {error}")
     })?;
     if !status.is_success() {
         return Err(quota_failure_error(status, &body, context));
     }
     let response = serde_json::from_str::<ChatgptUsageResponse>(&body).map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=parse_error status_code={} error={error:?} msg=\"额度接口响应解析失败\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=parse_error status_code={} error={error:?} msg=\"用量接口响应解析失败\"",
             status.as_u16()
         );
-        app_err!("额度接口响应解析失败: {error}")
+        app_err!("用量接口响应解析失败: {error}")
     })?;
+    let query_subscription = include_subscription
+        && !response
+            .plan_type
+            .as_deref()
+            .is_some_and(|plan| plan.eq_ignore_ascii_case("free"));
     let mut info = chatgpt_quota_info(response).ok_or_else(|| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] {context} outcome=failure failure_kind=parse_error status_code={} msg=\"额度查询响应缺少可用的限额窗口\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=parse_error status_code={} msg=\"用量接口未返回可用的限额窗口\"",
             status.as_u16()
         );
-        app_err!("额度接口未返回可用的限额窗口")
+        app_err!("用量接口未返回可用的限额窗口")
     })?;
     if let Some((available_count, credits)) =
         query_chatgpt_reset_credits(&client, access_token, account_id).await
@@ -1167,11 +1325,22 @@ async fn query_chatgpt_quota(
         info.reset_credits_available = available_count.or(info.reset_credits_available);
         info.reset_credits = Some(credits);
     }
-    // 成功也留痕：额度数字不对/没刷新时，靠这行确认最后一次成功查询的时间
+    // 成功也留痕：用量数字不对/没刷新时，靠这行确认最后一次成功查询的时间
     tauri_plugin_log::log::debug!(
-        "[chatgpt.quota.query] {context} outcome=success latency_ms={latency} proxy={} msg=\"额度查询成功\"",
-        proxy.as_deref().unwrap_or("None")
+        "[chatgpt.quota.query] client=\"Codex\" {context} outcome=success latency_ms={latency} proxy={} msg=\"用量查询成功\"",
+        proxy.as_deref().unwrap_or("-")
     );
+    if let Some(account_id) = account_id.filter(|_| query_subscription) {
+        const PATH: &str = "/backend-api/accounts/check/v4-2023-04-27";
+        let offset = -chrono::Local::now().offset().local_minus_utc() / 60;
+        let url = format!("https://chatgpt.com{PATH}?timezone_offset_min={offset}");
+        let request = chatgpt_request(&client, &url, access_token, None)
+            .header("Referer", "https://chatgpt.com/")
+            .header("x-openai-target-path", PATH)
+            .header("x-openai-target-route", PATH);
+        info.subscription_renews_at =
+            query_chatgpt_subscription(request, account_id, context).await;
+    }
     Ok(ProfileBalance {
         is_available: true,
         balance_infos: vec![info],
@@ -1336,7 +1505,7 @@ impl AppContext {
             AuthSource::Desktop => "desktop",
             AuthSource::Oauth => "oauth",
         };
-        let mut oauth_subject = None;
+        let subject;
         let (access_token, account_id) = match source {
             AuthSource::Desktop => {
                 // Desktop 额度优先按请求身份取数据库认证快照（与账号页同源，
@@ -1347,7 +1516,10 @@ impl AppContext {
                     None => None,
                 };
                 match db_snapshot {
-                    Some((token, _)) => (token, account_id.map(str::to_string)),
+                    Some((token, email)) => {
+                        subject = account_id.map(|id| account_subject(id, email.as_deref()));
+                        (token, account_id.map(str::to_string))
+                    }
                     None => {
                         let account = self
                             .read_external_codex_auth()
@@ -1355,6 +1527,10 @@ impl AppContext {
                         let token = self
                             .external_codex_access_token_for_account(&account.account_id)?
                             .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
+                        subject = Some(account_subject(
+                            &account.account_id,
+                            account.email.as_deref(),
+                        ));
                         (token, Some(account.account_id))
                     }
                 }
@@ -1366,19 +1542,19 @@ impl AppContext {
                     .await
                     .map_err(|error| app_err!("{error}"))?;
                 // chatgpt-account-id 头必须是 workspace ID，本地行 id 不能出站
-                oauth_subject = Some(oauth.account_subject_for(row_id).await);
+                subject = Some(oauth.account_subject_for(row_id).await);
                 (token, Some(oauth.workspace_of(row_id).await))
             }
         };
-        // OAuth 行为标注到具体账号（行 id + debug 门控 email）；desktop 沿用原字段
-        let context = match &oauth_subject {
+        // 两种来源共用账号日志格式，邮箱仅开发版输出。
+        let context = match &subject {
             Some(subject) => format!("{subject} source={source_label}"),
             None => match account_id.as_deref() {
                 Some(id) => format!("account_id={id} source={source_label}"),
                 None => format!("source={source_label}"),
             },
         };
-        query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await
+        query_chatgpt_quota(&access_token, account_id.as_deref(), &context, true).await
     }
 
     /// 按配置查询余额/用量；ChatGPT 配置只读自身认证来源，不读取 live auth.json。
@@ -1424,7 +1600,8 @@ impl AppContext {
                     }
                     None => return Err(app_err!("官方配置缺少登录方式")),
                 };
-            return query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await;
+            return query_chatgpt_quota(&access_token, account_id.as_deref(), &context, false)
+                .await;
         }
         let provider = payload.provider_id.as_deref().unwrap_or_default();
         if provider != "deepseek" && provider != "minimax" && provider != "ZAI" {
@@ -1474,7 +1651,11 @@ impl AppContext {
         info: &ProfileBalanceInfo,
     ) -> AppResult<()> {
         let mut cache = self.load_balance_cache();
-        cache.insert(profile_id.to_string(), info.clone());
+        let mut info = info.clone();
+        info.subscription_renews_at = info.subscription_renews_at.or(cache
+            .get(profile_id)
+            .and_then(|saved| saved.subscription_renews_at));
+        cache.insert(profile_id.to_string(), info);
         self.save_balance_cache(&cache)
     }
 

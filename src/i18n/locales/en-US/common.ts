@@ -61,4 +61,9 @@ export default {
     hunyuan: "Tencent Hunyuan",
     volcengine: "Volcengine Ark",
   },
+  cliUpdate: {
+    upgrade: "Upgrade to {{version}}",
+    upgradeTitle: "{{client}} CLI {{version}} available ({{channel}} channel). Click to upgrade",
+    upgradeDone: "{{client}} CLI updated to v{{version}}",
+  },
 } as const;

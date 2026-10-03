@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isTauri } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { getCachedProxyStatus, loadProxyStatus } from "../../app/managementDataCache";
+import { useProxyStatus } from "../../app/useProxyStatus";
 import { AppSegmentedControl } from "../../components/AppSegmentedControl";
 import type { Settings } from "../../types";
 import { SettingsPanelSection } from "./SettingsSections";
@@ -19,7 +19,8 @@ export function ProxySettings({ settings, saving, onSave }: {
   const feedback = useFeedback();
   const [custom, setCustom] = useState(settings.proxy_mode === "custom");
   const [address, setAddress] = useState(settings.proxy_url);
-  const [status, setStatus] = useState(getCachedProxyStatus);
+  // 自动模式才订阅检测；共享 hook 带挂载/窗口激活刷新，缓存直出不闪。
+  const status = useProxyStatus(isTauri && settings.proxy_mode === "auto");
   const input = useRef<HTMLInputElement>(null);
   const submitting = useRef(false);
   const addressOpen = custom || settings.proxy_mode === "custom";
@@ -33,22 +34,6 @@ export function ProxySettings({ settings, saving, onSave }: {
   useEffect(() => {
     if (custom && settings.proxy_mode !== "custom") input.current?.focus({ preventScroll: true });
   }, [custom, settings.proxy_mode]);
-
-  useEffect(() => {
-    if (!isTauri || settings.proxy_mode !== "auto") return;
-    let active = true;
-    let request = 0;
-    const refresh = () => {
-      const current = ++request;
-      // 刷新期间保留旧结果；共享缓存合并重入请求，失败也返回可显示的状态。
-      void loadProxyStatus(true).then((next) => {
-        if (active && request === current) setStatus(next);
-      });
-    };
-    refresh();
-    window.addEventListener("focus", refresh);
-    return () => { active = false; window.removeEventListener("focus", refresh); };
-  }, [settings.proxy_mode]);
 
   const save = async (mode: Settings["proxy_mode"]) => {
     if (saving || submitting.current) return;

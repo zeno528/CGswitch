@@ -9,6 +9,7 @@ import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuot
 import { useFeedback } from "../../app/Feedback";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { CliUpgradePill } from "../../components/CliUpgradePill";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
 import type { AppState, ProfileBalanceInfo, CodexProfileDetail, CodexProfileSummary } from "../../types";
 import CodexProfileCard, { profileConnectionGate } from "./CodexProfileCard";
@@ -192,6 +193,7 @@ export default function CodexProfilesView({ state, authStatusReady, activationEp
         <div className="provider-page-brand">
           <img src="/codex.svg" alt="" className="provider-page-brand__logo" draggable="false" />
           <span>Codex</span>
+          <CliUpgradePill client="codex" />
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-2 text-sm">
           <div className={`codex-status-control codex-status--${state.codex.running ? "running" : "stopped"} text-xs font-medium`}>

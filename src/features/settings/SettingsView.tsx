@@ -6,7 +6,7 @@ import {
   MousePointerClick,
   RotateCw,
   Wrench,
-  Terminal,
+  Bot,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -54,7 +54,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   const openPath = async (item: PathInfo) => { if (openingPath) return; setOpeningPath(item.path); try { await api.openPath(item.path); } catch (error) { feedback.error(String(error)); } finally { setOpeningPath(null); } };
   const tab = (id: Section, label: string, Icon: typeof Cog) => <button type="button" data-section={id} className={`settings-tab relative flex h-10 items-center gap-1.5 rounded-md px-3 transition-colors ${section === id ? "text-accent" : "text-[var(--text-secondary)] hover:text-accent"}`} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon className="h-4 w-4 shrink-0" strokeWidth={2} />{label}</button>;
 
-  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("cli", t("view.tabCli"), Terminal)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
+  return <section className="settings-page mx-auto flex w-full max-w-none flex-col"><div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("cli", t("view.tabCli"), Bot)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
     {section === "general" ? (
       <div className="flex flex-col gap-[var(--gap-section)]">
         <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} />

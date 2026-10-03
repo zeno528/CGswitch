@@ -39,6 +39,7 @@ export function clearAuthQuotaError(cacheKey: string) {
 }
 
 export function setAuthQuotaSuccess(cacheKey: string, balance: ProfileBalanceInfo) {
+  balance.subscription_renews_at ??= quotaCache.get(cacheKey)?.subscription_renews_at;
   quotaCache.set(cacheKey, balance);
   errorCache.delete(cacheKey);
 }

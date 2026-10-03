@@ -30,6 +30,48 @@ fn chatgpt_test_context() -> (tempfile::TempDir, AppContext) {
     (home, context)
 }
 
+#[test]
+fn subscription_renewal_survives_balance_cache_reload_without_changing_auth() {
+    let (home, context) = chatgpt_test_context();
+    let auth = chatgpt_auth("workspace", "existing-token");
+    std::fs::write(context.paths.codex_home.join("auth.json"), &auth).unwrap();
+    let mut info: ProfileBalanceInfo =
+        serde_json::from_value(serde_json::json!({"currency": "", "total_balance": ""})).unwrap();
+    let key = "auth:desktop:workspace";
+    for (date, usage, expected) in [
+        (Some(1_893_456_000_000), 20, Some(1_893_456_000_000)),
+        (None, 35, Some(1_893_456_000_000)),
+        (Some(1_896_134_400_000), 40, Some(1_896_134_400_000)),
+    ] {
+        info.subscription_renews_at = date;
+        info.usage_percent = Some(usage);
+        context.set_profile_balance(key, &info).unwrap();
+        let cache = context.load_balance_cache();
+        assert_eq!(
+            (cache[key].subscription_renews_at, cache[key].usage_percent),
+            (expected, Some(usage))
+        );
+    }
+    drop(context);
+    let restored = AppContext::new(crate::paths::from_home(home.path()).unwrap()).unwrap();
+    assert_eq!(
+        restored.load_balance_cache()[key].subscription_renews_at,
+        info.subscription_renews_at
+    );
+    info.subscription_renews_at = None;
+    restored
+        .set_profile_balance("auth:desktop:other-workspace", &info)
+        .unwrap();
+    assert_eq!(
+        restored.load_balance_cache()["auth:desktop:other-workspace"].subscription_renews_at,
+        None
+    );
+    assert_eq!(
+        std::fs::read_to_string(restored.paths.codex_home.join("auth.json")).unwrap(),
+        auth
+    );
+}
+
 /// 测试夹具：live config 的 [mcp_servers] 段整体镜像进数据库，返回导入的服务器数。
 /// （生产侧 import_mcp_from_live 因 UI 从未接线已随命令链一并移除，测试仍需要它构造镜像状态。）
 fn import_mcp_from_live(context: &AppContext) -> usize {
@@ -1441,6 +1483,7 @@ fn chatgpt_quota_maps_windows_to_remaining_display_data() {
         .as_secs() as i64
         + 3_600;
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        plan_type: None,
         rate_limit_reset_credits: Some(connections::ChatgptResetCreditsSummary {
             available_count: Some(2),
         }),
@@ -1487,6 +1530,7 @@ fn chatgpt_quota_uses_a_seven_day_primary_window_without_faking_five_hours() {
         .as_secs() as i64
         + 86_400;
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        plan_type: None,
         rate_limit_reset_credits: None,
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {
@@ -1510,6 +1554,7 @@ fn chatgpt_quota_uses_a_seven_day_primary_window_without_faking_five_hours() {
 #[test]
 fn chatgpt_quota_skips_empty_primary_window() {
     let info = connections::chatgpt_quota_info(connections::ChatgptUsageResponse {
+        plan_type: None,
         rate_limit_reset_credits: None,
         rate_limit: Some(connections::ChatgptRateLimit {
             primary_window: Some(connections::ChatgptRateLimitWindow {

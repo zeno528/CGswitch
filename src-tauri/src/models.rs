@@ -262,6 +262,9 @@ pub struct ProfileBalanceInfo {
     /// 可用主动重置卡的到期时间；详情接口不可用时为 None。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reset_credits: Option<Vec<ChatgptResetCredit>>,
+    /// 在线订阅续订时间（Unix 毫秒），独立于凭证内的订阅快照。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subscription_renews_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

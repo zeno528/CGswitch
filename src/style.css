@@ -69,7 +69,7 @@
   --dialog-pad-bottom: 1.5rem;
   /* 全局控件与窗口几何：页面、编辑页和侧边栏只从这里取尺寸 */
   --font-size-base: 0.875rem;
-  --sidebar-width-expanded: 10rem;
+  --sidebar-width-expanded: 9.5rem;
   --sidebar-width-collapsed: 3rem;
   --sidebar-nav-height: 2.25rem;
   --sidebar-nav-radius: 0.625rem;
@@ -552,7 +552,7 @@ body {
   font-weight: 500;
 }
 
-/* 路径 mono 胶囊：限宽省略，全文看 title 悬浮 */
+/* 路径胶囊：限宽省略，全文看 title 悬浮 */
 .cli-fact-path {
   background: var(--tile-bg);
   border-radius: 0.375rem;
@@ -811,11 +811,6 @@ body:has(.app-dialog-overlay) .window-control-button {
   transition: none;
 }
 
-.profile-card-action-buttons > .apple-action-button {
-  height: var(--icon-button-size);
-  font-weight: 600;
-}
-
 /* 操作行的模型/推理档位信息：悬停浮现按钮组时保持可见，用间距让位 */
 .profile-card-action-meta {
   align-items: center;
@@ -855,7 +850,7 @@ body.drag-active * {
 }
 
 .apple-sidebar-label {
-  max-width: 160px;
+  max-width: 9.5rem;
   overflow: hidden;
   opacity: 1;
   transition:
@@ -1453,9 +1448,9 @@ body.drag-active * {
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),
+.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete) {
+.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary) {
   color: var(--text-primary);
 }
 

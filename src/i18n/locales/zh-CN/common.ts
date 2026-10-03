@@ -60,4 +60,9 @@ export default {
     hunyuan: "腾讯混元",
     volcengine: "火山方舟",
   },
+  cliUpdate: {
+    upgrade: "升级到 {{version}}",
+    upgradeTitle: "发现 {{client}} CLI 新版本 {{version}}（{{channel}} 通道），点击升级",
+    upgradeDone: "{{client}} CLI 已升级至 v{{version}}",
+  },
 } as const;

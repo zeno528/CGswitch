@@ -7,7 +7,7 @@ import { api, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
-import { getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
+import { armCliUpdateTicker, getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeMcpDiffBadge } from "./managementDataCache";
 import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import CodexProfilesView from "../features/codex/CodexProfilesView";
 import McpView from "../features/mcp/McpView";
@@ -322,6 +322,14 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [startupReady]);
 
+  // CLI 更新胶囊的全局检查时机（首帧后 10 秒首轮 + 每小时懒 tick，6h 冷却闸在
+  // service 内）：覆盖从不进 Agent 工具页、也极少重启的常驻用户。app 层一次
+  // 挂载活整个会话，不绑页面生命周期；失败全部静默，只留后端日志。
+  useEffect(() => {
+    if (!startupReady) return;
+    armCliUpdateTicker(10_000);
+  }, [startupReady]);
+
   useEffect(() => {
     const main = document.querySelector("main");
     if (!main) return;
@@ -362,8 +370,8 @@ export default function AppShell() {
     {
       key: "clients",
       items: [
-        { view: "claudeProfiles", labelKey: "nav.groupClaude", icon: <img src="/claude-code.svg" alt="" />, onSelect: () => setView("claudeProfiles") },
         { view: "codexProfiles", labelKey: "nav.groupCodex", icon: <img src="/codex.svg" alt="" />, onSelect: () => setView("codexProfiles") },
+        { view: "claudeProfiles", labelKey: "nav.groupClaude", icon: <img src="/claude-code.svg" alt="" />, onSelect: () => setView("claudeProfiles") },
       ],
     },
     {

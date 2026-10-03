@@ -20,6 +20,18 @@ const quota = (usage: number): ProfileBalanceInfo => ({
 });
 
 describe("shared auth quota state", () => {
+  it.each(["desktop", "oauth"] as const)("%s retains renewal after a dateless result and accepts a new date", (source) => {
+    const key = authQuotaCacheKey(source, crypto.randomUUID());
+    const previous = { ...quota(25), subscription_renews_at: 1_900_000_000_000 };
+    setAuthQuotaSuccess(key, previous);
+    const next = quota(35);
+    setAuthQuotaSuccess(key, next);
+    expect(getAuthQuotaBalance(key)?.subscription_renews_at).toBe(previous.subscription_renews_at);
+    expect(getAuthQuotaBalance(key)?.usage_percent).toBe(35);
+    setAuthQuotaSuccess(key, { ...quota(45), subscription_renews_at: 1_903_000_000_000 });
+    expect(getAuthQuotaBalance(key)?.subscription_renews_at).toBe(1_903_000_000_000);
+  });
+
   it("lets a known failure hide, but retain, the last successful quota by account", () => {
     const key = authQuotaCacheKey("oauth", `test-${crypto.randomUUID()}`);
     const previous = quota(25);

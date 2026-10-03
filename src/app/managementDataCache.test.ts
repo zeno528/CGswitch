@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CliStatus } from "../types";
 
-const { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups, getProxyStatus } = vi.hoisted(() => ({
+const { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups, getProxyStatus, codexGetCliStatus, claudeGetCliStatus, codexCheckCliUpdate, claudeCheckCliUpdate } = vi.hoisted(() => ({
   codexListMcpServers: vi.fn(),
   claudeListMcpServers: vi.fn(),
   claudeListProfiles: vi.fn(),
@@ -8,6 +9,10 @@ const { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarke
   listPlugins: vi.fn(),
   listDatabaseBackups: vi.fn(),
   getProxyStatus: vi.fn(),
+  codexGetCliStatus: vi.fn(),
+  claudeGetCliStatus: vi.fn(),
+  codexCheckCliUpdate: vi.fn(),
+  claudeCheckCliUpdate: vi.fn(),
 }));
 const persistedStorage = new Map<string, string>();
 const localStorageMock = {
@@ -15,7 +20,7 @@ const localStorageMock = {
   setItem: (key: string, value: string) => persistedStorage.set(key, value),
 };
 
-vi.mock("../api", () => ({ api: { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups, getProxyStatus } }));
+vi.mock("../api", () => ({ api: { codexListMcpServers, claudeListMcpServers, claudeListProfiles, listMarketplacePlugins, listPlugins, listDatabaseBackups, getProxyStatus, codexGetCliStatus, claudeGetCliStatus, codexCheckCliUpdate, claudeCheckCliUpdate } }));
 
 describe("managementDataCache", () => {
   beforeEach(() => {
@@ -25,6 +30,10 @@ describe("managementDataCache", () => {
     claudeListProfiles.mockReset();
     listDatabaseBackups.mockReset();
     getProxyStatus.mockReset();
+    codexGetCliStatus.mockReset();
+    claudeGetCliStatus.mockReset();
+    codexCheckCliUpdate.mockReset();
+    claudeCheckCliUpdate.mockReset();
     persistedStorage.clear();
     vi.stubGlobal("localStorage", localStorageMock);
   });
@@ -48,6 +57,86 @@ describe("managementDataCache", () => {
     getProxyStatus.mockResolvedValueOnce(null);
     await cache.loadProxyStatus(true);
     expect(cache.getCachedProxyStatus()).toEqual({ proxy: null, error: false });
+  });
+
+  it("CLI 状态缓存跨重启持久化，恢复时 busy 归零，形状损坏视为不存在", async () => {
+    const status: CliStatus = { installation: "native", source: null, version: "1.2.3", path: "/fixture/bin/cli", other_paths: [], platform: "windows-x86_64", network: "direct", proxy: null, busy: true };
+    const cache = await import("./managementDataCache");
+    expect(cache.getCachedCliStatus("codex")).toBeNull();
+    cache.setCliStatusCache("codex", status);
+    expect(persistedStorage.get("cgswitch.codex-cli-status-v1")).toContain("native");
+
+    // 模拟重启：新模块实例从 localStorage 恢复，进行中任务不跨会话，busy 归零
+    vi.resetModules();
+    const restored = await import("./managementDataCache");
+    expect(restored.getCachedCliStatus("codex")).toEqual({ ...status, busy: false });
+
+    // 损坏 JSON / 缺字段：只影响首开直出，进页静默刷新会纠正
+    persistedStorage.set("cgswitch.claude-cli-status-v1", "{broken");
+    vi.resetModules();
+    const broken = await import("./managementDataCache");
+    expect(broken.getCachedCliStatus("claude")).toBeNull();
+    persistedStorage.set("cgswitch.claude-cli-status-v1", JSON.stringify({ installation: 5 }));
+    vi.resetModules();
+    const invalid = await import("./managementDataCache");
+    expect(invalid.getCachedCliStatus("claude")).toBeNull();
+  });
+
+  it("代理状态跨页面刷新持久化，形状损坏视为不存在", async () => {
+    getProxyStatus.mockResolvedValueOnce("http://proxy.invalid:8080/");
+    const cache = await import("./managementDataCache");
+    await cache.loadProxyStatus();
+    expect(cache.getCachedProxyStatus()).toEqual({ proxy: "http://proxy.invalid:8080/", error: false });
+
+    // 模拟 F5：新模块实例从 localStorage 恢复，首帧直出上次检测结果不闪兜底文案
+    vi.resetModules();
+    const restored = await import("./managementDataCache");
+    expect(restored.getCachedProxyStatus()).toEqual({ proxy: "http://proxy.invalid:8080/", error: false });
+
+    // 缺 error 字段：整份弃用，进页静默刷新会纠正
+    persistedStorage.set("cgswitch.proxy-status-v1", JSON.stringify({ proxy: "http://x.invalid" }));
+    vi.resetModules();
+    const invalid = await import("./managementDataCache");
+    expect(invalid.getCachedProxyStatus()).toBeNull();
+  });
+
+  it("CLI 更新检查跨重启持久化并充当冷却闸，静默失败推进冷却且保留旧结果", async () => {
+    claudeCheckCliUpdate.mockResolvedValueOnce({ status: {}, latest_version: "2.0.0", channel: "latest", available: true });
+    const cache = await import("./managementDataCache");
+    await cache.runCliUpdateCheckQuietly("claude");
+    expect(cache.getCachedCliUpdate("claude")).toEqual({ available: true, latest_version: "2.0.0", channel: "latest" });
+    expect(cache.cliUpdateCheckStale("claude")).toBe(false);
+
+    // 模拟重启：新模块实例从 localStorage 恢复，胶囊不用等新一轮检查
+    vi.resetModules();
+    const restored = await import("./managementDataCache");
+    expect(restored.getCachedCliUpdate("claude")).toEqual({ available: true, latest_version: "2.0.0", channel: "latest" });
+    expect(restored.cliUpdateCheckStale("claude")).toBe(false);
+
+    // 静默失败：冷却推进、旧结果保留、不抛错
+    claudeCheckCliUpdate.mockRejectedValueOnce(new Error("fixture"));
+    await restored.runCliUpdateCheckQuietly("claude");
+    expect(restored.getCachedCliUpdate("claude")).toEqual({ available: true, latest_version: "2.0.0", channel: "latest" });
+    expect(restored.cliUpdateCheckStale("claude")).toBe(false);
+
+    // 冷却过期后才再次放行
+    persistedStorage.set("cgswitch.claude-cli-update-v1", JSON.stringify({ checked_at: Date.now() - 7 * 60 * 60 * 1000, update: null }));
+    vi.resetModules();
+    const stale = await import("./managementDataCache");
+    expect(stale.cliUpdateCheckStale("claude")).toBe(true);
+  });
+
+  it("恢复前发生的静默失败也保留持久化的旧升级结果", async () => {
+    // 重启后未读过缓存就遇静默失败（离线）：冷却推进，旧结果不能被清成 null
+    persistedStorage.set("cgswitch.codex-cli-update-v1", JSON.stringify({
+      checked_at: Date.now() - 7 * 60 * 60 * 1000,
+      update: { available: true, latest_version: "2.0.0", channel: "latest" },
+    }));
+    codexCheckCliUpdate.mockRejectedValueOnce(new Error("fixture"));
+    const cache = await import("./managementDataCache");
+    await cache.runCliUpdateCheckQuietly("codex");
+    expect(cache.getCachedCliUpdate("codex")).toEqual({ available: true, latest_version: "2.0.0", channel: "latest" });
+    expect(cache.cliUpdateCheckStale("codex")).toBe(false);
   });
 
   it("returns the cached MCP list when the management page remounts", async () => {

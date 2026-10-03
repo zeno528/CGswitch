@@ -238,6 +238,9 @@ export const api = {
   getProxyStatus: () => call<string | null>("get_proxy_status"),
   logUpdateEvent: (event: UpdateLogEvent, version?: string) =>
     call<void>("log_update_event", { event, version }),
+  // CLI 更新计时器的跳过决策留痕（真实检查的成败由后端自行落日志）
+  reportCliUpdateTick: (client: "codex" | "claude", decision: "cooldown_skip" | "not_native" | "detect_failed") =>
+    call<void>("report_cli_update_tick", { client, decision }),
   checkAppUpdate: () => call<AppUpdateMetadata | null>("check_app_update"),
   setUpdateMarker: (version: string) => call<void>("set_update_marker", { version }),
   takeUpdateMarker: (rollback = false) =>

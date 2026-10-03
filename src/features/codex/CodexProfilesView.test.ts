@@ -86,7 +86,7 @@ describe("ProfilesView 拖拽预览", () => {
 
   it("激活卡拖拽预览的官网按钮沿用主题文字层级", () => {
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete) {\n  color: var(--text-primary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary) {\n  color: var(--text-primary);");
   });
 });
 

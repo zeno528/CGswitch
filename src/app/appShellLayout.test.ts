@@ -17,7 +17,7 @@ describe("AppShell 布局", () => {
     expect(source).toContain('src="/codex.svg"');
     expect(source).toContain('src="/claude-code.svg"');
     expect(source).toContain('key: "clients"');
-    expect(source.indexOf('labelKey: "nav.groupClaude"')).toBeLessThan(source.indexOf('labelKey: "nav.groupCodex"'));
+    expect(source.indexOf('labelKey: "nav.groupCodex"')).toBeLessThan(source.indexOf('labelKey: "nav.groupClaude"'));
     expect(source).toContain('view: "claudeProfiles"');
     expect(source).toContain('view: "codexProfiles"');
     expect(source).not.toContain('labelKey: "nav.providers"');

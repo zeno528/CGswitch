@@ -602,6 +602,7 @@ const webChatgptQuota: ProfileBalanceInfo = {
   weekly_reset_at: Date.now() + 4 * 86_400_000 + 8 * 3_600_000,
   weekly_label: "7天",
   reset_credits_available: 2,
+  subscription_renews_at: Date.now() + 31 * 86_400_000,
   reset_credits: [
     { id: "reset-credit-1", reset_type: "full", expires_at: Date.now() + 16 * 86_400_000 },
     { id: "reset-credit-2", reset_type: "full", expires_at: Date.now() + 17 * 86_400_000 },
@@ -746,6 +747,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "check_app_update":
       throw new Error("应用更新需要在桌面版执行，浏览器无法模拟原生更新资源");
     case "log_update_event":
+      return undefined as T;
+    case "report_cli_update_tick":
+      // 纯日志回传，浏览器无后端日志管道，直接吞掉
       return undefined as T;
     case "get_codex_status":
       return webState().codex as T;

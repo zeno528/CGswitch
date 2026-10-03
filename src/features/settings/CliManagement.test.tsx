@@ -7,10 +7,16 @@ import zhSettings from "../../i18n/locales/zh-CN/settings";
 import type { CliFailure, CliStatus } from "../../types";
 import { CliCard, cliFailureMessage, useCliManagement } from "./CliManagement";
 
-const hooks = vi.hoisted(() => ({ cells: [] as unknown[], index: 0, t: null as TFunction<"settings"> | null, error: vi.fn(), success: vi.fn(), command: vi.fn() }));
+const hooks = vi.hoisted(() => ({
+  cells: [] as unknown[], effects: [] as (() => void)[], index: 0, t: null as TFunction<"settings"> | null,
+  error: vi.fn(), success: vi.fn(), command: vi.fn(),
+  cached: vi.fn((): import("../../types").CliStatus | null => null), cacheSet: vi.fn(),
+  proxyStatus: null as { proxy: string | null; error: boolean } | null,
+  serviceQuiet: vi.fn(), serviceCheck: vi.fn(), touch: vi.fn(), cacheUpdate: vi.fn(),
+}));
 vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
-  useEffect: () => undefined,
+  useEffect: (effect: () => void) => { hooks.effects.push(effect); },
   useRef: (initial: unknown) => {
     const index = hooks.index++;
     hooks.cells[index] ??= { current: initial };
@@ -24,17 +30,27 @@ vi.mock("react", async (original) => ({
 }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: hooks.t ?? ((key: string, options?: { version?: string }) => `${key}${options?.version ?? ""}`) }) }));
 vi.mock("../../app/Feedback", () => ({ useFeedback: () => ({ error: hooks.error, success: hooks.success }) }));
+vi.mock("../../app/managementDataCache", () => ({ getCachedCliStatus: hooks.cached, setCliStatusCache: hooks.cacheSet, getCachedProxyStatus: () => null, loadProxyStatus: hooks.command, runCliUpdateCheck: hooks.serviceCheck, runCliUpdateCheckQuietly: hooks.serviceQuiet, touchCliUpdateCheckedAt: hooks.touch, setCachedCliUpdate: hooks.cacheUpdate }));
+vi.mock("../../app/useProxyStatus", () => ({ useProxyStatus: () => hooks.proxyStatus ?? null }));
 vi.mock("../../api", () => ({ api: {
   codexGetCliStatus: hooks.command, codexCheckCliUpdate: hooks.command, codexInstallCli: hooks.command, codexUpdateCli: hooks.command,
   claudeGetCliStatus: hooks.command, claudeCheckCliUpdate: hooks.command, claudeInstallCli: hooks.command, claudeUpdateCli: hooks.command,
 } }));
 beforeEach(() => {
   hooks.cells.length = 0;
+  hooks.effects.length = 0;
   hooks.index = 0;
   hooks.t = null;
   hooks.command.mockReset();
   hooks.error.mockClear();
   hooks.success.mockClear();
+  hooks.cached.mockClear().mockReturnValue(null);
+  hooks.cacheSet.mockClear();
+  hooks.proxyStatus = null;
+  hooks.serviceQuiet.mockReset();
+  hooks.serviceCheck.mockReset();
+  hooks.touch.mockClear();
+  hooks.cacheUpdate.mockClear();
 });
 
 const status: CliStatus = {
@@ -44,6 +60,107 @@ const status: CliStatus = {
 const management = {
   status, update: null, busy: false, operation: null, error: null, refresh: vi.fn(), check: vi.fn(), run: vi.fn(),
 };
+// 清空全部微任务：effect 里检测 → 静默更新检查是链式异步，单次微任务等不完。
+const flush = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+
+it.each(["codex", "claude"] as const)("%s 首次进入完成检测并静默检查更新，重进不重复查询", async (client) => {
+  const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement(client, active); hooks.effects[hooks.effects.length - 1](); return current; };
+  render(false);
+  expect(hooks.command).not.toHaveBeenCalled();
+  const checked = { status, latest_version: "1.2.4", channel: "latest", available: true };
+  hooks.command.mockResolvedValueOnce(status); // 本地检测
+  hooks.serviceQuiet.mockResolvedValueOnce(checked); // 静默更新检查走共享服务
+  render(true);
+  await flush();
+  const restored = render(true);
+  expect(restored.status).toEqual(status);
+  expect(restored.update).toEqual(checked); // 静默检查发现新版本 → 升级胶囊就位
+  render(false);
+  render(true);
+  expect(hooks.command).toHaveBeenCalledOnce(); // 重进沿用已检状态，不重复查询
+  const html = renderToStaticMarkup(<CliCard client={client} management={restored} />);
+  expect(html).toContain(status.path!);
+  const checkedAgain = { status, latest_version: "1.2.4", channel: "latest", available: false };
+  hooks.serviceCheck.mockResolvedValueOnce(checkedAgain);
+  await restored.check(); // 主动检查更新仍可用（走共享服务）
+  expect(render(true).update).toEqual(checkedAgain);
+  expect(hooks.command).toHaveBeenCalledOnce();
+});
+
+it("进入分区首帧直出缓存状态不闪骨架，静默刷新补齐最新值并写穿缓存", async () => {
+  const cached = { ...status, version: "1.2.0" };
+  const checked = { status, latest_version: "1.2.4", channel: "latest", available: false };
+  hooks.cached.mockReturnValueOnce(cached);
+  hooks.command.mockResolvedValueOnce(status);
+  hooks.serviceQuiet.mockResolvedValueOnce(checked);
+  const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement("codex", active); hooks.effects[hooks.effects.length - 1](); return current; };
+  // 首帧断言：不等任何异步，缓存值必须已经在状态里（闪骨架 = 这里拿到 null）
+  const first = render(true);
+  expect(first.status).toEqual(cached);
+  await flush();
+  const settled = render(true);
+  expect(settled.status).toEqual(status);
+  expect(hooks.command).toHaveBeenCalledOnce();
+  expect(hooks.cacheSet).toHaveBeenCalledWith("codex", status);
+  render(false);
+  const reentered = render(true);
+  expect(reentered.status).toEqual(status);
+  expect(hooks.command).toHaveBeenCalledOnce();
+});
+
+it("静默更新检查失败不打扰界面，主动检查失败才透出", async () => {
+  const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement("codex", active); hooks.effects[hooks.effects.length - 1](); return current; };
+  const failure = { stage: "fetch_version", kind: "timeout", message: "fixture" };
+  hooks.command.mockResolvedValueOnce(status);
+  hooks.serviceQuiet.mockResolvedValueOnce(null); // 静默失败：服务吞错返回 null
+  render(true);
+  await flush();
+  const settled = render(true);
+  expect(settled.status).toEqual(status);
+  expect(settled.error).toBeNull(); // 静默失败只留后端日志，不进界面
+  expect(settled.update).toBeNull();
+  hooks.serviceCheck.mockRejectedValueOnce(failure);
+  await settled.check(); // 主动检查失败照常透出
+  expect(render(true).error).toEqual(failure);
+  expect(hooks.touch).toHaveBeenCalledWith("codex"); // 手动失败推进冷却闸
+});
+
+it("离开分区丢弃一次性无更新反馈，升级胶囊保留", async () => {
+  const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement("codex", active); hooks.effects[hooks.effects.length - 1](); return current; };
+  const noUpdate = { status, latest_version: "1.2.4", channel: "latest", available: false };
+  // 首次进入：检测（api）+ 静默检查（共享服务）；无更新不落状态，卡片保持干净
+  hooks.command.mockResolvedValueOnce(status);
+  hooks.serviceQuiet.mockResolvedValueOnce(noUpdate);
+  const current = render(true);
+  await flush();
+  expect(render(true).update).toBeNull();
+  hooks.serviceCheck.mockResolvedValueOnce(noUpdate);
+  await current.check(); // 主动检查的无更新反馈是瞬时状态
+  expect(render(true).update).toEqual(noUpdate);
+  render(false); // 离开分区
+  expect(render(true).update).toBeNull(); // 无更新反馈不常驻
+  const upgrade = { status, latest_version: "1.2.4", channel: "latest", available: true };
+  hooks.serviceCheck.mockResolvedValueOnce(upgrade);
+  const again = render(true);
+  await again.check();
+  render(false);
+  expect(render(true).update).toEqual(upgrade); // 可行动的升级胶囊保留
+});
+
+it("首次检测失败后再次进入仍可重试，未安装结果也会保留", async () => {
+  const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement("codex", active); hooks.effects[hooks.effects.length - 1](); return current; };
+  hooks.command.mockRejectedValueOnce({ stage: "detect", kind: "io_error", message: "fixture" });
+  render(true);
+  await Promise.resolve();
+  expect(render(false).status).toBeNull();
+  const missing = { ...status, installation: "missing" as const, version: null, path: null };
+  hooks.command.mockResolvedValueOnce(missing);
+  render(true);
+  await Promise.resolve();
+  render(false);
+  expect(render(true).status).toEqual(missing);
+  expect(hooks.command).toHaveBeenCalledTimes(2);
+});
 
 it("两端卡片共用行为，运行中的 Codex 不会禁用 Claude 按钮", () => {
   const codex = renderToStaticMarkup(<CliCard client="codex" management={{
@@ -89,11 +206,20 @@ it("按客户端显示实际安装来源", () => {
 
 it("网络地址复用路径高亮块，连接方式与网络标签分层", () => {
   const html = renderToStaticMarkup(<CliCard client="codex" management={{
-    ...management, status: { ...status, network: "proxy", proxy: "http://127.0.0.1:20080" },
+    ...management, status: { ...status, network: "proxy", proxy: "http://proxy.invalid:9001" },
   }} />);
   expect(html).toContain('class="meta-xs">cli.networkLabel</span>');
   expect(html).toContain('class="cli-fact-value">cli.proxy</span>');
-  expect(html).toContain('class="cli-fact-path mono" title="http://127.0.0.1:20080">http://127.0.0.1:20080</span>');
+  expect(html).toContain('class="cli-fact-path" title="http://proxy.invalid:9001">http://proxy.invalid:9001</span>');
+});
+
+it("网络行读共享代理订阅而非检测快照，两卡片同源同步", () => {
+  hooks.proxyStatus = { proxy: "http://proxy.invalid:9002", error: false };
+  const html = renderToStaticMarkup(<CliCard client="codex" management={{
+    ...management, status: { ...status, network: "proxy", proxy: "http://proxy.invalid:9001" },
+  }} />);
+  expect(html).toContain('title="http://proxy.invalid:9002"');
+  expect(html).not.toContain("proxy.invalid:9001");
 });
 
 it("版本查询错误随界面语言翻译，不显示后端中文或内部阶段标识", async () => {
@@ -129,10 +255,12 @@ it("两端的失败操作只更新卡片，不弹成功通知", async () => {
     const render = () => { hooks.index = 0; return useCliManagement(client, false); };
     for (const action of ["refresh", "check", "install", "update"] as const) {
       if (action === "update") {
-        hooks.command.mockResolvedValueOnce({ status, latest_version: "1.2.4", channel: "latest", available: true });
+        hooks.serviceCheck.mockResolvedValueOnce({ status, latest_version: "1.2.4", channel: "latest", available: true });
         await render().check();
       }
-      hooks.command.mockRejectedValueOnce(failure);
+      if (action === "refresh") hooks.command.mockRejectedValueOnce(failure);
+      else if (action === "check") hooks.serviceCheck.mockRejectedValueOnce(failure);
+      else hooks.command.mockRejectedValueOnce(failure);
       const current = render();
       await (action === "refresh" ? current.refresh() : action === "check" ? current.check() : current.run(action === "install"));
       expect(render().error).toEqual(failure);
@@ -154,7 +282,7 @@ it("升级成功后发出升级完成通知", async () => {
   const i18n = createInstance();
   await i18n.init({ lng: "zh-CN", defaultNS: "settings", resources: { "zh-CN": { settings: zhSettings } } });
   hooks.t = i18n.getFixedT("zh-CN", "settings");
-  hooks.command.mockResolvedValueOnce({ status, latest_version: "1.2.4", channel: "latest", available: true });
+  hooks.serviceCheck.mockResolvedValueOnce({ status, latest_version: "1.2.4", channel: "latest", available: true });
   hooks.index = 0;
   await useCliManagement("claude", false).check();
   hooks.command.mockResolvedValueOnce({ ...status, version: "1.2.4" });
@@ -162,6 +290,8 @@ it("升级成功后发出升级完成通知", async () => {
   await useCliManagement("claude", false).run(false);
   expect(hooks.success).toHaveBeenCalledOnce();
   expect(hooks.success).toHaveBeenCalledWith("Claude Code 已更新至 v1.2.4");
+  // 升级成功的权威落点：共享更新缓存立即翻转，供应商页胶囊同步消失
+  expect(hooks.cacheUpdate).toHaveBeenCalledWith("claude", { available: false, latest_version: "1.2.4", channel: "latest" });
 });
 
 function buttons(node: ReactNode): { children?: ReactNode; onClick: () => void }[] {
@@ -201,7 +331,7 @@ it("版本号与升级按钮复用订阅等级徽标尺寸", () => {
   const html = renderToStaticMarkup(<CliCard client="claude" management={{ ...management, update: {
     status, latest_version: "1.2.4", channel: "latest", available: true,
   } }} />);
-  expect(html).toContain('class="plan-badge mono">1.2.3</span>');
+  expect(html).toContain('class="plan-badge">1.2.3</span>');
   expect(html).toContain('class="plan-badge cli-upgrade-pill"');
 });
 

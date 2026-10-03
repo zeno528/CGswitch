@@ -1,10 +1,13 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type { TFunction } from "i18next";
+import { createInstance, type TFunction } from "i18next";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { I18nextProvider } from "react-i18next";
 import { authQuotaErrorKind } from "../../app/authQuotaCache";
 import type { CodexProfileSummary } from "../../types";
-import { connectionGate } from "./ProfileCard";
+import { connectionGate, ProfileCardActions } from "./ProfileCard";
 import { profileConnectionGate } from "../codex/CodexProfileCard";
 
 const source = readFileSync(new URL("./ProfileCard.tsx", import.meta.url), "utf8");
@@ -69,7 +72,7 @@ describe("ProfileCard 官网入口", () => {
   it("提高渐变卡片的文字与图标对比度", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
   });
 
   it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {
@@ -116,8 +119,32 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("卡片操作按钮自持悬停文案，不继承卡片的「单击编辑」", () => {
-    // apply 是操作区唯一带可见文字的按钮；漏设 title 会继承 <article> 的 card.clickToEdit
+    // 图标操作按钮仍自持 title，避免继承 <article> 的 card.clickToEdit。
     expect(source).toContain('title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}');
+  });
+
+  it("应用按钮两种状态共用固定尺寸，保留可见图标与禁用条件", () => {
+    const i18n = createInstance();
+    void i18n.init({ lng: "en", resources: { en: { profiles: {} } }, initAsync: false });
+    for (const [active, busy] of [[false, false], [true, false], [false, true]]) {
+      const html = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(ProfileCardActions, {
+        active, busy, testing: false, connectionDisabled: false, connectionTitle: "Test",
+      })));
+      const button = html.match(/<button\b[^>]*>[\s\S]*?<\/button>/)?.[0] ?? "";
+      expect(button).toContain('class="apple-icon-button ');
+      expect(button).toContain(`aria-pressed="${active}"`);
+      expect(button.includes('disabled=""')).toBe(active || busy);
+      expect(button).toContain('<svg');
+      expect(button).toContain('width="16" height="16"');
+      expect(button).toContain(active ? 'app-button--primary' : 'border border-(--panel-border) bg-(--secondary-button-bg) text-(--text-primary)');
+    }
+    expect(styles).toMatch(/\.apple-icon-button\s*\{[^}]*width: var\(--icon-button-size\);[^}]*height: var\(--icon-button-size\);/);
+  });
+
+  it("激活卡片和拖拽预览的图标颜色不覆盖应用按钮的主按钮前景色", () => {
+    expect(styles.match(/\.profile-card-action-buttons > \.apple-icon-button:not\(\.profile-card-delete\):not\(\.app-button--primary\)/g)).toHaveLength(2);
+    expect(styles).not.toContain('.profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),');
+    expect(styles).not.toContain('.profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete) {');
   });
 
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {

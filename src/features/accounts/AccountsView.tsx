@@ -92,10 +92,11 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   </div>;
 }
 
-function AccountQuota({ source, accountId, cachedBalance, onRelogin, reloginDisabled }: {
+function AccountQuota({ source, accountId, cachedBalance, onRefreshed, onRelogin, reloginDisabled }: {
   source: "desktop" | "oauth";
   accountId: string;
   cachedBalance?: ProfileBalanceInfo;
+  onRefreshed: () => Promise<void>;
   onRelogin?: () => void;
   reloginDisabled?: boolean;
 }) {
@@ -130,6 +131,7 @@ function AccountQuota({ source, accountId, cachedBalance, onRelogin, reloginDisa
       // 复用现有持久化余额缓存，只用 auth 命名空间隔离账号。
       void api.setProfileBalance(cacheKey, info);
       setError("");
+      await onRefreshed();
     } catch (cause) {
       const message = String(cause);
       setAuthQuotaFailure(cacheKey, message);
@@ -264,6 +266,11 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
   useEffect(() => { disposed.current = false; void refreshStatus(); return () => { disposed.current = true; }; }, []);
   useEffect(() => setStatus(initialStatus), [initialStatus]);
 
+  const subscriptionRenewal = (source: "desktop" | "oauth", accountId: string, fallback?: number | null) => {
+    const key = authQuotaCacheKey(source, accountId);
+    return getAuthQuotaBalance(key)?.subscription_renews_at ?? balanceCache?.[key]?.subscription_renews_at ?? fallback;
+  };
+
   const pollBrowser = async (current: BrowserLoginStart) => {
     try {
       const deadline = Date.now() + current.expires_in * 1000;
@@ -352,8 +359,8 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
               <span className="apple-chip muted shrink-0">{t("account.followCodex")}</span>
             </div>
           </div>
-          <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-          <AccountQuota source="desktop" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} />
+          <SubscriptionExpiry plan={account.plan_type} expiresAt={subscriptionRenewal("desktop", account.id, account.subscription_active_until)} />
+          <AccountQuota source="desktop" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} onRefreshed={refreshStatus} />
         </div>
       ))}
       {status.accounts.map((account) => <div key={`${account.id}:${account.authenticated_at}`} className="apple-group p-3">
@@ -365,8 +372,8 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
           </div>
           <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id, account.login)}><TrashIcon /></button>
         </div>
-        <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />
+        <SubscriptionExpiry plan={account.plan_type} expiresAt={subscriptionRenewal("oauth", account.id, account.subscription_active_until)} />
+        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRefreshed={refreshStatus} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />
       </div>)}
     </div>
   );
