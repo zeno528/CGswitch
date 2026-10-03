@@ -167,8 +167,9 @@ impl Network {
 pub(crate) fn proxy_note(proxy: &Option<String>) -> String {
     match Network::new(proxy.clone()) {
         Ok(network) => match network.display {
+            // 直连不落 proxy 字段：字段缺席即直连，写 proxy=None 是占位噪音
             Some(address) => format!(" proxy={address:?}"),
-            None => " proxy=None".into(),
+            None => String::new(),
         },
         Err(_) => " proxy=invalid".into(),
     }

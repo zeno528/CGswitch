@@ -187,7 +187,7 @@ pub fn run() {
         .on_page_load(move |_webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
                 log::info!(
-                    "[app.startup] stage=page_load_finished elapsed_ms={} msg=\"WebView 文档加载完成\"",
+                    "[app.startup] stage=page_load_finished since_start_ms={} msg=\"WebView 文档加载完成\"",
                     startup_started.elapsed().as_millis()
                 );
             }
@@ -216,6 +216,19 @@ pub fn run() {
                 .level_for("reqwest", log::LevelFilter::Info)
                 // tao（窗口库）在 Windows 上偶发成对 event_loop DEBUG，与业务无关
                 .level_for("tao", log::LevelFilter::Info)
+                // 行格式自定义：时间 + 级别 + 消息。默认格式会注入模块路径
+                // （cgswitch_lib::services::…），与消息里的域前缀双重定位纯属冗余，
+                // 去掉后每行短 40 字符；导航只认域前缀。
+                .format(|out, message, record| {
+                    let now = chrono::Local::now();
+                    out.finish(format_args!(
+                        "[{}][{}] [{}] {}",
+                        now.format("%Y-%m-%d"),
+                        now.format("%H:%M:%S"),
+                        record.level(),
+                        message
+                    ))
+                })
                 .targets([
                     Target::new(TargetKind::Stdout),
                     Target::new(TargetKind::Folder {
@@ -309,6 +322,7 @@ pub fn run() {
             commands::get_proxy_status,
             commands::save_settings,
             commands::log_update_event,
+            commands::report_cli_update_tick,
             commands::check_app_update,
             commands::set_update_marker,
             commands::take_update_marker,
@@ -359,7 +373,7 @@ pub fn run() {
         ])
         .setup(move |app| {
             log::info!(
-                "[app.startup] stage=native_ready elapsed_ms={} msg=\"进入 Tauri setup\"",
+                "[app.startup] stage=native_ready since_start_ms={} msg=\"进入 Tauri setup\"",
                 startup_started.elapsed().as_millis()
             );
             log::info!(
@@ -395,9 +409,9 @@ pub fn run() {
             tauri::async_runtime::spawn_blocking(|| {
                 match network::Network::detect() {
                     Ok(network) if network.proxy.is_some() => {
-                        log::info!("[net.proxy] outcome=success proxy={:?} msg=\"应用请求使用代理\"", network.display.as_deref().unwrap_or_default())
+                        log::info!("[net.proxy] outcome=success proxy={} msg=\"应用请求经代理连接\"", network.display.as_deref().unwrap_or("-"))
                     }
-                    Ok(_) => log::debug!("[net.proxy] outcome=success proxy=None msg=\"应用请求直连\""),
+                    Ok(_) => log::debug!("[net.proxy] outcome=success msg=\"应用请求直连\""),
                     Err(error) => log::warn!("[net.proxy] outcome=failure failure_kind={} msg={:?}", error.kind, error.message),
                 }
             });
@@ -484,7 +498,7 @@ pub fn run() {
             }
 
             log::info!(
-                "[app.startup] stage=setup_end elapsed_ms={} msg=\"Tauri setup 完成\"",
+                "[app.startup] stage=setup_end since_start_ms={} msg=\"Tauri setup 完成\"",
                 startup_started.elapsed().as_millis()
             );
             Ok(())

@@ -134,8 +134,9 @@ pub fn report_startup_mark(
     detail: Option<String>,
 ) {
     tauri_plugin_log::log::info!(
-        "[app.startup] stage={stage} frontend_elapsed_ms={frontend_elapsed_ms} rust_elapsed_ms={} detail={detail:?} msg=\"前端启动里程碑\"",
-        state.0.elapsed().as_millis()
+        "[app.startup] stage={stage} frontend_elapsed_ms={frontend_elapsed_ms} rust_elapsed_ms={} detail={:?} msg=\"前端启动里程碑\"",
+        state.0.elapsed().as_millis(),
+        detail.as_deref().unwrap_or("-"),
     );
 }
 
@@ -1189,21 +1190,36 @@ fn require_update_version(version: Option<String>) -> AppResult<String> {
         .ok_or_else(|| app_err!("更新日志缺少版本号"))
 }
 
+/// CLI 更新计时器的跳过决策留痕：真实检查的成败由 services/cli.rs 落 Info/Warn，
+/// 这里只补"这轮为什么没查"的痕迹。Debug 级，release 自动消失。
+#[tauri::command]
+pub fn report_cli_update_tick(client: String, decision: String) {
+    let msg = match decision.as_str() {
+        "cooldown_skip" => "冷却中跳过本轮更新检查",
+        "not_native" => "非原生安装，不参与更新检查",
+        "detect_failed" => "本地检测失败，跳过本轮更新检查",
+        _ => "更新检查计时器决策",
+    };
+    tauri_plugin_log::log::debug!(
+        "[app.cli.update] client={client:?} decision={decision} outcome=skipped msg={msg:?}"
+    );
+}
+
 #[tauri::command]
 pub fn log_update_event(event: String, version: Option<String>) -> AppResult<()> {
     match event.as_str() {
         "check_available" => {
             let version = require_update_version(version)?;
             tauri_plugin_log::log::info!(
-                "[update.check] version={version:?} outcome=success msg=\"检测到新版本 {version}\""
+                "[update.check] version={version:?} outcome=success msg=\"检测到应用新版本\""
             );
         }
         "check_latest" => {
-            tauri_plugin_log::log::info!("[update.check] outcome=success msg=\"未检测到可用更新\"");
+            tauri_plugin_log::log::info!("[update.check] outcome=success msg=\"应用已是最新版本\"");
         }
         "check_failure" => {
             tauri_plugin_log::log::warn!(
-                "[update.check] outcome=failure failure_kind=network_error msg=\"检查更新失败\""
+                "[update.check] outcome=failure failure_kind=network_error msg=\"应用检查更新失败\""
             );
         }
         "download_start" => {

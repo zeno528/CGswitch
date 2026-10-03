@@ -245,7 +245,7 @@ fn should_log_unmanaged_live_sync(last_workspace: &mut Option<String>, workspace
 }
 
 /// 账号日志定位字段：account_id 恒输出；email 仅 debug 构建附加（release 绝不出现）
-fn account_subject(account_id: &str, email: Option<&str>) -> String {
+pub(crate) fn account_subject(account_id: &str, email: Option<&str>) -> String {
     match email {
         Some(email) if cfg!(debug_assertions) => {
             format!("account_id={account_id} email={email:?}")
@@ -883,7 +883,7 @@ impl CodexOAuthManager {
                     .unwrap_or(false);
                 if should_log {
                     tauri_plugin_log::log::debug!(
-                        "[auth.live_sync.skip] workspace={workspace:?} source=live_auth_json outcome=success msg=\"live auth.json 属于非托管账号，跳过归属同步\""
+                        "[auth.live_sync.skip] workspace={workspace:?} source=live_auth_json outcome=skipped reason=unowned msg=\"实时凭证不属于托管账号，跳过同步\""
                     );
                 }
             }
@@ -910,7 +910,7 @@ impl CodexOAuthManager {
                     .unwrap_or(false);
                 if should_log {
                     tauri_plugin_log::log::debug!(
-                        "[auth.live_sync.skip] {} source=live_auth_json outcome=success msg=\"live auth.json 不比账号凭证新，跳过回写\"",
+                        "[auth.live_sync.skip] {} source=live_auth_json outcome=skipped reason=stale_skip msg=\"实时凭证无更新，跳过回写\"",
                         account_subject(&row_id, account.email.as_deref())
                     );
                 }
