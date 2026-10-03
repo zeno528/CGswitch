@@ -201,8 +201,9 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(":root.dark .setting-description {\n  color: var(--text-secondary);\n}");
   });
 
-  it("让窗口控制区底边与主卡片顶边重合", () => {
-    expect(styles).toContain("--window-chrome-height: 2rem;");
+  it("按 4K 150% 缩放换算侧栏与窗口标题栏尺寸，并让窗口控制区底边与主卡片顶边重合", () => {
+    expect(styles).toContain("--sidebar-width-collapsed: 3.125rem;");
+    expect(styles).toContain("--window-chrome-height: 2.2083333333rem;");
     expect(styles).toContain("margin: 0 3px 3px 0;");
   });
 
@@ -352,9 +353,9 @@ describe("AppShell 布局", () => {
     expect(profileEditSource).toContain("if (((!create && !detail) || authStatusPending) && !loadError) return null;");
   });
 
-  it("主区域统一增加左右留白，并从右侧内边距扣除滚动条槽", () => {
-    expect(styles).toContain("--gap-main: 2.125rem;");
-    expect(styles).toContain("padding-right: calc(var(--gap-main) - 8px);");
+  it("主区域统一使用 52px 物理像素左右留白，并从右侧内边距扣除滚动条槽", () => {
+    expect(styles).toContain("--gap-main: 2.1666666667rem;");
+    expect(styles).toContain("padding-right: calc(var(--gap-main) - 10px);");
   });
 
   it("让编辑页的表单大卡片与主视图使用相同圆角", () => {

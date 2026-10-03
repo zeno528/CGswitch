@@ -130,6 +130,21 @@ impl Network {
         self.configure_http(reqwest::Client::builder())
     }
 
+    pub(crate) fn subscription_builder(&self) -> Result<wreq::ClientBuilder, NetworkError> {
+        let builder = wreq::Client::builder().no_proxy();
+        match &self.proxy {
+            Some(url) => Ok(builder.proxy(
+                wreq::Proxy::all(url.as_str())
+                    .map_err(|_| NetworkError {
+                        kind: "validation_error",
+                        message: "订阅查询代理地址无效",
+                    })?
+                    .no_proxy(wreq::NoProxy::from_string(LOOPBACK)),
+            )),
+            None => Ok(builder),
+        }
+    }
+
     #[cfg(any(windows, target_os = "macos"))]
     pub(crate) fn updater(
         self,
@@ -435,6 +450,26 @@ mod tests {
             std::io::ErrorKind::WouldBlock
         );
 
+        let browser = network
+            .subscription_builder()
+            .unwrap()
+            .resolve("fixture.invalid", origin_address)
+            .timeout(Duration::from_secs(2))
+            .build()
+            .unwrap();
+        assert!(browser
+            .get(format!(
+                "http://fixture.invalid:{}/download",
+                origin_address.port()
+            ))
+            .send()
+            .await
+            .is_err());
+        assert_eq!(
+            origin.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+
         let local_request = respond(origin, "local");
         let response = client
             .get(format!("http://{origin_address}/local"))
@@ -442,6 +477,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.text().await.unwrap(), "local");
+        local_request.join().unwrap();
+        let origin = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = origin.local_addr().unwrap();
+        let local_request = respond(origin, "browser-local");
+        assert_eq!(
+            browser
+                .get(format!("http://{address}/local"))
+                .send()
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap(),
+            "browser-local"
+        );
         local_request.join().unwrap();
     }
 

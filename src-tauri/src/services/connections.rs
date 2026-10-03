@@ -382,7 +382,7 @@ pub(crate) struct MiniMaxModelRemains {
 /// Client 按「检测到的代理地址」缓存复用：代理没变就命中连接池，省掉每次
 /// TCP→CONNECT→TLS 全套握手；代理开关/换端口时键变化，自动重建，仍反映当次走向。
 /// 缓存条目：键 = 检测到的代理地址，值 = 按它构建的 Client。
-type CachedHttpclient = (Option<String>, reqwest::Client);
+type CachedHttpclient<C = reqwest::Client> = (Option<String>, C);
 
 pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient>>> =
@@ -404,6 +404,30 @@ pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
         .map_err(|error| app_err!("创建 HTTP 客户端失败: {error}"))?;
     *cached = Some((proxy.clone(), client.clone()));
     Ok((client, network.display))
+}
+
+// 只用于续期网页接口，按现有网络策略缓存；用量与凭证请求继续使用 reqwest。
+fn subscription_http_client() -> AppResult<wreq::Client> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient<wreq::Client>>>> =
+        std::sync::OnceLock::new();
+    let mut cached = CACHE
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .map_err(|_| app_err!("订阅 HTTP 客户端缓存锁已损坏"))?;
+    let network = Network::detect().map_err(|error| app_err!("{error}"))?;
+    if let Some((key, client)) = cached.as_ref() {
+        if *key == network.proxy {
+            return Ok(client.clone());
+        }
+    }
+    let client = network
+        .subscription_builder()
+        .map_err(|error| app_err!("{error}"))?
+        .emulation(wreq_util::Emulation::Chrome145)
+        .build()
+        .map_err(|_| app_err!("创建订阅 HTTP 客户端失败"))?;
+    *cached = Some((network.proxy, client.clone()));
+    Ok(client)
 }
 
 /// reqwest 错误转可读提示。
@@ -1153,15 +1177,17 @@ async fn query_chatgpt_subscription(
     account_id: &str,
     context: &str,
 ) -> Option<i64> {
-    // headers 替换既有 User-Agent，避免与用量请求的 codex-cli 重复。
-    let headers = reqwest::header::HeaderMap::from_iter([(
-        reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"),
-    )]);
+    let (Ok(mut request), Ok(client)) = (request.build(), subscription_http_client()) else {
+        tauri_plugin_log::log::warn!("[chatgpt.subscription.query] client=\"Codex\" {context} outcome=failure failure_kind=internal msg=\"ChatGPT 续订日期请求初始化失败，保留已有信息\"");
+        return None;
+    };
+    // 身份和业务请求头保持不变；User-Agent 与 TLS/HTTP2 由同一个浏览器配置提供。
+    request.headers_mut().remove(reqwest::header::USER_AGENT);
     let mut challenge = false;
     let result = async {
-        let response = request
-            .headers(headers)
+        let response = client
+            .request(request.method().clone(), request.url().as_str())
+            .headers(request.headers().clone())
             .timeout(std::time::Duration::from_secs(5))
             .send()
             .await?;
@@ -1173,7 +1199,7 @@ async fn query_chatgpt_subscription(
             .error_for_status()?
             .json::<serde_json::Value>()
             .await?;
-        Ok::<_, reqwest::Error>(chatgpt_subscription_renewal(&payload, account_id))
+        Ok::<_, wreq::Error>(chatgpt_subscription_renewal(&payload, account_id))
     }
     .await;
     match &result {

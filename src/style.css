@@ -61,8 +61,8 @@
   --gap-card: 1.25rem;
   /* 大卡片正文左右内缩：与上下节奏分离，避免内容贴近卡片边缘 */
   --gap-card-inline: 1.5rem;
-  /* 右侧所有页面的内容到主容器边缘的统一留白 */
-  --gap-main: 2.125rem;
+  /* 右侧所有页面的内容到主容器边缘的统一留白：52px 物理像素 ÷ 1.5 = 34.6667px CSS 像素 */
+  --gap-main: 2.1666666667rem;
   /* 操作按钮（药丸）之间的统一间距：弹窗底部与编辑页操作栏共用 */
   --gap-actions: 0.75rem;
   /* 弹窗内容/操作区到弹窗底边的统一留白（标准弹窗、hero 弹窗操作区、oauth 弹窗共用） */
@@ -70,11 +70,11 @@
   /* 全局控件与窗口几何：页面、编辑页和侧边栏只从这里取尺寸 */
   --font-size-base: 0.875rem;
   --sidebar-width-expanded: 9.5rem;
-  --sidebar-width-collapsed: 3rem;
+  --sidebar-width-collapsed: 3.125rem; /* 75px 物理像素 ÷ 1.5 = 50px CSS 像素 */
   --sidebar-nav-height: 2.25rem;
   --sidebar-nav-radius: 0.625rem;
   --sidebar-nav-padding: 0.5625rem;
-  --sidebar-icon-size: 1.125rem;
+  --sidebar-icon-size: 1.25rem; /* 20px CSS 像素，150% 缩放下约 30px 物理像素 */
   --brand-logo-size: 1.75rem;
   --control-height: 2.25rem;
   /* 标题栏内的按钮、搜索和状态胶囊统一高度；普通表单控件仍使用 --control-height。 */
@@ -100,7 +100,7 @@
   /* 页面顶部栏与底部操作栏统一高度 */
   --toolbar-height: 3.625rem;
   /* 窗口标题栏高度：品牌区与窗口控制按钮共用同一垂直中心 */
-  --window-chrome-height: 2rem;
+  --window-chrome-height: 2.2083333333rem; /* 53px 物理像素 ÷ 1.5 = 35.3333px CSS 像素 */
   /* 卡片、高亮分区和配置编辑器容器统一圆角 */
   --radius-card: 1.125rem;
   /* 右侧滚动条占位宽度，启动时由 JS 实测写入，保证左右视觉间距完全一致 */
@@ -993,7 +993,7 @@ body.drag-active * {
 
 .apple-sidebar--collapsed .apple-sidebar-nav-button {
   gap: 0;
-  /* 36px 按钮内 18px 图标居中：padding 9px 可过渡，避免 justify-content 瞬间切换造成撞边弹回 */
+  /* 图标居中靠对称 padding 过渡完成，避免 justify-content 瞬间切换造成撞边弹回 */
   padding-left: var(--sidebar-nav-padding);
   padding-right: var(--sidebar-nav-padding);
 }
@@ -1165,7 +1165,9 @@ body.drag-active * {
   overflow-x: hidden;
   overflow-y: auto;
   padding-left: var(--gap-main);
-  padding-right: calc(var(--gap-main) - 8px);
+  /* Chromium 在 scrollbar-gutter: stable + 8px 自定义滚动条下实际占用 10px，
+     扣除真实槽宽后，正文左右可见留白才完全相等。 */
+  padding-right: calc(var(--gap-main) - 10px);
   padding-bottom: var(--gap-section);
   padding-top: var(--gap-page);
   position: relative;
@@ -1564,7 +1566,7 @@ body.drag-active * {
   line-height: 1;
 }
 
-/* 侧栏导航行的宿主是 18px 图标（不是药丸按钮），角标按宿主等比缩小，
+/* 侧栏导航行的宿主是 20px 图标（不是药丸按钮），角标按宿主等比缩小，
    只覆盖尺寸相关项；角标本体仍用上面那一份定义，不另写一套 */
 .apple-sidebar-nav-button .apple-count-badge {
   top: -4px;
