@@ -200,7 +200,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     setBusy(true);
     try {
       await api.claudeApplyProfile(profile.id);
-      feedback.success(t("appliedToast"));
+      feedback.success(t("feedback.applySuccess", { ns: "common" }));
       onChanged();
     } catch (error) {
       feedback.error(String(error));

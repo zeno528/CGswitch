@@ -141,8 +141,8 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
         busy.current = true;
         const { feedback, t, refresh } = latest.current;
         try {
-          const result = await switchProfileFromTray(id, state, refresh);
-          feedback.success(t(`feedback.${result}`));
+          await switchProfileFromTray(id, state, refresh);
+          feedback.success(t("feedback.applySuccess", { ns: "common" }));
         } catch (error) {
           const message = String(error);
           await refresh();

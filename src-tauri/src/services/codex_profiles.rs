@@ -331,16 +331,12 @@ impl AppContext {
                 .filter(|text| parse_external_auth_json(text).is_none());
         }
         let profiles = self.database.codex_profiles()?;
-        let source_index = profiles
-            .iter()
-            .position(|profile| profile.id == id)
-            .ok_or_else(|| app_err!("供应商配置不存在"))?;
-        let base: String = stored.name.trim().chars().take(45).collect();
-        let candidate = super::unique_copy_name(&base, |name| {
+        let (candidate, copy_index) = super::profile_copy_plan(
+            id,
             profiles
                 .iter()
-                .any(|profile| profile.name.eq_ignore_ascii_case(name))
-        });
+                .map(|profile| (profile.id.as_str(), profile.name.as_str())),
+        )?;
         let timestamp = now_ms().to_string();
         let summary =
             self.database
@@ -356,7 +352,7 @@ impl AppContext {
             )?;
         }
         let mut ordered_ids: Vec<String> = profiles.into_iter().map(|profile| profile.id).collect();
-        ordered_ids.insert(source_index + 1, summary.id.clone());
+        ordered_ids.insert(copy_index, summary.id.clone());
         self.database
             .codex_reorder_profiles(&ordered_ids, &timestamp)?;
         self.database.record_event(

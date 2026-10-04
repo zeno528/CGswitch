@@ -99,7 +99,6 @@ export default function CodexProfilesView({ state, authStatusReady, activationEp
     finally { setBusy(false); }
   };
 
-  // 返回本次实际执行的动作，调用方（切换后的自动重启）据此选文案，不再各自推一遍状态
   const restart = async (force = false, notifySuccess = true) => {
     if (busy && !force) return null;
     setBusy(true);
@@ -126,11 +125,8 @@ export default function CodexProfilesView({ state, authStatusReady, activationEp
     try {
       await api.codexApplyProfile(profile.id);
       await onRefresh();
-      if (state.settings.auto_restart) {
-        const action = await restart(true, false);
-        if (action) feedback.success(t(action === "restart" ? "feedback.switchRestarted" : "feedback.switchStarted"));
-      } else {
-        feedback.success(t("feedback.switchSuccess"));
+      if (!state.settings.auto_restart || await restart(true, false)) {
+        feedback.success(t("feedback.applySuccess", { ns: "common" }));
       }
     } catch (error) {
       const message = String(error);

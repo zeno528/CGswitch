@@ -29,6 +29,7 @@ export default {
   },
   loading: "正在加载…",
   feedback: {
+    applySuccess: "应用成功",
     cancel: "取消",
     confirm: "确定",
     dismissToast: "关闭通知",

@@ -725,6 +725,17 @@ function mockBuiltinFragment(preset: ClientPreset, apiKey: string): string {
     : `model = "${preset.model}"\nmodel_reasoning_effort = "high"`;
 }
 
+// 与后端 profile_copy_plan 一致，两端 mock 共用复制命名和插入位置。
+function profileCopyPlan(profiles: { id: string; name: string }[], source: { id: string; name: string }) {
+  const base = [...source.name.trim()].slice(0, 45).join("");
+  let name = `${base} copy`;
+  let counter = 2;
+  while (profiles.some((profile) => profile.name.toLowerCase() === name.toLowerCase())) {
+    name = `${base} copy ${counter++}`;
+  }
+  return { name, index: profiles.indexOf(source) + 1 };
+}
+
 export async function webInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   await new Promise((resolve) => setTimeout(resolve, 120));
   switch (command) {    case "get_state":
@@ -1068,13 +1079,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
       const now = new Date().toISOString();
-      const base = profile.name.trim().slice(0, 45);
-      let name = `${base} copy`;
-      let counter = 2;
-      while (webProfiles.some((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
-        name = `${base} copy ${counter}`;
-        counter += 1;
-      }
+      const { name, index } = profileCopyPlan(webProfiles, profile);
       const copy: CodexProfileSummary = {
         ...profile,
         id: `profile-${Date.now()}`,
@@ -1082,7 +1087,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         created_at: now,
         updated_at: now,
       };
-      webProfiles.splice(webProfiles.indexOf(profile) + 1, 0, copy);
+      webProfiles.splice(index, 0, copy);
       const description = webDescriptions.get(profile.id);
       if (description) webDescriptions.set(copy.id, description);
       if (webDetails[profile.id]) webDetails[copy.id] = { ...webDetails[profile.id] };
@@ -1290,15 +1295,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const source = webClaudeProfiles.find((item) => item.id === args?.id);
       if (!source) throw new Error("Claude 供应商配置不存在");
       const timestamp = String(Date.now());
-      let candidate = `${source.name} copy`;
-      let counter = 2;
-      while (webClaudeProfiles.some((item) => item.name.toLowerCase() === candidate.toLowerCase())) {
-        candidate = `${source.name} copy ${counter}`;
-        counter += 1;
-      }
-      const maxSort = webClaudeProfiles.reduce((max, item) => Math.max(max, item.sort_order), -1);
-      const copy: ClaudeProfileDetail = { ...source, id: `cla-web-${timestamp}`, name: candidate, sort_order: maxSort + 1, updated_at: timestamp };
-      webClaudeProfiles.push(copy);
+      const { name, index } = profileCopyPlan(webClaudeProfiles, source);
+      const copy: ClaudeProfileDetail = { ...source, id: `cla-web-${timestamp}`, name, sort_order: index, updated_at: timestamp };
+      webClaudeProfiles.splice(index, 0, copy);
+      webClaudeProfiles.forEach((profile, sortOrder) => { profile.sort_order = sortOrder; });
       return { ...copy } as T;
     }
     case "claude_test_profile": {

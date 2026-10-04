@@ -1,9 +1,35 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { webInvoke } from "./web-mock";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../features/claude/profileEnvText";
 import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary } from "../types";
 
 describe("web mock", () => {
+  it.each(["codex", "claude"] as const)("%s 复制共用命名规则，每次副本紧跟源卡片", async (client) => {
+    const list = async () => client === "codex"
+      ? (await webInvoke<AppState>("get_state")).codex_profiles
+      : await webInvoke<ClaudeProfileDetail[]>("claude_list_profiles");
+    const profiles = await list();
+    const source = profiles[0]!;
+    const originalIds = profiles.map((profile) => profile.id);
+    let timestamp = Date.now();
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => ++timestamp);
+    const copies: string[] = [];
+    try {
+      const first = await webInvoke<CodexProfileSummary>(`${client}_duplicate_profile`, { id: source.id });
+      copies.push(first.id);
+      const second = await webInvoke<CodexProfileSummary>(`${client}_duplicate_profile`, { id: source.id });
+      copies.push(second.id);
+      const base = [...source.name.trim()].slice(0, 45).join("");
+      expect(first.name).toBe(`${base} copy`);
+      expect(second.name).toBe(`${base} copy 2`);
+      expect((await list()).map((profile) => profile.id)).toEqual([originalIds[0], second.id, first.id, ...originalIds.slice(1)]);
+      if (client === "claude") expect((await webInvoke<ClaudeProfileDetail>("claude_get_profile", { id: second.id })).sort_order).toBe(1);
+    } finally {
+      for (const id of copies) await webInvoke(`${client}_delete_profile`, { id });
+      clock.mockRestore();
+    }
+  });
+
   it("关闭的 MCP 编辑源码不包含应用开关状态", async () => {
     const fixture = (await webInvoke<McpServerSpec[]>("codex_list_mcp_servers"))[0];
     const name = "editor-disabled-fixture";

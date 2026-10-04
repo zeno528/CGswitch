@@ -243,16 +243,27 @@ fn validated_icon(icon: Option<&str>) -> AppResult<Option<String>> {
         .transpose()
 }
 
-/// 复制命名的共享规则（Codex 与 Claude 的 duplicate 共用）：base 加 ` copy` 后缀，
-/// 撞名（忽略 ASCII 大小写）追加序号，从 `copy 2` 起计；base 由调用方先截 45 字符。
-pub(super) fn unique_copy_name(base: &str, is_taken: impl Fn(&str) -> bool) -> String {
+/// 供应商复制的共享规则：名称截 45 字符后加 copy，忽略 ASCII 大小写避重，紧跟源卡片。
+pub(super) fn profile_copy_plan<'a>(
+    source_id: &str,
+    profiles: impl Iterator<Item = (&'a str, &'a str)>,
+) -> AppResult<(String, usize)> {
+    let profiles: Vec<_> = profiles.collect();
+    let source_index = profiles
+        .iter()
+        .position(|(id, _)| *id == source_id)
+        .ok_or_else(|| app_err!("供应商配置不存在"))?;
+    let base: String = profiles[source_index].1.trim().chars().take(45).collect();
     let mut candidate = format!("{base} copy");
     let mut counter = 2;
-    while is_taken(&candidate) {
+    while profiles
+        .iter()
+        .any(|(_, name)| name.eq_ignore_ascii_case(&candidate))
+    {
         candidate = format!("{base} copy {counter}");
         counter += 1;
     }
-    candidate
+    Ok((candidate, source_index + 1))
 }
 
 #[cfg(test)]

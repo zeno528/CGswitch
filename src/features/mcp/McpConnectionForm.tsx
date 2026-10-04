@@ -53,6 +53,7 @@ export function TimeoutInput({ value, onChange, placeholder, min = 1, step = 1 }
 interface McpConnectionFormProps {
   name: string;
   setName: (value: string) => void;
+  nameReadOnly?: boolean;
   transport: string;
   setTransport: (value: string) => void;
   command: string;
@@ -75,7 +76,7 @@ interface McpConnectionFormProps {
 }
 
 export default function McpConnectionForm({
-  name, setName, transport, setTransport, command, setCommand, argsText, setArgsText,
+  name, setName, nameReadOnly = false, transport, setTransport, command, setCommand, argsText, setArgsText,
   url, setUrl, envPairs, setEnvPairs, headerPairs, setHeaderPairs,
   advancedOpen, setAdvancedOpen, disabled = false, extraTransports = [],
   httpFields, httpAdvancedFields, timeoutFields,
@@ -87,7 +88,11 @@ export default function McpConnectionForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <div className="field-label mb-1.5">{t("edit.name")}</div>
-            <input className="app-input mono" maxLength={64} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} />
+            {nameReadOnly ? (
+              <div className="app-input flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium text-(--text-secondary)">{name}</span>
+              </div>
+            ) : <input className="app-input mono" maxLength={64} placeholder={t("edit.namePlaceholder")} value={name} onChange={(event) => setName(event.target.value)} />}
           </div>
           <div>
             <div className="field-label mb-1.5">{t("edit.transport")}</div>

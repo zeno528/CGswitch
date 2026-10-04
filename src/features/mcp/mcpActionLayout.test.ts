@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { setupI18n } from "../../i18n";
 import McpView, { compareMcpServers, McpTargetSwitch } from "./McpView";
+import McpConnectionForm from "./McpConnectionForm";
 
 const viewSource = readFileSync(new URL("./McpView.tsx", import.meta.url), "utf8");
 const editSource = readFileSync(new URL("./McpEdit.tsx", import.meta.url), "utf8");
@@ -12,6 +13,25 @@ const claudeEditSource = readFileSync(new URL("./ClaudeMcpEdit.tsx", import.meta
 const sharedFormSource = readFileSync(new URL("./McpConnectionForm.tsx", import.meta.url), "utf8");
 
 describe("MCP 操作入口", () => {
+  it("已有 MCP 名称仅展示，新建名称可填写，连接字段仍可编辑", () => {
+    setupI18n("zh-CN");
+    const noop = () => undefined;
+    for (const nameReadOnly of [true, false]) {
+      const html = renderToStaticMarkup(createElement(McpConnectionForm, {
+        name: "sample", setName: noop, nameReadOnly,
+        transport: "http", setTransport: noop,
+        command: "", setCommand: noop, argsText: "", setArgsText: noop,
+        url: "https://example.test/mcp", setUrl: noop,
+        envPairs: [], setEnvPairs: noop, headerPairs: [], setHeaderPairs: noop,
+        advancedOpen: false, setAdvancedOpen: noop, timeoutFields: null,
+      }));
+      const inputs = html.match(/<input\b[^>]*>/g)!;
+      expect(inputs.some((input) => input.includes('value="sample"'))).toBe(!nameReadOnly);
+      if (nameReadOnly) expect(html).toContain('<div class="app-input flex min-w-0 items-center gap-2"><span class="truncate font-medium text-(--text-secondary)">sample</span></div>');
+      expect(inputs.find((input) => input.includes('value="https://example.test/mcp"'))).not.toMatch(/readOnly|disabled/);
+    }
+  });
+
   it("真实客户端切换只替换内容组件，页头与切换器保留相同类型、位置和 key", () => {
     setupI18n("zh-CN");
     const frames: { headerType: unknown; switchType: unknown; key: string | null; value: string; contentType: unknown }[] = [];

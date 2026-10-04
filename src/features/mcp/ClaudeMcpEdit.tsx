@@ -127,6 +127,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved 
       <div className="apple-edit-content">
         <div className="apple-edit-surface">
           <McpConnectionForm
+            nameReadOnly={!create}
             name={name} setName={setName} transport={form.transport} setTransport={(value) => editField("transport", value)}
             command={form.command} setCommand={(value) => editField("command", value)}
             argsText={form.argsText} setArgsText={(value) => editField("argsText", value)}

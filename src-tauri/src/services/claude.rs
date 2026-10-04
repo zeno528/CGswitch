@@ -964,16 +964,12 @@ impl AppContext {
         );
         let stored = self.database.claude_profile(id)?;
         let profiles = self.database.claude_profiles()?;
-        let source_index = profiles
-            .iter()
-            .position(|profile| profile.id == id)
-            .ok_or_else(|| app_err!("Claude 供应商配置不存在"))?;
-        let base: String = stored.name.trim().chars().take(45).collect();
-        let candidate = super::unique_copy_name(&base, |name| {
+        let (candidate, copy_index) = super::profile_copy_plan(
+            id,
             profiles
                 .iter()
-                .any(|profile| profile.name.eq_ignore_ascii_case(name))
-        });
+                .map(|profile| (profile.id.as_str(), profile.name.as_str())),
+        )?;
         let timestamp = now_ms().to_string();
         let created = self.database.insert_claude_profile(
             &ClaudeProfileInput {
@@ -996,7 +992,7 @@ impl AppContext {
             &timestamp,
         )?;
         let mut ordered_ids: Vec<String> = profiles.into_iter().map(|profile| profile.id).collect();
-        ordered_ids.insert(source_index + 1, created.id.clone());
+        ordered_ids.insert(copy_index, created.id.clone());
         self.database
             .reorder_claude_profiles(&ordered_ids, &timestamp)?;
         Ok(detail(created))
@@ -2749,7 +2745,7 @@ API_KEY = "secret"
             .collect();
         assert_eq!(order, vec![b.id, a.id.clone(), copy.id]);
 
-        // 撞名追加序号从 copy 2 起（与 Codex codex_duplicate_profile 共用 unique_copy_name）
+        // 撞名追加序号从 copy 2 起（与 Codex 共用 profile_copy_plan）
         let copy2 = context.claude_duplicate(&a.id).unwrap();
         assert_eq!(copy2.name, "A copy 2");
     }

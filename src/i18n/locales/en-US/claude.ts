@@ -66,7 +66,6 @@ export default {
   endpointGlobal: "Global",
   empty: "No provider configs yet. Add a provider or save the current config as a snapshot",
   captureDescription: "Save the current Claude Code provider config as a snapshot",
-  appliedToast: "Applied to Claude Code",
   baseUrlLabel: "API URL",
   baseUrlPlaceholder: "https://api.example.com/anthropic",
   testConnection: "Test connection",

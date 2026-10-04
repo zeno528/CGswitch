@@ -61,13 +61,12 @@ describe("ProfilesView 拖拽预览", () => {
     const applyEnd = source.indexOf("const removeProfile = async", applyStart);
     const applySource = source.slice(applyStart, applyEnd);
     const refreshIndex = applySource.indexOf("await onRefresh();");
-    const restartIndex = applySource.indexOf("if (state.settings.auto_restart)");
+    const restartIndex = applySource.indexOf("await restart(true, false)");
 
     expect(refreshIndex).toBeGreaterThan(-1);
     expect(restartIndex).toBeGreaterThan(refreshIndex);
-    expect(applySource).toContain('feedback.success(t("feedback.switchSuccess"))');
-    expect(applySource).toContain('t(action === "restart" ? "feedback.switchRestarted" : "feedback.switchStarted")');
-    expect(applySource).not.toContain('feedback.success(t("feedback.switchSuccess"));\n      if (state.settings.auto_restart)');
+    expect(applySource).toContain('feedback.success(t("feedback.applySuccess", { ns: "common" }))');
+    expect(applySource.match(/feedback.success/g)).toHaveLength(1);
   });
 
   it("激活卡的拖拽预览复用品牌渐变且不再覆盖旧底色", () => {

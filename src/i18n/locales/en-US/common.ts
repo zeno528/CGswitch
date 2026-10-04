@@ -30,6 +30,7 @@ export default {
   },
   loading: "Loading...",
   feedback: {
+    applySuccess: "Applied successfully",
     cancel: "Cancel",
     confirm: "Confirm",
     dismissToast: "Dismiss notification",

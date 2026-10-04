@@ -66,7 +66,6 @@ export default {
   endpointGlobal: "全球",
   empty: "还没有供应商配置。可添加供应商，或保存当前配置快照",
   captureDescription: "将当前 Claude Code 供应商配置保存为快照",
-  appliedToast: "已应用到 Claude Code",
   baseUrlLabel: "API 地址",
   baseUrlPlaceholder: "https://api.example.com/anthropic",
   testConnection: "测试连通",

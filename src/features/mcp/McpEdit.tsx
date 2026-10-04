@@ -84,7 +84,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
     const seq = ++parseSeq.current;
     void api.parseMcpFragment(tomlText).then((spec) => {
       if (seq !== parseSeq.current) return;
-      if (/^[A-Za-z0-9_-]+$/.test(spec.name)) setName(spec.name);
+      if (create && /^[A-Za-z0-9_-]+$/.test(spec.name)) setName(spec.name);
       setTransport(spec.url ? "http" : "stdio");
       setCommand(spec.command ?? "");
       setArgsText(spec.args.join("\n"));
@@ -96,7 +96,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
       setHeaderPairs(recordToPairs(spec.http_headers));
       setEnvHeaderPairs(recordToPairs(spec.env_http_headers));
     }).catch(() => undefined);
-  }, [initialized, tomlText]);
+  }, [create, initialized, tomlText]);
 
   const formatToml = async () => {
     if (formatting || saving) return;
@@ -139,6 +139,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
       <div className="apple-edit-content">
         <div className="apple-edit-surface">
           <McpConnectionForm
+            nameReadOnly={!create}
             name={name} setName={setName} transport={transport} setTransport={(value) => setTransport(value as Transport)}
             command={command} setCommand={setCommand} argsText={argsText} setArgsText={setArgsText}
             url={url} setUrl={setUrl} envPairs={envPairs} setEnvPairs={setEnvPairs}
