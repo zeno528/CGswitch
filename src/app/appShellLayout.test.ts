@@ -47,7 +47,7 @@ describe("AppShell 布局", () => {
     // 外层 key 不得含 view：否则每次切页整树重挂载，保活失效
     expect(source).toContain('key={state ? "app" : "loading"}');
     expect(source).not.toContain('key={state ? view : "loading"}');
-    expect(source).toContain('<SettingsView state={state} active={view === "settings"}');
+    expect(source).toContain('<SettingsView state={state} onPreviewTheme={previewTheme}');
     // 首进页面必须在渲染期进挂载清单：useEffect 晚一帧才提交，
     // 「旧页已隐藏、新页未挂载」的空主区域帧正是首进闪屏的来源
     expect(source).toContain('if (!visitedViews.has(view)) {\n    setVisitedViews(new Set(visitedViews).add(view));\n  }');

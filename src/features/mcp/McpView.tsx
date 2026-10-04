@@ -12,6 +12,7 @@ import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { TrashIcon } from "../../components/TrashIcon";
 import { ManagementPageTitle } from "../../components/ManagementPageTitle";
 import { McpIcon } from "../../components/McpIcon";
+import { SkillTargetLogo } from "../../components/SkillTargetLogo";
 import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
 import { useMenuDismiss } from "../../components/useMenuDismiss";
 import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
@@ -61,7 +62,7 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
           title={t("target.label")}
           onClick={() => onChange(target)}
         >
-          <img src={target === "codex" ? "/codex.svg" : "/claude-code.svg"} alt="" className="h-4 w-4" />
+          <SkillTargetLogo target={target} active={value === target} />
           {t(`target.${target}`)}
         </button>
       ))}

@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import { DiagnosticsChip } from "../../components/DiagnosticsChip";
+import { SkillTargetLogo } from "../../components/SkillTargetLogo";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 import McpConnectionForm, { TimeoutInput } from "./McpConnectionForm";
 import { McpSourceLabel } from "./McpSourceLabel";
@@ -120,6 +121,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved 
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header justify-between">
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
+          <SkillTargetLogo target="claude" variant="title" />
           <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle", { name })}</span>
         </button>
       </div>

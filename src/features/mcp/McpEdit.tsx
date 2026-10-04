@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
+import { SkillTargetLogo } from "../../components/SkillTargetLogo";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 import McpConnectionForm, { PairEditor, TimeoutInput } from "./McpConnectionForm";
 import { McpSourceLabel } from "./McpSourceLabel";
@@ -131,6 +132,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header justify-between">
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={() => onBack()}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <SkillTargetLogo target="codex" variant="title" />
           <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle", { name })}</span>
         </button>
       </div>

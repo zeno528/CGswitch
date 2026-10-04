@@ -7,6 +7,7 @@ export default {
     plugins: "Plugins",
     skills: "Skill",
     accounts: "Accounts",
+    agentTools: "Agent tools",
     settings: "Settings",
     groupCodex: "Codex",
     groupClaude: "Claude Code",

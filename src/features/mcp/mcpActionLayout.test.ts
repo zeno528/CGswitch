@@ -65,8 +65,9 @@ describe("MCP 操作入口", () => {
       const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*aria-selected="(true|false)"[^>]*>(.*?)<\/button>/g)];
       expect(tabs).toHaveLength(2);
       tabs.forEach((tab, tabIndex) => expect(tab[1]).toBe(tabIndex === index ? "true" : "false"));
-      expect(tabs[0]![2]).toContain('/codex.svg');
-      expect(tabs[1]![2]).toContain('/claude-code.svg');
+      // 页签图标复用 SkillTargetLogo 星芒资产：选中态点亮，未选中降透明度
+      expect(tabs[index]![2]).toContain(index === 0 ? "text-(--primary-button-text)" : "--brand-claude");
+      expect(tabs[1 - index]![2]).toContain("opacity-");
       expect(html).not.toContain("app-button--primary");
     }
     const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");

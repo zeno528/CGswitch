@@ -1,6 +1,6 @@
 import { Activity, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Minus, Blocks, BookOpenText, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
+import { Minus, Blocks, BookOpenText, Bot, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { api, isTauri } from "../api";
@@ -16,6 +16,7 @@ import SkillsView from "../features/skills/SkillsView";
 import ClaudeProfilesView from "../features/claude/ClaudeProfilesView";
 import AccountsView from "../features/accounts/AccountsView";
 import SettingsView from "../features/settings/SettingsView";
+import AgentToolsView from "../features/settings/AgentToolsView";
 import { AppUpdateProvider, UpdateNotice } from "../features/updates/AppUpdateProvider";
 import { setupI18n, type resources } from "../i18n";
 import type { AppState } from "../types";
@@ -356,7 +357,8 @@ export default function AppShell() {
       skills: <SkillsView activationEpoch={activationEpoch} />,
       claudeProfiles: <ClaudeProfilesView activeId={state.active_claude_profile_id} onChanged={refresh} activationEpoch={activationEpoch} coldStart={!startupReady} balanceCache={state.balance_cache} />,
       accounts: <AccountsView initialStatus={state.auth_status} balanceCache={state.balance_cache} onAuthStatusChange={updateAuthStatus} active={view === "accounts"} />,
-      settings: <SettingsView state={state} active={view === "settings"} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
+      settings: <SettingsView state={state} onPreviewTheme={previewTheme} onRefresh={refresh} onSaved={updateSettings} />,
+      agentTools: <AgentToolsView active={view === "agentTools"} />,
     };
     return (Object.keys(pages) as AppView[]).map((pageView) =>
       visitedViews.has(pageView) ? (
@@ -383,6 +385,7 @@ export default function AppShell() {
         { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
         { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
         { view: "skills", labelKey: "nav.skills", icon: <BookOpenText strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
+        { view: "agentTools", labelKey: "nav.agentTools", icon: <Bot strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("agentTools") },
         { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
       ],
     },

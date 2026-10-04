@@ -6,7 +6,6 @@ import {
   MousePointerClick,
   RotateCw,
   Wrench,
-  Bot,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,21 +14,18 @@ import { useFeedback } from "../../app/Feedback";
 import { AppSwitch } from "../../components/AppSwitch";
 import { AppSelect } from "../../components/AppSelect";
 import type { AppState, PathInfo, Settings } from "../../types";
-import { CliCard, useCliManagement } from "./CliManagement";
 import { ProxySettings } from "./ProxySettings";
 import { SettingsAbout, SettingsAdvanced, SettingsGeneral, SettingsPanelSection } from "./SettingsSections";
 
-type Section = "general" | "codex" | "cli" | "advanced" | "about";
-interface SettingsViewProps { state: AppState; active: boolean; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; }
+type Section = "general" | "codex" | "advanced" | "about";
+interface SettingsViewProps { state: AppState; onPreviewTheme: (theme: Settings["theme"]) => void; onRefresh: () => Promise<void>; onSaved: (settings: Settings) => void; }
 
-export default function SettingsView({ state, active, onPreviewTheme, onRefresh, onSaved }: SettingsViewProps) {
+export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved }: SettingsViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("settings");
   const [form, setForm] = useState<Settings>(state.settings);
   const [section, setSection] = useState<Section>("general");
   const [saving, setSaving] = useState(false);
-  const codexCli = useCliManagement("codex", active && section === "cli");
-  const claudeCli = useCliManagement("claude", active && section === "cli");
   const [backupsEpoch, setBackupsEpoch] = useState(0);
   const [openingPath, setOpeningPath] = useState<string | null>(null);
   const tabBar = useRef<HTMLDivElement>(null);
@@ -58,18 +54,12 @@ export default function SettingsView({ state, active, onPreviewTheme, onRefresh,
     <header className="apple-page-bar">
       <h1 className="apple-title">{t("view.title")}</h1>
     </header>
-    <div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("cli", t("view.tabCli"), Bot)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
+    <div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
     {section === "general" ? (
       <div className="flex flex-col gap-[var(--gap-section)]">
         <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} />
         <ProxySettings settings={state.settings} saving={saving} onSave={saveGeneral} />
       </div>
-    ) : null}
-    {section === "cli" ? (
-      <SettingsPanelSection id="cli" label={t("view.tabCli")}>
-        <CliCard client="codex" management={codexCli} />
-        <CliCard client="claude" management={claudeCli} />
-      </SettingsPanelSection>
     ) : null}
     {section === "codex" ? (
       <SettingsPanelSection id="codex" label={t("codex.sectionTitle")}>

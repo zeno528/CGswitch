@@ -52,7 +52,6 @@ export default {
     sectionsLabel: "Settings sections",
     tabGeneral: "General",
     tabApp: "App",
-    tabCli: "Agent tools",
     tabAdvanced: "Advanced",
     tabAbout: "About",
   },

@@ -6,6 +6,7 @@ export default {
     plugins: "插件",
     skills: "Skill",
     accounts: "账号",
+    agentTools: "Agent 工具",
     settings: "设置",
     groupCodex: "Codex",
     groupClaude: "Claude Code",

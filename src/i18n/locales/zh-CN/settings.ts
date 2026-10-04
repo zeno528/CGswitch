@@ -52,7 +52,6 @@ export default {
     sectionsLabel: "设置分区",
     tabGeneral: "常规",
     tabApp: "应用",
-    tabCli: "Agent 工具",
     tabAdvanced: "高级",
     tabAbout: "关于",
   },
