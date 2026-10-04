@@ -2700,6 +2700,13 @@ button:focus-visible {
 
 .app-select-menu[data-open="true"] { opacity: 1; pointer-events: auto; visibility: visible; }
 
+/* 搜索在下拉框顶部，只有下方选项列表滚动。 */
+.app-select-menu--searchable { display: flex; flex-direction: column; overflow: hidden; }
+.app-select-search { position: relative; height: var(--control-height); flex-shrink: 0; }
+.app-select-options { position: relative; display: grid; gap: inherit; min-height: 0; overflow-y: auto; }
+/* 清空搜索复用项目图标按钮，隐藏浏览器自带的清空控件。 */
+.app-select-search input::-webkit-search-cancel-button { display: none; }
+
 .app-select-option {
   display: flex;
   width: 100%;

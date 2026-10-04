@@ -1,13 +1,13 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AppUpdateProvider } from "./AppUpdateProvider";
 import type { AppUpdate } from "./appUpdate";
 import type { Settings } from "../../types";
 
-const hooks = vi.hoisted(() => ({ cells: [] as unknown[], index: 0, check: vi.fn() }));
+const hooks = vi.hoisted(() => ({ cells: [] as unknown[], index: 0, effects: [] as (() => void | (() => void))[], check: vi.fn() }));
 vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
   useCallback: <T,>(callback: T) => callback,
-  useEffect: () => undefined,
+  useEffect: (effect: () => void | (() => void)) => { hooks.effects.push(effect); },
   useRef: (initial: unknown) => {
     const index = hooks.index++;
     hooks.cells[index] ??= { current: initial };
@@ -23,11 +23,28 @@ vi.mock("./appUpdate", () => ({ checkForAppUpdate: hooks.check, UPDATED_VERSION_
 vi.mock("../../app/Feedback", () => ({ useFeedback: () => ({ error: vi.fn(), success: vi.fn() }) }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
-function render(proxyMode: Settings["proxy_mode"], proxyUrl = "") {
+function render(proxyMode: Settings["proxy_mode"], proxyUrl = "", enabled = false) {
   hooks.index = 0;
-  return AppUpdateProvider({ enabled: false, ready: false, children: null, proxyMode, proxyUrl }).props.value;
+  hooks.effects.length = 0;
+  return AppUpdateProvider({ enabled, ready: false, children: null, proxyMode, proxyUrl }).props.value;
 }
 beforeEach(() => { hooks.cells.length = 0; hooks.index = 0; hooks.check.mockReset(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+it("自动检查延迟 5 秒，effect 清理后仍可重新安排", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  hooks.check.mockResolvedValue(null);
+  render("auto", "", true);
+  const effect = hooks.effects[1];
+  const cleanup = effect();
+  cleanup?.();
+  expect(vi.getTimerCount()).toBe(0);
+  effect();
+  expect(hooks.check).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(hooks.check).toHaveBeenCalledOnce();
+});
 
 it("代理模式或地址改变后，旧检查结果不得下载；新检查才能升级", async () => {
   const update: AppUpdate = { version: "1.2.3", notes: null, install: vi.fn(async () => undefined) };

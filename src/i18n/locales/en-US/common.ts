@@ -23,6 +23,10 @@ export default {
   select: {
     placeholder: "Select...",
     optionsLabel: "Options",
+    search: "Search...",
+    clearSearch: "Clear search",
+    noResults: "No matches",
+    availableCount: "{{count}} available",
   },
   loading: "Loading...",
   feedback: {

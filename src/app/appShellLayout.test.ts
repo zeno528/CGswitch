@@ -54,13 +54,13 @@ describe("AppShell 布局", () => {
     expect(source).not.toContain("setVisitedViews((prev) => (prev.has(view)");
   });
 
-  it("切回保活页时进场动画补播，同页内部挂载不重复播", () => {
-    // scan 以 view 为依赖重跑：切回时 DOM 不变、observer 收不到，靠 effect 补播
+  it("一级切页不补播动画，同页内部挂载不重复播", () => {
+    // view 改变时重新标记已有内容，只观察后续页内切换。
     expect(source).toContain("}, [mainRef, view]);");
     // 隐藏保活页仍在 DOM（display:none），必须按可见性跳过
     expect(source).toContain("offsetParent === null");
     // played 随 effect 重建：同一次停留内同一元素不重播
-    expect(source).toContain("const played = new WeakSet<Element>();");
+    expect(source).toContain("const played = new WeakSet<Element>(main.querySelectorAll(PAGE_ENTER_TARGET));");
   });
 
   it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {

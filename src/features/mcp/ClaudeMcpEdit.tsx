@@ -5,7 +5,6 @@ import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import { DiagnosticsChip } from "../../components/DiagnosticsChip";
-import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 import McpConnectionForm, { TimeoutInput } from "./McpConnectionForm";
 import { McpSourceLabel } from "./McpSourceLabel";
@@ -16,10 +15,9 @@ interface ClaudeMcpEditProps {
   create?: boolean;
   onBack: () => void;
   onSaved: (name: string) => void;
-  onDelete?: () => Promise<void>;
 }
 
-export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved, onDelete }: ClaudeMcpEditProps) {
+export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved }: ClaudeMcpEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const [name, setName] = useState(server?.name ?? "");
@@ -125,7 +123,6 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved,
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
           <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
         </button>
-        {!create && onDelete ? <button type="button" className="apple-action-button app-button--danger" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("edit.uninstall")}</button> : null}
       </div>
       <div className="apple-edit-content">
         <div className="apple-edit-surface">

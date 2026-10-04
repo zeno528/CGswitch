@@ -36,6 +36,18 @@ describe("AppSelect checkbox menu", () => {
     expect(markup).toContain('role="listbox"');
     expect(markup).toContain('aria-selected="true"');
     expect(markup).not.toContain('type="checkbox"');
+    expect(markup).not.toContain('type="search"');
+  });
+
+  it("搜索默认折叠为按钮，收起菜单后按钮不进入 Tab 顺序，选项保留列表语义", () => {
+    const markup = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(AppSelect<string>, {
+      value: "second", options, searchable: true, onChange: () => {},
+    })));
+    expect(markup).not.toContain('type="search"');
+    expect(markup).toMatch(/<button[^>]*aria-label="select.search"[^>]*tabindex="-1"/);
+    expect(markup).toContain('role="listbox"');
+    expect(markup.match(/role="option"/g)).toHaveLength(2);
+    expect(markup.indexOf('aria-label="select.search"')).toBeLessThan(markup.indexOf('class="app-select-options"'));
   });
 });
 

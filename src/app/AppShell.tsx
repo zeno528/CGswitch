@@ -35,9 +35,9 @@ const checkMcpDiff = () =>
     .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
     .catch(() => setMcpDiffBadge({ count: 0, error: true }));
 
-// 进场动画的作用范围沿用原 CSS 动画的选择器：任何新挂载的页内容元素都整段上浮。
+// 页内进场动画不包含设置页签。
 const PAGE_ENTER_TARGET =
-  ".apple-page-enter > :is(.apple-scroll-page, .apple-edit-page, .settings-page) > .apple-edit-content";
+  ".apple-page-enter :is(.apple-scroll-page, .apple-edit-page) > .apple-edit-content";
 
 /// 侧栏条目的文案 key：直接从 common/nav 资源推导，新增导航项自动跟随。
 type SidebarLabelKey = `nav.${keyof (typeof resources)["zh-CN"]["common"]["nav"]}`;
@@ -79,24 +79,24 @@ function animatePageEnter(el: Element) {
   el.animate(frames, { duration: Math.round(total) });
 }
 
-/// 与原 CSS 动画语义一致：每次进入页面（首次挂载、切页、切回保活页）页内容上浮一次，
-/// 各页内部重挂载出现的新页内容也播放。effect 以 view 为依赖：切回已保活的页面时 DOM
-/// 不变、MutationObserver 收不到，靠重跑 scan 补播；observer 只负责同页内部的新挂载，
-/// played 随 effect 重建，因此同一次停留内同一元素不会重复播。保活页隐藏后仍在 DOM 里
-/// （display:none），scan 按 offsetParent 跳过，不给看不见的页面播动画。
+/// 一级切页时将已有内容标记为已播放，不补播动画；observer 只播放页内进入和返回的新内容。
+/// 隐藏保活页按 offsetParent 跳过。
 function usePageEnterAnimation(mainRef: { current: HTMLElement | null }, view: AppView) {
   useLayoutEffect(() => {
     const main = mainRef.current;
     if (!main) return;
-    const played = new WeakSet<Element>();
-    const scan = () => {
+    const played = new WeakSet<Element>(main.querySelectorAll(PAGE_ENTER_TARGET));
+    const scan = (mutations: MutationRecord[]) => {
+      // 同级列表内容互换（MCP 客户端切换）不播放；编辑页进出会替换页面容器，仍照常播放。
+      const peerSwitch = (["addedNodes", "removedNodes"] as const).every((key) =>
+        mutations.some((mutation) => Array.from(mutation[key]).some((node) => node instanceof Element && node.matches(".apple-edit-content"))),
+      );
       for (const el of main.querySelectorAll(PAGE_ENTER_TARGET)) {
         if ((el as HTMLElement).offsetParent === null || played.has(el)) continue;
         played.add(el);
-        animatePageEnter(el);
+        if (!peerSwitch) animatePageEnter(el);
       }
     };
-    scan();
     const observer = new MutationObserver(scan);
     observer.observe(main, { childList: true, subtree: true });
     return () => observer.disconnect();
@@ -182,7 +182,7 @@ export default function AppShell() {
   const { start: startPolling, stop: stopPolling } = useCodexPolling(stateRef, updateCodex);
   const { activationEpoch, activate, deactivate } = useActivationRefresh();
   const sidebar = useSidebar();
-  // 页面进场动画：挂在 <main> 上监听页内容挂载，切回保活页时补播（见 usePageEnterAnimation）
+  // 页面进场动画：只监听页内内容切换，一级切页不补播（见 usePageEnterAnimation）。
   const mainRef = useRef<HTMLElement>(null);
   usePageEnterAnimation(mainRef, view);
   // 首次进入的页面在渲染期就补进挂载清单（React 丢弃中间渲染、不提交空帧）。
@@ -324,12 +324,12 @@ export default function AppShell() {
     return () => window.clearTimeout(timer);
   }, [startupReady]);
 
-  // CLI 更新胶囊的全局检查时机（首帧后 10 秒首轮 + 每小时懒 tick，6h 冷却闸在
+  // CLI 更新胶囊的全局检查时机（首帧后 5 秒首轮 + 每小时懒 tick，6h 冷却闸在
   // service 内）：覆盖从不进 Agent 工具页、也极少重启的常驻用户。app 层一次
   // 挂载活整个会话，不绑页面生命周期；失败全部静默，只留后端日志。
   useEffect(() => {
     if (!startupReady) return;
-    armCliUpdateTicker(10_000);
+    armCliUpdateTicker(5000);
   }, [startupReady]);
 
   useEffect(() => {

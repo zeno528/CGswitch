@@ -22,6 +22,10 @@ export default {
   select: {
     placeholder: "请选择",
     optionsLabel: "选项",
+    search: "搜索…",
+    clearSearch: "清空搜索",
+    noResults: "没有匹配项",
+    availableCount: "{{count}} 个可用",
   },
   loading: "正在加载…",
   feedback: {

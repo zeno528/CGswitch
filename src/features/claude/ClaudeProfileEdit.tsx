@@ -131,6 +131,10 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
 
   const updateModelMapping = (key: ClaudeModelMappingKey, value: string) => {
     setModelMappings((current) => current[key] === value ? current : { ...current, [key]: value });
+    const displayKey = modelDisplayKeyByModelKey[key];
+    if (!value.trim() && displayKey) {
+      setModelDisplayNames((current) => current[displayKey] ? { ...current, [displayKey]: "" } : current);
+    }
   };
   const modelMappingLabels = [
     ["ANTHROPIC_MODEL", "current"],

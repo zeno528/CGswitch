@@ -57,7 +57,7 @@ describe("MCP 操作入口", () => {
 
   it("两个客户端共用编辑标题、按钮、通知和卸载确认文案", () => {
     for (const key of [
-      "edit.back", "edit.createTitle", "edit.editTitle", "edit.uninstall",
+      "edit.back", "edit.createTitle", "edit.editTitle",
       "edit.name", "edit.namePlaceholder", "edit.format", "edit.cancel", "edit.saving", "edit.save",
       "feedback.formatted", "feedback.formatFailed", "feedback.invalidName", "feedback.saved",
     ]) {
@@ -72,7 +72,7 @@ describe("MCP 操作入口", () => {
     expect(claudeEditSource + viewSource).not.toContain('"claude.');
   });
 
-  it("列表把编辑、测试、工具收进三点菜单，开关仍在最右侧", () => {
+  it("列表把编辑、测试、工具和卸载收进三点菜单，开关仍在最右侧", () => {
     expect(viewSource).toContain("<MoreHorizontal");
     expect(viewSource).toContain('className="app-select-menu"');
     expect(viewSource).toContain('aria-label={t("list.moreTooltip")}');
@@ -81,13 +81,16 @@ describe("MCP 操作入口", () => {
     expect(viewSource).toContain('className="apple-icon-button');
     expect(viewSource).toContain("<AppSwitch");
     expect(viewSource).toContain("menuTriggerRef");
-    expect(viewSource).toContain('onDelete={editingServer ? () => removeServer(editingServer) : undefined}');
+    expect(viewSource).toContain('onDelete={(target) => void removeServer(target)}');
+    expect(viewSource).toContain('setMenuOpen(false); onDelete(server);');
+    expect(viewSource).toContain('{t("edit.uninstall")}');
   });
 
-  it("编辑页为已有 MCP 提供卸载入口", () => {
-    expect(editSource).toContain("onDelete?: () => Promise<void>");
-    expect(editSource).toContain("!create && onDelete");
-    expect(editSource).toContain('{t("edit.uninstall")}');
+  it("两个客户端编辑页都不再提供卸载入口", () => {
+    for (const source of [editSource, claudeEditSource]) {
+      expect(source).not.toContain("onDelete");
+      expect(source).not.toContain('t("edit.uninstall")');
+    }
   });
 
   it("源码编辑不触发保存，普通输入保留回车保存", () => {

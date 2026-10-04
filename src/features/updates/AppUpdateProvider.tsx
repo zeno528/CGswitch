@@ -67,11 +67,14 @@ export function AppUpdateProvider({ enabled, ready = true, proxyMode = "auto", p
     }
   }, [update]);
 
-  // 启动时静默检查一次：发现新版只让状态栏图标出现，不弹出悬浮卡片、不自动下载
+  // 首屏就绪后延迟 5 秒静默检查一次：发现新版只让状态栏图标出现，不弹出悬浮卡片、不自动下载
   useEffect(() => {
     if (!enabled || autoCheckedRef.current) return;
-    autoCheckedRef.current = true;
-    void check().catch((error) => console.warn("自动检查更新失败：", updateFailureMessage(error, t))); // i18n-exempt: 仅写控制台，用户不可见
+    const timer = window.setTimeout(() => {
+      autoCheckedRef.current = true;
+      void check().catch((error) => console.warn("自动检查更新失败：", updateFailureMessage(error, t))); // i18n-exempt: 仅写控制台，用户不可见
+    }, 5000);
+    return () => window.clearTimeout(timer);
   }, [enabled, check, t]);
 
   // 应用内更新重启回来：读到安装时留下的版本标记即弹「更新成功」通知（与 enabled 无关，标记只会在更新后存在一次）。

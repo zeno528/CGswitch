@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
-import { TrashIcon } from "../../components/TrashIcon";
 import type { EditorDiagnosticSummary, McpServerSpec } from "../../types";
 import McpConnectionForm, { PairEditor, TimeoutInput } from "./McpConnectionForm";
 import { McpSourceLabel } from "./McpSourceLabel";
@@ -15,10 +14,9 @@ interface McpEditProps {
   server: McpServerSpec | null;
   create?: boolean;
   onBack: (savedServer?: McpServerSpec) => void;
-  onDelete?: () => Promise<void>;
 }
 
-export default function McpEdit({ server, create = false, onBack, onDelete }: McpEditProps) {
+export default function McpEdit({ server, create = false, onBack }: McpEditProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const [name, setName] = useState(server?.name ?? "");
@@ -136,7 +134,6 @@ export default function McpEdit({ server, create = false, onBack, onDelete }: Mc
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
           <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
         </button>
-        {!create && onDelete ? <button type="button" className="apple-action-button app-button--danger" disabled={saving} onClick={() => void onDelete()}><TrashIcon />{t("edit.uninstall")}</button> : null}
       </div>
 
       <div className="apple-edit-content">

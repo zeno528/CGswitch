@@ -9,6 +9,7 @@ import { AppSwitch } from "../../components/AppSwitch";
 import { AppSegmentedControl } from "../../components/AppSegmentedControl";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { TrashIcon } from "../../components/TrashIcon";
 import { ManagementPageTitle } from "../../components/ManagementPageTitle";
 import { McpIcon } from "../../components/McpIcon";
 import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
@@ -276,12 +277,13 @@ type McpServerRowProps = {
   toolsBusy: boolean;
   toolsLoaded: boolean;
   onEdit: (server: McpServerSpec) => void;
+  onDelete: (server: McpServerSpec) => void;
   onProbe: (server: McpServerSpec) => void;
   onToggleTools: (server: McpServerSpec) => void;
   onToggleEnabled?: (server: McpServerSpec, enabled: boolean) => void;
 };
 
-export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
+export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onDelete, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
   const { t } = useTranslation("mcp");
   const testTitle = t(server.enabled === false ? "list.testConnectionDisabled" : "list.testConnection");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -301,6 +303,9 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
       </button>
       <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={server.enabled === false} onClick={() => { setMenuOpen(false); onToggleTools(server); }}>
         <span className="flex items-center gap-2"><Wrench className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{toolsTitle}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state app-select-option--danger" onClick={() => { setMenuOpen(false); onDelete(server); }}>
+        <span className="flex items-center gap-2"><TrashIcon />{t("edit.uninstall")}</span>
       </button>
     </div>,
     document.body,
@@ -552,7 +557,6 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
             if (savedServer) await probe(savedServer, { manual: false });
           })();
         }}
-        onDelete={editingServer ? () => removeServer(editingServer) : undefined}
       />
     );
   }
@@ -581,6 +585,7 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
                 toolsBusy={Boolean(toolsLoading[server.name])}
                 toolsLoaded={Boolean(toolsLoaded[server.name])}
                 onEdit={setEditingServer}
+                onDelete={(target) => void removeServer(target)}
                 onProbe={(target) => void probe(target)}
                 onToggleTools={(target) => void toggleTools(target)}
                 onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
@@ -663,7 +668,6 @@ function ClaudeMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) 
         create={creatingServer}
         onBack={() => { setEditingServer(null); setCreatingServer(false); }}
         onSaved={(name) => { setEditingServer(null); setCreatingServer(false); void refresh(true, [name]); }}
-        onDelete={editingServer ? () => removeServer(editingServer) : undefined}
       />
     );
   }
@@ -688,6 +692,7 @@ function ClaudeMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) 
               toolsBusy={Boolean(toolsLoading[server.name])}
               toolsLoaded={Boolean(toolsLoaded[server.name])}
               onEdit={setEditingServer}
+              onDelete={(target) => void removeServer(target)}
               onProbe={(target) => void probe(target)}
               onToggleTools={toggleTools}
               onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
