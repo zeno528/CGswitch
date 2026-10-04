@@ -337,7 +337,7 @@ describe("SettingsSections", () => {
     };
     const balance: ProfileBalanceInfo = {
       currency: "", total_balance: "",
-      usage_percent: 18, usage_reset: "3h12m", usage_reset_at: Date.now() + 3 * 3_600_000, weekly_usage_percent: null, weekly_reset: null,
+      usage_percent: 18, usage_reset: "3h12m", usage_reset_at: Date.now() + 3 * 3_600_000, usage_label: "5小时", weekly_usage_percent: 42, weekly_reset: "4d8h", weekly_reset_at: Date.now() + 4 * 86_400_000, weekly_label: "7天",
       reset_credits_available: 2,
       reset_credits: [
         { id: "credit-1", reset_type: "codex_rate_limits", expires_at: Date.now() + 16 * 86_400_000 },
@@ -358,7 +358,11 @@ describe("SettingsSections", () => {
     expect(html).toContain("2 次");
     expect(html).toContain("完全重置");
     expect(html).toContain("到期：");
-    expect(html).toContain("3h12m 后");
+    expect(html).toContain("5小时限额");
+    expect(html).toContain("每周限额");
+    expect(html).toContain("3小时12分钟后重置");
+    expect(html).toContain("4天8小时后重置");
+    expect(html).not.toContain("重置时间：");
     expect(accountsViewSource).toContain('month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit"');
     expect(html).not.toContain("恢复 5 小时和每周使用限额");
     const zeroCreditHtml = renderToStaticMarkup(<FeedbackProvider><AccountsView initialStatus={status} balanceCache={{ "auth:desktop:desktop": { ...balance, reset_credits_available: 0, reset_credits: [] } }} /></FeedbackProvider>);

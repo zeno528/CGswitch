@@ -53,7 +53,7 @@ export function animateQuotaProgress(fill: HTMLSpanElement, startScale: number, 
   return () => animation.cancel();
 }
 
-function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loading, animationRevision, animationFromRemaining }: { label: string; usedPercent: number; resetAt?: number | null; resetIn?: string | null; onRefresh?: () => void; loading?: boolean; animationRevision: number; animationFromRemaining?: number }) {
+function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, animationRevision, animationFromRemaining }: { label: string; usedPercent: number; resetAt?: number | null; resetIn?: string | null; animationRevision: number; animationFromRemaining?: number }) {
   const { t, i18n } = useTranslation("settings");
   // 窗口标签的文案在 profiles 命名空间，另取一个对应的 t
   const { t: tBalance } = useTranslation("profiles");
@@ -66,7 +66,8 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   const fillClass = used >= 90 ? "bg-(--danger)" : used >= 70 ? "bg-(--warning)" : "bg-(--chip-success)";
   const title = isWeeklyWindowLabel(label) ? t("account.weeklyLimit") : t("account.usageLimit", { label: localizeBalanceLabel(label, tBalance) ?? label });
   // 重置时间按当前界面语言本地化，不写死中文日期习惯
-  const reset = resetAt == null ? null : <>{t("account.resetTime", { time: formatShortLocalTime(resetAt, i18n.language) })}{resetIn ? t("account.resetCountdown", { time: resetIn }) : null}</>;
+  const localizedResetIn = resetIn && i18n.language.startsWith("zh") ? resetIn.replace(/d/g, "天").replace(/h/g, "小时").replace(/m/g, "分钟") : resetIn; // i18n-exempt: 仅中文界面展示后端固定的 d/h/m 倒计时单位
+  const reset = resetAt == null ? null : <>{t("account.resetTime", { time: formatShortLocalTime(resetAt, i18n.language) })}{localizedResetIn ? t("account.resetCountdown", { time: localizedResetIn }) : null}</>;
   const fillRef = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
@@ -77,14 +78,11 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
 
   return <div className="min-w-0 space-y-2 text-xs">
     <div className="min-w-0">
-      <div className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="field-subtitle">{title}</span>
-          {onRefresh ? <button type="button" className="apple-icon-button h-5 w-5 text-[var(--text-secondary)] hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={onRefresh}><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} strokeWidth={2} /></button> : null}
-        </div>
+      <div className="field-subtitle">{title}</div>
+      <div className="mt-0.5 flex items-center justify-between gap-2">
+        <span className="meta-xs min-w-0 muted">{reset}</span>
         <span className="meta-xs shrink-0 whitespace-nowrap">{t("account.remainingShort")} <span className={`font-semibold ${balanceChipClass(used)}`}>{remaining}%</span></span>
       </div>
-      {reset ? <div className="meta-xs mt-0.5 muted">{reset}</div> : null}
     </div>
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/6 dark:bg-white/8" role="progressbar" aria-label={t("account.remainingAria", { title })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={remaining}>
       <span ref={fillRef} key={animationRevision} className={`origin-left block h-full rounded-full ${fillClass}`} style={{ width: `${animationRevision ? animationMax : remaining}%`, transform: animationRevision ? `scaleX(${animationEndScale})` : undefined }} />
@@ -92,12 +90,16 @@ function QuotaProgressBar({ label, usedPercent, resetAt, resetIn, onRefresh, loa
   </div>;
 }
 
-function AccountQuota({ source, accountId, cachedBalance, onRefreshed, active, onRelogin, reloginDisabled }: {
+function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance, onRefreshed, active, onRemove, onRelogin, reloginDisabled }: {
   source: "desktop" | "oauth";
   accountId: string;
+  login: string;
+  plan?: string | null;
+  expiresAt?: number | null;
   cachedBalance?: ProfileBalanceInfo;
   onRefreshed: () => Promise<void>;
   active: boolean;
+  onRemove?: () => void;
   onRelogin?: () => void;
   reloginDisabled?: boolean;
 }) {
@@ -167,7 +169,20 @@ function AccountQuota({ source, accountId, cachedBalance, onRefreshed, active, o
   const loginExpired = source === "oauth" && isOAuthLoginExpiredError(error);
   const errorAction = loginExpired && onRelogin ? onRelogin : () => void refresh(true);
 
-  return <div className="mt-3 border-t border-[var(--panel-divider)] pt-3">
+  return <div className="apple-group p-3">
+    <div className="flex min-h-8 min-w-0 flex-nowrap items-center gap-3">
+      <AuthSourceIcon source={source} className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
+      <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
+        <span className="mono min-w-0 truncate title-sm">{login}</span>
+        <span className="apple-chip muted shrink-0">{t(source === "desktop" ? "account.followCodex" : "account.oauthDeviceLogin")}</span>
+      </div>
+      {quota?.usage_percent != null || onRemove ? <div className="flex shrink-0 items-center gap-2">
+        {quota?.usage_percent != null ? <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={() => void refresh(true)}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} /></button> : null}
+        {onRemove ? <button type="button" className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={onRemove}><TrashIcon /></button> : null}
+      </div> : null}
+    </div>
+    <SubscriptionExpiry plan={plan} expiresAt={expiresAt} />
+    <div className="mt-3 border-t border-[var(--panel-divider)] pt-3">
     {quota?.usage_percent != null ? (
       <div className="space-y-2">
         <QuotaProgressBar
@@ -175,8 +190,6 @@ function AccountQuota({ source, accountId, cachedBalance, onRefreshed, active, o
           usedPercent={quota.usage_percent}
           resetAt={quota.usage_reset_at}
           resetIn={quota.usage_reset}
-          onRefresh={() => void refresh(true)}
-          loading={loading}
           animationRevision={animationRevision}
           animationFromRemaining={animationFromQuota?.usage_percent == null ? undefined : remainingPercent(animationFromQuota.usage_percent)}
         />
@@ -208,6 +221,7 @@ function AccountQuota({ source, accountId, cachedBalance, onRefreshed, active, o
       <p className="mt-1 text-xs muted">{t("account.quotaLoading")}</p>
     )}
     {quota && (quota.reset_credits_available ?? 0) > 0 ? <ResetCredits availableCount={quota.reset_credits_available ?? 0} credits={quota.reset_credits} /> : null}
+    </div>
   </div>;
 }
 
@@ -347,30 +361,9 @@ export default function AccountsView({ initialStatus, balanceCache, onAuthStatus
   if (status.authenticated) return page(
     <div className="grid grid-cols-1 gap-[var(--gap-card)] md:grid-cols-2">
       {status.external.map((account) => (
-        <div key={account.id} className="apple-group p-3">
-          <div className="flex min-h-8 min-w-0 flex-nowrap items-center gap-3">
-            <AuthSourceIcon source="desktop" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
-            <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
-              <span className="mono min-w-0 truncate title-sm">{account.login}</span>
-              <span className="apple-chip muted shrink-0">{t("account.followCodex")}</span>
-            </div>
-          </div>
-          <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-          <AccountQuota source="desktop" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} onRefreshed={refreshStatus} active={active} />
-        </div>
+        <AccountCard key={account.id} source="desktop" accountId={account.id} login={account.login} plan={account.plan_type} expiresAt={account.subscription_active_until} cachedBalance={balanceCache?.[authQuotaCacheKey("desktop", account.id)]} onRefreshed={refreshStatus} active={active} />
       ))}
-      {status.accounts.map((account) => <div key={`${account.id}:${account.authenticated_at}`} className="apple-group p-3">
-        <div className="flex min-h-8 min-w-0 flex-nowrap items-center gap-3">
-          <AuthSourceIcon source="oauth" className="h-5 w-5 shrink-0 text-accent" strokeWidth={2} />
-          <div className="flex min-w-0 flex-1 items-baseline gap-2 whitespace-nowrap">
-            <span className="mono min-w-0 truncate title-sm">{account.login}</span>
-            <span className="apple-chip muted shrink-0">{t("account.oauthDeviceLogin")}</span>
-          </div>
-          <button type="button" className="apple-icon-button shrink-0 text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={() => void removeAccount(account.id, account.login)}><TrashIcon /></button>
-        </div>
-        <SubscriptionExpiry plan={account.plan_type} expiresAt={account.subscription_active_until} />
-        <AccountQuota source="oauth" accountId={account.id} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRefreshed={refreshStatus} active={active} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />
-      </div>)}
+      {status.accounts.map((account) => <AccountCard key={`${account.id}:${account.authenticated_at}`} source="oauth" accountId={account.id} login={account.login} plan={account.plan_type} expiresAt={account.subscription_active_until} cachedBalance={balanceCache?.[authQuotaCacheKey("oauth", account.id)]} onRefreshed={refreshStatus} active={active} onRemove={() => void removeAccount(account.id, account.login)} onRelogin={() => { setAddOpen(true); void startLogin(); }} reloginDisabled={busy} />)}
     </div>
   );
 
