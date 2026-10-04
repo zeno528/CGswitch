@@ -155,13 +155,15 @@ fn shell_execute_script(shell: &str, script: &str) -> AppResult<()> {
 }
 
 /// 只从系统安装位置选择 PowerShell，避免继承开发工具 PATH 中的私有运行时。
+/// 剔除 `%LOCALAPPDATA%\...\WindowsApps\pwsh.exe`（Store 执行别名）：它是 0 字节
+/// reparse point，ShellExecuteW 拉起时 `-EncodedCommand` 参数会被别名重定向吞掉，
+/// PowerShell 以纯交互模式启动——空窗口挂在继承的 cwd 上，脚本一行都没跑。
+/// 只装 Store 版 PowerShell 的机器落到 System32 5.1（真实 exe，参数必达）。
 #[cfg(target_os = "windows")]
 fn find_windows_shell() -> Option<String> {
     [
         std::env::var_os("ProgramFiles")
             .map(|dir| PathBuf::from(dir).join("PowerShell/7/pwsh.exe")),
-        std::env::var_os("LOCALAPPDATA")
-            .map(|dir| PathBuf::from(dir).join("Microsoft/WindowsApps/pwsh.exe")),
         std::env::var_os("WINDIR")
             .map(|dir| PathBuf::from(dir).join("System32/WindowsPowerShell/v1.0/powershell.exe")),
     ]
