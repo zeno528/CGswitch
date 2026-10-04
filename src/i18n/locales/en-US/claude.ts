@@ -60,7 +60,7 @@ export default {
     effortTitle: "Sets CLAUDE_CODE_EFFORT_LEVEL; Default clears the variable and top-level effortLevel while keeping per-model preferences. Model and gateway support and effort caps still apply",
   },
   protocolLabel: "Protocol",
-  accountLoginHelp: "Uses the account already signed in to Claude Code. Run /login in Claude Code first. Applying this profile removes third-party endpoint and authentication overrides from settings.json without reading or storing login credentials. Clear authentication overrides in your shell environment separately",
+  accountLoginHelp: "Uses the account already signed in to Claude Code. Run /login in Claude Code first. Using this profile removes third-party endpoint and authentication overrides from settings.json without reading or storing login credentials. Clear authentication overrides in your shell environment separately",
   protocolAnthropic: "Anthropic-compatible",
   endpointCn: "CN",
   endpointGlobal: "Global",

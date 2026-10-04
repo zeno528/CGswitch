@@ -60,7 +60,7 @@ export default {
     effortTitle: "设置 CLAUDE_CODE_EFFORT_LEVEL；默认会清除环境变量和顶层 effortLevel，保留各模型的自定义档位。实际强度受模型、网关支持和上限设置影响",
   },
   protocolLabel: "接入协议",
-  accountLoginHelp: "使用 Claude Code 已登录的账号。请先在 Claude Code 中执行 /login；应用此配置会移除 settings.json 中的第三方地址和认证覆盖，不读取或保存登录凭证。Shell 环境变量中的认证覆盖需自行清除",
+  accountLoginHelp: "使用 Claude Code 已登录的账号。请先在 Claude Code 中执行 /login；使用此配置会移除 settings.json 中的第三方地址和认证覆盖，不读取或保存登录凭证。Shell 环境变量中的认证覆盖需自行清除",
   protocolAnthropic: "Anthropic 兼容",
   endpointCn: "国内",
   endpointGlobal: "全球",

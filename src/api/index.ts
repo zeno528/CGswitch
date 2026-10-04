@@ -162,6 +162,7 @@ export const api = {
   claudeReorderProfiles: (ids: string[]) => call<void>("claude_reorder_profiles", { ids }),
   claudeDuplicateProfile: (id: string) => call<ClaudeProfileDetail>("claude_duplicate_profile", { id }),
   claudeTestProfile: (id: string) => call<number>("claude_test_profile", { id }),
+  claudeOpenTerminal: (id: string, cwd: string | null) => call<void>("claude_open_terminal", { id, cwd }),
   claudeDeleteProfile: (id: string) => call<void>("claude_delete_profile", { id }),
   claudeApplyProfile: (id: string) => call<void>("claude_apply_profile", { id }),
   getSkillContent: (name: string) => call<string>("get_skill_content", { name }),

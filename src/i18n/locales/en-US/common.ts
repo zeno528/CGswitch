@@ -31,7 +31,7 @@ export default {
   },
   loading: "Loading...",
   feedback: {
-    applySuccess: "Applied successfully",
+    applySuccess: "Switched successfully",
     cancel: "Cancel",
     confirm: "Confirm",
     dismissToast: "Dismiss notification",

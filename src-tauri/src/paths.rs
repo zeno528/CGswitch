@@ -19,6 +19,9 @@ pub struct AppPaths {
     pub codex_home: PathBuf,
     /// Claude Code 的家目录（~/.claude）：供应商配置写入其下 settings.json。
     pub claude_home: PathBuf,
+    /// 供应商终端的 per-session settings 覆盖文件目录：只放 `claude --settings`
+    /// 的临时覆盖，不进 ~/.claude，不参与 apply 与回写。
+    pub terminal: PathBuf,
 }
 
 impl AppPaths {
@@ -34,6 +37,11 @@ impl AppPaths {
             .join(".claude.json")
     }
 
+    /// 某个 Claude 供应商的终端覆盖文件：固定命名、每次覆写，不随进程删除。
+    pub fn terminal_settings(&self, profile_id: &str) -> PathBuf {
+        self.terminal.join(format!("claude_{profile_id}.json"))
+    }
+
     pub fn ensure(&self) -> AppResult<()> {
         for dir in [
             &self.root,
@@ -41,6 +49,7 @@ impl AppPaths {
             &self.database_backup,
             &self.codex_files_backup,
             &self.logs,
+            &self.terminal,
         ] {
             std::fs::create_dir_all(dir)
                 .map_err(|error| app_err!("无法创建目录 {}: {error}", dir.display()))?;
@@ -63,6 +72,7 @@ pub fn from_home(home: &Path) -> AppResult<AppPaths> {
         database_backup: root.join("backups").join("database"),
         codex_files_backup: root.join("backups").join("codex-files"),
         logs: root.join("logs"),
+        terminal: root.join("terminal"),
         codex_home: home.join(".codex"),
         claude_home: home.join(".claude"),
         root,
@@ -107,5 +117,12 @@ mod tests {
         );
         assert_eq!(paths.claude_home, home.join(".claude"));
         assert_eq!(paths.claude_mcp_config(), home.join(".claude.json"));
+        assert_eq!(paths.terminal, home.join(".cgswitch").join("terminal"));
+        assert_eq!(
+            paths.terminal_settings("p-1"),
+            home.join(".cgswitch")
+                .join("terminal")
+                .join("claude_p-1.json")
+        );
     }
 }

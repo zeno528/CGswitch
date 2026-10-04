@@ -229,6 +229,19 @@ pub fn claude_get_common_settings(state: State<'_, AppContext>) -> AppResult<Opt
     state.claude_common_settings()
 }
 
+/// 在新终端里启动一个绑定该供应商的 Claude Code 会话（`claude --settings` 覆盖）。
+/// 只读旁路：不切激活、不改 live、不触发回写。
+/// async 是给 macOS 的：osascript 要等 Terminal 自动化授权弹窗，同步 command 跑在
+/// 主线程会把整个 UI 冻到用户处理完弹窗（Tauri 官方文档：无 async 的 command 在主线程执行）。
+#[tauri::command]
+pub async fn claude_open_terminal(
+    id: String,
+    cwd: Option<String>,
+    state: State<'_, AppContext>,
+) -> AppResult<()> {
+    state.claude_open_terminal(&id, cwd.as_deref())
+}
+
 #[tauri::command]
 pub fn claude_save_common_settings(
     text: Option<String>,

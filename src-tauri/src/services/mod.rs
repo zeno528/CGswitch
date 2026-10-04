@@ -20,6 +20,7 @@ use crate::paths::{now_ms, now_secs, AppPaths};
 
 mod claude;
 mod claude_cli;
+mod claude_terminal;
 mod cli;
 mod codex_accounts;
 mod codex_apply;

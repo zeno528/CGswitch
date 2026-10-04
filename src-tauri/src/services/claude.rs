@@ -36,6 +36,46 @@ fn uses_api_key(kind: Option<&str>) -> bool {
     matches!(kind, Some("anthropic" | "kimi-code" | "siliconflow"))
 }
 
+/// 一个 Claude 供应商注入 `env` 的完整键集。apply 写 live 与终端写 per-session
+/// 覆盖文件共用这一份：鉴权键形态（API_KEY / AUTH_TOKEN）、openrouter 的空
+/// API_KEY 特例、附加 env 的合并口径必须同源，两处各写一遍必然漂移。
+pub(super) fn managed_env(profile: &StoredClaudeProfile) -> Map<String, Value> {
+    let mut env = Map::new();
+    for (key, value) in [
+        ("ANTHROPIC_BASE_URL", profile.base_url.as_deref()),
+        (
+            if uses_api_key(profile.kind.as_deref()) {
+                "ANTHROPIC_API_KEY"
+            } else {
+                "ANTHROPIC_AUTH_TOKEN"
+            },
+            profile.auth_token.as_deref(),
+        ),
+        ("ANTHROPIC_MODEL", profile.model.as_deref()),
+    ] {
+        if let Some(text) = value.filter(|text| !text.trim().is_empty()) {
+            env.insert(key.to_string(), Value::String(text.to_string()));
+        }
+    }
+    if profile.kind.as_deref() == Some("openrouter") {
+        env.insert(
+            "ANTHROPIC_API_KEY".to_string(),
+            Value::String(String::new()),
+        );
+    }
+    // 附加 env 在保存时已校验为对象；手改数据库的坏值在此静默跳过
+    if let Some(Ok(Value::Object(extra))) = profile
+        .extra_env
+        .as_deref()
+        .map(serde_json::from_str::<Value>)
+    {
+        for (key, value) in extra {
+            env.insert(key, value);
+        }
+    }
+    env
+}
+
 fn summary(profile: &StoredClaudeProfile) -> ClaudeProfileSummary {
     ClaudeProfileSummary {
         id: profile.id.clone(),
@@ -1128,39 +1168,9 @@ impl AppContext {
                 env.remove(key);
             }
             if let Some(profile) = values {
-                // token 按 kind 落 API_KEY 或 AUTH_TOKEN（对齐前端 patchEnvFields）；
-                // 另一形态已在上方随托管键撤下，用户手写的旧形态不残留。
-                for (key, value) in [
-                    ("ANTHROPIC_BASE_URL", profile.base_url.as_deref()),
-                    (
-                        if uses_api_key(profile.kind.as_deref()) {
-                            "ANTHROPIC_API_KEY"
-                        } else {
-                            "ANTHROPIC_AUTH_TOKEN"
-                        },
-                        profile.auth_token.as_deref(),
-                    ),
-                    ("ANTHROPIC_MODEL", profile.model.as_deref()),
-                ] {
-                    if let Some(text) = value.filter(|text| !text.trim().is_empty()) {
-                        env.insert(key.to_string(), Value::String(text.to_string()));
-                    }
-                }
-                if profile.kind.as_deref() == Some("openrouter") {
-                    env.insert(
-                        "ANTHROPIC_API_KEY".to_string(),
-                        Value::String(String::new()),
-                    );
-                }
-                // 附加 env 在保存时已校验为对象；手改数据库的坏值在此静默跳过
-                if let Some(Ok(Value::Object(extra))) = profile
-                    .extra_env
-                    .as_deref()
-                    .map(serde_json::from_str::<Value>)
-                {
-                    for (key, value) in extra {
-                        env.insert(key, value);
-                    }
+                // 键集与终端覆盖文件同源（managed_env），两处不各写一遍。
+                for (key, value) in managed_env(profile) {
+                    env.insert(key, value);
                 }
             }
         }

@@ -163,7 +163,7 @@ impl AppContext {
                 .is_none_or(|key| key.trim().is_empty() || is_builtin_placeholder(payload, key))
         {
             return Err(app_err!(
-                "该供应商尚未配置 API Key，请先在编辑页填写 API Key 后再应用"
+                "该供应商尚未配置 API Key，请先在编辑页填写 API Key 后再使用"
             ));
         }
         let rendered = match &payload.raw_config {

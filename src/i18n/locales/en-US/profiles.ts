@@ -75,9 +75,19 @@ export default {
   },
   actions: {
     inUse: "In use",
-    switch: "Apply",
+    switch: "Use",
+    more: "More actions",
     duplicate: "Duplicate provider",
     delete: "Delete",
+  },
+  terminal: {
+    open: "Open terminal",
+    menuLabel: "Terminal working directory",
+    new: "New…",
+    empty: "No directory yet — use New to pick one",
+    remove: "Remove this directory",
+    pickDir: "Choose a working directory",
+    desktopOnly: "Launching a terminal needs the desktop app; the browser preview can't do it",
   },
   edit: {
     back: "Back",

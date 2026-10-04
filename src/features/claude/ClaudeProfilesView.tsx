@@ -86,7 +86,7 @@ function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activati
   return (
     <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onRename} />
-      <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={onTest} onRemove={onRemove} />
+      <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} terminalProfileId={profile.id} onApply={onApply} onDuplicate={onDuplicate} onTest={onTest} onRemove={onRemove} />
     </SortableCard>
   );
 }
@@ -270,7 +270,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
           <CliUpgradePill client="claude" />
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCreate}>
+          <button type="button" className="apple-action-button app-button--primary disabled:!opacity-100" disabled={busy} onClick={openCreate}>
             <Plus className="h-4 w-4" />
             {tProfiles("toolbar.addProvider")}
           </button>

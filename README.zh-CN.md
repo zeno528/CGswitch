@@ -32,10 +32,10 @@ CGswitch 面向使用 OpenAI Codex 或 Claude Code 的开发者，围绕电脑�
               ↓
           保存为配置
               ↓
-       编辑 · 测试 · 应用 · 恢复
+       编辑 · 测试 · 使用 · 恢复
 ```
 
-Codex 与 Claude Code 并排管理：两个客户端各有自己的供应商页，在一侧应用配置不会改写另一侧。应用供应商配置前，CGswitch 会备份相关文件。切换模型供应商时，MCP、Plugins 和 Skills 等全局资源仍保持独立，不必重新配置。
+Codex 与 Claude Code 并排管理：两个客户端各有自己的供应商页，在一侧使用配置不会改写另一侧。使用供应商配置前，CGswitch 会备份相关文件。切换模型供应商时，MCP、Plugins 和 Skills 等全局资源仍保持独立，不必重新配置。
 
 ## 功能
 
@@ -44,8 +44,8 @@ Codex 与 Claude Code 并排管理：两个客户端各有自己的供应商页�
 - 使用内置供应商模板、捕获当前 `~/.codex/config.toml`，或创建自定义供应商。
 - 在应用内编辑 `config.toml`、`models.json` 和 `auth.json`，提供 TOML/JSON 校验。
 - 从供应商的 `/models` 接口获取可用模型，并在供应商配置编辑器中选择。
-- 重命名、复制、排序、删除和应用配置。
-- 应用配置时，尽可能保留 MCP、插件等无关 Codex 配置内容。
+- 重命名、复制、排序、删除和使用配置。
+- 使用配置时，尽可能保留 MCP、插件等无关 Codex 配置内容。
 - 为配置设置自定义显示名称、供应商图标、管理后台地址、可选描述，并可绑定 ChatGPT 账号。描述只保存在 CGswitch，不会写入 Codex 配置。
 
 ### 当前支持的供应商模板
@@ -63,7 +63,7 @@ Codex 与 Claude Code 并排管理：两个客户端各有自己的供应商页�
 - 供应商字段写入 `~/.claude/settings.json` 的 `env` 块；整个文件仍可编辑并做 JSON 校验，其他顶层键和 `env` 条目原样保留。
 - 第三方网关选择 `Anthropic 兼容`协议与国内或全球端点；密钥按模板写成 `ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。
 - 把请求模型映射到 Claude Code 的模型角色 —— 主模型、Fable、Opus、Sonnet、Haiku 和子代理 —— 也可以追加自定义 `/model` 条目；`1M` 开关会在模型 ID 后追加 `[1m]`，请求百万 token 上下文。
-- `Claude Account` 使用 Claude Code 中已登录的账号：先在 Claude Code 里执行 `/login`。应用该配置会移除 `settings.json` 中第三方的接口与认证覆盖项，CGswitch 既不读取也不保存登录凭据。
+- `Claude Account` 使用 Claude Code 中已登录的账号：先在 Claude Code 里执行 `/login`。使用该配置会移除 `settings.json` 中第三方的接口与认证覆盖项，CGswitch 既不读取也不保存登录凭据。
 - 连通测试用已保存的凭据请求真实调用路径 `/v1/messages`；获取模型列表是独立的可选步骤，没有模型目录的网关同样能通过连通测试。
 - 可把共用字段保存为通用模板，再填入任意配置；接口地址、凭据、模型映射和应用托管字段不在模板范围内，模板改动也不会回写已有配置。
 - 在支持查询余额或用量的模板（目前是 DeepSeek 和 MiniMax）上，可按配置开关余额或用量指示条。
@@ -108,7 +108,7 @@ Codex 与 Claude Code 并排管理：两个客户端各有自己的供应商页�
 - 支持英文和简体中文界面，并可自动检测系统语言。
 - 支持开机启动、静默启动和关闭时最小化到托盘。
 - 系统托盘菜单提供快速操作：切换供应商、打开设置、跳转到账号页、显示主窗口；托盘单击行为可设为"显示主窗口"或"显示菜单"。
-- 应用 Codex 配置后可选择自动重启 Codex；Claude Code 配置不会重启任何进程。
+- 使用 Codex 配置后可选择自动重启 Codex；Claude Code 配置不会重启任何进程。
 - 可自动检查应用更新，安装前先看更新日志，下次启动弹出"已更新到 vX"提示。
 - 自动备份本地数据库、配置文件和 Codex 文件；数据库备份可在设置中浏览和恢复。
 
@@ -148,9 +148,9 @@ xattr -cr /Applications/CGswitch.app
 
 ## 快速开始
 
-1. 在「Codex」分组进入「供应商」，选择内置模板或「Custom」，填写凭据或绑定 ChatGPT 账号，然后应用。
+1. 在「Codex」分组进入「供应商」，选择内置模板或「Custom」，填写凭据或绑定 ChatGPT 账号，然后使用。
 2. 在「Claude」分组进入「供应商」配置 Claude Code，或把当前 `~/.claude/settings.json` 存为快照。
-3. 如果希望应用后自动重启 Codex，在「设置 → 应用」中开启对应选项。
+3. 如果希望使用后自动重启 Codex，在「设置 → 应用」中开启对应选项。
 4. 需要管理全局资源时，从「通用」分组进入「MCP」「插件」或「Skill」。MCP 一次只管理一个客户端，Skill 则可以同时为两个客户端启用。
 
 ## 数据与隐私
@@ -179,7 +179,7 @@ API Key、OAuth 凭据、配置和备份都属于本地数据。CGswitch 会在�
 
 ## 常见问题与排查
 
-### 点击「应用」会发生什么？
+### 点击「使用」会发生什么？
 
 CGswitch 会先备份相关文件，再更新供应商相关的 Codex 配置，并尽可能保留其他配置区域。操作完成后是否重启 Codex 由「设置 → 应用」决定。
 
@@ -189,7 +189,7 @@ CGswitch 会先备份相关文件，再更新供应商相关的 Codex 配置，�
 
 ### CGswitch 会接管我的 Claude Code 登录吗？
 
-不会。先在 Claude Code 里执行 `/login`，再应用 `Claude Account` 配置 —— CGswitch 只是移除 `settings.json` 里第三方的接口与认证覆盖项，让 Claude Code 改用自己的账号。它不读取也不保存登录凭据，Shell 环境里的认证变量也需要自行清理。
+不会。先在 Claude Code 里执行 `/login`，再使用 `Claude Account` 配置 —— CGswitch 只是移除 `settings.json` 里第三方的接口与认证覆盖项，让 Claude Code 改用自己的账号。它不读取也不保存登录凭据，Shell 环境里的认证变量也需要自行清理。
 
 ### 为什么配置了第三方供应商，插件仍然无法使用？
 

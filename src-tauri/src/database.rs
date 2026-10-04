@@ -152,6 +152,8 @@ fn migrations() -> Migrations<'static> {
             "ALTER TABLE mcp_servers ADD COLUMN codex_installed INTEGER NOT NULL DEFAULT 1;
              ALTER TABLE mcp_servers ADD COLUMN claude_installed INTEGER NOT NULL DEFAULT 1",
         ),
+        // Claude 卡片终端入口的最近工作目录（全局一份）；历史迁移只能在末尾追加。
+        M::up("ALTER TABLE app_state ADD COLUMN claude_terminal_dirs TEXT"),
     ])
 }
 
@@ -1610,6 +1612,42 @@ mod tests {
         assert!(names.contains(&"claude_profiles".into()));
     }
 
+    #[test]
+    fn migration_from_v20_preserves_claude_profile_and_opens_v21() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        paths.ensure().unwrap();
+        {
+            let mut connection = Connection::open(&paths.database).unwrap();
+            migrations().to_version(&mut connection, 20).unwrap();
+            connection
+                .execute_batch(
+                    "INSERT INTO claude_profiles(id, name, created_at, updated_at)
+                 VALUES('claude-existing', 'Existing', '1', '1');
+                 INSERT INTO app_state(singleton, active_claude_profile_id)
+                 VALUES(1, 'claude-existing')",
+                )
+                .unwrap();
+        }
+
+        let db = Database::open(&paths).unwrap();
+        assert_eq!(
+            db.claude_profile("claude-existing").unwrap().name,
+            "Existing"
+        );
+        assert_eq!(
+            db.active_claude_profile().unwrap().as_deref(),
+            Some("claude-existing")
+        );
+        let connection = db.lock().unwrap();
+        assert_eq!(
+            connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            21
+        );
+    }
+
     /// Claude 支持引入前（user_version = 7）的存量库升级：既有数据完好，
     /// Claude 表全列与激活位就位且默认空，global_enabled 给存量 MCP 行落默认 1。
     #[test]
@@ -1743,7 +1781,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, 21);
         let show_balance: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",

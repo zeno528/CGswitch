@@ -32,10 +32,10 @@ Provider preset or existing client configuration
                          ↓
                   Saved as a profile
                          ↓
-            Edit · test · apply · restore
+            Edit · test · use · restore
 ```
 
-Codex and Claude Code are managed side by side: each client has its own provider page, and applying a profile on one never rewrites the other. CGswitch backs up the relevant files before applying a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
+Codex and Claude Code are managed side by side: each client has its own provider page, and using a profile on one never rewrites the other. CGswitch backs up the relevant files before switching to a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
 
 ## Features
 
@@ -44,8 +44,8 @@ Codex and Claude Code are managed side by side: each client has its own provider
 - Start from a built-in provider preset, capture the current `~/.codex/config.toml`, or create a custom provider.
 - Edit `config.toml`, `models.json`, and `auth.json` with TOML/JSON validation.
 - Fetch available models from a provider's `/models` endpoint and select them in the profile editor.
-- Rename, duplicate, reorder, delete, and apply profiles.
-- Keep unrelated Codex configuration such as MCP and plugin sections when applying provider-specific changes where possible.
+- Rename, duplicate, reorder, delete, and use profiles.
+- Keep unrelated Codex configuration such as MCP and plugin sections when switching to a provider where possible.
 - Set a custom display name, provider icon, administration URL, optional description, and optional ChatGPT account binding. The description stays inside CGswitch and is not written into the Codex configuration.
 
 ### Supported provider presets
@@ -63,7 +63,7 @@ Presets available on both clients share a name and icon but never share endpoint
 - Provider fields are written into the `env` block of `~/.claude/settings.json`. The whole file stays editable with JSON validation, and every other top-level key and `env` entry is preserved.
 - Pick the `Anthropic-compatible` protocol and a CN or Global endpoint for third-party gateways; the key is written as `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` depending on the preset.
 - Map request models onto Claude Code's model roles — Main, Fable, Opus, Sonnet, Haiku, and Subagent — or add a custom `/model` entry. The `1M` flag appends `[1m]` to a model ID to request a million-token context.
-- `Claude Account` uses the account already signed in to Claude Code: run `/login` there first. Applying it removes third-party endpoint and credential overrides from `settings.json`, and CGswitch neither reads nor stores login credentials.
+- `Claude Account` uses the account already signed in to Claude Code: run `/login` there first. Switching to it removes third-party endpoint and credential overrides from `settings.json`, and CGswitch neither reads nor stores login credentials.
 - Test connectivity against the real `/v1/messages` call path using the stored credentials. Fetching a model list is a separate, optional step — a gateway that exposes no model catalog still passes the connection test.
 - Save shared fields as a common template and fill them into any profile. Endpoints, credentials, model mappings, and app-controlled fields are excluded, and template changes never rewrite existing profiles.
 - Turn the balance or usage indicator on or off per profile, on the presets that support querying it (currently DeepSeek and MiniMax).
@@ -108,7 +108,7 @@ Presets available on both clients share a name and icon but never share endpoint
 - English and Simplified Chinese interface languages, with system-language detection.
 - Optional launch at login, silent start, and minimize-to-tray behavior.
 - System tray menu with quick actions: switch profiles, open settings, jump to accounts, and show the main window. Single-click on the tray icon can be set to either show the main window or open the tray menu.
-- Optional Codex restart after applying a Codex profile; Claude Code profiles are applied without restarting anything.
+- Optional Codex restart after switching to a Codex profile; Claude Code profiles take effect without restarting anything.
 - Optional automatic update checks with release notes before installation, with an "updated to vX" notification on the next launch.
 - Local backups of the database, configuration files, and Codex files are created automatically; database backups can be browsed and restored from Settings.
 
@@ -148,9 +148,9 @@ Replace the path if you installed the app somewhere else. Official packages are 
 
 ## Quick start
 
-1. In the **Codex** group, open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then apply.
+1. In the **Codex** group, open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then use it.
 2. In the **Claude** group, open **Providers** to configure Claude Code, or save the current `~/.claude/settings.json` as a snapshot.
-3. Enable the optional Codex restart behavior in **Settings → App** if you want CGswitch to restart Codex after applying a profile.
+3. Enable the optional Codex restart behavior in **Settings → App** if you want CGswitch to restart Codex after switching to a profile.
 4. Use **MCP**, **Plugins**, or **Skill** under **General** to manage the corresponding global resources. MCP is managed one client at a time; Skills can be enabled for both.
 
 ## Data and privacy
@@ -179,7 +179,7 @@ API keys, OAuth credentials, profiles, and backups are local data. CGswitch crea
 
 ## FAQ and troubleshooting
 
-### What happens when I apply a profile?
+### What happens when I use a profile?
 
 CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → App**.
 
@@ -189,7 +189,7 @@ No. Profiles describe model/provider settings; MCP describes tool servers; Plugi
 
 ### Does CGswitch take over my Claude Code sign-in?
 
-No. Run `/login` in Claude Code itself, then apply the `Claude Account` profile — CGswitch only removes third-party endpoint and credential overrides from `settings.json` so Claude Code uses its own account. It never reads or stores login credentials, and it leaves the shell environment untouched.
+No. Run `/login` in Claude Code itself, then switch to the `Claude Account` profile — CGswitch only removes third-party endpoint and credential overrides from `settings.json` so Claude Code uses its own account. It never reads or stores login credentials, and it leaves the shell environment untouched.
 
 ### Why can a third-party plugin still fail after a provider is configured?
 

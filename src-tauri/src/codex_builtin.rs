@@ -41,7 +41,7 @@ pub struct BuiltinTemplate {
     pub icon: &'static str,
     /// 生产 config.toml 的模板原文（字节级）。
     pub config: &'static [u8],
-    /// 模板中的密钥占位符，应用时替换为用户填写的密钥。
+    /// 模板中的密钥占位符，使用时替换为用户填写的密钥。
     pub placeholder: Option<&'static [u8]>,
     /// 相对 ~/.codex 的关联文件路径及内容（deepseek/智谱 各自独立的 models.json、minimax 的 custom-catalog.json）。
     pub catalog: Option<(&'static str, &'static [u8])>,

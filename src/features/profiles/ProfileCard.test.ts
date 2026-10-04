@@ -72,7 +72,7 @@ describe("ProfileCard 官网入口", () => {
   it("提高渐变卡片的文字与图标对比度", () => {
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
   });
 
   it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {
@@ -92,11 +92,6 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain('<span className="apple-chip">{profile.reasoning_effort}</span>');
   });
 
-  it("余额按钮获得焦点时不显示卡片操作区", () => {
-    expect(source).toContain("focus-within:pointer-events-auto focus-within:opacity-100");
-    expect(source).not.toContain("group-focus-within:");
-  });
-
   it("仅在端点或 API Key 缺失时禁用连通测试，缺什么报什么", () => {
     // 门控抽到共享 connectionGate（Codex 卡片、拖拽预览与 Claude 卡片共用同一判定）
     const titles = { ready: "ready", missingEndpoint: "no-endpoint", missingKey: "no-key" };
@@ -107,18 +102,17 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain("missingApiCredentialsWarning");
   });
 
-  it("Codex 非激活卡在启动期间仍可测试和删除，激活卡保留保护", () => {
+  it("卡片只常驻使用与更多，菜单保留测试和删除门控", () => {
     const i18n = createInstance();
     void i18n.init({ lng: "en", resources: { en: { profiles: {} } }, initAsync: false });
-    const renderActions = (active: boolean) => renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(ProfileCardActions, {
-      active, busy: true, testing: false, allowInactiveDeleteWhileBusy: true, connectionDisabled: false, connectionTitle: "Test",
+    const html = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(ProfileCardActions, {
+      active: false, busy: true, testing: false, allowInactiveDeleteWhileBusy: true, connectionDisabled: false, connectionTitle: "Test",
     })));
-    const inactiveButtons = renderActions(false).match(/<button\b[^>]*>/g) ?? [];
-    expect(inactiveButtons[2]).not.toContain('disabled=""');
-    expect(inactiveButtons[3]).not.toContain('disabled=""');
-    const activeButtons = renderActions(true).match(/<button\b[^>]*>/g) ?? [];
-    expect(activeButtons[2]).not.toContain('disabled=""');
-    expect(activeButtons[3]).toContain('disabled=""');
+    const buttons = html.match(/<button\b[^>]*>/g) ?? [];
+    expect(buttons).toHaveLength(2);
+    expect(buttons[1]).toContain('aria-haspopup="menu"');
+    // 不传 terminalProfileId 的卡片（Codex）不渲染终端入口，只有 Claude 卡传
+    expect(html).not.toContain('aria-label="terminal.open"');
   });
 
   it("订阅与普通供应商共用同一套连通性悬停文案", () => {
@@ -137,7 +131,7 @@ describe("ProfileCard 官网入口", () => {
     expect(source).toContain('title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}');
   });
 
-  it("应用按钮两种状态共用固定尺寸，保留可见图标与禁用条件", () => {
+  it("使用按钮两种状态共用固定尺寸，保留可见图标与禁用条件", () => {
     const i18n = createInstance();
     void i18n.init({ lng: "en", resources: { en: { profiles: {} } }, initAsync: false });
     for (const [active, busy] of [[false, false], [true, false], [false, true]]) {
@@ -148,6 +142,7 @@ describe("ProfileCard 官网入口", () => {
       expect(button).toContain('class="apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary');
       expect(button).toContain(`aria-pressed="${active}"`);
       expect(button.includes('disabled=""')).toBe(active || busy);
+      if (!active) expect(button).toContain("disabled:!opacity-100");
       expect(button.includes('<svg')).toBe(active);
       if (active) expect(button).toContain('width="18" height="18"');
       expect(button).toContain("actions.switch");
@@ -156,10 +151,9 @@ describe("ProfileCard 官网入口", () => {
     expect(styles).toMatch(/\.apple-icon-button\s*\{[^}]*width: var\(--icon-button-size\);[^}]*height: var\(--icon-button-size\);/);
   });
 
-  it("激活卡片和拖拽预览的图标颜色不覆盖应用按钮的主按钮前景色", () => {
-    expect(styles.match(/\.profile-card-action-buttons > \.apple-icon-button:not\(\.profile-card-delete\):not\(\.app-button--primary\)/g)).toHaveLength(2);
-    expect(styles).not.toContain('.profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete),');
-    expect(styles).not.toContain('.profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete) {');
+  it("激活卡片和拖拽预览的图标颜色不覆盖使用按钮的主按钮前景色", () => {
+    expect(styles.match(/\.profile-card-action-buttons > \.apple-icon-button:not\(\.app-button--primary\)/g)).toHaveLength(2);
+    expect(styles).not.toContain(".profile-card-delete");
   });
 
   it("仅主动点击余额药丸才播放刷新动效，刷新逻辑保持原样", () => {

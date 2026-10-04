@@ -333,6 +333,10 @@ pub struct Settings {
     pub proxy_mode: ProxyMode,
     #[serde(default)]
     pub proxy_url: String,
+    /// 供应商终端的最近工作目录（最近使用在前）。卡片下拉框的新建/删除直接改这里，
+    /// 与 ~/.claude 无关，不参与应用与回写。
+    #[serde(default)]
+    pub claude_terminal_dirs: Vec<String>,
 }
 
 fn default_theme() -> String {
@@ -367,6 +371,7 @@ impl Default for Settings {
             database_backup_keep_count: default_database_backup_keep_count(),
             proxy_mode: ProxyMode::Auto,
             proxy_url: String::new(),
+            claude_terminal_dirs: Vec::new(),
         }
     }
 }

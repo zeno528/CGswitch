@@ -1,5 +1,6 @@
-import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Copy, Gauge, Globe, GripVertical, MoreHorizontal, Wifi } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
 import type { ProfileBalanceInfo, CodexProfileSummary } from "../../types";
@@ -7,7 +8,10 @@ import { PlanBadge } from "../../components/PlanBadge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
 import { TrashIcon } from "../../components/TrashIcon";
+import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
+import { useMenuDismiss } from "../../components/useMenuDismiss";
 import { localizeBalanceLabel } from "./balanceLabel";
+import ProfileTerminalMenu from "./ProfileTerminalMenu";
 
 interface ProfileCardContentProps {
   profile: Pick<CodexProfileSummary, "name" | "icon" | "kind" | "provider" | "model" | "reasoning_effort" | "plan_type" | "admin_url" | "show_balance">;
@@ -95,15 +99,36 @@ interface ProfileCardActionsProps {
   /** 测试连通按钮是否禁用（调用方按各自领域判定：缺地址/缺密钥）。 */
   connectionDisabled: boolean;
   connectionTitle: string;
+  /** 传入供应商 id 才渲染终端入口：目前只有 Claude Code 卡片要，Codex 不传即不出现。 */
+  terminalProfileId?: string;
   onApply?: () => void;
   onDuplicate?: () => void;
   onTest?: () => void;
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, testing, dragging = false, allowInactiveDeleteWhileBusy = false, model, reasoningEffort, connectionDisabled, connectionTitle, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, testing, dragging = false, allowInactiveDeleteWhileBusy = false, model, reasoningEffort, connectionDisabled, connectionTitle, terminalProfileId, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useFixedMenuPosition(menuOpen, menuTriggerRef.current, menuRef, "end");
+  useMenuDismiss(menuOpen, menuTriggerRef, menuRef, setMenuOpen);
   const busyForDelete = busy && !allowInactiveDeleteWhileBusy;
+  const menu = menuOpen && !dragging ? createPortal(
+    <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("actions.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || testing} title={connectionTitle} onClick={() => { setMenuOpen(false); onTest?.(); }}>
+        <span className="flex items-center gap-2">{testing ? <LoadingSpinner size="sm" /> : <Wifi className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}{t("connection.test")}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state" onClick={() => { setMenuOpen(false); onDuplicate?.(); }}>
+        <span className="flex items-center gap-2"><Copy className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("actions.duplicate")}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state app-select-option--danger disabled:cursor-not-allowed disabled:opacity-40" disabled={busyForDelete || active} onClick={() => { setMenuOpen(false); onRemove?.(); }}>
+        <span className="flex items-center gap-2"><TrashIcon />{t("actions.delete")}</span>
+      </button>
+    </div>,
+    document.body,
+  ) : null;
   return (
     <div className={`profile-card-actions${dragging ? " profile-card-actions--dragging" : ""} flex shrink-0 items-center gap-2`} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
       {model !== undefined || reasoningEffort ? (
@@ -112,14 +137,14 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
           {reasoningEffort ? <><span aria-hidden="true">·</span><span>{reasoningEffort}</span></> : null}
         </span>
       ) : null}
-      <div className={dragging ? "profile-card-action-buttons flex shrink-0 items-center gap-2" : "profile-card-action-buttons pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"}>
-        <button type="button" className={`apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary ${active ? "disabled:opacity-100" : "disabled:opacity-50"}`} disabled={busy || active} aria-pressed={active} aria-label={active ? t("actions.inUse") : t("actions.switch")} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>
+      <div className="profile-card-action-buttons flex shrink-0 items-center gap-2">
+        <button type="button" className={`apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary ${active ? "disabled:opacity-100" : "disabled:!opacity-100"}`} disabled={busy || active} aria-pressed={active} aria-label={active ? t("actions.inUse") : t("actions.switch")} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>
           <span className={active ? "invisible" : ""} aria-hidden="true">{t("actions.switch")}</span>
           {active ? <Check className="absolute inset-0 m-auto" size={18} strokeWidth={2.5} aria-hidden="true" /> : null}
         </button>
-        <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
-        <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
-        <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busyForDelete || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
+        {terminalProfileId ? <ProfileTerminalMenu profileId={terminalProfileId} /> : null}
+        <button ref={menuTriggerRef} type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t("actions.more")} title={t("actions.more")} aria-busy={testing} onClick={dragging ? undefined : () => setMenuOpen((open) => !open)}>{testing ? <LoadingSpinner size="md" /> : <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
+        {menu}
       </div>
     </div>
   );

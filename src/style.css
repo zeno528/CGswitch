@@ -788,13 +788,7 @@ body:has(.app-dialog-overlay) .window-control-button {
   pointer-events: none;
 }
 
-.profile-list > .apple-group.is-drag-hover .profile-card-action-buttons {
-  opacity: 1;
-  pointer-events: auto;
-  transition: none;
-}
-
-/* 操作行的模型/推理档位信息：悬停浮现按钮组时保持可见，用间距让位 */
+/* 操作行的模型/推理档位信息与常显按钮组保持间距 */
 .profile-card-action-meta {
   align-items: center;
   color: var(--text-primary);
@@ -1422,9 +1416,9 @@ body.drag-active * {
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary),
+.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary),
 .profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.profile-card-delete):not(.app-button--primary) {
+.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary) {
   color: var(--text-primary);
 }
 
@@ -1434,10 +1428,6 @@ body.drag-active * {
 
 .profile-list > .apple-group.brand-gradient-surface .chip-success {
   color: var(--success-text);
-}
-
-.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button.profile-card-delete {
-  color: var(--danger);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .app-button--primary:disabled {

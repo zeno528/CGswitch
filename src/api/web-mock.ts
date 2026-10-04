@@ -533,6 +533,7 @@ let webSettings: Settings = {
   database_backup_keep_count: 5,
   proxy_mode: "auto",
   proxy_url: "",
+  claude_terminal_dirs: [],
 };
 
 let webBackups: DatabaseBackupInfo[] = [];
@@ -587,7 +588,7 @@ function saveWebMcpServer(original: string | null, spec: McpServerSpec, tool: "c
   }
 }
 
-// 与后端一致：激活状态只由“应用”显式建立，添加/捕获供应商不激活
+// 与后端一致：激活状态只由“使用”显式建立，添加/捕获供应商不激活
 let webActiveProfileId: string | null = null;
 const webBalanceCache: Record<string, ProfileBalanceInfo> = {};
 const webChatgptQuota: ProfileBalanceInfo = {
@@ -1195,6 +1196,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       webClaudeCommonSettings = text;
       return undefined as T;
     }
+    // 浏览器无法拉起新终端窗口，也不该假装覆盖文件已写入。
+    case "claude_open_terminal":
+      throw new Error("启动终端需要在桌面版执行，浏览器无法模拟");
     case "claude_list_profiles":
       return webClaudeProfiles.map((profile) => ({
         id: profile.id,

@@ -221,6 +221,8 @@ export interface Settings {
   database_backup_keep_count: number;
   proxy_mode: "auto" | "off" | "custom";
   proxy_url: string;
+  /** 供应商终端的最近工作目录（最近使用在前）。卡片下拉框的新建/删除直接改这里。 */
+  claude_terminal_dirs: string[];
 }
 
 export interface PluginSkill {
