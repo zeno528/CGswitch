@@ -36,7 +36,6 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
   const [saving, setSaving] = useState(false);
   const [formatting, setFormatting] = useState(false);
   const [diagnostics, setDiagnostics] = useState<EditorDiagnosticSummary>({ count: 0, firstLine: null });
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const patchSeq = useRef(0);
   const parseSeq = useRef(0);
   const editorRef = useRef<ConfigTextEditorHandle>(null);
@@ -132,7 +131,7 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header justify-between">
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={() => onBack()}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
-          <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
+          <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle", { name })}</span>
         </button>
       </div>
 
@@ -144,7 +143,6 @@ export default function McpEdit({ server, create = false, onBack }: McpEditProps
             command={command} setCommand={setCommand} argsText={argsText} setArgsText={setArgsText}
             url={url} setUrl={setUrl} envPairs={envPairs} setEnvPairs={setEnvPairs}
             headerPairs={headerPairs} setHeaderPairs={setHeaderPairs}
-            advancedOpen={advancedOpen} setAdvancedOpen={setAdvancedOpen}
             httpFields={<div className="mt-4">
               <div className="field-label mb-1.5">{t("edit.bearerLabel")}</div>
               <input className="app-input mono" placeholder={t("edit.bearerPlaceholder")} value={bearer} onChange={(event) => setBearer(event.target.value)} />

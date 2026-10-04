@@ -61,7 +61,7 @@ export default {
   edit: {
     back: "返回",
     createTitle: "新建 MCP 服务器",
-    editTitle: "编辑 MCP 服务器",
+    editTitle: "编辑 {{name}} MCP",
     uninstall: "卸载",
     name: "名称",
     namePlaceholder: "例如：context7",
@@ -78,7 +78,6 @@ export default {
     url: "服务地址",
     bearerLabel: "Bearer Token 环境变量名（可选）",
     bearerPlaceholder: "例如：CONTEXT7_API_KEY",
-    advanced: "高级选项",
     env: "环境变量",
     envKeyPlaceholder: "变量名",
     valuePlaceholder: "值",

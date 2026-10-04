@@ -23,7 +23,7 @@ describe("MCP 操作入口", () => {
         command: "", setCommand: noop, argsText: "", setArgsText: noop,
         url: "https://example.test/mcp", setUrl: noop,
         envPairs: [], setEnvPairs: noop, headerPairs: [], setHeaderPairs: noop,
-        advancedOpen: false, setAdvancedOpen: noop, timeoutFields: null,
+        timeoutFields: null,
       }));
       const inputs = html.match(/<input\b[^>]*>/g)!;
       expect(inputs.some((input) => input.includes('value="sample"'))).toBe(!nameReadOnly);
@@ -130,11 +130,10 @@ describe("MCP 操作入口", () => {
     expect(claudeEditSource).not.toContain("startupTimeout");
   });
 
-  it("共享表单把高级选项箭头放在右侧，环境变量使用添加变量，启动参数独占一行", () => {
-    expect(sharedFormSource).toContain("showIcon");
-    expect(sharedFormSource).toContain('iconPosition="start"');
-    expect(sharedFormSource).toContain('className="mcp-advanced-disclosure mt-3"');
-    expect(sharedFormSource).not.toContain("<ChevronRight className=\"apple-disclosure__icon\"");
+  it("共享表单高级区常显无折叠标题，环境变量使用添加变量，启动参数独占一行", () => {
+    expect(sharedFormSource).not.toContain("AppDisclosure");
+    expect(sharedFormSource).not.toContain('t("edit.advanced")');
+    expect(sharedFormSource).toContain('className="mt-4 grid gap-4"');
     expect(sharedFormSource).toContain('t("edit.addVariable")');
     expect(sharedFormSource).toContain("ArgsEditor");
     expect(sharedFormSource).toContain('text ? text.split(/\\r?\\n/) : [""]');

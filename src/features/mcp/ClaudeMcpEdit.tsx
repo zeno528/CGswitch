@@ -25,7 +25,6 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved 
   const [initialJson, setInitialJson] = useState(jsonText);
   const [form, setForm] = useState(() => readClaudeMcpForm(jsonText));
   const [formValid, setFormValid] = useState(true);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [initialized, setInitialized] = useState(create);
   const [saving, setSaving] = useState(false);
   const [formatting, setFormatting] = useState(false);
@@ -121,7 +120,7 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved 
       <div className="apple-page-bar apple-page-bar--roomy apple-edit-toolbar apple-edit-toolbar--header justify-between">
         <button type="button" className="apple-page-header apple-back-button" aria-label={t("edit.back")} onClick={onBack}>
           <ArrowLeft className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />
-          <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle")}</span>
+          <span className="apple-title">{create ? t("edit.createTitle") : t("edit.editTitle", { name })}</span>
         </button>
       </div>
       <div className="apple-edit-content">
@@ -134,7 +133,6 @@ export default function ClaudeMcpEdit({ server, create = false, onBack, onSaved 
             url={form.url} setUrl={(value) => editField("url", value)}
             envPairs={form.envPairs} setEnvPairs={(value) => editField("envPairs", value)}
             headerPairs={form.headerPairs} setHeaderPairs={(value) => editField("headerPairs", value)}
-            advancedOpen={advancedOpen} setAdvancedOpen={setAdvancedOpen}
             disabled={!initialized || !formValid || saving}
             extraTransports={[
               { label: t("edit.transportSse"), value: "sse" },

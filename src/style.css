@@ -2897,21 +2897,6 @@ button:focus-visible {
   padding-bottom: 0;
 }
 
-/* MCP 高级选项：与设置页自动备份小卡一致，纯描边无背景，只靠边缘划分归属。 */
-.mcp-advanced-disclosure {
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-control);
-  padding: 0.375rem var(--gap-section);
-}
-
-/* 标题行收紧为贴近单行文字高度，去掉大卡片式留白。 */
-.mcp-advanced-disclosure .apple-disclosure__summary { min-height: 1.75rem; }
-
-.mcp-advanced-disclosure.apple-disclosure--open .apple-disclosure__body {
-  padding-top: 0.75rem;
-  padding-bottom: var(--gap-section);
-}
-
 .app-input {
   width: 100%;
   min-height: var(--input-min-height);

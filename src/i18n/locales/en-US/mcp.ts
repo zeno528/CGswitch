@@ -61,7 +61,7 @@ export default {
   edit: {
     back: "Back",
     createTitle: "New MCP server",
-    editTitle: "Edit MCP server",
+    editTitle: "Edit {{name}} MCP",
     uninstall: "Uninstall",
     name: "Name",
     namePlaceholder: "e.g. context7",
@@ -78,7 +78,6 @@ export default {
     url: "Server URL",
     bearerLabel: "Bearer token environment variable name (optional)",
     bearerPlaceholder: "e.g. CONTEXT7_API_KEY",
-    advanced: "Advanced options",
     env: "Environment variables",
     envKeyPlaceholder: "Variable name",
     valuePlaceholder: "Value",
