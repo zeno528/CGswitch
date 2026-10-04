@@ -12,7 +12,7 @@ export default {
     updated: "Updated to v{{version}}",
   },
   error: {
-    proxyHint: "Cannot reach GitHub. Check your system proxy and try again.",
+    proxyHint: "Cannot reach GitHub. Check your system proxy and try again",
     checkFailed: "Update check failed",
   },
   webMock: {

@@ -1,13 +1,19 @@
-import { CircleDashed, GitCompare, Globe, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CircleDashed, GitCompare, Globe, MoreHorizontal, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setClaudeMcpServersCache, setMcpDiffBadge, setMcpServersCache, type McpProbeScope } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
+import { AppSegmentedControl } from "../../components/AppSegmentedControl";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { TrashIcon } from "../../components/TrashIcon";
+import { ManagementPageTitle } from "../../components/ManagementPageTitle";
 import { McpIcon } from "../../components/McpIcon";
+import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
+import { useMenuDismiss } from "../../components/useMenuDismiss";
 import type { McpDiffEntryAction, McpProbeResult, McpServerSpec, McpSyncDiffEntry, McpSyncPreview } from "../../types";
 import ClaudeMcpEdit from "./ClaudeMcpEdit";
 import McpDiffPage from "./McpDiffPage";
@@ -18,6 +24,20 @@ type Transport = "http" | "stdio" | "unknown";
 export type McpDiffVerb = "adopt" | "revert";
 export type McpTarget = "codex" | "claude";
 
+interface McpHeaderState {
+  count?: number;
+  badgeText?: string | null;
+  diffCount?: number;
+  editing: boolean;
+  onCreate: () => void;
+  onDiff?: () => void;
+}
+
+interface McpClientViewProps {
+  activationEpoch: number;
+  onHeaderChange: (header: McpHeaderState) => void;
+}
+
 /// 差异动作：只指向单个条目的单侧（mirror=数据库镜像，live=config.toml）；
 /// fragment 为空表示删除该侧的条目。
 export type McpDiffAction = { side: "mirror" | "live" } & McpDiffEntryAction;
@@ -25,14 +45,19 @@ export type McpDiffAction = { side: "mirror" | "live" } & McpDiffEntryAction;
 export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChange: (target: McpTarget) => void }) {
   const { t } = useTranslation("mcp");
   return (
-    <div className="apple-toolbar-group mcp-target-switch shrink-0" role="tablist" aria-label={t("target.label")}>
+    <AppSegmentedControl
+      className="h-[var(--toolbar-control-height)] shrink-0"
+      selectedIndex={value === "codex" ? 0 : 1}
+      role="tablist"
+      label={t("target.label")}
+    >
       {(["codex", "claude"] as const).map((target) => (
         <button
           key={target}
           type="button"
           role="tab"
           aria-selected={value === target}
-          className={`apple-action-button ${value === target ? "app-button--primary" : ""}`}
+          className="apple-action-button"
           title={t("target.label")}
           onClick={() => onChange(target)}
         >
@@ -40,12 +65,12 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
           {t(`target.${target}`)}
         </button>
       ))}
-    </div>
+    </AppSegmentedControl>
   );
 }
 
 /// 差异×动词到外科手术原语的唯一映射——每条命令只碰单个条目的单侧（镜像或 live），
-/// 不得使用 saveMcpServer/deleteMcpServer（它们会同时修改 live，无法表达只采纳镜像）：
+/// 不得使用 codexSaveMcpServer/codexDeleteMcpServer（它们会同时修改 live，无法表达只采纳镜像）：
 /// 同步 = 采纳外部修改（live 片段写入镜像；外部已删除的删除镜像条目）；
 /// 撤销 = 回退外部修改（数据库片段写回 live；外部新增的从 live 移除）。
 export function mcpEntryAction(entry: McpSyncDiffEntry, verb: McpDiffVerb): McpDiffAction | null {
@@ -252,15 +277,39 @@ type McpServerRowProps = {
   toolsBusy: boolean;
   toolsLoaded: boolean;
   onEdit: (server: McpServerSpec) => void;
+  onDelete: (server: McpServerSpec) => void;
   onProbe: (server: McpServerSpec) => void;
   onToggleTools: (server: McpServerSpec) => void;
   onToggleEnabled?: (server: McpServerSpec, enabled: boolean) => void;
 };
 
-export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
+export function McpServerRow({ server, result, probing, detailsVisible, toolsBusy, toolsLoaded, onEdit, onDelete, onProbe, onToggleTools, onToggleEnabled }: McpServerRowProps) {
   const { t } = useTranslation("mcp");
   const testTitle = t(server.enabled === false ? "list.testConnectionDisabled" : "list.testConnection");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useFixedMenuPosition(menuOpen, menuTriggerRef.current, menuRef, "end");
+  useMenuDismiss(menuOpen, menuTriggerRef, menuRef, setMenuOpen);
   const Icon = transportIcon(server);
+  const toolsTitle = t(detailsVisible ? "list.collapseTools" : "list.toolsButton");
+  const menu = menuOpen ? createPortal(
+    <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("list.moreTooltip")} style={{ ...menuStyle, minWidth: "10rem" }}>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state" onClick={() => { setMenuOpen(false); onEdit(server); }}>
+        <span className="flex items-center gap-2"><Pencil className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("list.editTooltip")}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={probing || server.enabled === false} onClick={() => { setMenuOpen(false); onProbe(server); }}>
+        <span className="flex items-center gap-2"><Wifi className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{testTitle}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={server.enabled === false} onClick={() => { setMenuOpen(false); onToggleTools(server); }}>
+        <span className="flex items-center gap-2"><Wrench className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{toolsTitle}</span>
+      </button>
+      <button type="button" role="menuitem" className="app-select-option app-selection-state app-select-option--danger" onClick={() => { setMenuOpen(false); onDelete(server); }}>
+        <span className="flex items-center gap-2"><TrashIcon />{t("edit.uninstall")}</span>
+      </button>
+    </div>,
+    document.body,
+  ) : null;
 
   return (
     <div onClick={(event) => {
@@ -290,33 +339,15 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
           <button
+            ref={menuTriggerRef}
             type="button"
-            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            title={t("list.editTooltip")}
-            aria-label={t("list.editServerAria", { name: server.name })}
-            onClick={() => onEdit(server)}
+            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label={t("list.moreTooltip")}
+            onClick={() => setMenuOpen((open) => !open)}
           >
-            <Pencil className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={probing || server.enabled === false}
-            title={testTitle}
-            aria-label={testTitle}
-            onClick={() => onProbe(server)}
-          >
-            {probing ? <LoadingSpinner /> : <Wifi className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />}
-          </button>
-          <button
-            type="button"
-            className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={server.enabled === false}
-            title={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
-            aria-label={t(detailsVisible ? "list.collapseTools" : "list.toolsButton")}
-            onClick={() => onToggleTools(server)}
-          >
-            <Wrench className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+            <MoreHorizontal className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
           </button>
           {onToggleEnabled ? <AppSwitch size="sm" checked={server.enabled !== false} label={t("list.enableServer", { name: server.name })} onCheckedChange={(value) => onToggleEnabled(server, value)} /> : null}
         </div>
@@ -330,11 +361,12 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
           </div>
         </div>
       ) : null}
+      {menu}
     </div>
   );
 }
 
-function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; onSwitch: (target: McpTarget) => void }) {
+function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const cachedServers = getCachedMcpServers();
@@ -355,7 +387,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
     if (previewInFlight.current) return;
     previewInFlight.current = true;
     try {
-      const preview = await api.mcpSyncPreview();
+      const preview = await api.codexMcpSyncPreview();
       setSyncPreview(preview);
       setPreviewError("");
       // 侧栏角标与页面同源：页面查到就写回共享缓存
@@ -411,7 +443,7 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
     try {
-      await api.deleteMcpServer(server.name);
+      await api.codexDeleteMcpServer(server.name);
       deleteCachedMcpProbe(server.name);
       setEditingServer(null);
       feedback.success(t("feedback.deleted"));
@@ -486,6 +518,13 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
   const diffCount = syncPreview?.entries.length ?? 0;
   // 角标文本与侧栏同源：这条规则只住在 managementDataCache，不在这里再写一遍
   const badgeText = mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) });
+  const editing = diffOpen || Boolean(editingServer) || creatingServer;
+  useLayoutEffect(() => {
+    onHeaderChange({
+      count: loaded ? servers.length : undefined, badgeText, diffCount, editing,
+      onCreate: () => setCreatingServer(true), onDiff: () => setDiffOpen(true),
+    });
+  }, [onHeaderChange, loaded, servers.length, badgeText, diffCount, editing]);
 
   if (diffOpen) {
     return (
@@ -518,75 +557,48 @@ function CodexMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; 
             if (savedServer) await probe(savedServer, { manual: false });
           })();
         }}
-        onDelete={editingServer ? () => removeServer(editingServer) : undefined}
       />
     );
   }
   return (
-    <section className="apple-scroll-page mx-auto w-full max-w-none">
-      <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent">
-            <McpIcon className="h-[22px] w-[22px]" />
-          </span>
-          <div className="flex items-center gap-2">
-            <div className="apple-title">{t("list.title")}</div>
-            {loaded ? <span className="apple-chip">{t("list.serverCount", { count: servers.length })}</span> : null}
+    <div className="apple-edit-content">
+      {loadError ? (
+        <p className="muted mt-4 text-sm">
+          {loadError}
+          {loaded ? t("list.loadErrorHint") : ""}
+        </p>
+      ) : null}
+      <div>
+        {!servers.length ? (
+          <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
+            <p className="muted">{t("empty.description")}</p>
+          </EmptyStateCard>
+        ) : servers.length ? (
+          <div className="apple-group apple-list-card">
+            {orderedServers.map((server) => (
+              <McpServerRow
+                key={server.name}
+                server={server}
+                result={probeResults[server.name]}
+                probing={Boolean(probingNames[server.name])}
+                detailsVisible={Boolean(toolsOpen[server.name])}
+                toolsBusy={Boolean(toolsLoading[server.name])}
+                toolsLoaded={Boolean(toolsLoaded[server.name])}
+                onEdit={setEditingServer}
+                onDelete={(target) => void removeServer(target)}
+                onProbe={(target) => void probe(target)}
+                onToggleTools={(target) => void toggleTools(target)}
+                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
+              />
+            ))}
           </div>
-        </div>
-        <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
-          {badgeText ? (
-            <button type="button" className="apple-action-button relative" aria-label={diffCount ? t("list.updateDiffAria", { count: diffCount }) : t("list.resolveDiff")} title={diffCount ? t("list.updateDiffAria", { count: diffCount }) : undefined} onClick={() => setDiffOpen(true)}>
-              <GitCompare className="h-4 w-4" strokeWidth={2} />
-              {t("list.resolveDiff")}
-              <span className="apple-count-badge" aria-hidden="true">{badgeText}</span>
-            </button>
-          ) : null}
-          <McpTargetSwitch value="codex" onChange={onSwitch} />
-          <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
-            <Plus className="h-4 w-4" strokeWidth={2} />
-            {t("list.addServer")}
-          </button>
-        </div>
-      </header>
-      <div className="apple-edit-content">
-        {loadError ? (
-          <p className="muted mt-4 text-sm">
-            {loadError}
-            {loaded ? t("list.loadErrorHint") : ""}
-          </p>
         ) : null}
-        <div>
-          {!servers.length ? (
-            <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
-              <p className="muted">{t("empty.description")}</p>
-            </EmptyStateCard>
-          ) : servers.length ? (
-            <div className="apple-group apple-list-card">
-              {orderedServers.map((server) => (
-                <McpServerRow
-                  key={server.name}
-                  server={server}
-                  result={probeResults[server.name]}
-                  probing={Boolean(probingNames[server.name])}
-                  detailsVisible={Boolean(toolsOpen[server.name])}
-                  toolsBusy={Boolean(toolsLoading[server.name])}
-                  toolsLoaded={Boolean(toolsLoaded[server.name])}
-                  onEdit={setEditingServer}
-                  onProbe={(target) => void probe(target)}
-                  onToggleTools={(target) => void toggleTools(target)}
-                  onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
       </div>
-    </section>
+    </div>
   );
 }
 
-function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number; onSwitch: (target: McpTarget) => void }) {
+function ClaudeMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
   const cachedServers = getCachedClaudeMcpServers();
@@ -634,7 +646,7 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
     });
     if (!confirmed) return;
     try {
-      await api.deleteClaudeMcpServer(server.name);
+      await api.claudeDeleteMcpServer(server.name);
       deleteCachedMcpProbe(server.name, "claude");
       feedback.success(t("feedback.deleted"));
       setEditingServer(null);
@@ -644,6 +656,11 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
     }
   };
 
+  const editing = Boolean(editingServer) || creatingServer;
+  useLayoutEffect(() => {
+    onHeaderChange({ count: loaded ? servers.length : undefined, editing, onCreate: () => setCreatingServer(true) });
+  }, [onHeaderChange, loaded, servers.length, editing]);
+
   if (editingServer || creatingServer) {
     return (
       <ClaudeMcpEdit
@@ -651,67 +668,77 @@ function ClaudeMcpView({ activationEpoch, onSwitch }: { activationEpoch: number;
         create={creatingServer}
         onBack={() => { setEditingServer(null); setCreatingServer(false); }}
         onSaved={(name) => { setEditingServer(null); setCreatingServer(false); void refresh(true, [name]); }}
-        onDelete={editingServer ? () => removeServer(editingServer) : undefined}
       />
     );
   }
 
   const orderedServers = [...servers].sort(compareMcpServers);
   return (
-    <section className="apple-scroll-page mx-auto w-full max-w-none">
-      <header className="apple-page-bar flex-wrap justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent">
-            <McpIcon className="h-[22px] w-[22px]" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <div className="apple-title">{t("list.title")}</div>
-              {loaded ? <span className="apple-chip">{t("list.serverCount", { count: servers.length })}</span> : null}
-            </div>
-          </div>
+    <div className="apple-edit-content">
+      {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
+      {!servers.length ? (
+        <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
+          <p className="muted">{t("empty.description")}</p>
+        </EmptyStateCard>
+      ) : (
+        <div className="apple-group apple-list-card">
+          {orderedServers.map((server) => (
+            <McpServerRow
+              key={server.name}
+              server={server}
+              result={probeResults[server.name]}
+              probing={Boolean(probingNames[server.name])}
+              detailsVisible={Boolean(toolsOpen[server.name])}
+              toolsBusy={Boolean(toolsLoading[server.name])}
+              toolsLoaded={Boolean(toolsLoaded[server.name])}
+              onEdit={setEditingServer}
+              onDelete={(target) => void removeServer(target)}
+              onProbe={(target) => void probe(target)}
+              onToggleTools={toggleTools}
+              onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
+            />
+          ))}
         </div>
-        <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
-          <McpTargetSwitch value="claude" onChange={onSwitch} />
-          <button type="button" className="apple-action-button app-button--primary" onClick={() => setCreatingServer(true)}>
-            <Plus className="h-4 w-4" strokeWidth={2} />
-            {t("list.addServer")}
-          </button>
-        </div>
-      </header>
-      <div className="apple-edit-content">
-        {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
-        {!servers.length ? (
-          <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
-            <p className="muted">{t("empty.description")}</p>
-          </EmptyStateCard>
-        ) : (
-          <div className="apple-group apple-list-card">
-            {orderedServers.map((server) => (
-              <McpServerRow
-                key={server.name}
-                server={server}
-                result={probeResults[server.name]}
-                probing={Boolean(probingNames[server.name])}
-                detailsVisible={Boolean(toolsOpen[server.name])}
-                toolsBusy={Boolean(toolsLoading[server.name])}
-                toolsLoaded={Boolean(toolsLoaded[server.name])}
-                onEdit={setEditingServer}
-                onProbe={(target) => void probe(target)}
-                onToggleTools={toggleTools}
-                onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
 
 export default function McpView({ activationEpoch }: { activationEpoch: number }) {
+  const { t } = useTranslation("mcp");
   const [target, setTarget] = useState<McpTarget>("codex");
-  return target === "codex"
-    ? <CodexMcpView activationEpoch={activationEpoch} onSwitch={setTarget} />
-    : <ClaudeMcpView activationEpoch={activationEpoch} onSwitch={setTarget} />;
+  const [header, setHeader] = useState<McpHeaderState | null>(null);
+
+  // 客户端仅上报页头数据；切换器在父层保持同一实例，CSS 才能从旧位置过渡到新位置。
+  return (
+    <section className={header?.editing ? "contents" : "apple-scroll-page mx-auto w-full max-w-none"}>
+      {!header?.editing ? (
+        <header className="apple-page-bar flex-wrap justify-between gap-4">
+          <ManagementPageTitle
+            icon={<span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-[10px] text-accent"><McpIcon className="h-[22px] w-[22px]" /></span>}
+            title={t("list.title")}
+            count={header?.count}
+            countLabel={header?.count !== undefined ? t("list.serverCount", { count: header.count }) : undefined}
+          />
+          <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
+            {header?.badgeText ? (
+              <button type="button" className="apple-action-button relative" aria-label={header.diffCount ? t("list.updateDiffAria", { count: header.diffCount }) : t("list.resolveDiff")} title={header.diffCount ? t("list.updateDiffAria", { count: header.diffCount }) : undefined} onClick={header.onDiff}>
+                <GitCompare className="h-4 w-4" strokeWidth={2} />
+                {t("list.resolveDiff")}
+                <span className="apple-count-badge" aria-hidden="true">{header.badgeText}</span>
+              </button>
+            ) : null}
+            <McpTargetSwitch key="target-switch" value={target} onChange={setTarget} />
+            <button type="button" className="apple-action-button app-button--primary" disabled={!header} onClick={header?.onCreate}>
+              <Plus className="h-4 w-4" strokeWidth={2} />
+              {t("list.addServer")}
+            </button>
+          </div>
+        </header>
+      ) : null}
+      {target === "codex"
+        ? <CodexMcpView activationEpoch={activationEpoch} onHeaderChange={setHeader} />
+        : <ClaudeMcpView activationEpoch={activationEpoch} onHeaderChange={setHeader} />}
+    </section>
+  );
 }

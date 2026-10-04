@@ -1,9 +1,9 @@
 import packageJson from "../../package.json";
-import profileEditSource from "../features/profiles/ProfileEdit.tsx?raw";
+import profileEditSource from "../features/codex/CodexProfileEdit.tsx?raw";
 import editorSource from "./ConfigTextEditor.tsx?raw";
 import { describe, expect, it } from "vitest";
 import { EditorState } from "@codemirror/state";
-import { collectJsonDiagnostics, computeTextChange, findConfigFieldPosition } from "./ConfigTextEditor";
+import { collectJsonDiagnostics, computeTextChange, findConfigFieldPosition, routeEditorWheel } from "./ConfigTextEditor";
 import { patchEnvValue } from "../features/claude/profileEnvText";
 
 describe("ConfigTextEditor runtime", () => {
@@ -89,6 +89,8 @@ describe("ConfigTextEditor runtime", () => {
   it("只对成功写入的对应文本定位，其他外部更新继续恢复滚动且不抢输入焦点", () => {
     expect(editorSource).toContain("const reveal = pendingRevealRef.current;\n    pendingRevealRef.current = null;");
     expect(editorSource).toContain("reveal?.text === value ? findConfigFieldPosition(value, reveal.field, change.from) : null");
+    expect(editorSource).toContain('const scrollContent = editor.dom.closest<HTMLElement>(".apple-edit-content");');
+    expect(editorSource).toContain('scrollContent.scrollTo({ top: targetScrollTop, behavior: "smooth" });');
     expect(editorSource).toContain("editor.dispatch({ selection: { anchor: revealPosition }, scrollIntoView: true });");
     expect(editorSource).toContain("} else {\n        restoreScrollPosition();\n        restoreFrame = requestAnimationFrame(restoreScrollPosition);");
   });
@@ -142,5 +144,15 @@ describe("collectJsonDiagnostics", () => {
 
   it("blank documents report nothing", () => {
     expect(collectJsonDiagnostics(stateOf("   \n  "))).toEqual([]);
+  });
+});
+
+describe("routeEditorWheel", () => {
+  it("向下滚且页面未到底时交给页面；上滑与已到底时滚编辑器", () => {
+    expect(routeEditorWheel(120, 300)).toBe(true);
+    expect(routeEditorWheel(120, 0)).toBe(false);
+    expect(routeEditorWheel(120, 1)).toBe(false);
+    expect(routeEditorWheel(-120, 300)).toBe(false);
+    expect(routeEditorWheel(0, 300)).toBe(false);
   });
 });

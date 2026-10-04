@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("./ProfileEdit.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const source = readFileSync(new URL("./CodexProfileEdit.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const endpointFieldSource = readFileSync(new URL("../../components/EndpointField.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const zhLocale = readFileSync(new URL("../../i18n/locales/zh-CN/profiles.ts", import.meta.url), "utf8");
 const enLocale = readFileSync(new URL("../../i18n/locales/en-US/profiles.ts", import.meta.url), "utf8");
@@ -23,7 +23,7 @@ describe("ProfileEdit 用量查询", () => {
     expect(source).not.toContain('t("edit.balanceBalance")');
     expect(source).not.toContain('t("edit.balanceBoth")');
     expect(source).not.toContain('title={t("edit.balanceAutoRefreshTitle")}');
-    expect(source).toContain("if (showBalance) await api.setProfileShowBalance(created.id, true);");
+    expect(source).toContain("if (showBalance) await api.codexSetProfileShowBalance(created.id, true);");
     expect(source).not.toContain('<div className="app-input mt-4 flex items-center justify-between gap-3">');
   });
 
@@ -68,8 +68,8 @@ describe("ProfileEdit 用量查询", () => {
   });
 
   it("以预载详情初始化 detail，详情就绪后才挂载即首帧完整揭示", () => {
-    expect(source).toContain("initialDetail?: ProfileDetail | null;");
-    expect(source).toContain("useState<ProfileDetail | null>(initialDetail)");
+    expect(source).toContain("initialDetail?: CodexProfileDetail | null;");
+    expect(source).toContain("useState<CodexProfileDetail | null>(initialDetail)");
   });
 
   it("表单与编辑器内容状态以预载详情惰性初始化，首帧不为空壳", () => {

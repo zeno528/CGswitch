@@ -12,7 +12,7 @@ use cgswitch_lib::codex::config::{
     apply_to_document, capture_from_document, format_document, parse_document, validate_document,
 };
 use cgswitch_lib::database::Database;
-use cgswitch_lib::models::{ProfilePayload, Settings};
+use cgswitch_lib::models::{CodexProfilePayload, Settings};
 use cgswitch_lib::paths::from_home;
 use cgswitch_lib::services::AppContext;
 
@@ -100,16 +100,16 @@ fn bench_db_profiles_query(c: &mut Criterion) {
     let paths = from_home(dir.path()).unwrap();
     let db = Database::open(&paths).unwrap();
     for index in 0..20 {
-        db.insert_profile(
+        db.codex_insert_profile(
             &format!("供应商 {index}"),
-            &ProfilePayload::default(),
+            &CodexProfilePayload::default(),
             &index.to_string(),
         )
         .unwrap();
     }
 
     c.bench_function("db_profiles_query_20", |b| {
-        b.iter(|| black_box(db.profiles().unwrap().len()));
+        b.iter(|| black_box(db.codex_profiles().unwrap().len()));
     });
 }
 

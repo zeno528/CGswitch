@@ -8,10 +8,8 @@ export default {
     skills: "Skill",
     accounts: "Accounts",
     settings: "Settings",
-    claudeProviders: "Providers",
     groupCodex: "Codex",
-    groupClaude: "Claude",
-    groupCommon: "General",
+    groupClaude: "Claude Code",
   },
   sidebar: {
     expand: "Expand sidebar",
@@ -25,9 +23,14 @@ export default {
   select: {
     placeholder: "Select...",
     optionsLabel: "Options",
+    search: "Search...",
+    clearSearch: "Clear search",
+    noResults: "No matches",
+    availableCount: "{{count}} available",
   },
   loading: "Loading...",
   feedback: {
+    applySuccess: "Applied successfully",
     cancel: "Cancel",
     confirm: "Confirm",
     dismissToast: "Dismiss notification",
@@ -35,17 +38,17 @@ export default {
   },
   error: {
     title: "Failed to load the interface",
-    description: "This page ran into an error. Reload to continue using the app.",
+    description: "This page ran into an error. Reload to continue using the app",
     reload: "Reload",
     details: "View error details",
   },
   editor: {
     placeholder: "Edit the configuration here...",
-    jsonSyntaxError: "JSON syntax error. Check the comma, brackets, or value here.",
+    jsonSyntaxError: "JSON syntax error. Check the comma, brackets, or value here",
   },
   preset: {
     custom: "Custom",
-    zhipu: "Zhipu",
+    zhipu: "Z.ai",
     qwen: "Qwen",
     hunyuan: "Tencent Hunyuan",
     doubao: "Volcengine Doubao",
@@ -62,5 +65,10 @@ export default {
   providerName: {
     hunyuan: "Tencent Hunyuan",
     volcengine: "Volcengine Ark",
+  },
+  cliUpdate: {
+    upgrade: "Update to {{version}}",
+    upgradeTitle: "{{client}} CLI {{version}} available ({{channel}} channel). Click to update",
+    upgradeDone: "{{client}} CLI updated to v{{version}}",
   },
 } as const;

@@ -1,8 +1,8 @@
-import type { BuiltinPreset } from "../presets";
+import type { ClientPreset } from "../presets";
 import { ProfileIconTile } from "./ProfileIconTile";
 
 interface PresetGridProps {
-  presets: readonly BuiltinPreset[];
+  presets: readonly ClientPreset[];
   selectedKind: string;
   onSelect: (kind: string) => void;
   title: string;

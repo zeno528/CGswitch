@@ -1,40 +1,16 @@
 import { Check, Copy, Gauge, Globe, GripVertical, Wifi } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
-import { api } from "../../api";
-import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
-import type { ProfileBalanceInfo, ProfileSummary } from "../../types";
-import { useFeedback } from "../../app/Feedback";
+import type { ProfileBalanceInfo, CodexProfileSummary } from "../../types";
 import { PlanBadge } from "../../components/PlanBadge";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { ProfileIconTile } from "../../components/ProfileIconTile";
-import SortableCard from "../../components/SortableCard";
 import { TrashIcon } from "../../components/TrashIcon";
 import { localizeBalanceLabel } from "./balanceLabel";
-import { useProfileBalance } from "./useProfileBalance";
-
-export { getCachedProfileBalance, getCachedProfileBalanceError } from "./useProfileBalance";
-
-interface ProfileCardProps {
-  profile: ProfileSummary;
-  active: boolean;
-  dragHover?: boolean;
-  busy: boolean;
-  activationEpoch: number;
-  /// 本次进程启动还没走完（首屏尚未出窗）——只有这时才值得把余额刷新往后放
-  coldStart: boolean;
-  balanceCache?: Record<string, ProfileBalanceInfo>;
-  onApply: () => void;
-  onRename: () => void;
-  onEdit: () => void;
-  onRemove: () => void;
-  onDuplicate: () => void;
-}
 
 interface ProfileCardContentProps {
-  profile: Pick<ProfileSummary, "name" | "icon" | "kind" | "provider" | "model" | "reasoning_effort" | "plan_type" | "admin_url" | "show_balance">;
+  profile: Pick<CodexProfileSummary, "name" | "icon" | "kind" | "provider" | "model" | "reasoning_effort" | "plan_type" | "admin_url" | "show_balance">;
   balanceInfos: ProfileBalanceInfo[];
   balanceError: string;
   balanceRefreshing: boolean;
@@ -60,9 +36,9 @@ export function ProfileCardContent({
   const supportsBalance = isSubscriptionProfile || balanceQueryProviders.has(profile.provider ?? "");
   const isUsageProvider = usageQueryProviders.has(profile.provider ?? "");
   // 后端回传的窗口标签按当前语言换词；后端没给时才用本语言兜底（映射见 balanceLabel.ts）
-  const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.quota"));
+  const primaryLabel = localizeBalanceLabel(balanceInfo?.usage_label, t) ?? (isUsageProvider ? t("balance.window5h") : t("card.usage"));
   const weeklyLabel = localizeBalanceLabel(balanceInfo?.weekly_label, t) ?? (isUsageProvider ? t("balance.window7d") : t("balance.period"));
-  const balanceLabel = isSubscriptionProfile ? t("card.quota") : isUsageProvider ? t("card.usage") : t("card.balance");
+  const balanceLabel = isSubscriptionProfile || isUsageProvider ? t("card.usage") : t("card.balance");
   const primaryUsagePercent = balanceInfo?.usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.usage_percent : balanceInfo.usage_percent) : null;
   const weeklyUsagePercent = balanceInfo?.weekly_usage_percent != null ? (isSubscriptionProfile ? 100 - balanceInfo.weekly_usage_percent : balanceInfo.weekly_usage_percent) : null;
   const primaryUsageText = isSubscriptionProfile ? t("card.usageRemaining", { label: primaryLabel }) : isUsageProvider ? `${primaryLabel}:` : `${primaryLabel} `;
@@ -70,12 +46,21 @@ export function ProfileCardContent({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
-      <ProfileIconTile name={profile.name} icon={profile.icon} />
+      <ProfileIconTile name={profile.name} icon={profile.icon} overlay={
+        profile.admin_url ? (
+          <button
+            type="button"
+            className="absolute inset-0 grid cursor-pointer place-items-center rounded-xl bg-(--main-surface-bg) text-accent opacity-0 outline-none transition-opacity duration-150 group-hover/tile:opacity-100 focus-visible:opacity-100"
+            title={t("card.openWebsite")}
+            aria-label={t("card.openWebsite")}
+            onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}
+          ><Globe className="h-4.5 w-4.5" strokeWidth={2} aria-hidden="true" /></button>
+        ) : null
+      } />
       <div className="profile-card-content__text min-w-0 flex-1">
         <div className="flex min-h-7 items-center gap-2">
           <h3 className="title-md cursor-pointer truncate leading-normal transition-colors hover:text-accent" title={t("card.clickToRename")} onClick={(event) => { event.stopPropagation(); onRename?.(); }}>{profile.name}</h3>
           {isSubscriptionProfile ? <PlanBadge plan={profile.plan_type} /> : null}
-          {profile.admin_url ? <button type="button" className="apple-icon-button !h-6 !w-7 shrink-0 text-accent" title={t("card.openWebsite")} aria-label={t("card.openWebsite")} onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}><Globe className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" /></button> : null}
         </div>
         {!hideModel || (supportsBalance && profile.show_balance) ? <div className="profile-card-meta muted mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
           {!hideModel ? <><span className="min-w-0 truncate">{profile.model ?? t("card.notSet")}</span>{profile.reasoning_effort ? <><span aria-hidden="true">·</span><span>{profile.reasoning_effort}</span></> : null}</> : null}
@@ -99,21 +84,14 @@ export function connectionGate(hasBaseUrl: boolean, hasKey: boolean, titles: { r
   };
 }
 
-/** Codex 侧壳：官方订阅（无第三方 provider）不做门控；第三方供应商映射到通用判定。 */
-export function profileConnectionGate(profile: ProfileSummary, t: TFunction<"profiles">) {
-  if (!profile.provider) return { disabled: false, title: t("connection.test") };
-  return connectionGate(profile.has_base_url, profile.has_key, {
-    ready: t("connection.test"),
-    missingEndpoint: t("connection.missingApiEndpointWarning"),
-    missingKey: t("connection.missingApiKeyWarning"),
-  });
-}
-
 interface ProfileCardActionsProps {
   active: boolean;
   busy: boolean;
   testing: boolean;
   dragging?: boolean;
+  allowInactiveDeleteWhileBusy?: boolean;
+  model?: string | null;
+  reasoningEffort?: string | null;
   /** 测试连通按钮是否禁用（调用方按各自领域判定：缺地址/缺密钥）。 */
   connectionDisabled: boolean;
   connectionTitle: string;
@@ -123,14 +101,26 @@ interface ProfileCardActionsProps {
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, testing, dragging = false, connectionDisabled, connectionTitle, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, testing, dragging = false, allowInactiveDeleteWhileBusy = false, model, reasoningEffort, connectionDisabled, connectionTitle, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
+  const busyForDelete = busy && !allowInactiveDeleteWhileBusy;
   return (
-    <div className={dragging ? "profile-card-actions profile-card-actions--dragging flex shrink-0 items-center gap-2" : "profile-card-actions pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
-      <button type="button" className="apple-action-button app-button--primary" disabled={busy || active} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>{active ? <><Check className="h-3.5 w-3.5" strokeWidth={2.5} aria-hidden="true" />{t("actions.inUse")}</> : t("actions.switch")}</button>
-      <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
-      <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || busy || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
-      <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busy || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
+    <div className={`profile-card-actions${dragging ? " profile-card-actions--dragging" : ""} flex shrink-0 items-center gap-2`} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
+      {model !== undefined || reasoningEffort ? (
+        <span className="profile-card-action-meta">
+          <span className="profile-card-action-meta__model">{model ?? t("card.notSet")}</span>
+          {reasoningEffort ? <><span aria-hidden="true">·</span><span>{reasoningEffort}</span></> : null}
+        </span>
+      ) : null}
+      <div className={dragging ? "profile-card-action-buttons flex shrink-0 items-center gap-2" : "profile-card-action-buttons pointer-events-none flex shrink-0 items-center gap-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"}>
+        <button type="button" className={`apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary ${active ? "disabled:opacity-100" : "disabled:opacity-50"}`} disabled={busy || active} aria-pressed={active} aria-label={active ? t("actions.inUse") : t("actions.switch")} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>
+          <span className={active ? "invisible" : ""} aria-hidden="true">{t("actions.switch")}</span>
+          {active ? <Check className="absolute inset-0 m-auto" size={18} strokeWidth={2.5} aria-hidden="true" /> : null}
+        </button>
+        <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" title={t("actions.duplicate")} aria-label={t("actions.duplicate")} onClick={onDuplicate}><Copy className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" /></button>
+        <button type="button" className="apple-icon-button text-[var(--text-secondary)] enabled:hover:text-accent disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || testing} title={connectionTitle} aria-label={t("connection.test")} onClick={onTest}>{testing ? <LoadingSpinner size="md" /> : <Wifi className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
+        <button type="button" className="profile-card-delete apple-icon-button text-[var(--danger)]/60 enabled:hover:bg-(--danger)/10 enabled:hover:text-[var(--danger)] disabled:cursor-not-allowed disabled:opacity-40" disabled={busyForDelete || active} title={t("actions.delete")} aria-label={t("actions.delete")} onClick={onRemove}><TrashIcon /></button>
+      </div>
     </div>
   );
 }
@@ -145,85 +135,5 @@ export function ProfileDragPreviewShell({ width, height, active, children }: { w
       </span>
       {children}
     </div>
-  );
-}
-
-export default function ProfileCard({
-  profile,
-  active,
-  dragHover = false,
-  busy,
-  activationEpoch,
-  coldStart,
-  balanceCache,
-  onApply,
-  onRename,
-  onEdit,
-  onRemove,
-  onDuplicate,
-}: ProfileCardProps) {
-  const feedback = useFeedback();
-  const { t } = useTranslation("profiles");
-  const authQuotaKey = profileAuthQuotaCacheKey(profile);
-  const [testing, setTesting] = useState(false);
-  const supportsBalance = profile.kind === "official" || balanceQueryProviders.has(profile.provider ?? "");
-  const { balanceInfos, balanceError, balanceRefreshing, refreshBalance } = useProfileBalance({
-    profileId: profile.id,
-    showBalance: profile.show_balance,
-    supportsBalance,
-    hasCredential: profile.kind === "official" || profile.has_key,
-    active,
-    activationEpoch,
-    coldStart,
-    cachedBalance: balanceCache?.[profile.id],
-    authQuotaKey,
-    source: "codex",
-  });
-
-  // 测连通失败文案：凭证失效的结局走本地化可行动文案，其余保留后端原文
-  const connectionFailureToast = (error: string) =>
-    authQuotaErrorKind(error) === "auth_expired"
-      ? t("connection.testFailed", { error: t("balance.authInvalidToast") })
-      : t("connection.failed", { error });
-
-  const testConnection = async () => {
-    if (testing) return;
-    if (profile.provider && !profile.has_base_url) {
-      feedback.warning(t("edit.baseUrlRequired"));
-      return;
-    }
-    if (profile.provider && !profile.has_key) {
-      feedback.warning(t("connection.missingApiKeyWarning"));
-      return;
-    }
-    setTesting(true);
-    try {
-      const result = await api.testProfileConnection(profile.id);
-      if (result.ok) {
-        feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
-      } else {
-        feedback.error(connectionFailureToast(result.error ?? t("connection.unknownError")));
-      }
-    } catch (error) {
-      feedback.error(connectionFailureToast(String(error)));
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const connection = profileConnectionGate(profile, t);
-  return (
-    <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
-      <ProfileCardContent
-        profile={profile}
-        balanceInfos={balanceInfos}
-        balanceError={balanceError}
-        balanceRefreshing={balanceRefreshing}
-        onRefreshBalance={refreshBalance}
-        onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
-        onRename={onRename}
-      />
-      <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
-    </SortableCard>
   );
 }

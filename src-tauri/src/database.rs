@@ -7,9 +7,11 @@ use rusqlite_migration::{Migrations, M};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{app_err, AppResult};
-use crate::models::{ClaudeProfileInput, ProfileKind, ProfilePayload, ProfileSummary};
+use crate::models::{
+    ClaudeProfileInput, CodexProfileKind, CodexProfilePayload, CodexProfileSummary,
+};
 use crate::paths::AppPaths;
-use crate::services::profile_config::{parse_provider_detail, stored_provider_api_key};
+use crate::services::codex_profile_config::{parse_provider_detail, stored_provider_api_key};
 use crate::services::SkillTool;
 
 /// MCP 镜像行：共享片段 + 每引擎独立安装状态与开关（卸载不等同于禁用）。
@@ -120,7 +122,7 @@ fn migrations() -> Migrations<'static> {
             "ALTER TABLE claude_profiles ADD COLUMN kind TEXT;
              ALTER TABLE claude_profiles ADD COLUMN admin_url TEXT",
         ),
-        // 编辑页描述与模型列表持久化（对齐 Codex description / set_profile_fetched_models）
+        // 编辑页描述与模型列表持久化（对齐 Codex description / codex_set_profile_fetched_models）
         M::up(
             "ALTER TABLE claude_profiles ADD COLUMN description TEXT;
              ALTER TABLE claude_profiles ADD COLUMN fetched_models TEXT",
@@ -242,7 +244,10 @@ impl Database {
         })
     }
 
-    pub fn profiles(&self) -> AppResult<Vec<StoredProfile>> {
+    /// Codex 供应商表访问方法以 `codex_` 显式归属；SQL 仍读写历史 `profiles` 表与
+    /// `app_state.active_profile_id` 列（schema 改名属持久化迁移，不在命名重构范围）。
+    /// 这层名称映射只住在这里，页面/服务一律用 `codex_*` 方法名。
+    pub fn codex_profiles(&self) -> AppResult<Vec<StoredCodexProfile>> {
         let connection = self.lock()?;
         let mut statement = connection
             .prepare(
@@ -261,7 +266,7 @@ impl Database {
         Ok(profiles)
     }
 
-    pub fn reorder_profiles(&self, ids: &[String], timestamp: &str) -> AppResult<()> {
+    pub fn codex_reorder_profiles(&self, ids: &[String], timestamp: &str) -> AppResult<()> {
         let mut connection = self.lock()?;
         let transaction = connection
             .transaction()
@@ -280,7 +285,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn profile(&self, id: &str) -> AppResult<StoredProfile> {
+    pub fn codex_profile(&self, id: &str) -> AppResult<StoredCodexProfile> {
         let connection = self.lock()?;
         connection
             .query_row(
@@ -294,12 +299,12 @@ impl Database {
             .ok_or_else(|| app_err!("供应商配置不存在"))
     }
 
-    pub fn insert_profile(
+    pub fn codex_insert_profile(
         &self,
         name: &str,
-        payload: &ProfilePayload,
+        payload: &CodexProfilePayload,
         timestamp: &str,
-    ) -> AppResult<ProfileSummary> {
+    ) -> AppResult<CodexProfileSummary> {
         let id = format!(
             "profile-{timestamp}-{}",
             PROFILE_ID_SEQ.fetch_add(1, Ordering::Relaxed)
@@ -307,9 +312,9 @@ impl Database {
         let payload_json =
             serde_json::to_string(payload).map_err(|_| app_err!("供应商配置序列化失败"))?;
         let kind = if payload.provider_id.is_none() {
-            ProfileKind::Official
+            CodexProfileKind::Official
         } else {
-            ProfileKind::ThirdParty
+            CodexProfileKind::ThirdParty
         };
         let connection = self.lock()?;
         connection
@@ -325,7 +330,12 @@ impl Database {
         ))
     }
 
-    pub fn set_profile_icon(&self, id: &str, icon: Option<&str>, timestamp: &str) -> AppResult<()> {
+    pub fn codex_set_profile_icon(
+        &self,
+        id: &str,
+        icon: Option<&str>,
+        timestamp: &str,
+    ) -> AppResult<()> {
         let connection = self.lock()?;
         let changed = connection
             .execute(
@@ -339,7 +349,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn set_profile_account(
+    pub fn codex_set_profile_account(
         &self,
         id: &str,
         account_id: Option<&str>,
@@ -358,13 +368,13 @@ impl Database {
         Ok(())
     }
 
-    pub fn update_profile(
+    pub fn codex_update_profile(
         &self,
         id: &str,
         name: &str,
-        payload: &ProfilePayload,
+        payload: &CodexProfilePayload,
         timestamp: &str,
-    ) -> AppResult<StoredProfile> {
+    ) -> AppResult<StoredCodexProfile> {
         let payload_json =
             serde_json::to_string(payload).map_err(|_| app_err!("供应商配置序列化失败"))?;
         let connection = self.lock()?;
@@ -404,7 +414,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn delete_profile(&self, id: &str) -> AppResult<()> {
+    pub fn codex_delete_profile(&self, id: &str) -> AppResult<()> {
         let connection = self.lock()?;
         let changed = connection
             .execute("DELETE FROM profiles WHERE id=?1", params![id])
@@ -575,7 +585,7 @@ impl Database {
         Ok(())
     }
 
-    pub fn delete_mcp_server(&self, name: &str) -> AppResult<()> {
+    pub fn codex_delete_mcp_server(&self, name: &str) -> AppResult<()> {
         let connection = self.lock()?;
         connection
             .execute("DELETE FROM mcp_servers WHERE name = ?1", params![name])
@@ -704,7 +714,7 @@ impl Database {
             .map(|state| state.unwrap_or((None, None)))
     }
 
-    pub fn set_active_profile(&self, id: Option<&str>) -> AppResult<()> {
+    pub fn set_active_codex_profile(&self, id: Option<&str>) -> AppResult<()> {
         let connection = self.lock()?;
         connection
             .execute(
@@ -917,7 +927,7 @@ impl Database {
             .map_err(|error| app_err!("无法提交配置删除事务: {error}"))
     }
 
-    /// 卡片拖拽排序持久化（对齐 Codex reorder_profiles：事务内逐行写 sort_order）。
+    /// 卡片拖拽排序持久化（对齐 Codex codex_reorder_profiles：事务内逐行写 sort_order）。
     pub fn reorder_claude_profiles(&self, ids: &[String], timestamp: &str) -> AppResult<()> {
         let mut connection = self.lock()?;
         let transaction = connection
@@ -994,7 +1004,7 @@ impl Database {
     }
 
     /// 最近一次成功应用的供应商 id（应用记录被删除时返回 None 由调用方回退匹配）。
-    pub fn latest_applied_profile(&self) -> AppResult<Option<String>> {
+    pub fn codex_latest_applied_profile(&self) -> AppResult<Option<String>> {
         let connection = self.lock()?;
         connection
             .query_row(
@@ -1275,12 +1285,12 @@ fn copy_intersected_columns(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoredProfile {
+pub struct StoredCodexProfile {
     pub id: String,
     pub name: String,
-    pub payload: ProfilePayload,
+    pub payload: CodexProfilePayload,
     pub icon: Option<String>,
-    pub kind: ProfileKind,
+    pub kind: CodexProfileKind,
     pub account_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -1354,14 +1364,14 @@ pub struct StoredAccount {
     pub plan_type: Option<String>,
 }
 
-fn profile_from_row(row: &Row<'_>) -> rusqlite::Result<StoredProfile> {
+fn profile_from_row(row: &Row<'_>) -> rusqlite::Result<StoredCodexProfile> {
     let id = row.get(0)?;
     let name = row.get(1)?;
     let payload_json = row.get::<_, String>(2)?;
     let payload = serde_json::from_str(&payload_json).map_err(|_| rusqlite::Error::InvalidQuery)?;
     let kind_raw: String = row.get(4)?;
-    let kind = ProfileKind::from_db(&kind_raw).ok_or(rusqlite::Error::InvalidQuery)?;
-    Ok(StoredProfile {
+    let kind = CodexProfileKind::from_db(&kind_raw).ok_or(rusqlite::Error::InvalidQuery)?;
+    Ok(StoredCodexProfile {
         id,
         name,
         payload,
@@ -1390,26 +1400,26 @@ fn account_from_row(row: &Row<'_>) -> rusqlite::Result<StoredAccount> {
 fn summary(
     id: &str,
     name: &str,
-    payload: &ProfilePayload,
+    payload: &CodexProfilePayload,
     icon: Option<&str>,
     account_id: Option<&str>,
     created_at: &str,
     updated_at: &str,
-) -> ProfileSummary {
-    ProfileSummary {
+) -> CodexProfileSummary {
+    CodexProfileSummary {
         id: id.into(),
         name: name.into(),
         kind: if payload.provider_id.is_some() {
-            ProfileKind::ThirdParty
+            CodexProfileKind::ThirdParty
         } else {
-            ProfileKind::Official
+            CodexProfileKind::Official
         },
         account_id: account_id.map(str::to_string),
         auth_source: payload.effective_auth_source(
             if payload.provider_id.is_some() {
-                ProfileKind::ThirdParty
+                CodexProfileKind::ThirdParty
             } else {
-                ProfileKind::Official
+                CodexProfileKind::Official
             },
             account_id,
         ),
@@ -1438,7 +1448,7 @@ fn display_text(value: Option<&String>) -> Option<String> {
     value.map(|raw| raw.trim().trim_matches('"').to_string())
 }
 
-pub fn profile_summary(profile: &StoredProfile) -> ProfileSummary {
+pub fn codex_profile_summary(profile: &StoredCodexProfile) -> CodexProfileSummary {
     summary(
         &profile.id,
         &profile.name,
@@ -1460,7 +1470,7 @@ mod tests {
         let paths = crate::paths::from_home(dir.path()).unwrap();
         let db = Database::open(&paths).unwrap();
         let codex = db
-            .insert_profile("codex-fixture", &ProfilePayload::default(), "1")
+            .codex_insert_profile("codex-fixture", &CodexProfilePayload::default(), "1")
             .unwrap();
         let claude = db
             .insert_claude_profile(
@@ -1477,9 +1487,10 @@ mod tests {
                 "1",
             )
             .unwrap();
-        db.set_active_profile(Some(&codex.id)).unwrap();
+        db.set_active_codex_profile(Some(&codex.id)).unwrap();
         db.set_active_claude_profile(Some(&claude.id)).unwrap();
-        let mut expected_codex = serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap();
+        let mut expected_codex =
+            serde_json::to_value(db.codex_profile(&codex.id).unwrap()).unwrap();
         let mut expected_claude =
             serde_json::to_value(db.claude_profile(&claude.id).unwrap()).unwrap();
 
@@ -1492,7 +1503,7 @@ mod tests {
             expected_claude
         );
         assert_eq!(
-            serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap(),
+            serde_json::to_value(db.codex_profile(&codex.id).unwrap()).unwrap(),
             expected_codex
         );
 
@@ -1501,7 +1512,7 @@ mod tests {
         expected_codex["name"] = "renamed-codex".into();
         expected_codex["updated_at"] = "3".into();
         assert_eq!(
-            serde_json::to_value(db.profile(&codex.id).unwrap()).unwrap(),
+            serde_json::to_value(db.codex_profile(&codex.id).unwrap()).unwrap(),
             expected_codex
         );
         assert_eq!(
@@ -1626,7 +1637,7 @@ mod tests {
         let db = Database::open(&paths).unwrap();
 
         // 既有 Codex 数据完好
-        let profiles = db.profiles().unwrap();
+        let profiles = db.codex_profiles().unwrap();
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].name, "GLM");
         assert_eq!(db.accounts().unwrap()[0].refresh_token, "rt-1");
@@ -1779,18 +1790,23 @@ mod tests {
         let paths = crate::paths::from_home(dir.path()).unwrap();
         let db = Database::open(&paths).unwrap();
 
-        let payload = ProfilePayload::default();
-        let summary = db.insert_profile("GLM High", &payload, "1").unwrap();
+        let payload = CodexProfilePayload::default();
+        let summary = db.codex_insert_profile("GLM High", &payload, "1").unwrap();
         assert_eq!(summary.icon, None);
 
-        db.set_profile_icon(&summary.id, Some("zhipu"), "2")
+        db.codex_set_profile_icon(&summary.id, Some("zhipu"), "2")
             .unwrap();
-        assert_eq!(db.profiles().unwrap()[0].icon.as_deref(), Some("zhipu"));
+        assert_eq!(
+            db.codex_profiles().unwrap()[0].icon.as_deref(),
+            Some("zhipu")
+        );
 
-        db.set_profile_icon(&summary.id, None, "3").unwrap();
-        assert_eq!(db.profiles().unwrap()[0].icon, None);
+        db.codex_set_profile_icon(&summary.id, None, "3").unwrap();
+        assert_eq!(db.codex_profiles().unwrap()[0].icon, None);
 
-        assert!(db.set_profile_icon("missing", Some("zhipu"), "4").is_err());
+        assert!(db
+            .codex_set_profile_icon("missing", Some("zhipu"), "4")
+            .is_err());
     }
 
     #[test]
@@ -1800,23 +1816,26 @@ mod tests {
         let db = Database::open(&paths).unwrap();
 
         // 无供应商 → 官方；有供应商 → 第三方
-        let mut official = ProfilePayload::default();
+        let mut official = CodexProfilePayload::default();
         official
             .model_values
             .insert("model".into(), "\"gpt-5.6\"".into());
-        let official_id = db.insert_profile("官方", &official, "1").unwrap().id;
-        let third = ProfilePayload {
+        let official_id = db.codex_insert_profile("官方", &official, "1").unwrap().id;
+        let third = CodexProfilePayload {
             provider_id: Some("ZAI".into()),
             provider_body: Some("name = \"ZAI\"".into()),
             ..Default::default()
         };
-        let third_id = db.insert_profile("第三方", &third, "2").unwrap().id;
+        let third_id = db.codex_insert_profile("第三方", &third, "2").unwrap().id;
         assert_eq!(
-            db.profile(&official_id).unwrap().kind,
-            ProfileKind::Official
+            db.codex_profile(&official_id).unwrap().kind,
+            CodexProfileKind::Official
         );
-        assert_eq!(db.profile(&third_id).unwrap().kind, ProfileKind::ThirdParty);
-        assert!(!profile_summary(&db.profile(&third_id).unwrap()).has_base_url);
+        assert_eq!(
+            db.codex_profile(&third_id).unwrap().kind,
+            CodexProfileKind::ThirdParty
+        );
+        assert!(!codex_profile_summary(&db.codex_profile(&third_id).unwrap()).has_base_url);
 
         let account = StoredAccount {
             id: "acc-1".into(),
@@ -1839,19 +1858,19 @@ mod tests {
         assert!(db.accounts().unwrap().is_empty());
 
         assert_eq!(db.app_state().unwrap(), (None, None));
-        db.set_active_profile(Some(&official_id)).unwrap();
+        db.set_active_codex_profile(Some(&official_id)).unwrap();
         db.set_default_account(Some("acc-1")).unwrap();
         let (active, default) = db.app_state().unwrap();
         assert_eq!(active.as_deref(), Some(official_id.as_str()));
         assert_eq!(default.as_deref(), Some("acc-1"));
-        db.set_active_profile(None).unwrap();
+        db.set_active_codex_profile(None).unwrap();
         db.set_default_account(None).unwrap();
         assert_eq!(db.app_state().unwrap(), (None, None));
     }
 
     #[test]
     fn profile_summary_reports_non_empty_provider_endpoint() {
-        let payload = ProfilePayload {
+        let payload = CodexProfilePayload {
             provider_id: Some("ZAI".into()),
             provider_body: Some("base_url = \"https://api.example\"".into()),
             ..Default::default()
@@ -1859,7 +1878,7 @@ mod tests {
         let summary_with_url = summary("id", "name", &payload, None, None, "1", "1");
         assert!(summary_with_url.has_base_url);
 
-        let empty_payload = ProfilePayload {
+        let empty_payload = CodexProfilePayload {
             provider_id: Some("ZAI".into()),
             provider_body: Some("base_url = \"  \"".into()),
             ..Default::default()
@@ -2003,7 +2022,7 @@ mod tests {
         assert_eq!(accounts[0].plan_type.as_deref(), Some("plus"));
         // 恢复未重映射 id：供应商绑定原样有效
         assert_eq!(
-            db.profiles().unwrap()[0].account_id.as_deref(),
+            db.codex_profiles().unwrap()[0].account_id.as_deref(),
             Some("ws-1")
         );
     }

@@ -162,8 +162,8 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
                   placeholder={labels.quickSet}
                   disabled={disabled || fetching || models.length === 0}
                   menuAlign="end"
-                  menuWidth="max-content"
                   compact
+                  searchable
                 />
               </div>
             ) : null}
@@ -212,7 +212,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
                   placeholder={models.length ? labels.select : labels.fetchFirst}
                   disabled={disabled}
                   iconOnly
-                  menuWidth="max-content"
+                  searchable
                 />
                 {field.onToggleOneMillion && labels.oneMillion ? (
                   <label className={`editor-ghost !h-8 shrink-0 !px-2 justify-self-center ${!empty && field.oneMillion ? "on" : ""}`} title={labels.oneMillionTitle} aria-disabled={empty}>
@@ -253,6 +253,7 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
         onChange={onChange}
         placeholder={models.length ? labels.select : labels.fetchFirst}
         disabled={disabled}
+        searchable
       />
     </div>
   </div>;

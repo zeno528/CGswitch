@@ -27,11 +27,14 @@ describe("Skill 批量导入", () => {
 describe("Skill 标题栏", () => {
   it("复用 MCP 和插件页的可换行标题栏结构，避免跨页垂直偏移", () => {
     expect(viewSource).toContain('className="apple-page-bar flex-wrap justify-between gap-4"');
+    expect(viewSource).toContain("<ManagementPageTitle");
+    expect(viewSource).toContain('title={t("importPageTitle")} count={visibleCandidates.length}');
   });
 });
 
 describe("Skill 双端开关", () => {
   it("每行提供 Codex 与 Claude Code 两个独立开关，各自走同一套启停逻辑", () => {
+    expect(viewSource).toContain("SkillTargetLogo");
     expect(viewSource).toContain('onRun(skill.name, skill.claude_enabled ? "disable" : "enable", "claude")');
     expect(viewSource).toContain('onRun(skill.name, skill.enabled ? "disable" : "enable")');
     expect(viewSource).toContain("api.enableSkill(name, tool)");

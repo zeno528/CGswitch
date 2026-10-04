@@ -12,7 +12,7 @@ export default {
     updated: "已更新到 v{{version}}",
   },
   error: {
-    proxyHint: "无法连接 GitHub，请检查系统代理后重试",
+    proxyHint: "无法连接 GitHub，请检查网络代理后重试",
     checkFailed: "检查更新失败",
   },
   webMock: {
