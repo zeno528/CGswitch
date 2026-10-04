@@ -8,7 +8,7 @@ import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
 import { armCliUpdateTicker, getCachedCliUpdate, getMcpDiffBadge, loadClaudeMcpServers, loadClaudeProfiles, loadMcpServers, loadPluginMarketplaces, loadPlugins, loadSkills, mcpDiffBadgeText, setMcpDiffBadge, subscribeCliUpdate, subscribeMcpDiffBadge } from "./managementDataCache";
-import { useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
+import { asAppView, useActivationRefresh, useAppState, useCodexPolling, useSidebar, useThemeMode, type AppView } from "./appShellHooks";
 import CodexProfilesView from "../features/codex/CodexProfilesView";
 import McpView from "../features/mcp/McpView";
 import PluginsView from "../features/plugins/PluginsView";
@@ -164,7 +164,9 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
 }
 
 export default function AppShell() {
-  const [view, setView] = useState<AppView>("codexProfiles");
+  // 冷启动落页：首帧同步读缓存直出（与 sidebar-collapsed 同款 localStorage 先例），
+  // 第二次冷启动起首帧即目标页不闪；settings 到达后由下方 effect 校准真值并刷新缓存。
+  const [view, setView] = useState<AppView>(() => asAppView(localStorage.getItem("cgswitch.startup-view")));
   // 切页记忆：进过的页面保活（Activity hidden），未访问页连渲染都不发生，冷启动零新增。
   const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["codexProfiles"]));
   const [startupReady, setStartupReady] = useState(false);
@@ -203,6 +205,19 @@ export default function AppShell() {
     : mcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;
   const codexCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("codex"), () => getCachedCliUpdate("codex"));
   const claudeCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("claude"), () => getCachedCliUpdate("claude"));
+
+  // 冷启动落页：settings 首次到达时跳一次到设置的启动页；之后设置变化只刷新缓存，
+  // 不再拽页——托盘/后台恢复与改设置都不打断当前所在页面（只对冷启动生效）。
+  const startupViewApplied = useRef(false);
+  const startupSetting = state?.settings.startup_view;
+  useEffect(() => {
+    if (startupSetting === undefined) return;
+    const target = asAppView(startupSetting);
+    localStorage.setItem("cgswitch.startup-view", target);
+    if (startupViewApplied.current) return;
+    startupViewApplied.current = true;
+    setView((current) => (current === target ? current : target));
+  }, [startupSetting]);
 
   useEffect(() => {
     let cancelled = false;

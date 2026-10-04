@@ -1,4 +1,4 @@
-import { ChevronRight, Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
+import { ChevronRight, Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LayoutDashboard, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { createPortal } from "react-dom";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -22,6 +22,17 @@ import version from "../../../VERSION?raw";
 // as const 必需：labelKey 若推断为 string，typed t() 会拒绝（键名无法在编译期校验）。
 const themeOptions = [{ labelKey: "theme.system", value: "system" }, { labelKey: "theme.light", value: "light" }, { labelKey: "theme.dark", value: "dark" }] as const;
 const languageOptions = [{ labelKey: "language.system", value: "system" }, { labelKey: "language.zh", value: "zh-CN" }, { labelKey: "language.en", value: "en-US" }] as const;
+// 启动页选项 = 侧栏全部页面平铺（与侧栏清单同序同文案 key，新增页面两处同步）
+const startupViewOptions = [
+  { labelKey: "nav.groupCodex", value: "codexProfiles" },
+  { labelKey: "nav.groupClaude", value: "claudeProfiles" },
+  { labelKey: "nav.plugins", value: "plugins" },
+  { labelKey: "nav.accounts", value: "accounts" },
+  { labelKey: "nav.mcp", value: "mcp" },
+  { labelKey: "nav.skills", value: "skills" },
+  { labelKey: "nav.agentTools", value: "agentTools" },
+  { labelKey: "nav.settings", value: "settings" },
+] as const;
 // Rust 下发的 PathInfo.label（i18n key）数据值，用于比对而非展示
 const BACKUP_DIR_LABEL = "about.paths.backups"; // i18n-exempt: 数据标签比较值，不是界面文案
 
@@ -60,6 +71,8 @@ interface SettingsGeneralProps { form: Settings; onPatch: (patch: Partial<Settin
 
 export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
   const { t } = useTranslation("settings");
+  // 启动页选项文案住在 common/nav（与侧栏同一份），单挂 settings ns 取不到
+  const { t: tNav } = useTranslation("common");
   return (
     <div className="flex flex-col gap-[var(--gap-section)]">
       <SettingsPanelSection id="appearance-language" label={t("general.appearanceGroupTitle")}>
@@ -139,6 +152,24 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                 />
               </div>
             ))}
+            <div className="flex items-center justify-between gap-4 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                  <LayoutDashboard className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="setting-title">{t("startup.startupViewTitle")}</div>
+                  <div className="setting-description mt-0.5">{t("startup.startupViewDescription")}</div>
+                </div>
+              </div>
+              <div className="w-72 shrink-0">
+                <AppSelect
+                  value={form.startup_view}
+                  options={startupViewOptions.map((option) => ({ label: tNav(option.labelKey), value: option.value }))}
+                  onChange={(value) => onPatch({ startup_view: value })}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </SettingsPanelSection>

@@ -323,6 +323,9 @@ pub struct Settings {
     pub minimize_to_tray: bool,
     #[serde(default)]
     pub tray_click_action: TrayClickAction,
+    /// 冷启动落页：前端 AppView 标识原样透传，不解析；非法值由前端回落默认页。
+    #[serde(default = "default_startup_view")]
+    pub startup_view: String,
     #[serde(default = "default_auto_check_update")]
     pub auto_check_update: bool,
     #[serde(default)]
@@ -352,6 +355,11 @@ fn default_database_backup_keep_count() -> u32 {
     5
 }
 
+/// 冷启动落页：前端 AppView 标识原样透传，不解析；非法值由前端回落默认页。
+fn default_startup_view() -> String {
+    "codexProfiles".into()
+}
+
 fn default_auto_check_update() -> bool {
     true
 }
@@ -366,6 +374,7 @@ impl Default for Settings {
             silent_start: false,
             minimize_to_tray: false,
             tray_click_action: TrayClickAction::ShowWindow,
+            startup_view: default_startup_view(),
             auto_check_update: default_auto_check_update(),
             auto_backup_interval_hours: 0,
             database_backup_keep_count: default_database_backup_keep_count(),
@@ -384,6 +393,7 @@ mod settings_tests {
     fn proxy_settings_default_to_auto_and_round_trip_custom_address() {
         let legacy: Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(legacy.proxy_mode, ProxyMode::Auto);
+        assert_eq!(legacy.startup_view, "codexProfiles");
         assert!(legacy.proxy_url.is_empty());
         let custom = Settings {
             proxy_mode: ProxyMode::Custom,

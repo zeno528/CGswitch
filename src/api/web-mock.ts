@@ -533,6 +533,7 @@ let webSettings: Settings = {
   database_backup_keep_count: 5,
   proxy_mode: "auto",
   proxy_url: "",
+  startup_view: "codexProfiles",
   claude_terminal_dirs: [],
 };
 

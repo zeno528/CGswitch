@@ -46,6 +46,8 @@ export default {
     silentDescription: "Start without showing the main window, staying in the system tray",
     minimizeTitle: "Minimize to tray on close",
     minimizeDescription: "Hide to the tray instead of quitting when you click close",
+    startupViewTitle: "Startup page",
+    startupViewDescription: "Page opened on cold start; restoring from tray is unaffected",
   },
   view: {
     title: "Settings",

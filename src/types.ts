@@ -208,6 +208,9 @@ export interface AuthStatus {
 /** 界面语言设置；"system" 表示跟随系统语言。 */
 export type LanguageSetting = "system" | "zh-CN" | "en-US";
 
+/** 侧栏顶层视图；startup_view 用它做冷启动落页。 */
+export type AppView = "codexProfiles" | "mcp" | "plugins" | "skills" | "accounts" | "settings" | "agentTools" | "claudeProfiles";
+
 export interface Settings {
   theme: "system" | "light" | "dark";
   language: LanguageSetting;
@@ -216,6 +219,8 @@ export interface Settings {
   silent_start: boolean;
   minimize_to_tray: boolean;
   tray_click_action: "show_window" | "show_menu";
+  /** 冷启动时默认打开的页面；托盘/后台恢复不拽页。 */
+  startup_view: AppView;
   auto_check_update: boolean;
   auto_backup_interval_hours: number;
   database_backup_keep_count: number;

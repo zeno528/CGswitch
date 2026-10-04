@@ -15,7 +15,7 @@ const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.met
 const accountsViewSource = readFileSync(new URL("../accounts/AccountsView.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 // 各用例只读不写，共用同一份通用设置表单，新增字段只改这一行。
-const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5, proxy_mode: "auto", proxy_url: "", claude_terminal_dirs: [] };
+const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", startup_view: "codexProfiles", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5, proxy_mode: "auto", proxy_url: "", claude_terminal_dirs: [] };
 
 describe("SettingsSections", () => {
   it("formats backup titles", () => {
@@ -302,9 +302,9 @@ describe("SettingsSections", () => {
     const html = renderToStaticMarkup(
       <FeedbackProvider><SettingsGeneral form={form} onPatch={() => undefined} /></FeedbackProvider>,
     );
-    expect(html.match(/flex items-center justify-between gap-4/g)).toHaveLength(5);
+    expect(html.match(/flex items-center justify-between gap-4/g)).toHaveLength(6);
     expect(html.match(/role="switch"/g)).toHaveLength(3);
-    expect(html.match(/settings-icon-tile/g)).toHaveLength(5);
+    expect(html.match(/settings-icon-tile/g)).toHaveLength(6);
   });
 
   it("通用设置按语义拆分为外观语言和启动行为分组", () => {

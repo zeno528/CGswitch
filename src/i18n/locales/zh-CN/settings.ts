@@ -46,6 +46,8 @@ export default {
     silentDescription: "启动时不显示主窗口，驻留系统托盘",
     minimizeTitle: "关闭时最小化到托盘",
     minimizeDescription: "点击关闭按钮时隐藏到托盘而不是退出",
+    startupViewTitle: "启动页面",
+    startupViewDescription: "冷启动时默认打开的页面，从托盘恢复不受影响",
   },
   view: {
     title: "设置",
