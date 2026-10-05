@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import i18next from "i18next";
-import { codexPresets, claudePresets, clientPresets, codexCustomCatalogTemplate, providerPresets, type ProviderPreset } from "./presets";
+import { codexPresets, claudePresets, clientPresets, codexCustomCatalogTemplate, providerPresets, presetEndpointName, type ClientPreset, type ProviderPreset } from "./presets";
+
+it("接入方式同步默认名称，保留用户自定义名称", () => {
+  const cn = { region: "cn" as const, base_url: "https://cn.example.test", admin_url: null };
+  const global = { region: "global" as const, label: "Plan", base_url: "https://global.example.test", admin_url: null };
+  const preset: ClientPreset = { kind: "fixture", name: "Provider", icon: "custom", provider: null, base_url: cn.base_url, admin_url: null, model: "", endpoints: [cn, global] };
+  expect(presetEndpointName(preset, undefined, "国内", "全球")).toBe("Provider");
+  expect(presetEndpointName(preset, cn, "国内", "全球")).toBe("Provider · 国内");
+  expect(presetEndpointName(preset, global, "国内", "全球", "Provider · 国内")).toBe("Provider · 全球 · Plan");
+  expect(presetEndpointName(preset, cn, "国内", "全球", "Provider · 全球 · Plan")).toBe("Provider · 国内");
+  expect(presetEndpointName(preset, global, "国内", "全球", "My provider")).toBe("My provider");
+});
 
 describe("供应商目录的客户端边界", () => {
   it("双客户端各用自己的配置，单客户端条目只出现在对应列表", () => {

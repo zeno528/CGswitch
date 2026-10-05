@@ -37,7 +37,7 @@ describe("ProfileEdit 用量查询", () => {
 
   it("自定义预设不预填名称和模型输入框", () => {
     expect(source).toContain('setName("");');
-    expect(source).toContain('setName(kind === "custom" ? "" : preset.name);');
+    expect(source).toContain('setName(kind === "custom" ? "" : presetEndpointName(');
     expect(source).toContain('setModelValue(kind === "custom" ? "" : preset.model);');
   });
 

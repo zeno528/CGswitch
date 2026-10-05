@@ -174,7 +174,6 @@ pub fn run() {
     }));
 
     let paths = paths::app_paths().expect("无法定位用户数据目录");
-    let migrated_from_legacy = paths.migrated_from_legacy;
     let database = Arc::new(database::Database::open(&paths).expect("无法初始化 Budtty 数据库"));
     let context = AppContext::new_with_database(paths.clone(), database.clone());
     let oauth_state = auth::CodexOAuthState(Arc::new(auth::codex_oauth::CodexOAuthManager::new(
@@ -382,12 +381,6 @@ pub fn run() {
                 "[app.start] version=\"{}\" outcome=success msg=\"Budtty 启动\"",
                 env!("CARGO_PKG_VERSION")
             );
-            // 改名发生在 paths::app_paths()，那时 logger 还没挂上，只能延迟到这里补记
-            if migrated_from_legacy {
-                log::info!(
-                    "[app.migrate] from=\".cgswitch\" to=\".budtty\" outcome=success msg=\"用户数据目录已从旧版改名到 budtty\""
-                );
-            }
             // macOS 上窗口配置 visible:false 不生效（创建后实际处于可见状态），
             // 统一先隐藏一次；非静默启动时由前端在 settings 加载后 show()。
             if let Some(window) = app.get_webview_window("main") {

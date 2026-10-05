@@ -279,7 +279,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
       <div className="apple-edit-content">
         {!loaded ? null : items.length === 0 ? (
           <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}>
-            <p className="muted">{t("empty")}</p>
+            <p className="muted">{tProfiles("empty.description")}</p>
             <button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={() => { setProfileName(""); setModalProfile(null); setModal("capture"); }}>
               <Camera className="h-4 w-4" strokeWidth={2} />
               {tProfiles("toolbar.capture")}
@@ -305,7 +305,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
           </DndContext>
         )}
       </div>
-      <ProfileNameDialog mode={modal} name={profileName} busy={busy} description={modal === "capture" ? t("captureDescription") : undefined} onName={setProfileName} onClose={() => setModal(null)} onSubmit={() => void submitModal()} />
+      <ProfileNameDialog mode={modal} name={profileName} busy={busy} onName={setProfileName} onClose={() => setModal(null)} onSubmit={() => void submitModal()} />
     </section>
   );
 }

@@ -9,7 +9,7 @@ import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/
 import EndpointField from "../../components/EndpointField";
 import PresetGrid from "../../components/PresetGrid";
 import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
-import { claudeBalanceQueryKinds, claudePresets, claudePresetByKind } from "../../presets";
+import { claudeBalanceQueryKinds, claudePresets, claudePresetByKind, presetEndpointName, type PresetEndpoint } from "../../presets";
 import ProfileIconEdit from "../profiles/ProfileIconEdit";
 import ClaudeCommonTemplateDialog from "./ClaudeCommonTemplateDialog";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings, patchBypassPermissions } from "./profileEnvText";
@@ -173,12 +173,22 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     };
   });
 
-  const selectPreset = (nextKind: string) => {
+  const selectEndpoint = (endpoint: PresetEndpoint) => {
+    if (create && selectedPreset) {
+      setName((current) => presetEndpointName(selectedPreset, endpoint, tProfiles("edit.endpointRegionCn"), tProfiles("edit.endpointRegionGlobal"), current));
+    }
+    setBaseUrl(endpoint.base_url);
+    setAdminUrl(endpoint.admin_url ?? "");
+    setFetchedModels([]);
+  };
+
+  const selectPreset = (nextKind: string, endpoint?: PresetEndpoint) => {
+    if (nextKind === presetKind && endpoint) { selectEndpoint(endpoint); return; }
     const preset = claudePresets.find((item) => item.kind === nextKind);
     if (!preset) return;
     const nextModelMappings = emptyModelMappings();
     setPresetKind(preset.kind);
-    setName(preset.kind === "custom" ? "" : preset.name);
+    setName(preset.kind === "custom" ? "" : presetEndpointName(preset, preset.endpoints?.[0], tProfiles("edit.endpointRegionCn"), tProfiles("edit.endpointRegionGlobal")));
     setBaseUrl(preset.base_url);
     setAuthToken("");
     setEnvText((current) => {
@@ -371,7 +381,13 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
       </div>
       <div className="apple-edit-content">
         <div className="apple-edit-surface">
-          {create ? <PresetGrid presets={claudePresets} selectedKind={presetKind} onSelect={selectPreset} title={tProfiles("edit.selectProvider")} /> : null}
+          {create ? (
+            <PresetGrid
+              presets={claudePresets} selectedKind={presetKind} onSelect={selectPreset}
+              title={tProfiles("edit.selectProvider")} endpointTitle={tProfiles("edit.selectEndpoint")}
+              baseUrl={baseUrl} regionCn={tProfiles("edit.endpointRegionCn")} regionGlobal={tProfiles("edit.endpointRegionGlobal")}
+            />
+          ) : null}
           <div className="apple-panel-section">
             <ProviderIdentityFields
               idPrefix="claude-profile" name={name} description={description}
@@ -390,7 +406,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
               <span className="shrink-0 font-medium text-(--text-secondary)">{t("protocolAnthropic")}</span>
             </div>
             <label className="field-label mb-1.5 mt-4 block">{t("baseUrlLabel")}</label>
-            {presetEndpoints ? (
+            {!create && presetEndpoints ? (
               <EndpointField
                 value={baseUrl}
                 onChange={setBaseUrl}
