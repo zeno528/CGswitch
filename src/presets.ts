@@ -24,14 +24,14 @@ export interface ClientPreset {
   endpoints?: readonly PresetEndpoint[];
 }
 
-/** 支持余额/用量查询的供应商（以 provider_id 键控）；加供应商时在这里加一行即可 */
-export const balanceQueryProviders = new Set(["deepseek", "minimax", "ZAI"]);
+/** 支持余额/用量查询的供应商（卡片统一读 profile.provider，但 Codex 卡片装的是 provider_id、Claude 卡片装的是 kind；同一厂商两端 id 不同时两行都要写，如 ZAI / zhipu）；加供应商时在这里加一行即可 */
+export const balanceQueryProviders = new Set(["deepseek", "minimax", "ZAI", "zhipu"]);
 
 /** Claude providers with the same supported usage endpoints. */
-export const claudeBalanceQueryKinds = new Set(["deepseek", "minimax"]);
+export const claudeBalanceQueryKinds = new Set(["deepseek", "minimax", "zhipu"]);
 
 /** 文案使用“用量”的供应商；DeepSeek 保持“余额”，ChatGPT 也统一使用“用量”。 */
-export const usageQueryProviders = new Set(["minimax", "ZAI"]);
+export const usageQueryProviders = new Set(["minimax", "ZAI", "zhipu"]);
 
 /** 余额/用量胶囊变色（已用 <70% 绿 / 70-89 9、橙 / ≥90% 红；负余额红色） */
 export function balanceChipClass(usagePercent: number | null, totalBalance: string | null = null): string {

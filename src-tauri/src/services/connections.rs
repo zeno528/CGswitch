@@ -58,10 +58,97 @@ fn preferred_deepseek_balance(mut balances: Vec<ProfileBalanceInfo>) -> Vec<Prof
 #[cfg(test)]
 mod tests {
     use super::{
-        preferred_deepseek_balance, provider_http_error_message, provider_request_error_message,
-        quota_failure_error, subscription_http_error_message, subscription_request_error_message,
+        claude_balance_base, preferred_deepseek_balance, provider_default_balance_base,
+        provider_request_error_message, quota_failure_error, subscription_http_error_message,
+        subscription_request_error_message,
     };
     use crate::models::ProfileBalanceInfo;
+
+    #[tokio::test]
+    async fn connection_latency_includes_response_body_for_both_clients() {
+        use std::io::{BufRead, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            for status in [200, 200, 401, 401] {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut reader = std::io::BufReader::new(&stream);
+                loop {
+                    let mut line = String::new();
+                    assert!(reader.read_line(&mut line).unwrap() > 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                let body = if status == 200 {
+                    r#"{"data":[]}"#
+                } else {
+                    r#"{"error":"denied"}"#
+                };
+                write!(
+                    stream,
+                    "HTTP/1.1 {status} Status\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                )
+                .unwrap();
+                stream.flush().unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(150));
+                stream.write_all(body.as_bytes()).unwrap();
+            }
+        });
+        for status in [200, 401] {
+            let codex = super::test_provider_connection(&base, "fixture-key")
+                .await
+                .unwrap();
+            let claude = super::super::claude::test_claude_connection(&base, "fixture-key")
+                .await
+                .unwrap();
+            for result in [codex, claude] {
+                assert_eq!(result.ok, status == 200);
+                assert_eq!(result.status, Some(status));
+                assert!(result.latency_ms.unwrap() >= 100, "{result:?}");
+            }
+        }
+        server.join().unwrap();
+        let invalid = super::super::claude::test_claude_connection("", "fixture-key")
+            .await
+            .unwrap();
+        assert_eq!(invalid.latency_ms, None, "准备阶段失败不应产生请求耗时");
+    }
+
+    #[tokio::test]
+    async fn opencode_probe_sends_credentials_without_inference_payload() {
+        use std::io::{BufRead, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut headers = String::new();
+            let mut reader = std::io::BufReader::new(&stream);
+            loop {
+                let mut line = String::new();
+                assert!(reader.read_line(&mut line).unwrap() > 0);
+                if line == "\r\n" {
+                    break;
+                }
+                headers.push_str(&line);
+            }
+            stream.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 14\r\nConnection: close\r\n\r\nmodel required").unwrap();
+            headers.to_ascii_lowercase()
+        });
+        let result = super::test_opencode_connection(&base, "fixture-key", "source=test")
+            .await
+            .unwrap();
+        let headers = server.join().unwrap();
+        assert!(headers.starts_with("post /responses "));
+        assert!(headers.contains("authorization: bearer fixture-key\r\n"));
+        assert!(headers
+            .lines()
+            .filter(|line| line.starts_with("content-length:"))
+            .all(|line| line == "content-length: 0"));
+        assert!(!headers.contains("transfer-encoding:"));
+        assert!(result.ok);
+    }
 
     fn balance(currency: &str, total: &str) -> ProfileBalanceInfo {
         ProfileBalanceInfo {
@@ -104,48 +191,23 @@ mod tests {
     }
 
     #[test]
-    fn opencode_probe_model_is_in_responses_catalog() {
-        let catalog: serde_json::Value =
-            serde_json::from_slice(crate::codex_builtin::OPENCODE_MODELS).unwrap();
-        let in_catalog = catalog["models"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|model| model["slug"] == super::OPENCODE_PROBE_MODEL);
-        assert!(
-            in_catalog,
-            "探针模型 {} 不在 OpenCode responses 组目录中",
-            super::OPENCODE_PROBE_MODEL
+    fn claude_zhipu_resolves_to_the_shared_usage_vendor() {
+        // Claude 侧 kind 是 zhipu（Codex 侧叫 ZAI）。两处漏配都是静默失败：
+        // 归一漏 zhipu → 回退到错误默认端点；默认表漏 zhipu → 调用点无条件求值，直接撞 unreachable!()。
+        assert_eq!(
+            claude_balance_base("zhipu", Some("https://gateway.example.test/anthropic")),
+            "https://gateway.example.test"
         );
+        assert!(provider_default_balance_base("zhipu").starts_with("https://"));
     }
 
     #[test]
-    fn provider_connection_errors_use_actionable_messages() {
-        assert_eq!(
-            provider_http_error_message(reqwest::StatusCode::UNAUTHORIZED),
-            "认证失败，请检查 API Key 后重试"
-        );
-        assert_eq!(
-            provider_http_error_message(reqwest::StatusCode::FORBIDDEN),
-            "服务商拒绝了请求，请检查后重试"
-        );
-        assert_eq!(
-            provider_http_error_message(reqwest::StatusCode::NOT_FOUND),
-            "API 端点不存在或路径不正确，请检查后重试"
-        );
-        assert_eq!(
-            provider_http_error_message(reqwest::StatusCode::BAD_REQUEST),
-            "请求未成功，请检查 API 端点、API Key 或网络后重试"
-        );
-
+    fn provider_request_errors_return_localizable_codes() {
         let error = reqwest::Client::new()
             .get("not a valid URL")
             .build()
             .unwrap_err();
-        assert_eq!(
-            provider_request_error_message(&error),
-            "API 端点格式无效，请检查后重试"
-        );
+        assert_eq!(provider_request_error_message(&error), "invalidEndpoint");
     }
 
     #[test]
@@ -334,25 +396,98 @@ fn reqwest_error_message(error: &reqwest::Error) -> String {
     }
 }
 
-fn provider_http_error_message(status: reqwest::StatusCode) -> &'static str {
-    match status {
-        reqwest::StatusCode::UNAUTHORIZED => "认证失败，请检查 API Key 后重试",
-        reqwest::StatusCode::FORBIDDEN => "服务商拒绝了请求，请检查后重试",
-        reqwest::StatusCode::NOT_FOUND => "API 端点不存在或路径不正确，请检查后重试",
-        _ => "请求未成功，请检查 API 端点、API Key 或网络后重试",
+pub(super) fn provider_request_error_message(error: &reqwest::Error) -> &'static str {
+    if error.is_builder() {
+        "invalidEndpoint"
+    } else if error.is_timeout() {
+        "timeout"
+    } else if error.is_connect() {
+        "unreachable"
+    } else {
+        "requestFailed"
     }
 }
 
-fn provider_request_error_message(error: &reqwest::Error) -> &'static str {
-    if error.is_builder() {
-        "API 端点格式无效，请检查后重试"
-    } else if error.is_timeout() {
-        "连接 API 端点超时，请检查后重试"
-    } else if error.is_connect() {
-        "无法访问 API 端点，请检查后重试"
-    } else {
-        "请求未成功，请检查 API 端点、API Key 或网络后重试"
+pub(super) fn provider_response_error(body: &str, key: &str) -> String {
+    let detail = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            connection_error_from_body(&value).or_else(|| {
+                value
+                    .get("message")
+                    .or_else(|| value.get("msg"))
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_owned)
+            })
+        });
+    super::model_fetch::truncate_body(super::model_fetch::redact(&detail.unwrap_or_default(), key))
+}
+
+/// OpenCode Go 的 /models 不校验密钥；空请求只证明原生端点响应，不触发推理。
+async fn test_opencode_connection(
+    base_url: &str,
+    key: &str,
+    context: &str,
+) -> AppResult<CodexProfileConnectionResult> {
+    let (client, proxy) = http_client()?;
+    let request = client
+        .post(format!("{}/responses", base_url.trim_end_matches('/')))
+        .bearer_auth(key);
+    let start = std::time::Instant::now();
+    let response = match request
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            return Ok(CodexProfileConnectionResult {
+                ok: false,
+                latency_ms: None,
+                status: error.status().map(|status| status.as_u16()),
+                error: Some(provider_request_error_message(&error).to_owned()),
+            })
+        }
+    };
+    let status = response.status();
+    let body = match response.text().await {
+        Ok(body) => body,
+        Err(error) => {
+            return Ok(CodexProfileConnectionResult {
+                ok: false,
+                latency_ms: Some(start.elapsed().as_millis()),
+                status: None,
+                error: Some(provider_request_error_message(&error).to_owned()),
+            })
+        }
+    };
+    let latency_ms = start.elapsed().as_millis();
+    let text = body.to_lowercase();
+    let missing_parameters = matches!(status.as_u16(), 400 | 422)
+        && ["model", "messages", "input", "body", "json"]
+            .iter()
+            .any(|field| text.contains(field))
+        && [
+            "required", "missing", "empty", "expect", "缺少", "必填", "为空",
+        ]
+        .iter()
+        .any(|word| text.contains(word));
+    let ok = status == reqwest::StatusCode::UNSUPPORTED_MEDIA_TYPE
+        || missing_parameters
+        || (status.is_success()
+            && serde_json::from_str(&body)
+                .ok()
+                .and_then(|value| connection_error_from_body(&value))
+                .is_none());
+    if ok {
+        log_provider_connect_success(context, status, latency_ms, &proxy);
     }
+    Ok(CodexProfileConnectionResult {
+        ok,
+        latency_ms: Some(latency_ms),
+        status: Some(status.as_u16()),
+        error: (!ok).then(|| provider_response_error(&body, key)),
+    })
 }
 
 fn subscription_http_error_message(status: reqwest::StatusCode, body: &str) -> &'static str {
@@ -386,14 +521,14 @@ pub(crate) fn connection_error_from_body(value: &serde_json::Value) -> Option<St
             .get("message")
             .and_then(serde_json::Value::as_str)
             .or_else(|| error.as_str());
-        return Some(message.unwrap_or("接口返回错误").to_string());
+        return Some(message.unwrap_or("requestFailed").to_string());
     }
     if value.get("success").and_then(serde_json::Value::as_bool) == Some(false) {
         let message = value
             .get("msg")
             .and_then(serde_json::Value::as_str)
             .or_else(|| value.get("message").and_then(serde_json::Value::as_str));
-        return Some(message.unwrap_or("接口返回错误").to_string());
+        return Some(message.unwrap_or("requestFailed").to_string());
     }
     if let Some(code) = value.get("code") {
         let is_error_code = match code {
@@ -406,65 +541,10 @@ pub(crate) fn connection_error_from_body(value: &serde_json::Value) -> Option<St
                 .get("msg")
                 .and_then(serde_json::Value::as_str)
                 .or_else(|| value.get("message").and_then(serde_json::Value::as_str));
-            return Some(message.unwrap_or("接口返回错误").to_string());
+            return Some(message.unwrap_or("requestFailed").to_string());
         }
     }
     None
-}
-
-/// 探针模型必须是 OpenCode Go responses 组目录（builtin opencode-models.json）里的
-/// slug；组外模型会被网关按「模型不存在」拒绝，有效 Key 也误报连通失败。
-const OPENCODE_PROBE_MODEL: &str = "grok-4.6";
-
-/// OpenCode Go 的 `/models` 不校验密钥，使用无效参数探针触发鉴权后的请求校验。
-async fn test_opencode_connection(
-    base_url: &str,
-    api_key: &str,
-    context: &str,
-) -> AppResult<CodexProfileConnectionResult> {
-    let responses_url = format!("{}/responses", base_url.trim_end_matches('/'));
-    let (client, proxy) = http_client()?;
-    let start = std::time::Instant::now();
-    let response = client
-        .post(&responses_url)
-        .bearer_auth(api_key)
-        .json(&serde_json::json!({
-            "model": OPENCODE_PROBE_MODEL,
-            "input": "ping",
-            "max_output_tokens": 0,
-        }))
-        .send()
-        .await;
-
-    match response {
-        Ok(response) => {
-            let status = response.status();
-            let latency_ms = Some(start.elapsed().as_millis());
-            let body = response.text().await.unwrap_or_default();
-            let probe_validation_rejection =
-                matches!(
-                    status,
-                    reqwest::StatusCode::BAD_REQUEST | reqwest::StatusCode::UNPROCESSABLE_ENTITY
-                ) && body.to_ascii_lowercase().contains("max_output_tokens");
-            let ok = status.is_success() || probe_validation_rejection;
-            let error = (!ok).then(|| provider_http_error_message(status).to_string());
-            if ok {
-                log_provider_connect_success(context, status, start.elapsed().as_millis(), &proxy);
-            }
-            Ok(CodexProfileConnectionResult {
-                ok,
-                latency_ms,
-                status: Some(status.as_u16()),
-                error,
-            })
-        }
-        Err(error) => Ok(CodexProfileConnectionResult {
-            ok: false,
-            latency_ms: None,
-            status: error.status().map(|status| status.as_u16()),
-            error: Some(provider_request_error_message(&error).to_string()),
-        }),
-    }
 }
 
 fn log_provider_connect_success(
@@ -610,52 +690,31 @@ async fn test_models_endpoint(
     match client.get(&models_url).bearer_auth(api_key).send().await {
         Ok(response) => {
             let status = response.status();
-            let latency_ms = Some(start.elapsed().as_millis());
-            if status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            let latency_ms = start.elapsed().as_millis();
+            let error = if status.is_success() {
                 // 部分服务端（如智谱 /api/v1/models）用 HTTP 200 包装认证失败，
                 // 只认状态码会把“密钥错误/地址错误”误判成连通成功，必须校验响应体。
-                let body = response.text().await.unwrap_or_default();
                 match serde_json::from_str::<serde_json::Value>(&body) {
-                    Ok(json) => {
-                        if let Some(error) = connection_error_from_body(&json) {
-                            Ok(CodexProfileConnectionResult {
-                                ok: false,
-                                latency_ms,
-                                status: Some(status.as_u16()),
-                                error: Some(error),
-                            })
-                        } else {
-                            log_provider_connect_success(
-                                context,
-                                status,
-                                start.elapsed().as_millis(),
-                                &proxy,
-                            );
-                            Ok(CodexProfileConnectionResult {
-                                ok: true,
-                                latency_ms,
-                                status: Some(status.as_u16()),
-                                error: None,
-                            })
-                        }
-                    }
-                    Err(_) => Ok(CodexProfileConnectionResult {
-                        ok: false,
-                        latency_ms,
-                        status: Some(status.as_u16()),
-                        error: Some(
-                            "请求未成功，请检查 API 端点、API Key 或网络后重试".to_string(),
-                        ),
+                    Ok(json) => connection_error_from_body(&json).map(|detail| {
+                        super::model_fetch::truncate_body(super::model_fetch::redact(
+                            &detail, api_key,
+                        ))
                     }),
+                    Err(_) => Some("requestFailed".to_string()),
                 }
             } else {
-                Ok(CodexProfileConnectionResult {
-                    ok: false,
-                    latency_ms,
-                    status: Some(status.as_u16()),
-                    error: Some(provider_http_error_message(status).to_string()),
-                })
+                Some(provider_response_error(&body, api_key))
+            };
+            if error.is_none() {
+                log_provider_connect_success(context, status, latency_ms, &proxy);
             }
+            Ok(CodexProfileConnectionResult {
+                ok: error.is_none(),
+                latency_ms: Some(latency_ms),
+                status: Some(status.as_u16()),
+                error,
+            })
         }
         Err(error) => {
             let status = error.status().map(|status| status.as_u16());
@@ -748,12 +807,14 @@ async fn query_minimax_balance(
 }
 
 /// 余额/用量查询的厂商默认端点：配置里 base_url 缺失或留空时回退到这里。
-/// 两处调用方都已把 provider 限定在 deepseek/minimax（/ZAI）集合内，其余值不可达。
+/// 两处调用方都已把 provider 限定在 deepseek/minimax（/ZAI/zhipu）集合内，其余值不可达。
 fn provider_default_balance_base(provider: &str) -> &'static str {
     match provider {
         "deepseek" => "https://api.deepseek.com",
         "minimax" => "https://api.minimaxi.com/v1",
         "ZAI" => "https://open.bigmodel.cn/api/v1",
+        // Claude 侧的智谱 kind；地址与 presets.ts 的 claude 预设一致
+        "zhipu" => "https://open.bigmodel.cn/api/anthropic",
         _ => unreachable!("调用方已限定 provider 集合"),
     }
 }
@@ -768,7 +829,7 @@ async fn query_supported_provider_balance(
     match provider {
         "deepseek" => query_deepseek_balance(&client, base, api_key, start).await,
         "minimax" => query_minimax_balance(&client, base, api_key, start).await,
-        "ZAI" => query_zhipu_usage(&client, base, api_key, start).await,
+        "ZAI" | "zhipu" => query_zhipu_usage(&client, base, api_key, start).await,
         _ => Err(app_err!("该供应商不支持余额/用量查询")),
     }
 }
@@ -784,7 +845,7 @@ fn claude_balance_base(kind: &str, base_url: Option<&str>) -> String {
     }
     let base = base.strip_suffix("/anthropic").unwrap_or(base);
     match kind {
-        "deepseek" => base.to_string(),
+        "deepseek" | "zhipu" => base.to_string(),
         "minimax" => {
             let base = if base.ends_with("/v1") {
                 base.to_string()
@@ -1264,6 +1325,16 @@ impl AppContext {
         {
             Ok(response) => {
                 let status = response.status();
+                let text = match response.text().await {
+                    Ok(text) => text,
+                    Err(error) => {
+                        tauri_plugin_log::log::warn!(
+                            "[chatgpt.connect.test] {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"测试连通响应读取失败\"",
+                            status.as_u16(),
+                        );
+                        String::new()
+                    }
+                };
                 let latency_ms = start.elapsed().as_millis();
                 if status.is_success() {
                     // 成功也留痕：延迟数据只存在于弹窗，事后无从追溯
@@ -1279,23 +1350,12 @@ impl AppContext {
                         error: None,
                     })
                 } else {
-                    let text = if status == reqwest::StatusCode::UNAUTHORIZED
-                        || status == reqwest::StatusCode::FORBIDDEN
-                    {
-                        match response.text().await {
-                            Ok(text) => text,
-                            Err(error) => {
-                                tauri_plugin_log::log::warn!(
-                                    "[chatgpt.connect.test] {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"测试连通响应读取失败\"",
-                                    status.as_u16(),
-                                );
-                                String::new()
-                            }
-                        }
+                    let diagnostic_body = if matches!(status.as_u16(), 401 | 403) {
+                        &text
                     } else {
-                        String::new()
+                        ""
                     };
-                    let message = subscription_http_error_message(status, &text);
+                    let message = subscription_http_error_message(status, diagnostic_body);
                     // 测试连通的失败只以返回值形式存在（不是 Err），弹窗错过就无迹可寻
                     tauri_plugin_log::log::warn!(
                         "[chatgpt.connect.test] {context} outcome=failure failure_kind=http_error status_code={} proxy={} error={message:?} msg=\"测试连通失败\"",
@@ -1457,7 +1517,7 @@ impl AppContext {
     pub async fn claude_get_profile_balance(&self, id: &str) -> AppResult<ProfileBalance> {
         let profile = self.database.claude_profile(id)?;
         let kind = profile.kind.as_deref().unwrap_or_default();
-        if kind != "deepseek" && kind != "minimax" {
+        if kind != "deepseek" && kind != "minimax" && kind != "zhipu" {
             return Err(app_err!("该 Claude 供应商不支持用量查询"));
         }
         let api_key = profile

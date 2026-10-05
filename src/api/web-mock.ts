@@ -361,27 +361,20 @@ function connectionErrorFromBody(value: unknown): string | null {
       error && typeof error === "object"
         ? (error as Record<string, unknown>).message
         : error;
-    return typeof message === "string" && message ? message : "接口返回错误";
+    return typeof message === "string" && message ? message : "requestFailed";
   }
   if (json.success === false) {
     const message = typeof json.msg === "string" ? json.msg : json.message;
-    return typeof message === "string" && message ? message : "接口返回错误";
+    return typeof message === "string" && message ? message : "requestFailed";
   }
   const code = json.code;
   const codeNumber =
     typeof code === "number" ? code : typeof code === "string" ? Number(code) : NaN;
   if (Number.isFinite(codeNumber) && codeNumber >= 400) {
     const message = typeof json.msg === "string" ? json.msg : json.message;
-    return typeof message === "string" && message ? message : "接口返回错误";
+    return typeof message === "string" && message ? message : "requestFailed";
   }
   return null;
-}
-
-function providerHttpErrorMessage(status: number): string {
-  if (status === 401) return "认证失败，请检查 API Key 后重试";
-  if (status === 403) return "服务商拒绝了请求，请检查后重试";
-  if (status === 404) return "API 端点不存在或路径不正确，请检查后重试";
-  return "请求未成功，请检查 API 端点、API Key 或网络后重试";
 }
 
 function providerEndpointFormatError(baseUrl: string): CodexProfileConnectionResult | null {
@@ -392,41 +385,49 @@ function providerEndpointFormatError(baseUrl: string): CodexProfileConnectionRes
     // 非法 URL 视作格式无效
   }
   if (protocol === "http:" || protocol === "https:") return null;
-  return { ok: false, latency_ms: null, status: null, error: "API 端点格式无效，请检查后重试" };
+  return { ok: false, latency_ms: null, status: null, error: "invalidEndpoint" };
 }
 
 function isOpenCodeGoBaseUrl(baseUrl: string): boolean {
   return baseUrl.replace(/\/+$/, "").toLowerCase() === "https://opencode.ai/zen/go/v1";
 }
 
-async function testOpenCodeConnection(
+async function testProviderConnection(
   baseUrl: string,
   apiKey: string,
 ): Promise<CodexProfileConnectionResult> {
   const start = Date.now();
+  const emptyProbe = isOpenCodeGoBaseUrl(baseUrl);
   try {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/responses`, {
-      method: "POST",
+    const res = await fetch(`${baseUrl.replace(/\/+$/, "")}/${emptyProbe ? "responses" : "models"}`, {
+      method: emptyProbe ? "POST" : "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+        ...(emptyProbe ? { "Content-Type": "application/json" } : {}),
       },
-      body: JSON.stringify({
-        model: "grok-4.6",
-        input: "ping",
-        max_output_tokens: 0,
-      }),
     });
-    const latency_ms = Date.now() - start;
     const body = await res.text();
+    const latency_ms = Date.now() - start;
+    const text = body.toLowerCase();
     const probeValidationRejection =
-      [400, 422].includes(res.status) && body.toLowerCase().includes("max_output_tokens");
-    const ok = res.ok || probeValidationRejection;
+      emptyProbe && [400, 422].includes(res.status) &&
+      ["model", "messages", "input", "body", "json"].some((field) => text.includes(field)) &&
+      ["required", "missing", "empty", "expect", "缺少", "必填", "为空"].some((word) => text.includes(word));
+    let error: string | null = null;
+    let detail = "";
+    try {
+      const json = JSON.parse(body);
+      error = connectionErrorFromBody(json);
+      detail = error ?? (typeof json?.message === "string" ? json.message : typeof json?.msg === "string" ? json.msg : "");
+    } catch {
+      if (!emptyProbe && res.ok) error = "requestFailed";
+    }
+    const ok = (res.ok && !error) || probeValidationRejection || (emptyProbe && res.status === 415);
     return {
       ok,
       latency_ms,
       status: res.status,
-      error: ok ? null : providerHttpErrorMessage(res.status),
+      error: ok ? null : (detail || error || "").split(apiKey).join("[REDACTED]").slice(0, 400),
     };
   } catch {
     return {
@@ -886,24 +887,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (!baseUrl.trim()) throw new Error("请填写 API 端点");
       const endpointFormatError = providerEndpointFormatError(baseUrl.trim());
       if (endpointFormatError) return endpointFormatError as T;
-      if (isOpenCodeGoBaseUrl(baseUrl.trim())) {
-        return (await testOpenCodeConnection(baseUrl.trim(), apiKey.trim())) as T;
-      }
-      const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-      const start = Date.now();
-      try {
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${apiKey.trim()}` },
-        });
-        return {
-          ok: res.ok,
-          latency_ms: Date.now() - start,
-          status: res.status,
-          error: res.ok ? null : `接口返回 HTTP ${res.status}`,
-        } as T;
-      } catch {
-        throw new Error("网络请求被浏览器拦截，请在桌面版验证连通性");
-      }
+      return (await testProviderConnection(baseUrl.trim(), apiKey.trim())) as T;
     }
     case "codex_test_profile_connection": {
       const profile = webProfiles.find((item) => item.id === args?.id);
@@ -918,46 +902,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (!baseUrl.trim()) throw new Error("请填写 API 端点");
       const endpointFormatError = providerEndpointFormatError(baseUrl.trim());
       if (endpointFormatError) return endpointFormatError as T;
-      if (isOpenCodeGoBaseUrl(baseUrl.trim())) {
-        return (await testOpenCodeConnection(baseUrl.trim(), apiKey.trim())) as T;
-      }
-      // 网页调试模式做真实请求，避免“随便填都能成功”的假象；
-      // 跨域被浏览器拦截时明确提示用桌面版验证
-      const url = `${baseUrl.replace(/\/+$/, "")}/models`;
-      const start = Date.now();
-      try {
-        const res = await fetch(url, {
-          headers: { Authorization: `Bearer ${apiKey.trim()}` },
-        });
-        const latency_ms = Date.now() - start;
-        if (res.ok) {
-          const text = await res.text();
-          let json: unknown = null;
-          try {
-            json = JSON.parse(text);
-          } catch {
-            return {
-              ok: false,
-              latency_ms,
-              status: res.status,
-              error: providerHttpErrorMessage(res.status),
-            } as T;
-          }
-          const error = connectionErrorFromBody(json);
-          if (error) {
-            return { ok: false, latency_ms, status: res.status, error } as T;
-          }
-          return { ok: true, latency_ms, status: res.status, error: null } as T;
-        }
-        return { ok: false, latency_ms, status: res.status, error: providerHttpErrorMessage(res.status) } as T;
-      } catch {
-        return {
-          ok: false,
-          latency_ms: null,
-          status: null,
-          error: "连接失败：浏览器跨域限制无法真实请求，请用桌面版验证",
-        } as T;
-      }
+      return (await testProviderConnection(baseUrl.trim(), apiKey.trim())) as T;
     }
     case "codex_get_profile_balance": {
       const profile = webProfiles.find((item) => item.id === args?.id);
@@ -1006,9 +951,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "claude_get_profile_balance": {
       const profile = webClaudeProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("Claude 供应商配置不存在");
-      if (profile.kind !== "deepseek" && profile.kind !== "minimax") throw new Error("该 Claude 供应商不支持用量查询");
+      if (profile.kind !== "deepseek" && profile.kind !== "minimax" && profile.kind !== "zhipu") throw new Error("该 Claude 供应商不支持用量查询");
       await new Promise((resolve) => setTimeout(resolve, 400));
-      return profile.kind === "minimax"
+      return profile.kind !== "deepseek"
         ? { is_available: true, balance_infos: [{ currency: "", total_balance: "", usage_percent: 15, usage_reset: "2h23m", usage_label: "5小时", weekly_usage_percent: 4, weekly_reset: "5d21h", weekly_label: "7天" }], latency_ms: 210 } as T
         : { is_available: true, balance_infos: [{ currency: "CNY", total_balance: "110.00", usage_percent: null, usage_reset: null, weekly_usage_percent: null, weekly_reset: null }], latency_ms: 210 } as T;
     }
@@ -1313,7 +1258,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (!profile) throw new Error("Claude 供应商配置不存在");
       if (!profile.base_url?.trim()) throw new Error("请先填写 API 地址");
       if (!profile.auth_token?.trim()) throw new Error("请先填写 API Token");
-      return 42 as T;
+      throw new Error("请在桌面版验证 Claude API 端点和密钥，浏览器调试不模拟连通成功");
     }
     case "claude_delete_profile": {
       // 使用中的配置不可删除：与后端守卫一致
@@ -1334,10 +1279,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       return ["glm-5.3", "glm-5.3-air", "glm-5.3[1m]"] as T;
     }
     case "claude_test_connection": {
-      // 浏览器侧不发真实 HTTP：与 claude_test_profile 同口径，校验必填后回固定延迟
+      // 浏览器侧不发真实 HTTP，不能据必填字段模拟连通成功。
       if (!String(args?.baseUrl ?? "").trim()) throw new Error("请先填写 API 地址");
       if (!String(args?.authToken ?? "").trim()) throw new Error("请先填写 API Token");
-      return 42 as T;
+      throw new Error("请在桌面版验证 Claude API 端点和密钥，浏览器调试不模拟连通成功");
     }
     case "list_plugin_skills": {
       // 与后端一致：storePath 仅用于 Tauri 端跳过重复的插件列表解析，Web mock 直接读 fixture。

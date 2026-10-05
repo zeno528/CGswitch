@@ -11,6 +11,7 @@ import PresetGrid from "../../components/PresetGrid";
 import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
 import { claudeBalanceQueryKinds, claudePresets, claudePresetByKind } from "../../presets";
 import ProfileIconEdit from "../profiles/ProfileIconEdit";
+import { connectionErrorMessage, connectionExceptionMessage } from "../profiles/connectionText";
 import ClaudeCommonTemplateDialog from "./ClaudeCommonTemplateDialog";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings, patchBypassPermissions } from "./profileEnvText";
 import { buildSettingsText, emptyModelMappings, formatJsonText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras, type ClaudeModelDisplayKey, type ClaudeModelDisplayNames, type ClaudeModelMappingKey, type ClaudeModelMappings } from "./profileEnvText";
@@ -218,7 +219,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [envText]);
 
-  // 测试连通走真实调用路径 /v1/messages 判活（连通性真源）；获取模型只拉 /models，厂商兼容面没有时留空
+  // 获取模型与测试连通复用 GET /models，不发送推理请求。
   const fetchModelList = async (): Promise<string[]> => {
     if (!baseUrl.trim()) {
       feedback.warning(t("baseUrlRequired"));
@@ -236,7 +237,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
       else feedback.success(t("modelsFetched", { count: models.length }));
       return models;
     } catch (error) {
-      feedback.error(t("fetchFailed", { error: String(error) }));
+      feedback.error(t("fetchFailed", { error: connectionExceptionMessage(error, tProfiles) }));
       return [];
     } finally {
       setFetchingModels(false);
@@ -247,10 +248,11 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
     if (testing || !baseUrl.trim() || !authToken.trim()) return;
     setTesting(true);
     try {
-      const latency = await api.claudeTestConnection(baseUrl.trim(), authToken.trim());
-      feedback.success(t("connectionOk", { latency: ` · ${latency}ms` }));
+      const result = await api.claudeTestConnection(baseUrl.trim(), authToken.trim());
+      if (!result.ok) feedback.error(t("connectionFailed", { error: connectionErrorMessage(result, tProfiles) }));
+      else feedback.success(t("connectionOk", { latency: ` · ${result.latency_ms}ms` }));
     } catch (error) {
-      feedback.error(t("connectionFailed", { error: String(error) }));
+      feedback.error(t("connectionFailed", { error: connectionExceptionMessage(error, tProfiles) }));
     } finally {
       setTesting(false);
     }

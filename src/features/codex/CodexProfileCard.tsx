@@ -2,13 +2,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { api } from "../../api";
-import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
+import { profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
 import { balanceQueryProviders } from "../../presets";
 import type { ProfileBalanceInfo, CodexProfileSummary } from "../../types";
 import { useFeedback } from "../../app/Feedback";
 import SortableCard from "../../components/SortableCard";
 import { ProfileCardActions, ProfileCardContent, connectionGate } from "../profiles/ProfileCard";
 import { useProfileBalance } from "../profiles/useProfileBalance";
+import { connectionErrorMessage, connectionFailureMessage } from "../profiles/connectionText";
 
 interface ProfileCardProps {
   profile: CodexProfileSummary;
@@ -68,12 +69,6 @@ export default function CodexProfileCard({
     source: "codex",
   });
 
-  // 测连通失败文案：凭证失效的结局走本地化可行动文案，其余保留后端原文
-  const connectionFailureToast = (error: string) =>
-    authQuotaErrorKind(error) === "auth_expired"
-      ? t("connection.testFailed", { error: t("balance.authInvalidToast") })
-      : t("connection.failed", { error });
-
   const testConnection = async () => {
     if (testing) return;
     if (profile.provider && !profile.has_base_url) {
@@ -88,12 +83,13 @@ export default function CodexProfileCard({
     try {
       const result = await api.codexTestProfileConnection(profile.id);
       if (result.ok) {
-        feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
+        if (result.status != null && result.status >= 400) feedback.info(t("connection.reachable"));
+        else feedback.success(t("connection.ok", { latency: result.latency_ms != null ? ` · ${result.latency_ms}ms` : "" }));
       } else {
-        feedback.error(connectionFailureToast(result.error ?? t("connection.unknownError")));
+        feedback.error(connectionFailureMessage(profile.provider ? connectionErrorMessage(result, t) : result.error ?? t("connection.unknownError"), t, result.status));
       }
     } catch (error) {
-      feedback.error(connectionFailureToast(String(error)));
+      feedback.error(connectionFailureMessage(String(error), t));
     } finally {
       setTesting(false);
     }

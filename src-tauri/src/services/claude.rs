@@ -11,7 +11,10 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use super::model_fetch::{ends_with_version_segment, redact, truncate_body, FETCH_TIMEOUT_SECS};
+use super::connections::{
+    connection_error_from_body, provider_request_error_message, provider_response_error,
+};
+use super::model_fetch::{ends_with_version_segment, FETCH_TIMEOUT_SECS};
 use super::plugins::SkillTool;
 use super::sync;
 use super::AppContext;
@@ -1073,8 +1076,11 @@ impl AppContext {
             .reorder_claude_profiles(ids, &now_ms().to_string())
     }
 
-    /// 卡片上的测试连通：用已存凭证向真实调用路径 /v1/messages 判活，成功回传耗时（对齐 Codex 卡片测试按钮）。
-    pub async fn claude_test_profile(&self, id: &str) -> AppResult<u64> {
+    /// 卡片上的测试连通：用已存凭证发送空请求，与 Codex 共用诊断结果。
+    pub async fn claude_test_profile(
+        &self,
+        id: &str,
+    ) -> AppResult<super::CodexProfileConnectionResult> {
         let stored = self.database.claude_profile(id)?;
         let base_url = stored
             .base_url
@@ -1084,7 +1090,7 @@ impl AppContext {
             .auth_token
             .filter(|text| !text.trim().is_empty())
             .ok_or_else(|| app_err!("请先填写 API Token"))?;
-        probe_claude_messages_reachable(&base_url, &auth_token).await
+        test_claude_connection(&base_url, &auth_token).await
     }
 
     /// 完整复制配置（列值、图标、附加 env），新名称加 `copy` 后缀、同名追加序号，插到源卡片后面（对齐 Codex codex_duplicate_profile）。
@@ -1283,7 +1289,7 @@ impl AppContext {
 /// Anthropic 兼容的 /models 响应格式（官方与主流中转同形：data[].id）。
 #[derive(Debug, Deserialize)]
 struct ClaudeModelsResponse {
-    data: Option<Vec<ClaudeModelEntry>>,
+    data: Vec<ClaudeModelEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1303,12 +1309,19 @@ fn anthropic_client() -> AppResult<reqwest::Client> {
 ///
 /// 厂商兼容面（DeepSeek/Kimi 的 `{OpenAI根}/anthropic`）往往不实现 /models 路由：
 /// 此时剥掉 /anthropic 后缀回同根 OpenAI 面拉真实列表（先 `/v1/models` 后 `/models`）——
-/// 同一厂商同一把 Key，两个面的列表响应同为 data[].id 同构。连通性判活另由
-/// probe_claude_messages_reachable 走真实调用路径负责，两者互不掺和。
+/// 测试连通复用本查询，不向 Messages 发送空 POST 或推理负载。
 pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<Vec<String>> {
+    query_claude_models(base_url, auth_token, &mut None).await
+}
+
+async fn query_claude_models(
+    base_url: &str,
+    auth_token: &str,
+    latency_ms: &mut Option<u128>,
+) -> AppResult<Vec<String>> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.is_empty() {
-        return Err(app_err!("API 端点为空"));
+        return Err(app_err!("invalidEndpoint"));
     }
     if auth_token.trim().is_empty() {
         return Err(app_err!("请先填写 API Token 再获取模型列表"));
@@ -1327,6 +1340,8 @@ pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<
     };
 
     let client = anthropic_client()?;
+    let mut last_error = String::new();
+    let started = std::time::Instant::now();
     for url in candidate_urls {
         let response = client
             .get(&url)
@@ -1336,73 +1351,74 @@ pub async fn fetch_claude_models(base_url: &str, auth_token: &str) -> AppResult<
             .bearer_auth(auth_token)
             .send()
             .await
-            .map_err(|error| app_err!("请求失败: {error}"))?;
+            .map_err(|error| {
+                *latency_ms = Some(started.elapsed().as_millis());
+                app_err!("{}", provider_request_error_message(&error))
+            })?;
         let status = response.status();
+        let body = response.text().await;
+        *latency_ms = Some(started.elapsed().as_millis());
         if matches!(status.as_u16(), 404 | 405) {
+            last_error = format!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                provider_response_error(&body.unwrap_or_default(), auth_token)
+            );
             continue;
         }
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_default();
+        let body = body.map_err(|error| {
+            app_err!(
+                "HTTP {}: {}",
+                status.as_u16(),
+                provider_request_error_message(&error)
+            )
+        })?;
+        let json: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+        if !status.is_success() || connection_error_from_body(&json).is_some() {
             return Err(app_err!(
-                "HTTP {status}: {}",
-                truncate_body(redact(&body, auth_token))
+                "HTTP {}: {}",
+                status.as_u16(),
+                provider_response_error(&body, auth_token)
             ));
         }
-        let parsed: ClaudeModelsResponse = response
-            .json()
-            .await
-            .map_err(|error| app_err!("响应解析失败: {error}"))?;
-        let mut models: Vec<String> = parsed
-            .data
-            .unwrap_or_default()
-            .into_iter()
-            .map(|entry| entry.id)
-            .collect();
+        let parsed: ClaudeModelsResponse = serde_json::from_value(json)
+            .map_err(|_| app_err!("HTTP {}: requestFailed", status.as_u16()))?;
+        let mut models: Vec<String> = parsed.data.into_iter().map(|entry| entry.id).collect();
         models.sort();
         return Ok(models);
     }
-    // 全部候选都没有 /models 路由：模型列表留空，上层提示手动填模型。
-    Ok(Vec::new())
+    Err(app_err!("{last_error}"))
 }
 
-/// Claude 侧连通性判活的真源：POST 最小对话请求（1 token）到真实调用路径 /v1/messages
-/// （带 /v{N} 版本段的 base 挂在版本段下）。DeepSeek/Kimi 等厂商兼容面没有 /models，
-/// 但对话路径必然存在；未知模型名会被服务端自动映射或以 4xx 拒绝，均证明端点可达。
-/// 401/403 报凭证错误、404 报非 Anthropic 兼容面，其余任何 HTTP 响应都算连通，回传耗时毫秒。
-pub async fn probe_claude_messages_reachable(trimmed: &str, auth_token: &str) -> AppResult<u64> {
-    let trimmed = trimmed.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        return Err(app_err!("API 端点为空"));
-    }
-    let url = if ends_with_version_segment(trimmed) {
-        format!("{trimmed}/messages")
+/// 模型查询确认端点接受请求；失败保留实际 HTTP 状态，不推断配置是否可用。
+pub async fn test_claude_connection(
+    base_url: &str,
+    auth_token: &str,
+) -> AppResult<super::CodexProfileConnectionResult> {
+    let mut latency_ms = None;
+    let result = query_claude_models(base_url, auth_token, &mut latency_ms).await;
+    let error = result.as_ref().err().map(|error| error.0.clone());
+    let status = if result.is_ok() {
+        Some(200)
     } else {
-        format!("{trimmed}/v1/messages")
+        error
+            .as_deref()
+            .and_then(|error| error.strip_prefix("HTTP "))
+            .and_then(|error| error.split_once(':'))
+            .and_then(|(status, _)| status.parse().ok())
     };
-    let started_at = std::time::Instant::now();
-    let response = anthropic_client()?
-        .post(&url)
-        .timeout(std::time::Duration::from_secs(FETCH_TIMEOUT_SECS))
-        .header("x-api-key", auth_token)
-        .header("anthropic-version", "2023-06-01")
-        .bearer_auth(auth_token)
-        .json(&serde_json::json!({
-            "model": "claude",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "ping"}]
-        }))
-        .send()
-        .await
-        .map_err(|error| app_err!("请求失败: {error}"))?;
-    let status = response.status();
-    if matches!(status.as_u16(), 401 | 403 | 404) {
-        let body = response.text().await.unwrap_or_default();
-        return Err(app_err!(
-            "HTTP {status}: {}",
-            truncate_body(redact(&body, auth_token))
-        ));
-    }
-    Ok(started_at.elapsed().as_millis() as u64)
+    Ok(super::CodexProfileConnectionResult {
+        ok: result.is_ok(),
+        status,
+        latency_ms,
+        error: error.map(|error| {
+            if status.is_some() {
+                error.split_once(':').unwrap().1.trim().to_owned()
+            } else {
+                error
+            }
+        }),
+    })
 }
 
 #[cfg(test)]
@@ -1961,9 +1977,20 @@ mod tests {
                 let mut buffer = [0u8; 4096];
                 let read = std::io::Read::read(&mut stream, &mut buffer).unwrap_or(0);
                 let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                // 模型列表与连通探针均不发送请求体；退化成真实对话时测试必须失败。
+                let (headers, body) = request.split_once("\r\n\r\n").unwrap();
+                assert!(body.is_empty());
+                for line in headers.lines().map(str::to_ascii_lowercase) {
+                    assert!(!line.starts_with("transfer-encoding:"));
+                    if let Some(length) = line.strip_prefix("content-length:") {
+                        assert_eq!(length.trim(), "0");
+                    }
+                }
                 let mut parts = request.split_whitespace();
                 let method = parts.next().unwrap_or("");
                 let path = parts.next().unwrap_or("");
+                assert_eq!(method, "GET", "连通与模型查询都不能发送 POST");
+                assert!(headers.to_ascii_lowercase().contains("x-api-key: token-1"));
                 let (status, body) = responder(method, path);
                 let response = format!(
                     "HTTP/1.1 {status} Status\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -1976,86 +2003,100 @@ mod tests {
         format!("http://{addr}")
     }
 
-    /// 连通判活的真源是真实调用路径 /v1/messages：厂商兼容面可以没有 /models，但对话路径必然存在。
-    /// base 带尾斜杠时必须先归一再拼路径，否则会打成 `//v1/messages`。
-    /// 错误路径回 404（属失败态）而非 500（属连通态），确保去掉归一化后本用例会真的失败。
+    /// GET 模型列表，不发送空 POST；尾斜杠必须先归一再拼路径。
+    /// 错误路径回 404，确保去掉归一化后本用例会真的失败。
     #[tokio::test]
-    async fn probe_reachable_when_messages_route_exists() {
+    async fn connection_queries_models_without_inference() {
         let base = spawn_local_http(|method, path| match (method, path) {
-            ("POST", "/v1/messages") => (200, "{}".into()),
+            ("GET", "/v1/models") => (200, r#"{"data":[]}"#.into()),
             _ => (404, "{}".into()),
         });
-        probe_claude_messages_reachable(&format!("{base}/"), "token-1")
-            .await
-            .unwrap();
+        assert!(
+            test_claude_connection(&format!("{base}/"), "token-1")
+                .await
+                .unwrap()
+                .ok
+        );
     }
 
-    /// 服务端对请求体本身回 4xx（如未知模型）也证明路径与鉴权在位，仍是连通。
     #[tokio::test]
-    async fn probe_treats_body_rejection_as_reachable() {
+    async fn connection_keeps_http_status_when_response_cannot_be_parsed() {
+        let base = spawn_local_http(|_, _| (200, "not JSON".into()));
+        let result = test_claude_connection(&base, "token-1").await.unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.status, Some(200));
+        assert_eq!(result.error.as_deref(), Some("requestFailed"));
+    }
+
+    /// 模型路径不存在时保留 404，不能推断供应商不支持或回退收费的对话。
+    #[tokio::test]
+    async fn connection_reports_wrong_api_path_with_the_same_valid_key() {
         let base = spawn_local_http(|method, path| match (method, path) {
-            ("POST", "/v1/messages") => (400, r#"{"error":"bad request"}"#.into()),
-            _ => (500, "{}".into()),
+            ("GET", "/v1/models") => (200, r#"{"data":[]}"#.into()),
+            _ => (404, "{}".into()),
         });
-        probe_claude_messages_reachable(&base, "token-1")
+        assert!(test_claude_connection(&base, "token-1").await.unwrap().ok);
+        let result = test_claude_connection(&format!("{base}/wrong"), "token-1")
             .await
             .unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.status, Some(404));
     }
 
     /// 判活撞上 401 保留凭证错误：Key 无效不能谎报连通。
     #[tokio::test]
     async fn probe_reports_auth_failure() {
         let base = spawn_local_http(|method, path| match (method, path) {
-            ("POST", "/v1/messages") => (401, r#"{"error":"unauthorized"}"#.into()),
+            ("GET", "/v1/models") => (401, r#"{"error":"unauthorized"}"#.into()),
             _ => (500, "{}".into()),
         });
-        let error = probe_claude_messages_reachable(&base, "token-1")
-            .await
-            .unwrap_err();
-        assert!(error.0.contains("401"), "{error:?}");
+        let result = test_claude_connection(&base, "token-1").await.unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.status, Some(401));
     }
 
-    /// 判活若 /v1/messages 也是 404，说明该地址不是 Anthropic 兼容面，保留原始 404 报错。
     #[tokio::test]
-    async fn probe_reports_missing_surface() {
-        let base = spawn_local_http(|_method, _path| (404, "{}".into()));
-        let error = probe_claude_messages_reachable(&base, "token-1")
-            .await
-            .unwrap_err();
-        assert!(error.0.contains("404"), "{error:?}");
+    async fn probe_reports_provider_errors_without_exposing_key_or_json() {
+        for status in [200, 400, 403, 429, 500, 503] {
+            let base = spawn_local_http(move |_, _| {
+                (status, r#"{"error":{"message":"denied token-1"}}"#.into())
+            });
+            let result = test_claude_connection(&base, "token-1").await.unwrap();
+            assert!(!result.ok, "status={status}");
+            let error = result.error.unwrap();
+            assert_eq!(result.status, Some(status));
+            assert!(error.contains("denied"), "{error}");
+            assert!(
+                !error.contains("token-1") && !error.contains('{'),
+                "{error}"
+            );
+        }
     }
 
     /// 带 /v{N} 版本段的 base：判活直接挂在版本段下。
     #[tokio::test]
     async fn probe_under_version_segment_path() {
         let base = spawn_local_http(|method, path| match (method, path) {
-            ("POST", "/v1/messages") => (200, "{}".into()),
+            ("GET", "/v1/models") => (200, r#"{"data":[]}"#.into()),
             _ => (500, "{}".into()),
         });
-        probe_claude_messages_reachable(&format!("{base}/v1"), "token-1")
-            .await
-            .unwrap();
+        assert!(
+            test_claude_connection(&format!("{base}/v1"), "token-1")
+                .await
+                .unwrap()
+                .ok
+        );
     }
 
-    /// 获取模型只管 /models：厂商兼容面没有该路由时返回空列表，且不再顺带发判活请求
-    ///（连通性与模型列表解耦，真源分别是 /v1/messages 与 /models）。
+    /// 获取模型未开放时返回明确代码，不能顺带发送对话。
     #[tokio::test]
-    async fn fetch_models_404_returns_empty_without_probe() {
-        let posted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let flag = posted.clone();
-        let base = spawn_local_http(move |method, path| match (method, path) {
+    async fn fetch_models_404_preserves_status_without_post() {
+        let base = spawn_local_http(|method, path| match (method, path) {
             ("GET", "/v1/models") => (404, "{}".into()),
-            _ => {
-                flag.store(true, std::sync::atomic::Ordering::SeqCst);
-                (500, "{}".into())
-            }
+            _ => (500, "{}".into()),
         });
-        let models = fetch_claude_models(&base, "token-1").await.unwrap();
-        assert!(models.is_empty());
-        assert!(
-            !posted.load(std::sync::atomic::Ordering::SeqCst),
-            "获取模型不应顺带发判活请求"
-        );
+        let error = fetch_claude_models(&base, "token-1").await.unwrap_err();
+        assert!(error.0.starts_with("HTTP 404:"));
     }
 
     /// `{root}/anthropic` 形状的厂商兼容面没有 /models 时，剥后缀回同根 OpenAI 面拉真实列表

@@ -5,6 +5,7 @@ import { DndContext, DragOverlay, closestCenter } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
 import { api } from "../../api";
+import { connectionErrorMessage, connectionExceptionMessage } from "../profiles/connectionText";
 import { useFeedback } from "../../app/Feedback";
 import { getCachedClaudeProfiles, loadClaudeProfiles, setClaudeProfilesCache } from "../../app/managementDataCache";
 import { CliUpgradePill } from "../../components/CliUpgradePill";
@@ -228,10 +229,11 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     if (testingId) return;
     setTestingId(profile.id);
     try {
-      const latency = await api.claudeTestProfile(profile.id);
-      feedback.success(t("connectionOk", { latency: ` · ${latency}ms` }));
+      const result = await api.claudeTestProfile(profile.id);
+      if (!result.ok) feedback.error(t("connectionFailed", { error: connectionErrorMessage(result, tProfiles) }));
+      else feedback.success(t("connectionOk", { latency: ` · ${result.latency_ms}ms` }));
     } catch (error) {
-      feedback.error(t("connectionFailed", { error: String(error) }));
+      feedback.error(t("connectionFailed", { error: connectionExceptionMessage(error, tProfiles) }));
     } finally {
       setTestingId(null);
     }
