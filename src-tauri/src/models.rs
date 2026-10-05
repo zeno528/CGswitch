@@ -307,6 +307,15 @@ pub enum ProxyMode {
     Custom,
 }
 
+/// macOS 供应商终端的宿主终端：Terminal.app 系统必带；Ghostty 走官方 CLI。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MacosTerminal {
+    #[default]
+    Terminal,
+    Ghostty,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Settings {
     #[serde(default = "default_theme")]
@@ -326,6 +335,9 @@ pub struct Settings {
     /// 冷启动落页：前端 AppView 标识原样透传，不解析；非法值由前端回落默认页。
     #[serde(default = "default_startup_view")]
     pub startup_view: String,
+    /// macOS 供应商终端的宿主终端；Windows 分支不读取此字段。
+    #[serde(default)]
+    pub macos_terminal: MacosTerminal,
     #[serde(default = "default_auto_check_update")]
     pub auto_check_update: bool,
     #[serde(default)]
@@ -375,6 +387,7 @@ impl Default for Settings {
             minimize_to_tray: false,
             tray_click_action: TrayClickAction::ShowWindow,
             startup_view: default_startup_view(),
+            macos_terminal: MacosTerminal::Terminal,
             auto_check_update: default_auto_check_update(),
             auto_backup_interval_hours: 0,
             database_backup_keep_count: default_database_backup_keep_count(),

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { providerIconThemeClass, providerIconUrl } from "../icons";
+import { providerIconUrl } from "../icons";
 
 interface ProfileIconTileProps {
   name: string;
@@ -20,8 +20,8 @@ export function ProfileIconTile({ name, icon, size = "sm", overlay }: ProfileIco
   const current = sizes[size];
   const iconUrl = providerIconUrl(icon);
   return (
-    <span className={`group/tile relative grid shrink-0 place-items-center bg-(--tile-bg) ${current.tile}`}>
-      {iconUrl ? <img src={iconUrl} alt="" aria-hidden="true" className={`${current.image} ${overlay ? "transition-[opacity,transform] duration-150 group-hover/tile:scale-90 group-hover/tile:opacity-20" : ""} ${providerIconThemeClass(icon)}`} /> : <span aria-hidden="true" className={`font-bold text-accent ${current.text}`}>{name.charAt(0)}</span>}
+    <span className={`group/tile relative grid shrink-0 place-items-center bg-(--provider-icon-bg) ${current.tile}`}>
+      {iconUrl ? <img src={iconUrl} alt="" aria-hidden="true" className={`${current.image} ${overlay ? "transition-[opacity,transform] duration-150 group-hover/tile:scale-90 group-hover/tile:opacity-20" : ""}`} /> : <span aria-hidden="true" className={`font-bold text-accent ${current.text}`}>{name.charAt(0)}</span>}
       {overlay}
     </span>
   );

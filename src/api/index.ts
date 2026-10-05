@@ -33,6 +33,8 @@ import type {
   TomlDiagnostic,
 } from "../types";
 export const isTauri = typeof window !== "undefined" && Boolean(window.__TAURI_INTERNALS__);
+// macOS 使用原生交通灯（titleBarStyle: Overlay），并为交通灯预留窗口控件位
+export const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 
 export type AppUpdateMetadata = ConstructorParameters<typeof Update>[0];
 

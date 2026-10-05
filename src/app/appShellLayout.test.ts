@@ -295,8 +295,9 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".provider-page-brand {\n  display: inline-flex;\n  height: var(--toolbar-control-height);");
   });
 
-  it("让主题分段控件与工具栏容器共用药丸圆角", () => {
-    expect(styles).toContain(".apple-toolbar-group,\n.app-segmented-control {\n  border-radius: 999px;");
+  it("让工具栏保持药丸圆角，分段控件使用圆角矩形", () => {
+    expect(styles).toContain(".apple-toolbar-group {\n  border-radius: 999px;");
+    expect(styles).toMatch(/\.app-segmented-control \{[^}]*border-radius: 0\.75rem;/);
   });
 
   it("让共享面板的分割线与内容左右内边距对齐", () => {

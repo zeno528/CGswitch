@@ -1,14 +1,15 @@
-import { ChevronRight, Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LayoutDashboard, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Sun, Trash2, Upload } from "lucide-react";
+import { AppWindowMac, Blocks, BookOpenText, Bot, ChevronRight, CircleUserRound, Clock, Database, Download, FileCog, FileText, FolderOpen, History, Languages, LayoutDashboard, LoaderCircle, Moon, MoonStar, Monitor, MoreHorizontal, Palette, PanelBottomClose, Pencil, Power, RefreshCw, RotateCcw, Save, Settings as SettingsIcon, Sun, Trash2, Upload } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { createPortal } from "react-dom";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { api, isTauri } from "../../api";
+import { api, isMacWindow, isTauri } from "../../api";
 import { useFeedback } from "../../app/Feedback";
 import { getCachedDatabaseBackups, loadDatabaseBackups } from "../../app/managementDataCache";
 import { AppDialog } from "../../components/AppDialog";
 import { AppDisclosure } from "../../components/AppDisclosure";
 import { GithubMark } from "../../components/GithubMark";
+import { McpIcon } from "../../components/McpIcon";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSegmentedControl } from "../../components/AppSegmentedControl";
 import { AppSwitch } from "../../components/AppSwitch";
@@ -24,14 +25,14 @@ const themeOptions = [{ labelKey: "theme.system", value: "system" }, { labelKey:
 const languageOptions = [{ labelKey: "language.system", value: "system" }, { labelKey: "language.zh", value: "zh-CN" }, { labelKey: "language.en", value: "en-US" }] as const;
 // 启动页选项 = 侧栏全部页面平铺（与侧栏清单同序同文案 key，新增页面两处同步）
 const startupViewOptions = [
-  { labelKey: "nav.groupCodex", value: "codexProfiles" },
-  { labelKey: "nav.groupClaude", value: "claudeProfiles" },
-  { labelKey: "nav.plugins", value: "plugins" },
-  { labelKey: "nav.accounts", value: "accounts" },
-  { labelKey: "nav.mcp", value: "mcp" },
-  { labelKey: "nav.skills", value: "skills" },
-  { labelKey: "nav.agentTools", value: "agentTools" },
-  { labelKey: "nav.settings", value: "settings" },
+  { labelKey: "nav.groupCodex", value: "codexProfiles", icon: <img src="/codex.svg" alt="" className="h-4 w-4 shrink-0" /> },
+  { labelKey: "nav.groupClaude", value: "claudeProfiles", icon: <img src="/claude-code.svg" alt="" className="h-4 w-4 shrink-0" /> },
+  { labelKey: "nav.plugins", value: "plugins", icon: <Blocks className="h-4 w-4 shrink-0" aria-hidden="true" /> },
+  { labelKey: "nav.accounts", value: "accounts", icon: <CircleUserRound className="h-4 w-4 shrink-0" aria-hidden="true" /> },
+  { labelKey: "nav.mcp", value: "mcp", icon: <McpIcon className="h-4 w-4 shrink-0" /> },
+  { labelKey: "nav.skills", value: "skills", icon: <BookOpenText className="h-4 w-4 shrink-0" aria-hidden="true" /> },
+  { labelKey: "nav.agentTools", value: "agentTools", icon: <Bot className="h-4 w-4 shrink-0" aria-hidden="true" /> },
+  { labelKey: "nav.settings", value: "settings", icon: <SettingsIcon className="h-4 w-4 shrink-0" aria-hidden="true" /> },
 ] as const;
 // Rust 下发的 PathInfo.label（i18n key）数据值，用于比对而非展示
 const BACKUP_DIR_LABEL = "about.paths.backups"; // i18n-exempt: 数据标签比较值，不是界面文案
@@ -97,7 +98,7 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                   <button
                     key={option.value}
                     type="button"
-                    className="inline-flex h-full items-center justify-center gap-1.5 rounded-full text-sm font-normal"
+                    className="inline-flex h-full items-center justify-center gap-1.5 text-sm font-normal"
                     aria-pressed={form.theme === option.value}
                     onClick={() => onPatch({ theme: option.value })}
                   >
@@ -166,10 +167,36 @@ export function SettingsGeneral({ form, onPatch }: SettingsGeneralProps) {
                 <AppSelect
                   value={form.startup_view}
                   options={startupViewOptions.map((option) => ({ label: tNav(option.labelKey), value: option.value }))}
+                  renderLabel={(option) => (
+                    <span className="inline-flex min-w-0 items-center gap-2">
+                      {startupViewOptions.find((item) => item.value === option.value)?.icon}
+                      <span className="truncate">{option.label}</span>
+                    </span>
+                  )}
                   onChange={(value) => onPatch({ startup_view: value })}
                 />
               </div>
             </div>
+            {isMacWindow ? (
+              <div className="flex items-center justify-between gap-4 py-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="settings-icon-tile grid h-9 w-9 shrink-0 place-items-center rounded-xl">
+                    <AppWindowMac className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="setting-title">{t("startup.terminalAppTitle")}</div>
+                    <div className="setting-description mt-0.5">{t("startup.terminalAppDescription")}</div>
+                  </div>
+                </div>
+                <div className="w-72 shrink-0">
+                  <AppSelect
+                    value={form.macos_terminal}
+                    options={[{ label: "Terminal.app", value: "terminal" }, { label: "Ghostty", value: "ghostty" }]}
+                    onChange={(value) => onPatch({ macos_terminal: value })}
+                  />
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </SettingsPanelSection>

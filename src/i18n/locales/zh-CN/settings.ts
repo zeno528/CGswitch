@@ -48,6 +48,8 @@ export default {
     minimizeDescription: "点击关闭按钮时隐藏到托盘而不是退出",
     startupViewTitle: "启动页面",
     startupViewDescription: "冷启动时默认打开的页面，从托盘恢复不受影响",
+    terminalAppTitle: "终端应用（macOS）",
+    terminalAppDescription: "打开供应商终端时使用的 Mac 终端",
   },
   view: {
     title: "设置",

@@ -29,7 +29,7 @@ vi.mock("../../api", () => ({ api: { getProxyStatus: hooks.proxyStatus }, get is
 
 const settings: Settings = {
   theme: "system", language: "system", auto_restart: false, autostart_enabled: false,
-  silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", startup_view: "codexProfiles",
+  silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", startup_view: "codexProfiles", macos_terminal: "terminal",
   auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5,
   proxy_mode: "auto", proxy_url: "", claude_terminal_dirs: [],
 };

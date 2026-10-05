@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Minus, Blocks, BookOpenText, Bot, CircleUserRound, Settings as SettingsIcon, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { api, isTauri } from "../api";
+import { api, isMacWindow, isTauri } from "../api";
 import { McpIcon } from "../components/McpIcon";
 import { FeedbackProvider, useFeedback } from "./Feedback";
 import { authQuotaErrorKind } from "./authQuotaCache";
@@ -23,8 +23,6 @@ import type { AppState } from "../types";
 import { switchProfileFromTray } from "./traySwitch";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
-// macOS 使用原生交通灯（titleBarStyle: Overlay），隐藏自绘窗口控制按钮并为交通灯预留空间
-const isMacWindow = isTauri && /Macintosh/.test(navigator.userAgent);
 
 /// 差异检查：读 config.toml 跟数据库镜像比，把结果写进侧栏角标。
 /// 启动后延迟一次、窗口激活时一次，两处共用这一条规则——放在模块作用域是为了

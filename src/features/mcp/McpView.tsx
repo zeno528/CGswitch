@@ -62,7 +62,7 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
           title={t("target.label")}
           onClick={() => onChange(target)}
         >
-          <SkillTargetLogo target={target} active={value === target} />
+          <SkillTargetLogo target={target} variant="title" />
           {t(`target.${target}`)}
         </button>
       ))}

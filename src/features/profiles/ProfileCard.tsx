@@ -54,7 +54,7 @@ export function ProfileCardContent({
         profile.admin_url ? (
           <button
             type="button"
-            className="absolute inset-0 grid cursor-pointer place-items-center rounded-xl bg-(--main-surface-bg) text-accent opacity-0 outline-none transition-opacity duration-150 group-hover/tile:opacity-100 focus-visible:opacity-100"
+            className="absolute inset-0 grid cursor-pointer place-items-center rounded-xl bg-(--provider-icon-bg) text-accent opacity-0 outline-none transition-opacity duration-150 group-hover/tile:opacity-100 focus-visible:opacity-100"
             title={t("card.openWebsite")}
             aria-label={t("card.openWebsite")}
             onClick={(event) => { event.stopPropagation(); onOpenAdmin?.(); }}
@@ -130,7 +130,7 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
     document.body,
   ) : null;
   return (
-    <div className={`profile-card-actions${dragging ? " profile-card-actions--dragging" : ""} flex shrink-0 items-center gap-2`} onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
+    <div className={`profile-card-actions${dragging ? " profile-card-actions--dragging" : ""} flex shrink-0 items-center gap-2`} title="" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
       {model !== undefined || reasoningEffort ? (
         <span className="profile-card-action-meta">
           <span className="profile-card-action-meta__model">{model ?? t("card.notSet")}</span>

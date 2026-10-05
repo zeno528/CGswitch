@@ -15,7 +15,7 @@ const settingsViewSource = readFileSync(new URL("./SettingsView.tsx", import.met
 const accountsViewSource = readFileSync(new URL("../accounts/AccountsView.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
 // 各用例只读不写，共用同一份通用设置表单，新增字段只改这一行。
-const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", startup_view: "codexProfiles", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5, proxy_mode: "auto", proxy_url: "", claude_terminal_dirs: [] };
+const form: Settings = { theme: "system", language: "system", auto_restart: false, autostart_enabled: false, silent_start: false, minimize_to_tray: false, tray_click_action: "show_window", startup_view: "codexProfiles", macos_terminal: "terminal", auto_check_update: true, auto_backup_interval_hours: 0, database_backup_keep_count: 5, proxy_mode: "auto", proxy_url: "", claude_terminal_dirs: [] };
 
 describe("SettingsSections", () => {
   it("formats backup titles", () => {

@@ -22,6 +22,8 @@ use super::AppContext;
 use crate::database::StoredClaudeProfile;
 use crate::error::{app_err, AppResult};
 use crate::fsutil::atomic_write;
+#[cfg(target_os = "macos")]
+use crate::models::MacosTerminal;
 
 /// 覆盖文件内容就是该供应商的完整 env，与「使用」写 live 同源（同一个 managed_env），
 /// 所以终端里跑的供应商和卡片上显示的供应商必然一致。
@@ -101,7 +103,10 @@ impl AppContext {
         #[cfg(target_os = "windows")]
         launch_windows(dir, &settings_text, &banner, &model)?;
         #[cfg(target_os = "macos")]
-        launch_macos(dir, &settings_text, &banner, &model)?;
+        match self.settings()?.macos_terminal {
+            MacosTerminal::Ghostty => launch_ghostty(dir, &settings_text, &banner, &model)?,
+            MacosTerminal::Terminal => launch_macos(dir, &settings_text, &banner, &model)?,
+        }
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let _ = (dir, &settings_text, &banner, &model);
@@ -205,15 +210,55 @@ fn ps_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-/// macOS 只用 Terminal.app：系统必带，且不引入「用户偏好哪个终端」的设置层。
-/// 用户换成 Ghostty/iTerm 后仍可自己再开一个终端跑同一行命令。
+/// 两套 macOS 启动路径共用的 claude 调用行（posix 单引号字面量）。
 #[cfg(target_os = "macos")]
-fn launch_macos(dir: Option<&str>, settings: &str, banner: &str, model: &str) -> AppResult<()> {
-    let claude = format!(
+fn claude_invocation(settings: &str, model: &str) -> String {
+    format!(
         "claude --settings {} --model {}",
         posix_quote(settings),
         posix_quote(model)
-    );
+    )
+}
+
+/// Ghostty 走官方 CLI `-e`（文档 config/reference：common -e flag）：脚本交给
+/// `zsh -c`，工作目录用进程 current_dir 传递，脚本里不需要 cd。单实例时 CLI 经
+/// IPC 转发给已有实例后立即退出；无实例时本进程常驻为 GUI——因此 spawn 发射
+/// 不等待（与 Windows ShellExecuteW 同语义）。
+#[cfg(target_os = "macos")]
+fn ghostty_launch_script(banner: &str, settings: &str, model: &str) -> String {
+    format!(
+        "echo {}; {}",
+        posix_quote(banner),
+        claude_invocation(settings, model)
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn launch_ghostty(dir: Option<&str>, settings: &str, banner: &str, model: &str) -> AppResult<()> {
+    const GHOSTTY_BIN: &str = "/Applications/Ghostty.app/Contents/MacOS/ghostty";
+    if !Path::new(GHOSTTY_BIN).is_file() {
+        return Err(app_err!("未安装 Ghostty（/Applications/Ghostty.app）"));
+    }
+    let mut command = Command::new(GHOSTTY_BIN);
+    command.args([
+        "-e",
+        "zsh",
+        "-c",
+        &ghostty_launch_script(banner, settings, model),
+    ]);
+    if let Some(dir) = dir {
+        command.current_dir(dir);
+    }
+    command
+        .spawn()
+        .map_err(|error| app_err!("启动 Ghostty 失败: {error}"))?;
+    Ok(())
+}
+
+/// 未装 Ghostty 时的兜底：Terminal.app 系统必带。
+#[cfg(target_os = "macos")]
+fn launch_macos(dir: Option<&str>, settings: &str, banner: &str, model: &str) -> AppResult<()> {
+    let claude = claude_invocation(settings, model);
     let line = match dir {
         Some(dir) => format!("cd {} && {claude}", posix_quote(dir)),
         None => claude,
@@ -356,6 +401,22 @@ mod tests {
     fn posix_quote_neutralizes_expansion() {
         assert_eq!(posix_quote("/tmp/$(id)"), "'/tmp/$(id)'");
         assert_eq!(posix_quote("/tmp/it's"), r"'/tmp/it'\''s'");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn ghostty_script_quotes_paths_and_stays_single_line() {
+        let script = ghostty_launch_script(
+            "CGswitch Claude terminal: /Users/u/.cgswitch/terminal/claude_p1.json",
+            "/Users/u/.cgswitch/terminal/claude_p1.json",
+            "sonnet's",
+        );
+        assert!(!script.contains('\n') && !script.contains('\r'));
+        assert_eq!(
+            script,
+            "echo 'CGswitch Claude terminal: /Users/u/.cgswitch/terminal/claude_p1.json'; \
+             claude --settings '/Users/u/.cgswitch/terminal/claude_p1.json' --model 'sonnet''s'"
+        );
     }
 
     #[test]

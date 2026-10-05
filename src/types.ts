@@ -221,6 +221,8 @@ export interface Settings {
   tray_click_action: "show_window" | "show_menu";
   /** 冷启动时默认打开的页面；托盘/后台恢复不拽页。 */
   startup_view: AppView;
+  /** macOS 供应商终端的宿主终端；Windows 分支不读取此字段。 */
+  macos_terminal: "terminal" | "ghostty";
   auto_check_update: boolean;
   auto_backup_interval_hours: number;
   database_backup_keep_count: number;

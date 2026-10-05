@@ -534,6 +534,7 @@ let webSettings: Settings = {
   proxy_mode: "auto",
   proxy_url: "",
   startup_view: "codexProfiles",
+  macos_terminal: "terminal",
   claude_terminal_dirs: [],
 };
 

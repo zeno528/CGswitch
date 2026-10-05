@@ -91,7 +91,7 @@ export function ProxySettings({ settings, saving, onSave }: {
                 key={mode}
                 type="button"
                 data-proxy-mode={mode}
-                className="inline-flex h-full items-center justify-center rounded-full text-sm font-normal"
+                className="inline-flex h-full items-center justify-center text-sm font-normal"
                 aria-pressed={selected === mode}
                 disabled={saving}
                 onClick={() => {
