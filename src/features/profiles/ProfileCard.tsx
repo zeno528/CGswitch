@@ -1,5 +1,5 @@
-import { Check, Copy, Gauge, Globe, GripVertical, MoreHorizontal, Wifi } from "lucide-react";
-import { useRef, useState, type ReactNode } from "react";
+import { Check, Copy, Gauge, Globe, MoreHorizontal, Wifi } from "lucide-react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
@@ -79,7 +79,7 @@ export function ProfileCardContent({
 }
 
 /** 卡片测试连通按钮的通用门控与悬停文案：缺什么报什么，其余一律 ready 文案。
- *  Codex 卡片、拖拽预览与 Claude 卡片共用同一判定，避免按钮行各写一套。 */
+ *  Codex 与 Claude 卡片共用同一判定，避免按钮行各写一套。 */
 export function connectionGate(hasBaseUrl: boolean, hasKey: boolean, titles: { ready: string; missingEndpoint: string; missingKey: string }) {
   const disabled = !hasBaseUrl || !hasKey;
   return {
@@ -92,7 +92,6 @@ interface ProfileCardActionsProps {
   active: boolean;
   busy: boolean;
   testing: boolean;
-  dragging?: boolean;
   allowInactiveDeleteWhileBusy?: boolean;
   model?: string | null;
   reasoningEffort?: string | null;
@@ -107,7 +106,7 @@ interface ProfileCardActionsProps {
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, testing, dragging = false, allowInactiveDeleteWhileBusy = false, model, reasoningEffort, connectionDisabled, connectionTitle, terminalProfileId, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, testing, allowInactiveDeleteWhileBusy = false, model, reasoningEffort, connectionDisabled, connectionTitle, terminalProfileId, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -115,7 +114,7 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
   const menuStyle = useFixedMenuPosition(menuOpen, menuTriggerRef.current, menuRef, "end");
   useMenuDismiss(menuOpen, menuTriggerRef, menuRef, setMenuOpen);
   const busyForDelete = busy && !allowInactiveDeleteWhileBusy;
-  const menu = menuOpen && !dragging ? createPortal(
+  const menu = menuOpen ? createPortal(
     <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("actions.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
       <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || testing} title={connectionTitle} onClick={() => { setMenuOpen(false); onTest?.(); }}>
         <span className="flex items-center gap-2">{testing ? <LoadingSpinner size="sm" /> : <Wifi className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}{t("connection.test")}</span>
@@ -130,7 +129,7 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
     document.body,
   ) : null;
   return (
-    <div className={`profile-card-actions${dragging ? " profile-card-actions--dragging" : ""} flex shrink-0 items-center gap-2`} title="" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
+    <div className="profile-card-actions flex shrink-0 items-center gap-2" title="" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
       {model !== undefined || reasoningEffort ? (
         <span className="profile-card-action-meta">
           <span className="profile-card-action-meta__model">{model ?? t("card.notSet")}</span>
@@ -143,22 +142,9 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
           {active ? <Check className="absolute inset-0 m-auto" size={18} strokeWidth={2.5} aria-hidden="true" /> : null}
         </button>
         {terminalProfileId ? <ProfileTerminalMenu profileId={terminalProfileId} /> : null}
-        <button ref={menuTriggerRef} type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t("actions.more")} title={t("actions.more")} aria-busy={testing} onClick={dragging ? undefined : () => setMenuOpen((open) => !open)}>{testing ? <LoadingSpinner size="md" /> : <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
+        <button ref={menuTriggerRef} type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t("actions.more")} title={t("actions.more")} aria-busy={testing} onClick={() => setMenuOpen((open) => !open)}>{testing ? <LoadingSpinner size="md" /> : <MoreHorizontal className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden="true" />}</button>
         {menu}
       </div>
-    </div>
-  );
-}
-
-/** 拖拽浮层共享外壳：源卡片几何 + 拖拽把手，内容行与操作行由调用方经 children 给。 */
-export function ProfileDragPreviewShell({ width, height, active, children }: { width: number | null; height: number | null; active: boolean; children: ReactNode }) {
-  const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
-  return (
-    <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-[17.33px] sm:h-[84.67px] sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
-      <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
-        <GripVertical className="h-4 w-4" strokeWidth={2} />
-      </span>
-      {children}
     </div>
   );
 }

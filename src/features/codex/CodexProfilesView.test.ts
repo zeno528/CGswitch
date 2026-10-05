@@ -70,22 +70,14 @@ describe("ProfilesView 拖拽预览", () => {
   });
 
   it("激活卡的拖拽预览复用品牌渐变且不再覆盖旧底色", () => {
-    // 预览外壳（含激活渐变 stateClass）抽到 ProfileCard 的 ProfileDragPreviewShell，两列表页共用
-    expect(cardSource).toContain('active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover"');
-    expect(cardSource).not.toContain('active ? "is-active is-drag-hover" : "is-drag-hover"');
-    expect(source).toContain("<ProfileDragPreviewShell");
     expect(styles).not.toContain(".profile-drag-preview.is-active {\n  background-image: linear-gradient(");
     expect(styles).not.toContain("--profile-active-bg:");
-
-    const activePreviewRuleStart = styles.indexOf(".profile-drag-preview.is-active {");
-    const activePreviewRuleEnd = styles.indexOf("}", activePreviewRuleStart);
-    expect(styles.slice(activePreviewRuleStart, activePreviewRuleEnd)).not.toContain("outline:");
     expect(styles).not.toContain(":root.dark .profile-drag-preview.is-active {");
   });
 
   it("激活卡拖拽预览的官网按钮沿用主题文字层级", () => {
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary) {\n  color: var(--text-primary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,\n.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary) {\n  color: var(--text-primary);");
   });
 });
 

@@ -14,7 +14,6 @@ import { connectionErrorMessage, connectionFailureMessage } from "../profiles/co
 interface ProfileCardProps {
   profile: CodexProfileSummary;
   active: boolean;
-  dragHover?: boolean;
   busy: boolean;
   activationEpoch: number;
   /// 本次进程启动还没走完（首屏尚未出窗）——只有这时才值得把余额刷新往后放
@@ -40,7 +39,6 @@ export function profileConnectionGate(profile: CodexProfileSummary, t: TFunction
 export default function CodexProfileCard({
   profile,
   active,
-  dragHover = false,
   busy,
   activationEpoch,
   coldStart,
@@ -97,7 +95,7 @@ export default function CodexProfileCard({
 
   const connection = profileConnectionGate(profile, t);
   return (
-    <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
+    <SortableCard id={profile.id} active={active} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent
         profile={profile}
         hideModel

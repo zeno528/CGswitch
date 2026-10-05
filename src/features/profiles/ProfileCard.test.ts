@@ -41,7 +41,6 @@ describe("ProfileCard 官网入口", () => {
     expect(source).not.toContain('profile.kind === "official" ? " brand-gradient-surface" : ""');
     expect(source).not.toContain("third-party-gradient");
     expect(styles).not.toContain(".profile-list > .apple-group.is-active:not(.brand-gradient-surface)");
-    expect(styles).toContain(".profile-drag-preview.is-active {");
     expect(styles).toContain("--brand-gradient-start: #263b63;");
     expect(styles).toContain("--brand-gradient-middle: #3f72b8;");
     expect(styles).toContain("--brand-gradient-start-mix: 42%;");
@@ -53,7 +52,7 @@ describe("ProfileCard 官网入口", () => {
   it("激活卡沿用主题文字层级", () => {
     expect(styles).not.toContain("--active-card-text-primary");
     expect(styles).not.toContain("--active-card-text-secondary");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta {\n  color: var(--text-secondary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta {\n  color: var(--text-secondary);");
     expect(styles).not.toContain(":root.dark .profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip");
     expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .drag-handle {\n  color: var(--text-secondary);");
   });
@@ -61,7 +60,7 @@ describe("ProfileCard 官网入口", () => {
   it("激活时保留卡片边缘", () => {
     expect(styles).not.toContain(".profile-list > .apple-group.is-active {");
     expect(styles).not.toContain(".profile-list > .apple-group.brand-gradient-surface {");
-    expect(styles).toContain(".profile-list > .apple-group:hover {\n  outline: 1px solid");
+    expect(styles).toContain(".profile-list > .apple-group:hover,\n.profile-drag-preview {\n  outline: 1px solid");
     expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
   });
 
@@ -70,16 +69,16 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("提高渐变卡片的文字与图标对比度", () => {
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {\n  color: var(--text-primary);");
     // 选择器用稳定类名而非中文 title/aria-label：文案会随界面语言变化
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary),\n.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary) {");
   });
 
   it("胶囊底色统一定义在 --chip-bg，配置卡片浅色药丸复用主容器底色", () => {
     expect(styles).toContain("--chip-bg: #e9e9e6;");
     expect(styles).toContain(".apple-chip {\n  align-items: center;\n  background: var(--chip-bg);");
     expect(styles).toContain(".profile-card-meta .apple-chip {\n  background: var(--main-surface-bg);\n  border-color: transparent;\n  font-size: 12px;");
-    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,\n.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: transparent;\n  background: var(--main-surface-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
+    expect(styles).toContain(".profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {\n  border-color: transparent;\n  background: var(--main-surface-bg);\n  color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);");
   });
 
   it("让浅色模式的用量成功百分比使用高对比度绿色", () => {
@@ -152,7 +151,7 @@ describe("ProfileCard 官网入口", () => {
   });
 
   it("激活卡片和拖拽预览的图标颜色不覆盖使用按钮的主按钮前景色", () => {
-    expect(styles.match(/\.profile-card-action-buttons > \.apple-icon-button:not\(\.app-button--primary\)/g)).toHaveLength(2);
+    expect(styles.match(/\.profile-card-action-buttons > \.apple-icon-button:not\(\.app-button--primary\)/g)).toHaveLength(1);
     expect(styles).not.toContain(".profile-card-delete");
   });
 

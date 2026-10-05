@@ -10,10 +10,10 @@ import { useFeedback } from "../../app/Feedback";
 import { getCachedClaudeProfiles, loadClaudeProfiles, setClaudeProfilesCache } from "../../app/managementDataCache";
 import { CliUpgradePill } from "../../components/CliUpgradePill";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
-import SortableCard from "../../components/SortableCard";
+import SortableCard, { CardDragPreview } from "../../components/SortableCard";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
-import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell, connectionGate } from "../profiles/ProfileCard";
-import { getCachedProfileBalance, getCachedProfileBalanceError, useProfileBalance } from "../profiles/useProfileBalance";
+import { ProfileCardActions, ProfileCardContent, connectionGate } from "../profiles/ProfileCard";
+import { useProfileBalance } from "../profiles/useProfileBalance";
 import ProfileNameDialog from "../profiles/ProfileNameDialog";
 import { claudeBalanceQueryKinds } from "../../presets";
 import ClaudeProfileEdit from "./ClaudeProfileEdit";
@@ -33,25 +33,9 @@ function cardProfile(profile: ClaudeProfileSummary) {
   };
 }
 
-/** 拖拽浮层预览：按源卡片几何渲染同款卡片（非交互）。 */
-function ClaudeDragPreview({ profile, width, height, active, busy, balanceCache }: { profile: ClaudeProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceCache: Record<string, ProfileBalanceInfo> }) {
-  const feedback = useFeedback();
-  const { t: tProfiles } = useTranslation("profiles");
-  const hasCredential = Boolean(profile.base_url) && profile.has_token;
-  const balance = getCachedProfileBalance(profile.id, balanceCache[profile.id] ?? null);
-  const balanceError = getCachedProfileBalanceError(profile.id);
-  return (
-    <ProfileDragPreviewShell width={width} height={height} active={active}>
-      <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance ? [balance] : []} balanceError={balanceError} balanceRefreshing={false} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} />
-      <ProfileCardActions active={active} busy={busy} testing={false} dragging connectionDisabled={!hasCredential} connectionTitle={tProfiles("connection.test")} />
-    </ProfileDragPreviewShell>
-  );
-}
-
-function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activationEpoch, coldStart, balanceCache, onRename, onEdit, onApply, onDuplicate, onTest, onRemove }: {
+function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, coldStart, balanceCache, onRename, onEdit, onApply, onDuplicate, onTest, onRemove }: {
   profile: ClaudeProfileSummary;
   active: boolean;
-  dragHover: boolean;
   busy: boolean;
   testing: boolean;
   activationEpoch: number;
@@ -85,7 +69,7 @@ function ClaudeProfileCard({ profile, active, dragHover, busy, testing, activati
     missingKey: tClaude("checkProviderFields"),
   });
   return (
-    <SortableCard id={profile.id} active={active} dragHover={dragHover} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
+    <SortableCard id={profile.id} active={active} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onRename} />
       <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} terminalProfileId={profile.id} onApply={onApply} onDuplicate={onDuplicate} onTest={onTest} onRemove={onRemove} />
     </SortableCard>
@@ -133,7 +117,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
       feedback.error(String(error));
     }
   };
-  const { sensors, draggedId, dragHoverId, dragWidth, dragHeight, onDragStart, onDragEnd, onDragCancel } = useCardDragReorder(items, setItems, persistOrder);
+  const { sensors, dragPreview, onDragStart, onDragEnd, onDragCancel } = useCardDragReorder(items, setItems, persistOrder);
 
   const openCreate = () => {
     if (!busy) setCreatingProfile(true);
@@ -261,8 +245,6 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
     }
   };
 
-  const draggedProfile = draggedId ? items.find((profile) => profile.id === draggedId) ?? null : null;
-
   return (
     <section className="apple-scroll-page mx-auto w-full max-w-none">
       <header className="apple-page-bar flex-wrap justify-between gap-4">
@@ -293,14 +275,14 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
               <div className="profile-list relative space-y-[var(--gap-page)]">
                 {items.map((profile) => {
                   return (
-                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} dragHover={profile.id === dragHoverId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void claudeApplyProfile(profile)} onDuplicate={() => void claudeDuplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void claudeDeleteProfile(profile)} />
+                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void claudeApplyProfile(profile)} onDuplicate={() => void claudeDuplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void claudeDeleteProfile(profile)} />
                   );
                 })}
               </div>
             </SortableContext>
             {createPortal(
               <DragOverlay dropAnimation={null}>
-                {draggedProfile ? <ClaudeDragPreview profile={draggedProfile} width={dragWidth} height={dragHeight} active={draggedProfile.id === activeId} busy={busy} balanceCache={balanceCache} /> : null}
+                {dragPreview ? <CardDragPreview card={dragPreview} /> : null}
               </DragOverlay>,
               document.body,
             )}

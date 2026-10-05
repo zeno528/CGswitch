@@ -417,7 +417,7 @@ describe("AppShell 布局", () => {
   });
 
   it("让供应商卡片使用略圆的圆角", () => {
-    expect(styles).toContain(".profile-list > .apple-group,\n.profile-drag-preview {\n  border-radius: var(--radius-card);");
+    expect(styles).toContain(".profile-list > .apple-group {\n  border-radius: var(--radius-card);");
   });
 
   it("新增带官网预设时显示官网地址输入框", () => {

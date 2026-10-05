@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderOpen, Globe } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { clearCachedCliUpdate, getCachedCliStatus, runCliUpdateCheck, runCliUpdateCheckQuietly, setCliStatusCache, touchCliUpdateCheckedAt } from "../../app/managementDataCache";
-import { useProxyStatus } from "../../app/useProxyStatus";
+import { clearCachedCliUpdate, getCachedCliStatus, runCliUpdateCheck, setCliStatusCache, touchCliUpdateCheckedAt } from "../../app/managementDataCache";
 import { CliUpgradePill, cliFailure, cliFailureMessage } from "../../components/CliUpgradePill";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import type { CliStatus } from "../../types";
@@ -31,40 +30,23 @@ export function useCliManagement(client: Client, active: boolean) {
   // 缓存写穿：检测/安装/升级的每个落点都同步进缓存，下次进页直出最新状态。
   const applyStatus = (next: CliStatus) => { setCliStatusCache(client, next); setStatus(next); };
 
-  const refresh = async (visible = true): Promise<CliStatus | null> => {
+  const refresh = async (): Promise<CliStatus | null> => {
     if (running.current) return null;
     running.current = true;
-    if (visible) {
-      setBusy(true);
-      setOperation("refresh");
-    }
+    setBusy(true);
+    setOperation("refresh");
     try {
       const next = await commands.status();
       applyStatus(next);
       return next;
     }
-    catch (error) {
-      if (visible) reportError(cliFailureMessage(cliFailure(error, "detect"), client, t));
+    catch {
       return null;
     }
     finally {
       running.current = false;
-      if (visible) { setBusy(false); setOperation(null); }
+      setBusy(false); setOperation(null);
     }
-  };
-
-  // 进页静默检查一次更新（仅原生安装可升级）：走共享服务（结果进跨页缓存，
-  // 全局计时器因此不会短期内重复检查）；失败不进界面——后端已留
-  // [app.cli.check] Warn 日志，前端吞掉即可；有新版本由共享缓存驱动升级胶囊，
-  // 无更新只通过主动检查的通知条反馈。主动点击的 check 失败照常透出。
-  const silentCheck = async () => {
-    if (running.current) return;
-    running.current = true;
-    const result = await runCliUpdateCheckQuietly(client);
-    if (result) {
-      applyStatus(result.status);
-    }
-    running.current = false;
   };
 
   // 每次重新进入 Agent 工具分区都检测一次，纠正外部安装/升级造成的本地缓存过期；
@@ -79,12 +61,13 @@ export function useCliManagement(client: Client, active: boolean) {
     if (detected.current && status) return;
     detected.current = true;
     void (async () => {
-      const next = await refresh(false);
-      if (next?.installation === "native") await silentCheck();
+      const next = await refresh();
+      if (next?.installation === "native") await check(false);
     })();
   }, [active, status]);
 
-  const check = async () => {
+  // 静默和主动检查共用状态；静默检查仅更新缓存，不弹通知。
+  const check = async (notify = true) => {
     if (running.current) return;
     running.current = true;
     setBusy(true);
@@ -92,14 +75,15 @@ export function useCliManagement(client: Client, active: boolean) {
     try {
       const result = await runCliUpdateCheck(client);
       applyStatus(result.status);
+      if (!notify) return;
       if (result.available) {
         info(t("cli.updateAvailable", { version: result.latest_version, channel: result.channel }));
       } else {
         success(t("cli.noUpdate", { version: result.status.version ?? result.latest_version }));
       }
     } catch (error) {
-      touchCliUpdateCheckedAt(client); // 手动失败的检查也推进冷却，定时器不立刻重试
-      reportError(cliFailureMessage(cliFailure(error, "fetch_version"), client, t));
+      touchCliUpdateCheckedAt(client); // 静默和手动失败都推进冷却，定时器不立刻重试
+      if (notify) reportError(cliFailureMessage(cliFailure(error, "fetch_version"), client, t));
     }
     finally { running.current = false; setBusy(false); setOperation(null); }
   };
@@ -131,14 +115,10 @@ export function useCliManagement(client: Client, active: boolean) {
 export function CliCard({ client, management }: { client: Client; management: ReturnType<typeof useCliManagement> }) {
   const { t } = useTranslation("settings");
   const { status, busy, operation, check, refresh, run } = management;
-  // 网络/代理读共享订阅（窗口激活即刷新）；检测快照里的 network/proxy 是拷贝，
-  // 会话内会失真，仅在共享值尚未就绪时兜底。
-  const proxyStatus = useProxyStatus();
-  const networkStatus = proxyStatus ?? (status ? { proxy: status.proxy, error: false } : null);
-  // 进行中反馈只显示当前用户动作，不暴露安装器内部阶段。
-  const showProgress = busy && operation !== "refresh";
+  // 检查进度放在按钮上；安装和外部任务沿用卡片中的反馈。
+  const showProgress = busy && operation === "install";
   const stageText = showProgress
-    ? t(operation === "check" ? "cli.checkingUpdate" : "cli.installing")
+    ? t("cli.installing")
     : status?.busy ? t("cli.working") : null;
   return (
     <div className="apple-group flex flex-col gap-2.5 px-(--gap-card-inline) py-4">
@@ -158,7 +138,7 @@ export function CliCard({ client, management }: { client: Client; management: Re
             {status?.installation === "native" ? (
               <CliUpgradePill
                 client={client}
-                onUpdated={() => { void refresh(false); }}
+                onUpdated={() => { void refresh(); }}
               />
             ) : null}
             {showProgress || status?.busy ? (
@@ -175,27 +155,19 @@ export function CliCard({ client, management }: { client: Client; management: Re
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button type="button" className={status?.installation === "native" ? "apple-action-button" : "apple-action-button app-button--primary"} disabled={busy || !status || status.busy || !["missing", "broken", "native"].includes(status.installation)} onClick={() => status?.installation === "native" ? void check() : void run()}>
-            {t(status?.installation === "native" ? "cli.checkUpdate" : "cli.install")}
+            {busy && operation === "check"
+              ? <span role="status" aria-live="polite">{t("cli.checkingUpdate")}</span>
+              : t(status?.installation === "native" ? "cli.checkUpdate" : "cli.install")}
           </button>
         </div>
       </div>
-      {status ? (
+      {status?.path ? (
         <div className="cli-facts">
-          {status.path ? (
-            <span className="cli-fact">
-              <FolderOpen size={14} strokeWidth={2} aria-hidden="true" />
-              <span className="meta-xs">{t("cli.pathLabel")}</span>
-              <span className="cli-fact-path" title={status.path}>{status.path}</span>
-              {status.other_paths.map((path) => <span key={path} className="cli-fact-path" title={path}>{path}</span>)}
-            </span>
-          ) : null}
           <span className="cli-fact">
-            <Globe size={14} strokeWidth={2} aria-hidden="true" />
-            <span className="meta-xs">{t("cli.networkLabel")}</span>
-            <span className="cli-fact-value">
-              {t(networkStatus?.proxy ? "cli.proxy" : "cli.direct")}
-            </span>
-            {networkStatus?.proxy ? <span className="cli-fact-path" title={networkStatus.proxy}>{networkStatus.proxy}</span> : null}
+            <FolderOpen size={14} strokeWidth={2} aria-hidden="true" />
+            <span className="meta-xs">{t("cli.pathLabel")}</span>
+            <span className="cli-fact-path" title={status.path}>{status.path}</span>
+            {status.other_paths.map((path) => <span key={path} className="cli-fact-path" title={path}>{path}</span>)}
           </span>
         </div>
       ) : null}

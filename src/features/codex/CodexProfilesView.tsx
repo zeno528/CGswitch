@@ -5,16 +5,15 @@ import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { authQuotaErrorKind, profileAuthQuotaCacheKey } from "../../app/authQuotaCache";
+import { authQuotaErrorKind } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { CliUpgradePill } from "../../components/CliUpgradePill";
 import { useCardDragReorder } from "../../components/useCardDragReorder";
-import type { AppState, ProfileBalanceInfo, CodexProfileDetail, CodexProfileSummary } from "../../types";
-import CodexProfileCard, { profileConnectionGate } from "./CodexProfileCard";
-import { ProfileCardActions, ProfileCardContent, ProfileDragPreviewShell } from "../profiles/ProfileCard";
-import { getCachedProfileBalance, getCachedProfileBalanceError } from "../profiles/useProfileBalance";
+import type { AppState, CodexProfileDetail, CodexProfileSummary } from "../../types";
+import CodexProfileCard from "./CodexProfileCard";
+import { CardDragPreview } from "../../components/SortableCard";
 import CodexProfileEdit from "./CodexProfileEdit";
 import ProfileNameDialog from "../profiles/ProfileNameDialog";
 
@@ -31,24 +30,6 @@ interface ProfilesViewProps {
 
 export function codexActionFor(running: boolean) {
   return running ? "restart" : "start";
-}
-
-function ProfileDragPreview({ profile, width, height, active, busy, balanceInfos, balanceError, onOpenAdmin }: { profile: CodexProfileSummary; width: number | null; height: number | null; active: boolean; busy: boolean; balanceInfos: ProfileBalanceInfo[]; balanceError: string; onOpenAdmin: () => void }) {
-  const { t } = useTranslation("profiles");
-  const connection = profileConnectionGate(profile, t);
-  return (
-    <ProfileDragPreviewShell width={width} height={height} active={active}>
-      <ProfileCardContent
-        profile={profile}
-        hideModel
-        balanceInfos={balanceInfos}
-        balanceError={balanceError}
-        balanceRefreshing={false}
-        onOpenAdmin={onOpenAdmin}
-      />
-      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} testing={false} dragging connectionDisabled={connection.disabled} connectionTitle={connection.title} />
-    </ProfileDragPreviewShell>
-  );
 }
 
 export default function CodexProfilesView({ state, authStatusReady, activationEpoch, coldStart, onRefresh, onManageChatgptAccounts }: ProfilesViewProps) {
@@ -77,7 +58,7 @@ export default function CodexProfilesView({ state, authStatusReady, activationEp
       await onRefresh();
     }
   };
-  const { sensors, draggedId: draggedProfileId, dragHoverId: dragHoverProfileId, dragWidth: draggedProfileWidth, dragHeight: draggedProfileHeight, onDragStart, onDragEnd, onDragCancel } = useCardDragReorder(items, setItems, persistOrder);
+  const { sensors, dragPreview, onDragStart, onDragEnd, onDragCancel } = useCardDragReorder(items, setItems, persistOrder);
 
   const openCapture = () => { setModal("capture"); setModalProfile(null); setProfileName(""); };
   const openRename = (profile: CodexProfileSummary) => { setModal("rename"); setModalProfile(profile); setProfileName(profile.name); };
@@ -174,8 +155,6 @@ export default function CodexProfilesView({ state, authStatusReady, activationEp
     setEditDetail(detail);
     setEditingProfile(profile);
   };
-  const draggedProfile = draggedProfileId ? items.find((profile) => profile.id === draggedProfileId) ?? null : null;
-  const draggedQuotaKey = draggedProfile ? profileAuthQuotaCacheKey(draggedProfile) : null;
 
   if (editingProfile || creatingProfile) {
     return <CodexProfileEdit profile={editingProfile} create={creatingProfile} initialDetail={editDetail} authStatus={state.auth_status} authStatusReady={authStatusReady} onBack={() => void closeEdit()} onChanged={() => void onRefresh()} onManageChatgptAccounts={onManageChatgptAccounts} />;
@@ -211,7 +190,7 @@ export default function CodexProfilesView({ state, authStatusReady, activationEp
         </div>
       </header>
       <div className="apple-edit-content">
-            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)]">{items.map((profile) => <CodexProfileCard key={profile.id} profile={profile} active={profile.id === state.active_codex_profile_id} dragHover={profile.id === dragHoverProfileId} busy={busy} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={state.balance_cache} onApply={() => void codexApplyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void codexDuplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{draggedProfile ? <ProfileDragPreview profile={draggedProfile} width={draggedProfileWidth} height={draggedProfileHeight} active={draggedProfile.id === state.active_codex_profile_id} busy={busy} balanceInfos={[getCachedProfileBalance(draggedProfile.id, state.balance_cache?.[draggedProfile.id] ?? null, draggedQuotaKey)].filter((info): info is ProfileBalanceInfo => info != null)} balanceError={getCachedProfileBalanceError(draggedProfile.id, draggedQuotaKey)} onOpenAdmin={() => void api.openUrl(draggedProfile.admin_url!).catch((error) => feedback.error(String(error)))} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
+            <div>{items.length === 0 ? <EmptyStateCard icon={<Layers2 className="h-5 w-5" strokeWidth={2} />}><p className="muted">{t("empty.description")}</p><button type="button" className="apple-action-button app-button--primary" disabled={busy} onClick={openCapture}><Camera className="h-4 w-4" strokeWidth={2} />{t("toolbar.capture")}</button></EmptyStateCard> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragCancel={onDragCancel} onDragEnd={onDragEnd}><SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}><div className="profile-list relative space-y-[var(--gap-page)]">{items.map((profile) => <CodexProfileCard key={profile.id} profile={profile} active={profile.id === state.active_codex_profile_id} busy={busy} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={state.balance_cache} onApply={() => void codexApplyProfile(profile)} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onRemove={() => void removeProfile(profile)} onDuplicate={() => void codexDuplicateProfile(profile)} />)}</div></SortableContext>{createPortal(<DragOverlay dropAnimation={null}>{dragPreview ? <CardDragPreview card={dragPreview} /> : null}</DragOverlay>, document.body)}</DndContext>}</div>
       </div>
       <ProfileNameDialog mode={modal} name={profileName} busy={busy} onName={setProfileName} onClose={() => setModal(null)} onSubmit={() => void submitModal()} />
     </section>

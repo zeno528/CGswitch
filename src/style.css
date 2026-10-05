@@ -531,12 +531,6 @@ button.plan-badge:hover:not(:disabled) {
   opacity: 0.65;
 }
 
-/* 事实值：主文本色中字重，与灰色标签形成层级 */
-.cli-fact-value {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
 /* 路径胶囊：限宽省略，全文看 title 悬浮 */
 .cli-fact-path {
   background: var(--tile-bg);
@@ -682,7 +676,7 @@ body:has(.app-dialog-overlay) .window-control-button {
 .apple-main-card {
   margin: 0 3px 3px 0;
   border: 1px solid rgb(0 0 0 / 0.07);
-  border-radius: 0.75rem;
+  border-radius: 14px;
   background: var(--main-surface-bg);
 }
 
@@ -774,7 +768,6 @@ body:has(.app-dialog-overlay) .window-control-button {
 .drag-dragging {
   background: var(--panel-bg);
   border-radius: 12px;
-  cursor: grabbing;
   opacity: 1;
   scale: 1.02;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
@@ -784,10 +777,6 @@ body:has(.app-dialog-overlay) .window-control-button {
 
 .profile-drag-preview {
   overflow: hidden;
-}
-
-.profile-card-actions--dragging {
-  pointer-events: none;
 }
 
 /* 按钮周围的留白属于操作区，点偏时不触发整卡编辑。 */
@@ -819,9 +808,10 @@ body:has(.app-dialog-overlay) .window-control-button {
   text-overflow: ellipsis;
 }
 
-/* 拖拽期间全局禁止文本选中，防止路过卡片时标题/内容被框选 */
+/* 实际拖拽开始后统一抓手光标并禁止文本选中，结束时恢复。 */
 body.drag-active,
 body.drag-active * {
+  cursor: grabbing !important;
   user-select: none !important;
   -webkit-user-select: none !important;
 }
@@ -1366,38 +1356,31 @@ body.drag-active * {
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
 }
 
-.profile-list > .apple-group,
-.profile-drag-preview {
+.profile-list > .apple-group {
   border-radius: var(--radius-card);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text,
-.profile-drag-preview.brand-gradient-surface .profile-card-content__text {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-content__text {
   color: var(--text-primary);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta,
-.profile-drag-preview.brand-gradient-surface .profile-card-meta {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta {
   color: var(--text-secondary);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip,
-.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip {
   border-color: transparent;
   background: var(--main-surface-bg);
   color: color-mix(in srgb, var(--primary-button-bg) 82%, transparent);
 }
 
-.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip:hover,
-.profile-drag-preview.brand-gradient-surface .profile-card-meta .apple-chip:hover {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-meta .apple-chip:hover {
   border-color: transparent;
   background: var(--hover-bg);
 }
 
 .profile-list > .apple-group.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary),
-.profile-drag-preview.brand-gradient-surface .profile-card-content__text .apple-icon-button,
-.profile-drag-preview.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary) {
+.profile-list > .apple-group.brand-gradient-surface .profile-card-action-buttons > .apple-icon-button:not(.app-button--primary) {
   color: var(--text-primary);
 }
 
@@ -1413,15 +1396,14 @@ body.drag-active * {
   opacity: 0.9;
 }
 
-.profile-list > .apple-group:hover {
+/* 不可交互的拖拽副本沿用卡片悬停描边。 */
+.profile-list > .apple-group:hover,
+.profile-drag-preview {
   outline: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
-.profile-drag-preview.is-active {
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
-}
-
-:root.dark .profile-list > .apple-group:hover {
+:root.dark .profile-list > .apple-group:hover,
+:root.dark .profile-drag-preview {
   outline-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
