@@ -186,20 +186,27 @@ jobs:
 
           ---
 
-          ## 下载安装指引
+          ## 下载与安装
 
-          | 系统 | 下载 | 安装 |
+          | 系统 | 架构 | 文件 |
           | --- | --- | --- |
-          | Windows | `Budtty-v__VERSION__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `Budtty-v__VERSION__-Windows.msi` |
-          | macOS | Apple 芯片：`Budtty-v__VERSION__-macOS-arm64.dmg`<br>Intel：`Budtty-v__VERSION__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
+          | Windows | — | `Budtty-v__VERSION__-Windows-setup.exe` |
+          | Windows | — | `Budtty-v__VERSION__-Windows.msi`（静默安装 `/quiet`） |
+          | macOS | Apple 芯片 | `Budtty-v__VERSION__-macOS-arm64.dmg` |
+          | macOS | Intel | `Budtty-v__VERSION__-macOS-x64.dmg` |
 
-          > **macOS 首次打开被阻止？** 在「系统设置 → 隐私与安全性」中允许打开；仍无法打开时执行：
-          >
-          > ```bash
-          > xattr -cr /Applications/Budtty.app
-          > ```
-          >
-          > 然后重试；若应用不在 `/Applications`，将命令中的路径替换为实际 `.app` 路径。
+          安装包未做代码签名。
+
+          **Windows**：双击 `.exe` 即可；MSI 用于批量部署或静默安装（`msiexec /i <文件> /quiet`）。
+          若弹出「Windows 已保护你的电脑」，点「更多信息」→「仍要运行」。
+
+          **macOS**：打开 DMG，把 Budtty 拖入「应用程序」。需要 macOS 12 以上。
+          若提示「无法验证开发者」，在「系统设置 → 隐私与安全性」点「仍要打开」，
+          或在终端执行：
+
+          ```bash
+          xattr -cr /Applications/Budtty.app
+          ```
           EOF
           sed -i "s/__VERSION__/$VERSION/g" "$GUIDE"
           cat "$NOTES" "$GUIDE" > "$NOTES.full" && mv "$NOTES.full" "$NOTES"
