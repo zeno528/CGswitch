@@ -383,7 +383,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                 description: tProfiles("edit.descriptionLabel"), descriptionPlaceholder: tProfiles("edit.descriptionPlaceholder"),
               }}
             />
-            {accountLogin ? <p className="setting-description mt-4">{t("accountLoginHelp")}</p> : <>
+            {accountLogin ? <p className="setting-description mt-4 rounded-lg border-l-2 border-(--accent) bg-(--selection-bg) px-3 py-2">{t("accountLoginHelp")}</p> : <>
             <label className="field-label mb-1.5 mt-4 block">{t("protocolLabel")}</label>
             <div className="app-input flex min-w-0 items-center gap-2">
               <Webhook className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" />

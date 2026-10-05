@@ -742,14 +742,14 @@ body:has(.app-dialog-overlay) .window-control-button {
   width: var(--sidebar-width-collapsed);
 }
 
-/* 侧边栏应用名 wordmark：Windows 自带几何字体 Bahnschrift + 黑白品牌色 */
+/* 侧边栏应用名 wordmark：优先系统字体 Corbel，不加载额外字体资源 */
 .apple-wordmark {
   color: #1c1c1e;
-  font-family: "Segoe UI Variable Display", "Bahnschrift", "Segoe UI", -apple-system, sans-serif;
+  font-family: "Corbel", "Segoe UI Variable Display", "Segoe UI", -apple-system, sans-serif;
   font-size: 16px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  line-height: 1;
+  line-height: 1.2;
 }
 
 :root.dark .apple-wordmark {
@@ -1444,16 +1444,16 @@ body.drag-active * {
   opacity: 0.9;
 }
 
-.profile-list > .apple-group:not(.is-active):hover {
-  outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+.profile-list > .apple-group:hover {
+  outline: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .profile-drag-preview.is-active {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
-:root.dark .profile-list > .apple-group:not(.is-active):hover {
-  outline-color: color-mix(in srgb, var(--accent) 65%, transparent);
+:root.dark .profile-list > .apple-group:hover {
+  outline-color: color-mix(in srgb, var(--accent) 40%, transparent);
 }
 
 /* 共享分段切换：复用卡片描边，保留滑块及颜色过渡，字体沿用调用方样式。 */
@@ -2706,8 +2706,11 @@ button:focus-visible {
 
 /* 搜索在下拉框顶部，只有下方选项列表滚动。 */
 .app-select-menu--searchable { display: flex; flex-direction: column; overflow: hidden; }
-.app-select-search { position: relative; height: var(--control-height); flex-shrink: 0; }
-.app-select-options { position: relative; display: grid; gap: inherit; min-height: 0; overflow-y: auto; }
+.app-select-search { position: relative; height: var(--control-height); flex-shrink: 0; border-bottom: 1px solid var(--panel-divider); }
+.app-select-search:focus-within > svg { color: var(--accent); }
+.app-select-search input { width: 100%; height: 100%; border: 0; background: transparent; padding: 0 2.25rem; color: inherit; font: inherit; outline: none; }
+.app-select-search input::placeholder { color: var(--text-secondary); }
+.app-select-options { position: relative; display: grid; gap: 0.125rem; min-height: 0; overflow-y: auto; }
 /* 清空搜索复用项目图标按钮，隐藏浏览器自带的清空控件。 */
 .app-select-search input::-webkit-search-cancel-button { display: none; }
 

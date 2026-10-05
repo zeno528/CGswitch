@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createInstance } from "i18next";
 import { I18nextProvider } from "react-i18next";
-import { AppSelect } from "./AppSelect";
+import { AppSelect, selectedRowScrollTop } from "./AppSelect";
 
 const styleSource = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 const componentSource = readFileSync(new URL("./AppSelect.tsx", import.meta.url), "utf8");
@@ -39,12 +39,12 @@ describe("AppSelect checkbox menu", () => {
     expect(markup).not.toContain('type="search"');
   });
 
-  it("搜索默认折叠为按钮，收起菜单后按钮不进入 Tab 顺序，选项保留列表语义", () => {
+  it("搜索行直接提供输入框，收起菜单后不进入 Tab 顺序，选项保留列表语义", () => {
     const markup = renderToStaticMarkup(createElement(I18nextProvider, { i18n }, createElement(AppSelect<string>, {
       value: "second", options, searchable: true, onChange: () => {},
     })));
-    expect(markup).not.toContain('type="search"');
-    expect(markup).toMatch(/<button[^>]*aria-label="select.search"[^>]*tabindex="-1"/);
+    expect(markup).toMatch(/<input[^>]*type="search"[^>]*aria-label="select.search"[^>]*tabindex="-1"/);
+    expect(markup).toContain('placeholder="select.search select.availableCount"');
     expect(markup).toContain('role="listbox"');
     expect(markup.match(/role="option"/g)).toHaveLength(2);
     expect(markup.indexOf('aria-label="select.search"')).toBeLessThan(markup.indexOf('class="app-select-options"'));
@@ -90,6 +90,13 @@ describe("AppSelect styles", () => {
 });
 
 describe("AppSelect 交互", () => {
+  it("模型数量与可视高度变化时仍对齐完整选项行", () => {
+    const rowStep = 34.4;
+    expect(selectedRowScrollTop(2 * rowStep, 32, 272, rowStep)).toBe(0);
+    expect(selectedRowScrollTop(30 * rowStep, 32, 272, rowStep)).toBeCloseTo(27 * rowStep);
+    expect(selectedRowScrollTop(30 * rowStep, 32, 150, rowStep)).toBeCloseTo(29 * rowStep);
+  });
+
   it("展开菜单时定位到当前选中项，而不是停留在列表顶部", () => {
     // 契约：打开时按 data-selected 找到选中项并滚动菜单，使其进入可视区
     expect(componentSource).toContain(`querySelector<HTMLButtonElement>('[data-selected="true"]')`);

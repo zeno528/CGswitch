@@ -154,7 +154,7 @@ export function ProfileCardActions({ active, busy, testing, dragging = false, al
 export function ProfileDragPreviewShell({ width, height, active, children }: { width: number | null; height: number | null; active: boolean; children: ReactNode }) {
   const stateClass = active ? "is-active brand-gradient-surface is-drag-hover" : "is-drag-hover";
   return (
-    <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-4.5 sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
+    <div className={`drag-dragging apple-group profile-drag-preview group flex cursor-pointer select-none flex-col gap-4 px-5 py-[17.33px] sm:h-[84.67px] sm:flex-row sm:items-center sm:justify-between ${stateClass}`} style={{ width: width ? `${width}px` : undefined, height: height ? `${height}px` : undefined }}>
       <span className="drag-handle -ml-5 -mr-4 grid shrink-0 cursor-grabbing place-items-center self-center rounded-md py-1 pl-3 pr-3 muted sm:self-stretch" aria-hidden="true">
         <GripVertical className="h-4 w-4" strokeWidth={2} />
       </span>

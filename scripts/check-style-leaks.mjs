@@ -58,7 +58,7 @@ const RULES = [
    曾有三处各写一套 Windows 优先栈（侧栏导航、输入框占位符、侧栏 wordmark），
    macOS 上前两者落不到 San Francisco，占位符还与输入文字不同字体。 */
 const FONT_WHITELIST = [
-  { text: 'font-family: "Segoe UI Variable Display", "Bahnschrift", "Segoe UI", -apple-system, sans-serif;', reason: "侧栏应用名 wordmark：刻意的品牌几何字体，末尾带 -apple-system 回退" },
+  { text: 'font-family: "Corbel", "Segoe UI Variable Display", "Segoe UI", -apple-system, sans-serif;', reason: "侧栏应用名 wordmark：优先系统自带 Corbel，末尾带 -apple-system 回退" },
 ];
 /* 只取出声明，允许与否在代码里判：把排除项写进正则会被 \s* 的回溯绕过
    （「冒号后零空白」时否定断言成立，于是 var(--font-ui) 也被误判）。 */

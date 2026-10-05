@@ -61,7 +61,7 @@ describe("ProfileCard 官网入口", () => {
   it("激活时保留卡片边缘", () => {
     expect(styles).not.toContain(".profile-list > .apple-group.is-active {");
     expect(styles).not.toContain(".profile-list > .apple-group.brand-gradient-surface {");
-    expect(styles).toContain(".profile-list > .apple-group:not(.is-active):hover {\n  outline: 1px solid");
+    expect(styles).toContain(".profile-list > .apple-group:hover {\n  outline: 1px solid");
     expect(styles).not.toContain(":root.dark .profile-list > .apple-group.is-active {");
   });
 

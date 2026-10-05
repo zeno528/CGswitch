@@ -27,6 +27,11 @@ interface AppSelectProps<T extends string | number> {
   checkedValues?: readonly T[];
 }
 
+export function selectedRowScrollTop(itemTop: number, itemHeight: number, viewportHeight: number, rowStep: number) {
+  const rowsAbove = Math.max(0, Math.floor((viewportHeight - itemHeight) / (2 * rowStep)));
+  return Math.max(0, itemTop - rowsAbove * rowStep);
+}
+
 export function AppSelect<T extends string | number>({
   value,
   options,
@@ -46,7 +51,7 @@ export function AppSelect<T extends string | number>({
   const hasOptions = options.length > 0;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const filteredOptions = searchable ? options.filter((option) => option.label.toLowerCase().includes(search.trim().toLowerCase())) : options;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -57,7 +62,7 @@ export function AppSelect<T extends string | number>({
   useMenuDismiss(open, rootRef, menuRef, setOpen);
 
   useLayoutEffect(() => {
-    if (!open) { setSearch(""); setSearchExpanded(false); return; }
+    if (!open) { setSearch(""); setSearchFocused(false); return; }
     if (!searchable) return;
     const menu = menuRef.current;
     // 锁定展开时的宽高，展开搜索和过滤结果都不改变菜单尺寸。
@@ -68,16 +73,21 @@ export function AppSelect<T extends string | number>({
     return () => { if (menu) { menu.style.width = ""; menu.style.height = ""; } };
   }, [open, searchable]);
 
-  // 打开时定位到当前选中项：长列表（如模型清单）从头开始滚会让人找不到正在用的模型。
-  // 菜单是 fixed 定位，offsetTop 即相对菜单的偏移；把选中项滚到可视区中部，越界时 scrollTop 自动收敛
+  // 打开时定位到当前选中项；可搜索列表按完整行滚动，避免上下露出半截模型名。
   useLayoutEffect(() => {
     if (!open) return;
     const menu = searchable ? optionsRef.current : menuRef.current;
     if (searchable && search.trim() && menu) { menu.scrollTop = 0; return; }
     const current = menu?.querySelector<HTMLButtonElement>('[data-selected="true"]');
     if (!menu || !current) return;
+    if (searchable) {
+      const sibling = (current.nextElementSibling ?? current.previousElementSibling) as HTMLElement | null;
+      const rowStep = sibling ? Math.abs(sibling.offsetTop - current.offsetTop) : current.offsetHeight;
+      menu.scrollTop = selectedRowScrollTop(current.offsetTop, current.offsetHeight, menu.clientHeight, rowStep);
+      return;
+    }
     menu.scrollTop = Math.max(0, current.offsetTop - (menu.clientHeight - current.offsetHeight) / 2);
-  }, [open, options.length, searchable, search]);
+  }, [open, options.length, searchable, search, menuStyle]);
 
   // 菜单自身的滚轮不穿透：内容不满或已滚到边界时拦下，背景纹丝不动
   //   （React 的 onWheel 是 passive 的，preventDefault 必须用原生 non-passive 监听）
@@ -104,18 +114,8 @@ export function AppSelect<T extends string | number>({
   const menu = (
     <div ref={menuRef} className={`app-select-menu ${iconOnly ? "app-select-menu--arrow" : ""} ${searchable ? "app-select-menu--searchable" : ""}`} data-open={open} style={menuStyle} role={searchable ? undefined : checkedValues ? "menu" : "listbox"} aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
       {searchable ? <div className="app-select-search">
-        <button
-          type="button"
-          className="apple-icon-button absolute left-1 top-1/2 -translate-y-1/2 !h-7 !w-7 text-[var(--text-secondary)]"
-          aria-label={t("select.search")}
-          aria-expanded={searchExpanded}
-          tabIndex={open ? 0 : -1}
-          onClick={() => { setSearchExpanded((expanded) => !expanded); setSearch(""); }}
-        >
-          <Search size={16} strokeWidth={2} aria-hidden="true" />
-        </button>
-        {!searchExpanded ? <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 meta-xs muted">{t("select.availableCount", { count: options.length })}</span> : null}
-        {searchExpanded ? <input ref={searchRef} type="search" autoFocus className="app-input app-input--compact !h-full !min-h-0 !py-0 !pl-9 !pr-9" aria-label={t("select.search")} placeholder={t("select.search")} value={search} tabIndex={open ? 0 : -1} onChange={(event) => setSearch(event.target.value)} /> : null}
+        <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={16} strokeWidth={2} aria-hidden="true" />
+        <input ref={searchRef} type="search" aria-label={t("select.search")} placeholder={searchFocused ? t("select.search") : `${t("select.search")} ${t("select.availableCount", { count: options.length })}`} value={search} tabIndex={open ? 0 : -1} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} onChange={(event) => setSearch(event.target.value)} />
         {search ? <button
           type="button"
           className="apple-icon-button absolute right-1 top-1/2 -translate-y-1/2 !h-7 !w-7"
