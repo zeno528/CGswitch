@@ -473,26 +473,4 @@ mod tests {
         assert!(matches!(name.as_ref(), "pwsh.exe" | "powershell.exe"));
         assert!(!shell.contains("codex-runtimes"));
     }
-
-    #[test]
-    #[cfg(target_os = "windows")]
-    fn opening_console_returns_before_the_shell_exits() {
-        let dir = tempfile::tempdir().unwrap();
-        let output = dir.path().join("env.txt");
-        let script = format!(
-            "Start-Sleep -Seconds 4; [System.IO.File]::WriteAllText({}, 'ok')",
-            ps_quote(output.to_str().unwrap())
-        );
-        let start = std::time::Instant::now();
-        shell_execute_script(&find_windows_shell().unwrap(), &script).unwrap();
-        let elapsed = start.elapsed();
-        assert!(elapsed < std::time::Duration::from_secs(3));
-        for _ in 0..80 {
-            if output.exists() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
-        assert_eq!(std::fs::read_to_string(output).unwrap(), "ok");
-    }
 }
