@@ -83,7 +83,6 @@ export default function ProfileTerminalMenu({ profileId }: { profileId: string }
 
   const toggle = async () => {
     const next = !open;
-    setOpen(next);
     if (next && !settings) {
       try {
         setSettings(await api.getSettings());
@@ -91,6 +90,7 @@ export default function ProfileTerminalMenu({ profileId }: { profileId: string }
         feedback.error(String(error));
       }
     }
+    setOpen(next);
   };
 
   const menu = open ? createPortal(

@@ -28,6 +28,7 @@ export function useFixedMenuPosition(
       const below = window.innerHeight - rect.bottom - gap;
       const above = rect.top - gap;
       const openUp = below < effectiveHeight && above > below;
+      const available = Math.max(0, openUp ? above : below);
       setStyle({
         ...(align === "end"
           ? { left: "auto", right: `${window.innerWidth - rect.right}px` }
@@ -35,6 +36,7 @@ export function useFixedMenuPosition(
         ...(openUp
           ? { top: "auto", bottom: `${window.innerHeight - rect.top + gap}px` }
           : { top: `${rect.bottom + gap}px`, bottom: "auto" }),
+        maxHeight: `${Math.min(MENU_MAX_HEIGHT, available)}px`,
       });
     };
     updatePosition();
