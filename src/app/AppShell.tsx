@@ -164,7 +164,7 @@ function TrayActions({ stateRef, refresh, openSettings, openAccounts }: {
 export default function AppShell() {
   // 冷启动落页：首帧同步读缓存直出（与 sidebar-collapsed 同款 localStorage 先例），
   // 第二次冷启动起首帧即目标页不闪；settings 到达后由下方 effect 校准真值并刷新缓存。
-  const [view, setView] = useState<AppView>(() => asAppView(localStorage.getItem("cgswitch.startup-view")));
+  const [view, setView] = useState<AppView>(() => asAppView(localStorage.getItem("budtty.startup-view")));
   // 切页记忆：进过的页面保活（Activity hidden），未访问页连渲染都不发生，冷启动零新增。
   const [visitedViews, setVisitedViews] = useState<ReadonlySet<AppView>>(() => new Set<AppView>(["codexProfiles"]));
   const [startupReady, setStartupReady] = useState(false);
@@ -211,7 +211,7 @@ export default function AppShell() {
   useEffect(() => {
     if (startupSetting === undefined) return;
     const target = asAppView(startupSetting);
-    localStorage.setItem("cgswitch.startup-view", target);
+    localStorage.setItem("budtty.startup-view", target);
     if (startupViewApplied.current) return;
     startupViewApplied.current = true;
     setView((current) => (current === target ? current : target));
@@ -380,7 +380,7 @@ export default function AppShell() {
     );
   };
 
-  // 侧栏分组（C 方案）：客户端 / 功能入口。新增页面 = 数组加一条，不再手写按钮块；
+  // 侧栏分组：客户端 / 功能入口 / 底部入口。新增页面 = 数组加一条，不再手写按钮块；
   // 客户端与功能入口沿用同一组按钮间距。icon 存 ReactNode 以保留各页现有图标形态。
   // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
   const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; badgeDot?: boolean; titleText?: string; onSelect: () => void }[] }[] = [
@@ -395,10 +395,15 @@ export default function AppShell() {
       key: "common",
       items: [
         { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
-        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
         { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
         { view: "skills", labelKey: "nav.skills", icon: <BookOpenText strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
         { view: "agentTools", labelKey: "nav.agentTools", icon: <Bot strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("agentTools") },
+      ],
+    },
+    {
+      key: "footer",
+      items: [
+        { view: "accounts", labelKey: "nav.accounts", icon: <CircleUserRound strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("accounts") },
         { view: "settings", labelKey: "nav.settings", icon: <SettingsIcon strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("settings") },
       ],
     },
@@ -429,7 +434,7 @@ export default function AppShell() {
                 className="apple-sidebar-brand flex w-fit cursor-pointer items-center"
                 role="button"
                 tabIndex={0}
-                aria-label="CGswitch"
+                aria-label="Budtty"
                 onClick={sidebar.toggleSidebar}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") sidebar.toggleSidebar();
@@ -437,16 +442,17 @@ export default function AppShell() {
                 onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}
                 onMouseLeave={() => sidebar.setSidebarFlyoutArmed(false)}
               >
-                <img src="/logo.svg" alt="CGswitch" className="app-logo" draggable="false" />
-                <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">CGswitch</span>
+                <img src="/logo.svg" alt="Budtty" className="app-logo" draggable="false" />
+                <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">Budtty</span>
               </div>
               {sidebar.sidebarFlyoutArmed ? (
                 <span className="apple-sidebar-flyout" aria-hidden="true">{t(sidebar.sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}</span>
               ) : null}
             </div>
-            <nav className="mx-1.5 mt-3 space-y-3">
+            <nav className="mx-1.5 mt-3 flex flex-1 flex-col gap-3">
               {sidebarGroups.map((group) => (
-                <div key={group.key} className={`apple-sidebar-group ${group.key === "common" ? "apple-sidebar-group--content" : ""}`} role="group">
+                <div key={group.key} className={`apple-sidebar-group ${group.key === "common" ? "apple-sidebar-group--content" : ""} ${group.key === "footer" ? "mt-auto pb-3" : ""}`} role="group">
+                  {group.key === "footer" ? <UpdateNotice className="update-notice--sidebar" sidebarCollapsed={sidebar.sidebarCollapsed} sidebarFlyoutArmed={sidebar.sidebarFlyoutArmed} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)} /> : null}
                   <div className="space-y-1">
                     {group.items.map((item) => (
                       <button key={item.view} type="button" className={navClass} data-active={view === item.view ? "true" : undefined} aria-label={t(item.labelKey)} title={item.titleText} onClick={item.onSelect} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}>
@@ -463,7 +469,6 @@ export default function AppShell() {
                 </div>
               ))}
             </nav>
-            <UpdateNotice className="update-notice--sidebar" sidebarCollapsed={sidebar.sidebarCollapsed} sidebarFlyoutArmed={sidebar.sidebarFlyoutArmed} onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)} />
           </aside>
 
           <main ref={mainRef} className="apple-main-card min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-[var(--main-top-inset)]">

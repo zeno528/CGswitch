@@ -41,7 +41,7 @@ export default {
   },
   startup: {
     autostartTitle: "Launch at login",
-    autostartDescription: "Start CGswitch automatically after you sign in",
+    autostartDescription: "Start Budtty automatically after you sign in",
     silentTitle: "Start silently",
     silentDescription: "Start without showing the main window, staying in the system tray",
     minimizeTitle: "Minimize to tray on close",
@@ -253,8 +253,8 @@ export default {
       codexConfig: "Codex config",
     },
     pathDescriptions: {
-      appData: "Stores CGswitch app data",
-      logs: "View CGswitch runtime logs",
+      appData: "Stores Budtty app data",
+      logs: "View Budtty runtime logs",
       codexConfig: "View the Codex configuration file",
     },
     openPath: "Open {{label}}",

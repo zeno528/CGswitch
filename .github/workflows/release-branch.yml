@@ -157,8 +157,8 @@ jobs:
 
           | 系统 | 下载 | 安装 |
           | --- | --- | --- |
-          | Windows | `CGswitch-__TAG__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `CGswitch-__TAG__-Windows.msi` |
-          | macOS | Apple 芯片：`CGswitch-__TAG__-macOS-arm64.dmg`<br>Intel：`CGswitch-__TAG__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
+          | Windows | `Budtty-__TAG__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `Budtty-__TAG__-Windows.msi` |
+          | macOS | Apple 芯片：`Budtty-__TAG__-macOS-arm64.dmg`<br>Intel：`Budtty-__TAG__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
           EOF
           sed -i "s/__TAG__/$TAG/g" "$GUIDE"
           # 变更列表基准 = 上次本分支测试构建的 tag：按 tag 创建时间倒序取最新一个，
@@ -224,15 +224,15 @@ jobs:
           mkdir -p release-assets
           copy_asset() { cp "$(find "$1" -type f -name "$2" -print -quit)" "$3"; }
           # 资产名带 tag（含分支名与构建号），与正式版安装包名明确区分
-          copy_asset artifacts/bundle-windows-x64 '*.exe' "release-assets/CGswitch-$TAG-Windows-setup.exe"
-          copy_asset artifacts/bundle-windows-x64 '*.msi' "release-assets/CGswitch-$TAG-Windows.msi"
-          copy_asset artifacts/bundle-windows-x64 '*.exe.sig' "release-assets/CGswitch-$TAG-Windows-setup.exe.sig"
-          copy_asset artifacts/bundle-macos-x64 '*.dmg' "release-assets/CGswitch-$TAG-macOS-x64.dmg"
-          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz' "release-assets/CGswitch-$TAG-macOS-x64.app.tar.gz"
-          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz.sig' "release-assets/CGswitch-$TAG-macOS-x64.app.tar.gz.sig"
-          copy_asset artifacts/bundle-macos-arm64 '*.dmg' "release-assets/CGswitch-$TAG-macOS-arm64.dmg"
-          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz' "release-assets/CGswitch-$TAG-macOS-arm64.app.tar.gz"
-          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz.sig' "release-assets/CGswitch-$TAG-macOS-arm64.app.tar.gz.sig"
+          copy_asset artifacts/bundle-windows-x64 '*.exe' "release-assets/Budtty-$TAG-Windows-setup.exe"
+          copy_asset artifacts/bundle-windows-x64 '*.msi' "release-assets/Budtty-$TAG-Windows.msi"
+          copy_asset artifacts/bundle-windows-x64 '*.exe.sig' "release-assets/Budtty-$TAG-Windows-setup.exe.sig"
+          copy_asset artifacts/bundle-macos-x64 '*.dmg' "release-assets/Budtty-$TAG-macOS-x64.dmg"
+          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz' "release-assets/Budtty-$TAG-macOS-x64.app.tar.gz"
+          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz.sig' "release-assets/Budtty-$TAG-macOS-x64.app.tar.gz.sig"
+          copy_asset artifacts/bundle-macos-arm64 '*.dmg' "release-assets/Budtty-$TAG-macOS-arm64.dmg"
+          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz' "release-assets/Budtty-$TAG-macOS-arm64.app.tar.gz"
+          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz.sig' "release-assets/Budtty-$TAG-macOS-arm64.app.tar.gz.sig"
           # 不生成 latest.json：测试构建不进入正式升级源
           find release-assets -maxdepth 1 -type f -printf '%f\n' | sort
       - name: 上传产物

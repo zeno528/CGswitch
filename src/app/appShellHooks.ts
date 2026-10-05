@@ -169,14 +169,14 @@ export function useActivationRefresh() {
 
 export function useSidebar() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem("cgswitch.sidebar-collapsed") !== "0",
+    () => localStorage.getItem("budtty.sidebar-collapsed") !== "0",
   );
   const [sidebarFlyoutArmed, setSidebarFlyoutArmed] = useState(true);
 
   const toggleSidebar = () => {
     setSidebarCollapsed((collapsed) => {
       const next = !collapsed;
-      localStorage.setItem("cgswitch.sidebar-collapsed", next ? "1" : "0");
+      localStorage.setItem("budtty.sidebar-collapsed", next ? "1" : "0");
       if (next) setSidebarFlyoutArmed(false);
       return next;
     });

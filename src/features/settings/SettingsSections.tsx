@@ -43,7 +43,7 @@ const pathLabel = (t: (key: "about.paths.appData") => string, label: string): st
   label.startsWith("about.paths.") ? t(label as "about.paths.appData") : label;
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
-export const backupTitle = (name: string) => name.replace(/^(?:cg-backup-|cgswitch-export-)/, "").replace(/\.db$/, "");
+export const backupTitle = (name: string) => name.replace(/^(?:cg-backup-|budtty-export-)/, "").replace(/\.db$/, "");
 // 自动备份文件名剥前缀后是纯时间戳（20260822-120000-000），手动「立即备份」带 manual- 标记，
 // 重命名过的是自由文本；行标题的"自动/手动"前缀据此区分
 export const isAutoBackupName = (name: string) => /^\d{8}-\d{6}-\d{3}$/.test(backupTitle(name));
@@ -419,7 +419,7 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
   const { update, checking, installing, check } = useAppUpdate();
   // 与状态栏悬浮卡片一致：升级走确认式弹窗，先看更新日志再安装
   const [confirming, setConfirming] = useState(false);
-  const openRepository = () => void api.openUrl("https://github.com/zeno528/CGSwitch").catch((error) => feedback.error(String(error)));
+  const openRepository = () => void api.openUrl("https://github.com/zeno528/CGswitch").catch((error) => feedback.error(String(error)));
   // 检查只负责发现并展示版本号，升级必须由用户点击「立即重启更新」触发
   const checkUpdate = async () => {
     try {
@@ -439,9 +439,9 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <div className="apple-group divide-y divide-[var(--panel-divider)] px-[var(--gap-card-inline)]">
         <div className="relative flex flex-wrap items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="CGswitch" className="app-logo h-12 w-12 shrink-0" />
+            <img src="/logo.svg" alt="Budtty" className="app-logo h-12 w-12 shrink-0" />
             <div className="flex flex-col items-start gap-1">
-              <span className="apple-wordmark">CGswitch</span>
+              <span className="apple-wordmark">Budtty</span>
               <span className="flex items-center gap-2">
                 <span className="app-version">v{version.trim()}</span>
                 {update ? <span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span> : null}

@@ -2,7 +2,7 @@
   "app": {
     "windows": [
       {
-        "title": "CGswitch",
+        "title": "Budtty",
         "width": 1080,
         "height": 720,
         "minWidth": 1000,

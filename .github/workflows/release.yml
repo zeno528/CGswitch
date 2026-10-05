@@ -190,13 +190,13 @@ jobs:
 
           | 系统 | 下载 | 安装 |
           | --- | --- | --- |
-          | Windows | `CGswitch-v__VERSION__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `CGswitch-v__VERSION__-Windows.msi` |
-          | macOS | Apple 芯片：`CGswitch-v__VERSION__-macOS-arm64.dmg`<br>Intel：`CGswitch-v__VERSION__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
+          | Windows | `Budtty-v__VERSION__-Windows-setup.exe` | 双击安装；批量部署、静默安装可选 `Budtty-v__VERSION__-Windows.msi` |
+          | macOS | Apple 芯片：`Budtty-v__VERSION__-macOS-arm64.dmg`<br>Intel：`Budtty-v__VERSION__-macOS-x64.dmg` | 打开后拖入「应用程序」 |
 
           > **macOS 首次打开被阻止？** 在「系统设置 → 隐私与安全性」中允许打开；仍无法打开时执行：
           >
           > ```bash
-          > xattr -cr /Applications/CGswitch.app
+          > xattr -cr /Applications/Budtty.app
           > ```
           >
           > 然后重试；若应用不在 `/Applications`，将命令中的路径替换为实际 `.app` 路径。
@@ -235,15 +235,15 @@ jobs:
         run: |
           mkdir -p release-assets
           copy_asset() { cp "$(find "$1" -type f -name "$2" -print -quit)" "$3"; }
-          copy_asset artifacts/bundle-windows-x64 '*.exe' "release-assets/CGswitch-v$VERSION-Windows-setup.exe"
-          copy_asset artifacts/bundle-windows-x64 '*.msi' "release-assets/CGswitch-v$VERSION-Windows.msi"
-          copy_asset artifacts/bundle-windows-x64 '*.exe.sig' "release-assets/CGswitch-v$VERSION-Windows-setup.exe.sig"
-          copy_asset artifacts/bundle-macos-x64 '*.dmg' "release-assets/CGswitch-v$VERSION-macOS-x64.dmg"
-          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz' "release-assets/CGswitch-v$VERSION-macOS-x64.app.tar.gz"
-          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz.sig' "release-assets/CGswitch-v$VERSION-macOS-x64.app.tar.gz.sig"
-          copy_asset artifacts/bundle-macos-arm64 '*.dmg' "release-assets/CGswitch-v$VERSION-macOS-arm64.dmg"
-          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz' "release-assets/CGswitch-v$VERSION-macOS-arm64.app.tar.gz"
-          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz.sig' "release-assets/CGswitch-v$VERSION-macOS-arm64.app.tar.gz.sig"
+          copy_asset artifacts/bundle-windows-x64 '*.exe' "release-assets/Budtty-v$VERSION-Windows-setup.exe"
+          copy_asset artifacts/bundle-windows-x64 '*.msi' "release-assets/Budtty-v$VERSION-Windows.msi"
+          copy_asset artifacts/bundle-windows-x64 '*.exe.sig' "release-assets/Budtty-v$VERSION-Windows-setup.exe.sig"
+          copy_asset artifacts/bundle-macos-x64 '*.dmg' "release-assets/Budtty-v$VERSION-macOS-x64.dmg"
+          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz' "release-assets/Budtty-v$VERSION-macOS-x64.app.tar.gz"
+          copy_asset artifacts/bundle-macos-x64 '*.app.tar.gz.sig' "release-assets/Budtty-v$VERSION-macOS-x64.app.tar.gz.sig"
+          copy_asset artifacts/bundle-macos-arm64 '*.dmg' "release-assets/Budtty-v$VERSION-macOS-arm64.dmg"
+          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz' "release-assets/Budtty-v$VERSION-macOS-arm64.app.tar.gz"
+          copy_asset artifacts/bundle-macos-arm64 '*.app.tar.gz.sig' "release-assets/Budtty-v$VERSION-macOS-arm64.app.tar.gz.sig"
           node - "$VERSION" "$GITHUB_REPOSITORY" <<'NODE'
           const fs = require("fs");
           const [version, repository] = process.argv.slice(2);
@@ -256,9 +256,9 @@ jobs:
             version,
             notes: notes || undefined,
             platforms: {
-              "darwin-x86_64": { url: asset(`CGswitch-v${version}-macOS-x64.app.tar.gz`), signature: signature(`CGswitch-v${version}-macOS-x64.app.tar.gz.sig`) },
-              "darwin-aarch64": { url: asset(`CGswitch-v${version}-macOS-arm64.app.tar.gz`), signature: signature(`CGswitch-v${version}-macOS-arm64.app.tar.gz.sig`) },
-              "windows-x86_64": { url: asset(`CGswitch-v${version}-Windows-setup.exe`), signature: signature(`CGswitch-v${version}-Windows-setup.exe.sig`) }
+              "darwin-x86_64": { url: asset(`Budtty-v${version}-macOS-x64.app.tar.gz`), signature: signature(`Budtty-v${version}-macOS-x64.app.tar.gz.sig`) },
+              "darwin-aarch64": { url: asset(`Budtty-v${version}-macOS-arm64.app.tar.gz`), signature: signature(`Budtty-v${version}-macOS-arm64.app.tar.gz.sig`) },
+              "windows-x86_64": { url: asset(`Budtty-v${version}-Windows-setup.exe`), signature: signature(`Budtty-v${version}-Windows-setup.exe.sig`) }
             }
           }, null, 2)}\n`);
           NODE

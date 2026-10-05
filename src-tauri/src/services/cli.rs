@@ -459,7 +459,7 @@ if ([string]::IsNullOrEmpty($env:HTTPS_PROXY)) {
     [System.Net.WebRequest]::DefaultWebProxy = $proxy
 }
 $LASTEXITCODE = 0
-& $env:CGSWITCH_CLI_INSTALLER_PATH $env:CGSWITCH_CLI_INSTALLER_TARGET
+& $env:BUDTTY_CLI_INSTALLER_PATH $env:BUDTTY_CLI_INSTALLER_TARGET
 exit $LASTEXITCODE
 "#;
 
@@ -493,8 +493,8 @@ pub(super) fn official_installer_command(
             "-Command",
             POWERSHELL_INSTALLER,
         ]);
-        child.env("CGSWITCH_CLI_INSTALLER_PATH", script);
-        child.env("CGSWITCH_CLI_INSTALLER_TARGET", target);
+        child.env("BUDTTY_CLI_INSTALLER_PATH", script);
+        child.env("BUDTTY_CLI_INSTALLER_TARGET", target);
         child
     };
     #[cfg(not(windows))]

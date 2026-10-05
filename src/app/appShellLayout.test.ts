@@ -10,7 +10,7 @@ const styles = readFileSync(new URL("../style.css", import.meta.url), "utf8");
 describe("AppShell 布局", () => {
   it("保持侧栏导航紧贴品牌区，并按 Codex/Claude 分组数据驱动渲染，通用导航不显示标题", () => {
     expect(source).toContain("apple-sidebar relative flex h-full shrink-0 flex-col");
-    expect(source).toContain('className="mx-1.5 mt-3 space-y-3"');
+    expect(source).toContain('className="mx-1.5 mt-3 flex flex-1 flex-col gap-3"');
     expect(source).toContain("sidebarGroups.map");
     expect(source).toContain('className={navClass} data-active={view === item.view ? "true" : undefined}');
     expect(source).not.toContain("apple-sidebar-group-label");
@@ -25,6 +25,9 @@ describe("AppShell 布局", () => {
     expect(styles).toContain(".apple-sidebar-group--content");
     expect(source.indexOf('key: "clients"')).toBeLessThan(source.indexOf('key: "common"'));
     expect(source.indexOf('labelKey: "nav.plugins"')).toBeLessThan(source.indexOf('labelKey: "nav.mcp"'));
+    expect(source).toContain('key: "footer"');
+    expect(source.indexOf('labelKey: "nav.accounts"')).toBeLessThan(source.indexOf('labelKey: "nav.settings"'));
+    expect(source).toContain('group.key === "footer" ? <UpdateNotice');
     // 客户端按钮与下方功能入口复用全局侧栏文字动画，不能用 display:none 瞬间切换。
     expect(styles).not.toContain(".apple-sidebar-group-label");
     expect(styles).toContain(".apple-sidebar-nav-button img");

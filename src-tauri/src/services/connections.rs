@@ -1475,7 +1475,7 @@ impl AppContext {
         .await
     }
 
-    /// 供应商级余额缓存：上次成功查询结果写入 ~/.cgswitch/balance-cache.json，
+    /// 供应商级余额缓存：上次成功查询结果写入 ~/.budtty/balance-cache.json，
     /// 保证卡片首次渲染/切换视图时数字就在，不出现“消失→出现”的闪烁。
     pub fn set_profile_balance(
         &self,

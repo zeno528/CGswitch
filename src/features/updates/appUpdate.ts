@@ -11,7 +11,7 @@ export interface AppUpdate {
 }
 
 /** 旧版本把更新标记存 localStorage 的键：启动时兜底消费一次，覆盖升级过渡期 */
-export const UPDATED_VERSION_KEY = "cgswitch.updated-version";
+export const UPDATED_VERSION_KEY = "budtty.updated-version";
 
 async function logUpdateEvent(event: UpdateLogEvent, version?: string) {
   await api.logUpdateEvent(event, version).catch(() => undefined);

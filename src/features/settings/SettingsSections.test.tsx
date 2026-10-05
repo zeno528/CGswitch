@@ -20,7 +20,7 @@ const form: Settings = { theme: "system", language: "system", auto_restart: fals
 describe("SettingsSections", () => {
   it("formats backup titles", () => {
     expect(backupTitle("cg-backup-20260822-120000-000.db")).toBe("20260822-120000-000");
-    expect(backupTitle("cgswitch-export-demo.db")).toBe("demo");
+    expect(backupTitle("budtty-export-demo.db")).toBe("demo");
   });
 
   it("formats backup sizes", () => {
@@ -35,7 +35,7 @@ describe("SettingsSections", () => {
 
   it("识别自动备份的时间戳文件名", () => {
     expect(isAutoBackupName("cg-backup-20260822-120000-000.db")).toBe(true);
-    expect(isAutoBackupName("cgswitch-export-demo.db")).toBe(false);
+    expect(isAutoBackupName("budtty-export-demo.db")).toBe(false);
     // 手动「立即备份」带 manual- 标记，自动备份没有
     expect(isManualBackupName("cg-backup-manual-20260923-120000-000.db")).toBe(true);
     expect(isManualBackupName("cg-backup-20260822-120000-000.db")).toBe(false);
@@ -113,7 +113,7 @@ describe("SettingsSections", () => {
     );
     expect(html.match(/class="apple-group /g)).toHaveLength(2);
     expect(html).toContain("app-version");
-    expect(html).toContain('class="apple-wordmark">CGswitch</span><span class="flex items-center gap-2"><span class="app-version">v');
+    expect(html).toContain('class="apple-wordmark">Budtty</span><span class="flex items-center gap-2"><span class="app-version">v');
     expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
     expect(html).not.toContain("当前版本");
     expect(html).not.toContain("版本更新");
@@ -135,9 +135,9 @@ describe("SettingsSections", () => {
         <AppUpdateProvider enabled={false}>
           <SettingsAbout
             paths={[
-              { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
-              { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups\\database" },
-              { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
+              { label: "about.paths.appData", path: "C:\\Users\\<user>\\.budtty" },
+              { label: "about.paths.backups", path: "C:\\Users\\<user>\\.budtty\\backups\\database" },
+              { label: "about.paths.logs", path: "C:\\Users\\<user>\\.budtty\\logs" },
               { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
             ]}
             onOpenPath={() => undefined}
@@ -148,10 +148,10 @@ describe("SettingsSections", () => {
     );
     expect(html).toContain("应用数据目录");
     expect(html).toContain("日志目录");
-    expect(html).toContain("存放 CGswitch 的应用数据");
-    expect(html).toContain("查看 CGswitch 的运行日志");
+    expect(html).toContain("存放 Budtty 的应用数据");
+    expect(html).toContain("查看 Budtty 的运行日志");
     expect(html).toContain("查看 Codex 的配置文件");
-    expect(html).not.toContain(".cgswitch");
+    expect(html).not.toContain(".budtty");
     expect(html).not.toContain("config.toml");
     expect(html).not.toContain("备份目录");
     // 路径行与 About 行统一为「整行可点 + 箭头」（共用 SettingsRowLink）：无「打开」按钮

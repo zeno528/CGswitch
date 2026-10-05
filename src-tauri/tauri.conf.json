@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CGswitch",
+  "productName": "Budtty",
   "version": "0.30.0",
   "identifier": "com.zeno528.cgswitch",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "CGswitch",
+        "title": "Budtty",
         "width": 1080,
         "height": 720,
         "minWidth": 1000,

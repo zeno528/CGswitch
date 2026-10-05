@@ -1,7 +1,7 @@
 //! Claude Code 供应商终端：在新终端里起一个只属于某个供应商的 `claude` 会话。
 //!
 //! 机制是官方 `--settings` 的 per-invocation 覆盖：把该供应商的完整 env 写进
-//! `.cgswitch/terminal/claude_<id>.json`，终端里跑 `claude --settings <该文件>`。
+//! `.budtty/terminal/claude_<id>.json`，终端里跑 `claude --settings <该文件>`。
 //! 因为是进程级 flag 而非全局文件，N 个终端就是 N 份互不干扰的配置。
 //!
 //! 只读旁路：不碰 `~/.claude/settings.json`、不改 live、不切激活、不触发回写。
@@ -97,7 +97,7 @@ impl AppContext {
 
         // 启动前回显覆盖文件路径：用户能立刻确认这个终端用的是哪份配置。
         let settings_text = settings.display().to_string();
-        let banner = format!("CGswitch Claude terminal: {settings_text}");
+        let banner = format!("Budtty Claude terminal: {settings_text}");
         let model = terminal_model(&profile);
 
         #[cfg(target_os = "windows")]
@@ -407,15 +407,15 @@ mod tests {
     #[cfg(target_os = "macos")]
     fn ghostty_script_quotes_paths_and_stays_single_line() {
         let script = ghostty_launch_script(
-            "CGswitch Claude terminal: /Users/u/.cgswitch/terminal/claude_p1.json",
-            "/Users/u/.cgswitch/terminal/claude_p1.json",
+            "Budtty Claude terminal: /Users/u/.budtty/terminal/claude_p1.json",
+            "/Users/u/.budtty/terminal/claude_p1.json",
             "sonnet's",
         );
         assert!(!script.contains('\n') && !script.contains('\r'));
         assert_eq!(
             script,
-            "echo 'CGswitch Claude terminal: /Users/u/.cgswitch/terminal/claude_p1.json'; \
-             claude --settings '/Users/u/.cgswitch/terminal/claude_p1.json' --model 'sonnet''s'"
+            "echo 'Budtty Claude terminal: /Users/u/.budtty/terminal/claude_p1.json'; \
+             claude --settings '/Users/u/.budtty/terminal/claude_p1.json' --model 'sonnet''s'"
         );
     }
 
@@ -425,17 +425,17 @@ mod tests {
         // 回归：命令行里的换行会终止命令，-NoExit 窗口只执行第一行，
         // Set-Location 与 claude 被丢弃——表现为终端开了却只打印 banner 就回到提示符。
         let script = windows_launch_script(
-            Some("D:\\GitHub project\\CGswitch"),
-            "C:\\Users\\u\\.cgswitch\\terminal\\claude_p1.json",
-            "CGswitch Claude terminal: C:\\Users\\u\\.cgswitch\\terminal\\claude_p1.json",
+            Some("D:\\GitHub project\\Budtty"),
+            "C:\\Users\\u\\.budtty\\terminal\\claude_p1.json",
+            "Budtty Claude terminal: C:\\Users\\u\\.budtty\\terminal\\claude_p1.json",
             "sonnet",
         );
         assert!(!script.contains('\n') && !script.contains('\r'));
         // PowerShell 5.1 不支持 &&，只能 ; 串联；换目录、banner、claude 必须同在一条里
         assert!(script
-            .contains("Set-Location -LiteralPath 'D:\\GitHub project\\CGswitch'; Write-Output "));
+            .contains("Set-Location -LiteralPath 'D:\\GitHub project\\Budtty'; Write-Output "));
         assert!(script
-            .ends_with("; claude --settings 'C:\\Users\\u\\.cgswitch\\terminal\\claude_p1.json' --model 'sonnet'"));
+            .ends_with("; claude --settings 'C:\\Users\\u\\.budtty\\terminal\\claude_p1.json' --model 'sonnet'"));
         assert!(!script.contains("&&"));
     }
 

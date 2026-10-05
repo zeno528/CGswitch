@@ -64,7 +64,7 @@ describe("managementDataCache", () => {
     const cache = await import("./managementDataCache");
     expect(cache.getCachedCliStatus("codex")).toBeNull();
     cache.setCliStatusCache("codex", status);
-    expect(persistedStorage.get("cgswitch.codex-cli-status-v1")).toContain("native");
+    expect(persistedStorage.get("budtty.codex-cli-status-v1")).toContain("native");
 
     // 模拟重启：新模块实例从 localStorage 恢复，进行中任务不跨会话，busy 归零
     vi.resetModules();
@@ -72,11 +72,11 @@ describe("managementDataCache", () => {
     expect(restored.getCachedCliStatus("codex")).toEqual({ ...status, busy: false });
 
     // 损坏 JSON / 缺字段：只影响首开直出，进页静默刷新会纠正
-    persistedStorage.set("cgswitch.claude-cli-status-v1", "{broken");
+    persistedStorage.set("budtty.claude-cli-status-v1", "{broken");
     vi.resetModules();
     const broken = await import("./managementDataCache");
     expect(broken.getCachedCliStatus("claude")).toBeNull();
-    persistedStorage.set("cgswitch.claude-cli-status-v1", JSON.stringify({ installation: 5 }));
+    persistedStorage.set("budtty.claude-cli-status-v1", JSON.stringify({ installation: 5 }));
     vi.resetModules();
     const invalid = await import("./managementDataCache");
     expect(invalid.getCachedCliStatus("claude")).toBeNull();
@@ -94,7 +94,7 @@ describe("managementDataCache", () => {
     expect(restored.getCachedProxyStatus()).toEqual({ proxy: "http://proxy.invalid:8080/", error: false });
 
     // 缺 error 字段：整份弃用，进页静默刷新会纠正
-    persistedStorage.set("cgswitch.proxy-status-v1", JSON.stringify({ proxy: "http://x.invalid" }));
+    persistedStorage.set("budtty.proxy-status-v1", JSON.stringify({ proxy: "http://x.invalid" }));
     vi.resetModules();
     const invalid = await import("./managementDataCache");
     expect(invalid.getCachedProxyStatus()).toBeNull();
@@ -120,7 +120,7 @@ describe("managementDataCache", () => {
     expect(restored.cliUpdateCheckStale("claude")).toBe(false);
 
     // 冷却过期后才再次放行
-    persistedStorage.set("cgswitch.claude-cli-update-v1", JSON.stringify({ checked_at: Date.now() - 7 * 60 * 60 * 1000, update: null }));
+    persistedStorage.set("budtty.claude-cli-update-v1", JSON.stringify({ checked_at: Date.now() - 7 * 60 * 60 * 1000, update: null }));
     vi.resetModules();
     const stale = await import("./managementDataCache");
     expect(stale.cliUpdateCheckStale("claude")).toBe(true);
@@ -141,7 +141,7 @@ describe("managementDataCache", () => {
 
   it("恢复前发生的静默失败也保留持久化的旧升级结果", async () => {
     // 重启后未读过缓存就遇静默失败（离线）：冷却推进，旧结果不能被清成 null
-    persistedStorage.set("cgswitch.codex-cli-update-v1", JSON.stringify({
+    persistedStorage.set("budtty.codex-cli-update-v1", JSON.stringify({
       checked_at: Date.now() - 7 * 60 * 60 * 1000,
       update: { available: true, latest_version: "2.0.0", channel: "latest" },
     }));
@@ -260,7 +260,7 @@ describe("managementDataCache", () => {
     };
 
     cache.setCachedMcpProbe("github", { fingerprint: "v1", result, toolsLoaded: true });
-    expect(JSON.parse(persistedStorage.get("cgswitch.mcp-probe-cache") ?? "{}").github.result.tools).toEqual(["search"]);
+    expect(JSON.parse(persistedStorage.get("budtty.mcp-probe-cache") ?? "{}").github.result.tools).toEqual(["search"]);
 
     vi.resetModules();
     const reloaded = await import("./managementDataCache");
@@ -307,7 +307,7 @@ describe("marketplace plugin catalog cache", () => {
     listMarketplacePlugins.mockResolvedValue([plugin("a")]);
     const cache = await import("./managementDataCache");
     await cache.refreshMarketplacePlugins("market-persist");
-    expect(persistedStorage.get("cgswitch.marketplace-plugins-cache-v1")).toContain("market-persist");
+    expect(persistedStorage.get("budtty.marketplace-plugins-cache-v1")).toContain("market-persist");
 
     vi.resetModules();
     const reloaded = await import("./managementDataCache");
@@ -353,7 +353,7 @@ describe("list cache persistence", () => {
     listPlugins.mockResolvedValue([plugin]);
     const cache = await import("./managementDataCache");
     await cache.loadPlugins();
-    expect(persistedStorage.get("cgswitch.plugins-cache-v1")).toContain("ponytail");
+    expect(persistedStorage.get("budtty.plugins-cache-v1")).toContain("ponytail");
 
     vi.resetModules();
     const reloaded = await import("./managementDataCache");
@@ -362,7 +362,7 @@ describe("list cache persistence", () => {
   });
 
   it("ignores corrupt persisted caches and falls back to a fresh load", async () => {
-    persistedStorage.set("cgswitch.plugins-cache-v1", "{not-json");
+    persistedStorage.set("budtty.plugins-cache-v1", "{not-json");
     const cache = await import("./managementDataCache");
     listPlugins.mockResolvedValue([plugin]);
 
@@ -371,7 +371,7 @@ describe("list cache persistence", () => {
   });
 
   it("rejects persisted snapshots whose entries lack a string name", async () => {
-    persistedStorage.set("cgswitch.plugins-cache-v1", JSON.stringify([{ version: "1.0.0" }]));
+    persistedStorage.set("budtty.plugins-cache-v1", JSON.stringify([{ version: "1.0.0" }]));
     const cache = await import("./managementDataCache");
     listPlugins.mockResolvedValue([plugin]);
 

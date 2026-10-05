@@ -1042,9 +1042,9 @@ impl Database {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+            .map_err(|error| app_err!("备份文件不是有效的 Budtty 数据库: {error}"))?;
         if has_profiles == 0 {
-            return Err(app_err!("备份文件不是有效的 CGswitch 数据库"));
+            return Err(app_err!("备份文件不是有效的 Budtty 数据库"));
         }
 
         let mut connection = self.lock()?;
@@ -1068,7 +1068,7 @@ impl Database {
                     params![name],
                     |row| row.get(0),
                 )
-                .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))
+                .map_err(|error| app_err!("备份文件不是有效的 Budtty 数据库: {error}"))
         };
         let source_has_identity_columns = source_column("chatgpt_account_id")?;
         let source_has_plan_type = source_column("plan_type")?;
@@ -1130,7 +1130,7 @@ impl Database {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+            .map_err(|error| app_err!("备份文件不是有效的 Budtty 数据库: {error}"))?;
         if source_has_sort_order > 0 {
             copy_table(
                 &source,
@@ -1167,7 +1167,7 @@ impl Database {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+            .map_err(|error| app_err!("备份文件不是有效的 Budtty 数据库: {error}"))?;
         if has_mcp_servers > 0 {
             copy_intersected_columns(
                 &source,
@@ -1193,7 +1193,7 @@ impl Database {
                 [],
                 |row| row.get(0),
             )
-            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+            .map_err(|error| app_err!("备份文件不是有效的 Budtty 数据库: {error}"))?;
         if has_claude_profiles > 0 {
             // 列与 CLAUDE_PROFILE_COLUMNS 正典序求交集：备份有哪些列就复制哪些，缺列落默认 NULL
             copy_intersected_columns(
@@ -1213,7 +1213,7 @@ impl Database {
     fn lock(&self) -> AppResult<std::sync::MutexGuard<'_, Connection>> {
         self.connection
             .lock()
-            .map_err(|_| app_err!("数据库连接锁已损坏，请重启 CGswitch"))
+            .map_err(|_| app_err!("数据库连接锁已损坏，请重启 Budtty"))
     }
 }
 
@@ -1265,7 +1265,7 @@ fn copy_intersected_columns(
                 params![name],
                 |row| row.get(0),
             )
-            .map_err(|error| app_err!("备份文件不是有效的 CGswitch 数据库: {error}"))?;
+            .map_err(|error| app_err!("备份文件不是有效的 Budtty 数据库: {error}"))?;
         if present > 0 {
             columns.push(name);
         }

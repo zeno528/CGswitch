@@ -1785,7 +1785,7 @@ fn export_and_restore_database_round_trip() {
     assert!(context.restore_database("../evil.db").is_err());
     assert!(context.delete_database_backup("..\\evil.db").is_err());
     assert!(context
-        .restore_database("cgswitch-export-nothere.db")
+        .restore_database("budtty-export-nothere.db")
         .is_err());
 }
 

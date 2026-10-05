@@ -65,9 +65,9 @@ const webDescriptions = new Map<string, string>();
 
 // label 是 i18n key，由前端 t() 翻译展示；与 Rust path_info（services/settings.rs）保持一致
 const webPaths = [
-  { label: "about.paths.appData", path: "C:\\Users\\<user>\\.cgswitch" },
-  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.cgswitch\\backups\\database" },
-  { label: "about.paths.logs", path: "C:\\Users\\<user>\\.cgswitch\\logs" },
+  { label: "about.paths.appData", path: "C:\\Users\\<user>\\.budtty" },
+  { label: "about.paths.backups", path: "C:\\Users\\<user>\\.budtty\\backups\\database" },
+  { label: "about.paths.logs", path: "C:\\Users\\<user>\\.budtty\\logs" },
   { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
 ];
 
@@ -1015,7 +1015,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "export_database": {
       const name = databaseBackupName();
       webBackups.unshift({ name, size_bytes: 20480, created_at: Math.floor(Date.now() / 1000) });
-      return `C:\\Users\\<user>\\.cgswitch\\backups\\database\\${name}` as T;
+      return `C:\\Users\\<user>\\.budtty\\backups\\database\\${name}` as T;
     }
     case "export_database_to": {
       const name = databaseBackupName();
@@ -1037,7 +1037,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (backup) {
         let stem = String(args?.title ?? "").trim();
         if (stem.startsWith("cg-backup-")) stem = stem.slice("cg-backup-".length);
-        if (stem.startsWith("cgswitch-export-")) stem = stem.slice("cgswitch-export-".length);
+        if (stem.startsWith("budtty-export-")) stem = stem.slice("budtty-export-".length);
         if (stem.endsWith(".db")) stem = stem.slice(0, -3);
         stem = stem.replace(/[<>:"/\\|?*]/g, "").trim();
         if (stem) backup.name = `cg-backup-${stem}.db`;
@@ -1157,11 +1157,11 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "get_import_skill_content":
       return `---\ndescription: 浏览器调试用导入 Skill\n---\n\n# ${String(args?.sourcePath ?? "Skill")}` as T;
     case "scan_unmanaged_skills":
-      return (webSkills.some((skill) => skill.name === "local-skill") ? [] : [{ name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理", store_path: webLocalSkillPath, source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate]) as T;
+      return (webSkills.some((skill) => skill.name === "local-skill") ? [] : [{ name: "local-skill", description: "本机已存在、尚未由 Budtty 管理", store_path: webLocalSkillPath, source: "Agent", has_content_conflict: false, is_update: false, modified_at: 0 } satisfies SkillCandidate]) as T;
     case "import_skill":
       if (args?.sourcePath === webLocalSkillPath && !webSkills.some((skill) => skill.name === "local-skill")) {
         webSkills.push({
-          name: "local-skill", description: "本机已存在、尚未由 CGswitch 管理",
+          name: "local-skill", description: "本机已存在、尚未由 Budtty 管理",
           source_url: null, store_path: webLocalSkillPath, source_path: webLocalSkillPath,
           update_available: false, enabled: false, claude_enabled: false,
         });

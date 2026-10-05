@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.svg" width="112" alt="CGswitch logo" />
+  <img src="src-tauri/icons/icon.svg" width="112" alt="Budtty logo" />
 </p>
 
-<h1 align="center">CGswitch</h1>
+<h1 align="center">Budtty</h1>
 
 <p align="center">
   An open-source all-in-one desktop manager for OpenAI Codex and Claude Code.<br />
@@ -23,9 +23,9 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-555?style=flat-square" alt="Windows and macOS" />
 </p>
 
-CGswitch is built for developers who use OpenAI Codex or Claude Code and works with those clients' local environments on your computer. It brings provider profiles, ChatGPT OAuth accounts, MCP servers, plugins, and Skills into one desktop app, reducing the need to move between configuration files and separate tools.
+Budtty is built for developers who use OpenAI Codex or Claude Code and works with those clients' local environments on your computer. It brings provider profiles, ChatGPT OAuth accounts, MCP servers, plugins, and Skills into one desktop app, reducing the need to move between configuration files and separate tools.
 
-## How CGswitch fits into your workflow
+## How Budtty fits into your workflow
 
 ```text
 Provider preset or existing client configuration
@@ -35,7 +35,7 @@ Provider preset or existing client configuration
             Edit · test · use · restore
 ```
 
-Codex and Claude Code are managed side by side: each client has its own provider page, and using a profile on one never rewrites the other. CGswitch backs up the relevant files before switching to a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
+Codex and Claude Code are managed side by side: each client has its own provider page, and using a profile on one never rewrites the other. Budtty backs up the relevant files before switching to a profile. Provider profiles stay separate from global MCP, Plugins, and Skills, so switching providers does not require reconfiguring those resources.
 
 ## Features
 
@@ -46,7 +46,7 @@ Codex and Claude Code are managed side by side: each client has its own provider
 - Fetch available models from a provider's `/models` endpoint and select them in the profile editor.
 - Rename, duplicate, reorder, delete, and use profiles.
 - Keep unrelated Codex configuration such as MCP and plugin sections when switching to a provider where possible.
-- Set a custom display name, provider icon, administration URL, optional description, and optional ChatGPT account binding. The description stays inside CGswitch and is not written into the Codex configuration.
+- Set a custom display name, provider icon, administration URL, optional description, and optional ChatGPT account binding. The description stays inside Budtty and is not written into the Codex configuration.
 
 ### Supported provider presets
 
@@ -63,7 +63,7 @@ Presets available on both clients share a name and icon but never share endpoint
 - Provider fields are written into the `env` block of `~/.claude/settings.json`. The whole file stays editable with JSON validation, and every other top-level key and `env` entry is preserved.
 - Pick the `Anthropic-compatible` protocol and a CN or Global endpoint for third-party gateways; the key is written as `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` depending on the preset.
 - Map request models onto Claude Code's model roles — Main, Fable, Opus, Sonnet, Haiku, and Subagent — or add a custom `/model` entry. The `1M` flag appends `[1m]` to a model ID to request a million-token context.
-- `Claude Account` uses the account already signed in to Claude Code: run `/login` there first. Switching to it removes third-party endpoint and credential overrides from `settings.json`, and CGswitch neither reads nor stores login credentials.
+- `Claude Account` uses the account already signed in to Claude Code: run `/login` there first. Switching to it removes third-party endpoint and credential overrides from `settings.json`, and Budtty neither reads nor stores login credentials.
 - Test connectivity against the real `/v1/messages` call path using the stored credentials. Fetching a model list is a separate, optional step — a gateway that exposes no model catalog still passes the connection test.
 - Save shared fields as a common template and fill them into any profile. Endpoints, credentials, model mappings, and app-controlled fields are excluded, and template changes never rewrite existing profiles.
 - Turn the balance or usage indicator on or off per profile, on the presets that support querying it (currently DeepSeek and MiniMax).
@@ -85,7 +85,7 @@ Presets available on both clients share a name and icon but never share endpoint
 - Test server connectivity and inspect the tools a server provides; probes go through the system proxy and each client is probed and cached separately.
 - Enabling, disabling, or uninstalling a server affects only the client you are on — the other client's servers and configuration are left as they are.
 - Switch between a structured form and source editing — TOML for Codex, JSON for Claude Code — with validation and formatting.
-- Compare the live Codex configuration with CGswitch's database mirror before syncing either direction.
+- Compare the live Codex configuration with Budtty's database mirror before syncing either direction.
 
 ### Plugins and Skills
 
@@ -98,8 +98,8 @@ Presets available on both clients share a name and icon but never share endpoint
 - Preview and install a plugin from a GitHub repository, optionally using a branch or subdirectory.
 - Check and upgrade third-party marketplace plugins, or uninstall plugins through the Codex CLI.
 - Import local Skills, preview their `SKILL.md`, detect updates and conflicts, and enable, disable, or delete managed Skills.
-- Scan Skills from `~/.codex/skills`, `~/.claude/skills`, and `~/.agents/skills` while keeping the CGswitch Skill registry separate from plugin-contained Skills.
-- Enable a managed Skill per client: the Codex and Claude Code copies are toggled independently, and each side shows its own enabled count. Deleting a managed Skill removes the CGswitch copy and both client copies.
+- Scan Skills from `~/.codex/skills`, `~/.claude/skills`, and `~/.agents/skills` while keeping the Budtty Skill registry separate from plugin-contained Skills.
+- Enable a managed Skill per client: the Codex and Claude Code copies are toggled independently, and each side shows its own enabled count. Deleting a managed Skill removes the Budtty copy and both client copies.
 
 ### Desktop experience
 
@@ -123,7 +123,7 @@ The settings page is organized into four tabs:
 
 ### MCP differences
 
-When the live Codex `config.toml` and CGswitch's MCP mirror drift apart, MCP opens a dedicated diff page that lists every divergent server with a red/green LCS diff and supports batch or single-row `adopt` / `revert` actions.
+When the live Codex `config.toml` and Budtty's MCP mirror drift apart, MCP opens a dedicated diff page that lists every divergent server with a red/green LCS diff and supports batch or single-row `adopt` / `revert` actions.
 
 ## Download and installation
 
@@ -131,17 +131,17 @@ Download the latest build from the [GitHub Releases page](https://github.com/zen
 
 | Platform | Recommended asset | Notes |
 | --- | --- | --- |
-| Windows x64 | `CGswitch-v{VERSION}-Windows-setup.exe` | Standard installer. |
-| Windows x64 | `CGswitch-v{VERSION}-Windows.msi` | Useful for deployment or MSI-based installation. |
-| macOS Apple Silicon | `CGswitch-v{VERSION}-macOS-arm64.dmg` | For Apple Silicon Macs. |
-| macOS Intel | `CGswitch-v{VERSION}-macOS-x64.dmg` | For Intel Macs. |
+| Windows x64 | `Budtty-v{VERSION}-Windows-setup.exe` | Standard installer. |
+| Windows x64 | `Budtty-v{VERSION}-Windows.msi` | Useful for deployment or MSI-based installation. |
+| macOS Apple Silicon | `Budtty-v{VERSION}-macOS-arm64.dmg` | For Apple Silicon Macs. |
+| macOS Intel | `Budtty-v{VERSION}-macOS-x64.dmg` | For Intel Macs. |
 
 ### macOS first launch
 
-Open the DMG, drag **CGswitch** to **Applications**, and launch it. If macOS blocks the app, first allow it in **System Settings → Privacy & Security**. If it still reports that the app cannot be opened, run:
+Open the DMG, drag **Budtty** to **Applications**, and launch it. If macOS blocks the app, first allow it in **System Settings → Privacy & Security**. If it still reports that the app cannot be opened, run:
 
 ```bash
-xattr -cr /Applications/CGswitch.app
+xattr -cr /Applications/Budtty.app
 ```
 
 Replace the path if you installed the app somewhere else. Official packages are currently published for Windows and macOS; Linux packages are not included.
@@ -150,20 +150,20 @@ Replace the path if you installed the app somewhere else. Official packages are 
 
 1. In the **Codex** group, open **Providers**, add a built-in preset or **Custom**, enter the credentials or bind a ChatGPT account, then use it.
 2. In the **Claude** group, open **Providers** to configure Claude Code, or save the current `~/.claude/settings.json` as a snapshot.
-3. Enable the optional Codex restart behavior in **Settings → App** if you want CGswitch to restart Codex after switching to a profile.
+3. Enable the optional Codex restart behavior in **Settings → App** if you want Budtty to restart Codex after switching to a profile.
 4. Use **MCP**, **Plugins**, or **Skill** under **General** to manage the corresponding global resources. MCP is managed one client at a time; Skills can be enabled for both.
 
 ## Data and privacy
 
-CGswitch keeps its application data under the current user's home directory. The exact files and folders depend on which features have been used:
+Budtty keeps its application data under the current user's home directory. The exact files and folders depend on which features have been used:
 
 ```text
-~/.cgswitch/
+~/.budtty/
 ├── settings.json
-├── cgswitch.db
+├── budtty.db
 ├── balance-cache.json
 ├── logs/
-│   └── cgswitch.log
+│   └── budtty.log
 ├── update-marker
 └── backups/
     ├── config/
@@ -171,25 +171,25 @@ CGswitch keeps its application data under the current user's home directory. The
     └── codex-files/
 ```
 
-CGswitch keeps its run logs under `~/.cgswitch/logs/` (1MB × 10 rotation).
+Budtty keeps its run logs under `~/.budtty/logs/` (1MB × 10 rotation).
 
-CGswitch never reads or stores a Claude Code sign-in: a `Claude Account` profile only tells Claude Code to drop third-party endpoint and credential overrides. The Claude common template lives in the CGswitch database and is therefore covered by database backups.
+Budtty never reads or stores a Claude Code sign-in: a `Claude Account` profile only tells Claude Code to drop third-party endpoint and credential overrides. The Claude common template lives in the Budtty database and is therefore covered by database backups.
 
-API keys, OAuth credentials, profiles, and backups are local data. CGswitch creates backups before relevant configuration writes, but you should still avoid committing or sharing `.cgswitch`, `auth.json`, `~/.claude.json`, API keys, or backup files.
+API keys, OAuth credentials, profiles, and backups are local data. Budtty creates backups before relevant configuration writes, but you should still avoid committing or sharing `.budtty`, `auth.json`, `~/.claude.json`, API keys, or backup files.
 
 ## FAQ and troubleshooting
 
 ### What happens when I use a profile?
 
-CGswitch backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → App**.
+Budtty backs up the relevant files, updates the provider-related Codex configuration, and preserves unrelated configuration areas where possible. Whether Codex restarts afterward is controlled by **Settings → App**.
 
 ### Are profiles, MCP, Plugins, and Skills the same thing?
 
 No. Profiles describe model/provider settings; MCP describes tool servers; Plugins are Codex extension packages; Skills are reusable instruction directories. They are managed in separate areas of the application.
 
-### Does CGswitch take over my Claude Code sign-in?
+### Does Budtty take over my Claude Code sign-in?
 
-No. Run `/login` in Claude Code itself, then switch to the `Claude Account` profile — CGswitch only removes third-party endpoint and credential overrides from `settings.json` so Claude Code uses its own account. It never reads or stores login credentials, and it leaves the shell environment untouched.
+No. Run `/login` in Claude Code itself, then switch to the `Claude Account` profile — Budtty only removes third-party endpoint and credential overrides from `settings.json` so Claude Code uses its own account. It never reads or stores login credentials, and it leaves the shell environment untouched.
 
 ### Why can a third-party plugin still fail after a provider is configured?
 
@@ -199,7 +199,7 @@ A model provider configuration does not guarantee that every App or MCP connecto
 
 For a third-party provider, check the endpoint and API key first. For the official ChatGPT profile, sign in through the account settings and make sure the selected account is still valid.
 
-If the problem persists, search existing [Issues](https://github.com/zeno528/CGswitch/issues) or open a new report with the platform, CGswitch version, and a redacted error message. Do not include API keys or authentication files.
+If the problem persists, search existing [Issues](https://github.com/zeno528/CGswitch/issues) or open a new report with the platform, Budtty version, and a redacted error message. Do not include API keys or authentication files.
 
 ## Development
 
@@ -243,7 +243,7 @@ Release bundles are written under `src-tauri/target/release/bundle/`.
 
 ## Architecture
 
-CGswitch is built with Tauri 2 + Rust for native file access and Codex integration, with a React frontend and a local SQLite database.
+Budtty is built with Tauri 2 + Rust for native file access and Codex integration, with a React frontend and a local SQLite database.
 
 The main source areas:
 
@@ -285,4 +285,4 @@ Bug reports, feature ideas, documentation improvements, and pull requests are we
 
 ## License
 
-CGswitch is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax`, `OpenCode`, and `Zhipu`) are sourced from [thesvg.org](https://thesvg.org) and keep a source notice in the file; the rest are in-house or sourced separately.
+Budtty is released under the [MIT License](LICENSE). Some provider icons (`ChatGPT`, `DeepSeek`, `MiniMax`, `OpenCode`, and `Zhipu`) are sourced from [thesvg.org](https://thesvg.org) and keep a source notice in the file; the rest are in-house or sourced separately.

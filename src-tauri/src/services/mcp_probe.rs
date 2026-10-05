@@ -432,7 +432,7 @@ async fn probe_http_inner(
     };
     let client_builder = network
         .builder()
-        .user_agent(format!("CGswitch/{}", env!("CARGO_PKG_VERSION")))
+        .user_agent(format!("Budtty/{}", env!("CARGO_PKG_VERSION")))
         .timeout(PROBE_TIMEOUT);
     let client = match client_builder.build() {
         Ok(client) => client,
@@ -455,7 +455,7 @@ async fn probe_http_inner(
             json!({
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": { "name": "CGswitch", "version": env!("CARGO_PKG_VERSION") },
+                "clientInfo": { "name": "Budtty", "version": env!("CARGO_PKG_VERSION") },
             }),
             Some(handshake_start),
         )
@@ -721,7 +721,7 @@ fn probe_stdio(spec: &McpServerSpec, include_tools: bool) -> McpProbeResult {
         json!({
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": {},
-            "clientInfo": { "name": "CGswitch", "version": env!("CARGO_PKG_VERSION") },
+            "clientInfo": { "name": "Budtty", "version": env!("CARGO_PKG_VERSION") },
         }),
     ) {
         Err(error) => failed_result(handshake_start, error.status, error.message),

@@ -122,7 +122,7 @@ export default {
     title: "Update MCP config",
     help: {
       title: "How to read these differences",
-      red: { keyword: "Red:", text: " the version saved in the CGswitch database" },
+      red: { keyword: "Red:", text: " the version saved in the Budtty database" },
       green: { keyword: "Green:", text: " the version in config.toml (Codex config file)" },
       adopt: { keyword: "Keep:", text: " keep the config.toml version and update the database" },
       revert: { keyword: "Revert:", text: " use the database version to restore config.toml (the config file is backed up first)" },

@@ -34,7 +34,7 @@ export default {
   delete: "Delete",
   deleteAria: "Delete {{name}}",
   deleteDialogTitle: "Delete Skill",
-  deleteDialogDescription: "This deletes the CGswitch repository copy, the Codex copy, and the Claude Code copy of {{name}}",
+  deleteDialogDescription: "This deletes the Budtty repository copy, the Codex copy, and the Claude Code copy of {{name}}",
   deletedToast: "Skill deleted",
   importedToast: "Imported {{count}} Skills",
   importFromFolder: "Import from folder...",
