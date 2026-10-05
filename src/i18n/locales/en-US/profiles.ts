@@ -94,7 +94,6 @@ export default {
     createTitle: "New provider",
     editTitle: "Edit provider",
     selectProvider: "Select a provider",
-    selectEndpoint: "Connection option",
     changeIcon: "Click to change icon",
     changeIconLabel: "Change icon",
     nameLabel: "Name",

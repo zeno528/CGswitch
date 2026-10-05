@@ -24,13 +24,6 @@ export interface ClientPreset {
   endpoints?: readonly PresetEndpoint[];
 }
 
-/** 模板默认名称跟随接入方式，品牌目录仍只显示品牌名。 */
-export function presetEndpointName(preset: ClientPreset, endpoint: PresetEndpoint | undefined, regionCn: string, regionGlobal: string, currentName?: string): string {
-  if (currentName !== undefined && currentName !== preset.name && !preset.endpoints?.some((item) => currentName === presetEndpointName(preset, item, regionCn, regionGlobal))) return currentName;
-  if (!endpoint) return preset.name;
-  return `${preset.name} · ${endpoint.region === "cn" ? regionCn : regionGlobal}${endpoint.label ? ` · ${endpoint.label}` : ""}`;
-}
-
 /** 支持余额/用量查询的供应商（以 provider_id 键控）；加供应商时在这里加一行即可 */
 export const balanceQueryProviders = new Set(["deepseek", "minimax", "ZAI"]);
 

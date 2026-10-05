@@ -94,7 +94,6 @@ export default {
     createTitle: "新建供应商",
     editTitle: "编辑供应商",
     selectProvider: "选择供应商",
-    selectEndpoint: "接入方式",
     changeIcon: "点击更换图标",
     changeIconLabel: "更换图标",
     nameLabel: "名称",

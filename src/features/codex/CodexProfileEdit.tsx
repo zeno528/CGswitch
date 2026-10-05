@@ -18,8 +18,6 @@ import {
   codexPresets,
   codexCustomCatalogTemplate,
   codexCustomConfigTemplate,
-  presetEndpointName,
-  type PresetEndpoint,
 } from "../../presets";
 import {
   patchModelValue,
@@ -329,17 +327,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
     if (create && configText !== liveConfigFragment) setConfigTouched(true);
   }, [configText, create, liveConfigFragment]);
 
-  const selectEndpoint = (endpoint: PresetEndpoint) => {
-    if (create && selectedPreset) {
-      setName((current) => presetEndpointName(selectedPreset, endpoint, t("edit.endpointRegionCn"), t("edit.endpointRegionGlobal"), current));
-    }
-    setBaseUrl(endpoint.base_url);
-    setAdminUrl(endpoint.admin_url ?? "");
-    setFetchedModels([]);
-  };
-
-  const selectPreset = async (kind: string, endpoint?: PresetEndpoint) => {
-    if (kind === presetKind && endpoint) { selectEndpoint(endpoint); return; }
+  const selectPreset = async (kind: string) => {
     const preset = codexPresets.find((item) => item.kind === kind);
     if (!preset) return;
     // 模板取回后才一次性更新全部状态：避免"表单已切、configText 未切"的中间渲染
@@ -361,7 +349,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
     setCatalogTouched(false);
     setAuthText("");
     setAuthInitial("");
-    setName(kind === "custom" ? "" : presetEndpointName(preset, preset.endpoints?.[0], t("edit.endpointRegionCn"), t("edit.endpointRegionGlobal")));
+    setName(kind === "custom" ? "" : preset.name);
     setDescription("");
     setBaseUrl(preset.base_url);
     setApiKey("");
@@ -527,14 +515,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
       <div className="apple-edit-content">
         {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
         <div className="apple-edit-surface">
-          {create ? (
-            <PresetGrid
-              presets={codexPresets} selectedKind={presetKind}
-              onSelect={(kind, endpoint) => void selectPreset(kind, endpoint)}
-              title={t("edit.selectProvider")} endpointTitle={t("edit.selectEndpoint")}
-              baseUrl={baseUrl} regionCn={t("edit.endpointRegionCn")} regionGlobal={t("edit.endpointRegionGlobal")}
-            />
-          ) : null}
+          {create ? <PresetGrid presets={codexPresets} selectedKind={presetKind} onSelect={(kind) => void selectPreset(kind)} title={t("edit.selectProvider")} /> : null}
           <div className="apple-panel-section">
             <ProviderIdentityFields
               idPrefix="profile" name={name} description={description} icon={selectedIcon}
@@ -554,7 +535,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
                   <span className="shrink-0 font-medium text-(--text-secondary)">{t("edit.protocolResponses")}</span>
                 </div>
                 <label className="field-label mb-1.5 mt-4 block">{t("edit.requestUrlLabel")}</label>
-                {!create && presetEndpoints ? (
+                {presetEndpoints ? (
                   <EndpointField value={baseUrl} onChange={setBaseUrl} endpoints={presetEndpoints} onPick={(endpoint) => { if (endpoint.admin_url) setAdminUrl(endpoint.admin_url); }} placeholder="https://api.example.com/v1" label={t("edit.requestUrlLabel")} regionCn={t("edit.endpointRegionCn")} regionGlobal={t("edit.endpointRegionGlobal")} />
                 ) : (
                   baseUrlField("app-input")
