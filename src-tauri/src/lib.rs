@@ -304,6 +304,8 @@ pub fn run() {
             commands::codex_get_mcp_section_toml,
             commands::restore_mcp_from_database,
             commands::codex_mcp_sync_preview,
+            commands::claude_mcp_sync_preview,
+            commands::claude_resolve_mcp_entries,
             commands::codex_get_mcp_server_toml,
             commands::patch_mcp_fragment,
             commands::parse_mcp_fragment,

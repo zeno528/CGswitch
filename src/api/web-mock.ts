@@ -1015,6 +1015,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "export_database": {
       const name = databaseBackupName();
       webBackups.unshift({ name, size_bytes: 20480, created_at: Math.floor(Date.now() / 1000) });
+      webBackups = webBackups.slice(0, webSettings.database_backup_keep_count);
       return `C:\\Users\\<user>\\.budtty\\backups\\database\\${name}` as T;
     }
     case "export_database_to": {
@@ -1725,6 +1726,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       }
       return (batched ? actions.length : undefined) as T;
     }
+    // 浏览器没有独立 Claude 实时 JSON 和数据库镜像，不能可靠模拟差异裁决。
+    case "claude_mcp_sync_preview":
+    case "claude_resolve_mcp_entries":
+      throw new Error("Web 调试模式不支持 Claude MCP 实时配置与数据库差异处理");
     // 认证登录流程没有可靠的浏览器 mock；保持默认错误，避免伪造 OAuth 状态
     default:
       throw new Error(`Web 调试模式不支持命令：${command}`);

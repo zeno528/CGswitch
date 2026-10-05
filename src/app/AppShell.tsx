@@ -24,15 +24,15 @@ import { switchProfileFromTray } from "./traySwitch";
 
 const appWindow = isTauri ? getCurrentWindow() : null;
 
-/// 差异检查：读 config.toml 跟数据库镜像比，把结果写进侧栏角标。
+/// 两端差异检查：结果写入共享角标缓存。
 /// 启动后延迟一次、窗口激活时一次，两处共用这一条规则——放在模块作用域是为了
 /// 引用稳定，激活那条 effect 不需要把它挂进依赖数组。
 /// 失败不静默：写回 error 态，让"config.toml 坏了"在切回窗口那一刻就可见，
 /// 而不是等用户点进 MCP 页才发现。
-const checkMcpDiff = () =>
-  api.codexMcpSyncPreview()
-    .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }))
-    .catch(() => setMcpDiffBadge({ count: 0, error: true }));
+const checkMcpDiff = () => Promise.all((["codex", "claude"] as const).map((target) =>
+  (target === "codex" ? api.codexMcpSyncPreview() : api.claudeMcpSyncPreview())
+    .then((preview) => setMcpDiffBadge({ count: preview.entries.length, error: false }, target))
+    .catch(() => setMcpDiffBadge({ count: 0, error: true }, target))));
 
 // 页内进场动画不包含设置页签。
 const PAGE_ENTER_TARGET =
@@ -196,11 +196,12 @@ export default function AppShell() {
   // 侧栏 MCP 角标：首屏只读缓存直出（同步读 localStorage，与 sidebar-collapsed 同级），
   // 真正查一次差异放到 startupReady 之后延迟执行，不进首屏与冷启动关键路径。
   const mcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge);
-  // 角标文本与 MCP 页头同源：规则住在 managementDataCache，不在两处各写一遍
-  const mcpBadge = mcpDiffBadgeText(mcpDiffBadge);
-  const mcpBadgeTitle = mcpDiffBadge?.count
-    ? tMcp("list.updateDiffAria", { count: mcpDiffBadge.count })
-    : mcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;
+  const claudeMcpDiffBadge = useSyncExternalStore(subscribeMcpDiffBadge, () => getMcpDiffBadge("claude"));
+  const mcpBadge = mcpDiffBadgeText(mcpDiffBadge) || mcpDiffBadgeText(claudeMcpDiffBadge);
+  const mcpDiffCount = (mcpDiffBadge?.count ?? 0) + (claudeMcpDiffBadge?.count ?? 0);
+  const mcpBadgeTitle = mcpDiffCount
+    ? tMcp("list.updateDiffAria", { count: mcpDiffCount })
+    : mcpDiffBadge?.error || claudeMcpDiffBadge?.error ? tMcp("list.diffUnavailable") : undefined;
   const codexCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("codex"), () => getCachedCliUpdate("codex"));
   const claudeCliUpdate = useSyncExternalStore(subscribeCliUpdate, () => getCachedCliUpdate("claude"), () => getCachedCliUpdate("claude"));
 
@@ -383,7 +384,7 @@ export default function AppShell() {
   // 侧栏分组：客户端 / 功能入口 / 底部入口。新增页面 = 数组加一条，不再手写按钮块；
   // 客户端与功能入口沿用同一组按钮间距。icon 存 ReactNode 以保留各页现有图标形态。
   // labelKey 用本地 key 联合（与 common/nav 资源同步），既过 i18next 强类型又保持条目形状统一。
-  const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeText?: string; badgeDot?: boolean; titleText?: string; onSelect: () => void }[] }[] = [
+  const sidebarGroups: { key: string; items: { view: AppView; labelKey: SidebarLabelKey; icon: ReactNode; badgeDot?: boolean; titleText?: string; onSelect: () => void }[] }[] = [
     {
       key: "clients",
       items: [
@@ -395,7 +396,7 @@ export default function AppShell() {
       key: "common",
       items: [
         { view: "plugins", labelKey: "nav.plugins", icon: <Blocks strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("plugins") },
-        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeText: mcpBadge ?? undefined, titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
+        { view: "mcp", labelKey: "nav.mcp", icon: <McpIcon />, badgeDot: Boolean(mcpBadge), titleText: mcpBadgeTitle, onSelect: () => setView("mcp") },
         { view: "skills", labelKey: "nav.skills", icon: <BookOpenText strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("skills") },
         { view: "agentTools", labelKey: "nav.agentTools", icon: <Bot strokeWidth={2} aria-hidden="true" />, onSelect: () => setView("agentTools") },
       ],
@@ -459,7 +460,6 @@ export default function AppShell() {
                         <span className="relative flex shrink-0">
                           {item.icon}
                           {item.badgeDot ? <span className="apple-sidebar-update-dot" aria-hidden="true" /> : null}
-                          {item.badgeText ? <span className="apple-count-badge" aria-hidden="true">{item.badgeText}</span> : null}
                         </span>
                         <span className="apple-sidebar-label" aria-hidden={sidebar.sidebarCollapsed}>{t(item.labelKey)}</span>
                         {sidebar.sidebarCollapsed && sidebar.sidebarFlyoutArmed ? <span className="apple-sidebar-flyout" aria-hidden="true">{t(item.labelKey)}</span> : null}

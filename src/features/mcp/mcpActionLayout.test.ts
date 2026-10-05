@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { setupI18n } from "../../i18n";
 import McpView, { compareMcpServers, McpTargetSwitch } from "./McpView";
+import { setMcpDiffBadge } from "../../app/managementDataCache";
 import McpConnectionForm from "./McpConnectionForm";
 
 const viewSource = readFileSync(new URL("./McpView.tsx", import.meta.url), "utf8");
@@ -34,14 +35,16 @@ describe("MCP 操作入口", () => {
 
   it("真实客户端切换只替换内容组件，页头与切换器保留相同类型、位置和 key", () => {
     setupI18n("zh-CN");
-    const frames: { headerType: unknown; switchType: unknown; key: string | null; value: string; contentType: unknown }[] = [];
+    const frames: { headerType: unknown; switchType: unknown; key: string | null; value: string; contentKey: string | null }[] = [];
     function Capture() {
       // 在 React 的真实服务端渲染中执行父组件，触发同一个 setTarget；不模拟组件状态。
       const tree = McpView({ activationEpoch: 0 });
-      const [header, content] = Children.toArray(tree.props.children) as ReactElement<{ children: ReactNode }>[];
+      const children = Children.toArray(tree.props.children) as ReactElement<{ children: ReactNode }>[];
+      const header = children[0];
+      const content = children[children.length - 1];
       const toolbar = Children.toArray(header!.props.children)[1] as ReactElement<{ children: ReactNode }>;
       const control = Children.toArray(toolbar.props.children).find((child) => isValidElement(child) && child.type === McpTargetSwitch) as ReactElement<Parameters<typeof McpTargetSwitch>[0]>;
-      frames.push({ headerType: header!.type, switchType: control.type, key: control.key, value: control.props.value, contentType: content!.type });
+      frames.push({ headerType: header!.type, switchType: control.type, key: control.key, value: control.props.value, contentKey: content!.key });
       if (control.props.value === "codex") control.props.onChange("claude");
       return null;
     }
@@ -51,15 +54,17 @@ describe("MCP 操作入口", () => {
     expect(frames[1]!.headerType).toBe(frames[0]!.headerType);
     expect(frames[1]!.switchType).toBe(frames[0]!.switchType);
     expect(frames.map((frame) => frame.key)).toEqual([".$target-switch", ".$target-switch"]);
-    expect(frames[1]!.contentType).not.toBe(frames[0]!.contentType);
+    expect(frames.map((frame) => frame.contentKey)).toEqual([".$codex", ".$claude"]);
     expect(viewSource.match(/<McpTargetSwitch\b/g)).toHaveLength(1);
   });
 
   it("客户端页签复用共享滑块，保留图标、选中语义和页头尺寸", () => {
     setupI18n("zh-CN");
+    setMcpDiffBadge({ count: 7, error: false });
+    setMcpDiffBadge({ count: 8, error: false }, "claude");
     for (const [index, value] of (["codex", "claude"] as const).entries()) {
       const html = renderToStaticMarkup(createElement(McpTargetSwitch, { value, onChange: () => undefined }));
-      expect(html).toContain('class="app-segmented-control h-[var(--toolbar-control-height)] shrink-0"');
+      expect(html).toContain('class="app-segmented-control mcp-target-switch h-[var(--toolbar-control-height)] shrink-0"');
       expect(html).toContain('role="tablist"');
       expect(html).toContain(`style="--segment-count:2;--segment-index:${index}"`);
       const tabs = [...html.matchAll(/<button[^>]*role="tab"[^>]*aria-selected="(true|false)"[^>]*>(.*?)<\/button>/g)];
@@ -68,13 +73,17 @@ describe("MCP 操作入口", () => {
       // 页签图标保持清晰：Codex 用正文色，Claude 用品牌色。
       expect(tabs[0]![2]).toContain("text-(--text-primary)");
       expect(tabs[1]![2]).toContain("text-(--brand-claude)");
+      expect(tabs[0]![2]).toContain('class="apple-count-badge" aria-hidden="true">7</span>');
+      expect(tabs[1]![2]).toContain('class="apple-count-badge" aria-hidden="true">8</span>');
       expect(tabs[0]![2]).not.toContain("opacity-");
       expect(tabs[1]![2]).not.toContain("opacity-");
       expect(html).not.toContain("app-button--primary");
     }
+    setMcpDiffBadge({ count: 0, error: false });
+    setMcpDiffBadge({ count: 0, error: false }, "claude");
     const styles = readFileSync(new URL("../../style.css", import.meta.url), "utf8");
-    expect(styles).not.toContain("mcp-target-switch");
-    expect(viewSource).not.toContain("mcp-target-switch");
+    expect(styles).toContain(".mcp-target-switch .apple-count-badge {");
+    expect(styles).toContain("position: static;");
     expect(viewSource).toContain("onClick={() => onChange(target)}");
   });
 
@@ -87,7 +96,7 @@ describe("MCP 操作入口", () => {
       expect(editSource + sharedFormSource).toContain(`t("${key}"`);
       expect(claudeEditSource + sharedFormSource).toContain(`t("${key}"`);
     }
-    const claudeView = viewSource.slice(viewSource.indexOf("function ClaudeMcpView("));
+    const claudeView = viewSource.slice(viewSource.indexOf("function McpClientView("));
     for (const key of ["confirm.deleteTitle", "confirm.deleteDescription", "confirm.delete", "feedback.deleted", "empty.description"]) {
       expect(viewSource).toContain(key);
       expect(claudeView).toContain(key);
@@ -164,15 +173,15 @@ describe("MCP 操作入口", () => {
 
   it("Claude MCP 复用共享列表和探测缓存，进页不重新点亮状态灯", () => {
     expect(viewSource).toContain("getCachedClaudeMcpServers()");
-    expect(viewSource).toContain('useMcpProbes("claude"');
+    expect(viewSource).toContain('useMcpProbes(target,');
     expect(viewSource).toContain("applyCache(next)");
     expect(viewSource).not.toContain("setProbeResults({});");
   });
 
   it("Claude MCP 进页和激活强刷列表，单条保存、删除和开关不全量重探", () => {
-    const claude = viewSource.slice(viewSource.indexOf("function ClaudeMcpView("));
+    const claude = viewSource.slice(viewSource.indexOf("function McpClientView("));
     expect(claude).toContain("void refresh(true);");
-    expect(claude).toContain("void refresh(true, []); }, [activationEpoch]");
+    expect(claude).toContain('if (target === "claude") void refresh(true, []);');
     expect(claude).toContain("await refresh(true, []);");
     expect(claude).toContain("void refresh(true, [name]);");
     expect(claude).toContain("refresh(true, enabled ? [target.name] : [])");

@@ -948,6 +948,23 @@ pub async fn codex_mcp_sync_preview(state: State<'_, AppContext>) -> AppResult<M
         .map_err(|error| app_err!("MCP 差异检查任务失败: {error}"))?
 }
 
+#[tauri::command]
+pub async fn claude_mcp_sync_preview(state: State<'_, AppContext>) -> AppResult<McpSyncPreview> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.mcp_sync_preview(SkillTool::Claude))
+        .await
+        .map_err(|error| app_err!("MCP 差异检查任务失败: {error}"))?
+}
+
+#[tauri::command]
+pub fn claude_resolve_mcp_entries(
+    actions: Vec<McpDiffEntryAction>,
+    adopt: bool,
+    state: State<'_, AppContext>,
+) -> AppResult<usize> {
+    state.claude_resolve_mcp_entries(&actions, adopt)
+}
+
 /// MCP 编辑页初始化：读取 live 中指定服务器的原始片段（含未建模键与注释）。
 #[tauri::command]
 pub fn codex_get_mcp_server_toml(

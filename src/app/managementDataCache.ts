@@ -422,34 +422,32 @@ export interface McpDiffBadge {
   error: boolean;
 }
 
-const MCP_DIFF_COUNT_STORAGE_KEY = "budtty.mcp-diff-count-v1";
-let mcpDiffBadge: McpDiffBadge | null = null;
-let mcpDiffBadgeRestored = false;
+const MCP_DIFF_COUNT_STORAGE_KEYS = { codex: "budtty.mcp-diff-count-v1", claude: "budtty.mcp-diff-count-v1-claude" };
+const mcpDiffBadges: Partial<Record<McpProbeScope, McpDiffBadge | null>> = {};
 const mcpDiffBadgeListeners = new Set<() => void>();
 
 /// 返回的必须是稳定引用（存下来的那个对象），否则 useSyncExternalStore 会无限重渲染。
-export function getMcpDiffBadge(): McpDiffBadge | null {
-  if (!mcpDiffBadgeRestored) {
-    mcpDiffBadgeRestored = true;
-    const raw = readJson(MCP_DIFF_COUNT_STORAGE_KEY);
-    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) mcpDiffBadge = { count: raw, error: false };
+export function getMcpDiffBadge(scope: McpProbeScope = "codex"): McpDiffBadge | null {
+  if (mcpDiffBadges[scope] === undefined) {
+    const raw = readJson(MCP_DIFF_COUNT_STORAGE_KEYS[scope]);
+    mcpDiffBadges[scope] = typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? { count: raw, error: false } : null;
   }
-  return mcpDiffBadge;
+  return mcpDiffBadges[scope] ?? null;
 }
 
 /// 角标文本：有差异显示数量（>9 折成 9+），差异算不出来显示 `!`，都没有则不显示。
-/// 侧栏与 MCP 页头共用这一条规则——同一个状态在两处必须长一样，分家就会一边 9+
-/// 一边 128，或者一边 `!` 一边数字。
+/// 客户端图标与更新入口共用这一条显示规则。
 export function mcpDiffBadgeText(badge: McpDiffBadge | null): string | null {
   if (!badge) return null;
   if (badge.count > 0) return badge.count > 9 ? "9+" : String(badge.count);
   return badge.error ? "!" : null;
 }
 
-export function setMcpDiffBadge(next: McpDiffBadge): void {
+export function setMcpDiffBadge(next: McpDiffBadge, scope: McpProbeScope = "codex"): void {
+  const mcpDiffBadge = getMcpDiffBadge(scope);
   if (mcpDiffBadge && mcpDiffBadge.count === next.count && mcpDiffBadge.error === next.error) return;
-  mcpDiffBadge = next;
-  writeJson(MCP_DIFF_COUNT_STORAGE_KEY, next.count);
+  mcpDiffBadges[scope] = next;
+  writeJson(MCP_DIFF_COUNT_STORAGE_KEYS[scope], next.count);
   for (const listener of mcpDiffBadgeListeners) listener();
 }
 

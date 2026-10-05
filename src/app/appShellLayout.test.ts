@@ -69,8 +69,8 @@ describe("AppShell 布局", () => {
   it("侧栏 MCP 角标首屏只读缓存，差异查询延迟到首屏之后再执行", () => {
     // 首屏：useSyncExternalStore 从 localStorage 缓存直出，不发起任何查询
     expect(source).toContain("useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge)");
-    // 分组渲染后角标经 item.badgeText 下发，来源仍是缓存的 mcpBadge
-    expect(source).toContain('{item.badgeText ? <span className="apple-count-badge"');
+    expect(source).toContain('badgeDot: Boolean(mcpBadge)');
+    expect(source).not.toContain("item.badgeText");
     // 查询：必须被 startupReady 门控 + 固定延迟，禁止直接进首屏/冷启动关键路径
     expect(source).toContain("if (!startupReady) return;");
     expect(source).toContain("window.setTimeout(checkMcpDiff, 1500);");
@@ -88,19 +88,18 @@ describe("AppShell 布局", () => {
 
   it("MCP 页查到差异后写回共享缓存，侧栏与页面同源", () => {
     const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
-    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: preview.entries.length, error: false })");
+    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: preview.entries.length, error: false }, target)");
   });
 
   it("config.toml 解析失败时侧栏角标同步亮起，不点进 MCP 页也能看见", () => {
     const mcpViewSource = readFileSync(new URL("../features/mcp/McpView.tsx", import.meta.url), "utf8");
     // MCP 页查失败写回 error 态
-    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: 0, error: true })");
+    expect(mcpViewSource).toContain("setMcpDiffBadge({ count: 0, error: true }, target)");
     // 启动后的静默刷新同理：失败不能被吞掉
-    expect(source).toContain("setMcpDiffBadge({ count: 0, error: true })");
-    // 角标文本规则只住在 managementDataCache：侧栏与 MCP 页头必须调同一个函数，
-    // 分家就会出现"一边 9+ 一边 128"或"一边 ! 一边数字"
+    expect(source).toContain("setMcpDiffBadge({ count: 0, error: true }, target)");
+    // 侧栏圆点、客户端数字和更新入口使用同一份差异状态。
     expect(source).toContain("const mcpBadge = mcpDiffBadgeText(mcpDiffBadge)");
-    expect(mcpViewSource).toContain("mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) })");
+    expect(mcpViewSource).toContain("mcpDiffBadgeText(targetBadge)");
   });
 
   it("窗口激活时顺带查一次 MCP 差异，与启动后那次共用同一条规则", () => {

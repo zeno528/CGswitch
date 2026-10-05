@@ -31,7 +31,7 @@ describe("一级列表共用定义", () => {
   it("插件、MCP、Skill 一级页头复用统一标题计数组件", () => {
     for (const page of pages) expect(page).toContain("ManagementPageTitle");
     expect(styles).toContain(".management-page-title {");
-    expect(styles).toContain(".management-page-title__targets {");
+    expect(styles).toContain(".management-page-title__count {");
   });
 
   it("插件市场详情页也复用统一标题计数样式", () => {

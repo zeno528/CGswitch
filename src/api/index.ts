@@ -206,6 +206,8 @@ export const api = {
   restoreMcpFromDatabase: () => call<number>("restore_mcp_from_database"),
   // 同步预览：对比 live 与数据库镜像的 MCP 差异（只读），供同步前人工裁决
   codexMcpSyncPreview: () => call<McpSyncPreview>("codex_mcp_sync_preview"),
+  claudeMcpSyncPreview: () => call<McpSyncPreview>("claude_mcp_sync_preview"),
+  claudeResolveMcpEntries: (actions: McpDiffEntryAction[], adopt: boolean) => call<number>("claude_resolve_mcp_entries", { actions, adopt }),
   codexSaveMcpServer: (originalName: string | null, spec: McpServerSpec, fragment?: string) =>
     call<void>("codex_save_mcp_server", { originalName, spec, fragment }),
   // MCP 编辑页：读取 live 原始片段（含未建模键与注释），初始化编辑器用

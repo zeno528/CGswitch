@@ -3,6 +3,7 @@ export default {
   installedCount: "Installed {{count}}",
   codexEnabledCount: "Codex {{count}} enabled",
   claudeEnabledCount: "Claude {{count}} enabled",
+  nameColumn: "Name",
   searchPlaceholder: "Search Skills...",
   importSkill: "Import Skill",
   importSkillAria: "Import Skill ({{count}} available to import or update)",

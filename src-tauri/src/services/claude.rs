@@ -259,9 +259,7 @@ fn is_trivial_settings_snapshot(raw: &str) -> bool {
 /// 把 Codex 镜像中的一个 MCP 片段转换成 Claude Code 用户范围的 JSON 条目。
 /// Codex 与 Claude 的传输字段不同：HTTP 需要显式 type，http_headers 映射为 headers，
 /// env_http_headers / bearer_token_env_var 映射为 Claude 支持的 ${VAR} 展开。
-fn mcp_fragment_to_claude_entry(name: &str, fragment: &str) -> AppResult<Value> {
-    let spec = codex_config::spec_from_fragment(name, fragment)
-        .ok_or_else(|| app_err!("MCP 服务器 {name} 的共享片段无法解析"))?;
+pub(super) fn claude_mcp_entry_from_spec(spec: McpServerSpec, native: Value) -> AppResult<Value> {
     let mut entry = Map::new();
     if let Some(command) = spec.command {
         entry.insert("type".into(), Value::String("stdio".into()));
@@ -296,7 +294,10 @@ fn mcp_fragment_to_claude_entry(name: &str, fragment: &str) -> AppResult<Value> 
             );
         }
     } else {
-        return Err(app_err!("MCP 服务器 {name} 没有可用的 command 或 url"));
+        return Err(app_err!(
+            "MCP 服务器 {} 没有可用的 command 或 url",
+            spec.name
+        ));
     }
     if !spec.args.is_empty() {
         entry.insert(
@@ -315,23 +316,8 @@ fn mcp_fragment_to_claude_entry(name: &str, fragment: &str) -> AppResult<Value> 
             ),
         );
     }
-    Ok(Value::Object(entry))
-}
-
-fn claude_mcp_entry(
-    record: &crate::database::McpServerRecord,
-    fallback: Option<&Value>,
-) -> AppResult<Value> {
-    let common = mcp_fragment_to_claude_entry(&record.name, &record.toml)?;
-    let mut entry: Value = match &record.claude_json {
-        Some(raw) => {
-            serde_json::from_str(raw).map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?
-        }
-        None => match fallback {
-            Some(entry) => entry.clone(),
-            None => return Ok(common),
-        },
-    };
+    let common = entry;
+    let mut entry = native;
     let object = entry
         .as_object_mut()
         .ok_or_else(|| app_err!("Claude MCP 条目必须是对象"))?;
@@ -339,7 +325,7 @@ fn claude_mcp_entry(
     for key in ["type", "command", "url", "args", "env", "headers"] {
         object.remove(key);
     }
-    object.extend(common.as_object().expect("转换结果为对象").clone());
+    object.extend(common);
     if object.contains_key("url")
         && native_type
             .as_ref()
@@ -349,6 +335,23 @@ fn claude_mcp_entry(
         object.insert("type".into(), native_type.unwrap());
     }
     Ok(entry)
+}
+
+pub(super) fn claude_mcp_entry(
+    record: &crate::database::McpServerRecord,
+    fallback: Option<&Value>,
+) -> AppResult<Value> {
+    let spec = codex_config::spec_from_fragment(&record.name, &record.toml)
+        .ok_or_else(|| app_err!("MCP 服务器 {} 的共享片段无法解析", record.name))?;
+    let entry = match &record.claude_json {
+        Some(raw) => {
+            serde_json::from_str(raw).map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?
+        }
+        None => fallback
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Map::new())),
+    };
+    claude_mcp_entry_from_spec(spec, entry)
 }
 
 fn claude_string_map(
@@ -626,6 +629,99 @@ impl AppContext {
             )?;
         }
         Ok(())
+    }
+
+    /// 差异处理：采纳只写镜像，撤销只写 Claude live；整批校验后一次提交。
+    pub fn claude_resolve_mcp_entries(
+        &self,
+        actions: &[crate::models::McpDiffEntryAction],
+        adopt: bool,
+    ) -> AppResult<usize> {
+        let _guard = self
+            .operation
+            .lock()
+            .map_err(|_| app_err!("操作锁已损坏"))?;
+        if actions.is_empty() {
+            return Ok(0);
+        }
+        let entries = actions
+            .iter()
+            .map(|action| {
+                if codex_config::is_managed_mcp_name(&action.name) {
+                    return Err(app_err!(
+                        "「{}」由 Codex 官方应用自动管理，不能改写",
+                        action.name
+                    ));
+                }
+                let entry = action
+                    .fragment
+                    .as_deref()
+                    .map(|raw| {
+                        let entry: Value = serde_json::from_str(raw)
+                            .map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?;
+                        let spec = claude_entry_to_spec(&action.name, &entry)?;
+                        let toml = codex_config::patch_mcp_fragment("", &spec)?;
+                        Ok((entry, toml))
+                    })
+                    .transpose()?;
+                Ok((action.name.clone(), entry))
+            })
+            .collect::<AppResult<Vec<_>>>()?;
+        if adopt {
+            let mut records = self.database.mcp_server_records()?;
+            for (name, entry) in entries {
+                let index = records.iter().position(|record| record.name == name);
+                if index.is_none() && entry.is_none() {
+                    continue;
+                }
+                let index = index.unwrap_or_else(|| {
+                    records.push(crate::database::McpServerRecord {
+                        name,
+                        toml: String::new(),
+                        claude_json: None,
+                        codex_enabled: false,
+                        codex_installed: false,
+                        claude_enabled: false,
+                        claude_installed: false,
+                    });
+                    records.len() - 1
+                });
+                let record = &mut records[index];
+                record.claude_enabled = entry.is_some();
+                record.claude_installed = entry.is_some();
+                if let Some((json, toml)) = entry {
+                    record.toml = toml;
+                    record.claude_json = Some(json.to_string());
+                }
+            }
+            self.database.replace_mcp_server_records_with(
+                records,
+                &now_ms().to_string(),
+                |_| Ok(()),
+            )?;
+        } else {
+            let mut document = self.read_claude_mcp_document()?;
+            let servers = document
+                .as_object_mut()
+                .expect("已验证 JSON 对象")
+                .entry("mcpServers")
+                .or_insert_with(|| Value::Object(Map::new()))
+                .as_object_mut()
+                .ok_or_else(|| app_err!(".claude.json 的 mcpServers 不是对象"))?;
+            for (name, entry) in entries {
+                if let Some((json, _)) = entry {
+                    servers.insert(name, json);
+                } else {
+                    servers.remove(&name);
+                }
+            }
+            self.write_claude_mcp_document(&document)?;
+        }
+        tauri_plugin_log::log::info!(
+            "[mcp.diff.batch] client=\"Claude Code\" source={} count={} outcome=success msg=\"Claude Code MCP 差异已处理\"",
+            if adopt { "mirror" } else { "live" }, actions.len()
+        );
+        Ok(actions.len())
     }
 
     pub fn claude_list_mcp_servers(&self) -> AppResult<Vec<McpServerSpec>> {
@@ -1333,6 +1429,150 @@ mod tests {
 
     use super::*;
     use crate::services::plugins::test_context;
+
+    #[test]
+    fn claude_mcp_diff_empty_database_adopt_and_revert_preserve_native_json() {
+        let (home, context) = test_context();
+        let external = r#"{"mcpServers":{"native":{"type":"sse","url":"https://example.test/mcp","custom":1}},"projects":{"keep":true}}"#;
+        std::fs::write(context.paths.claude_mcp_config(), external).unwrap();
+        let preview = context.mcp_sync_preview(SkillTool::Claude).unwrap();
+        assert_eq!(preview.entries.len(), 1);
+        assert_eq!(
+            preview.entries[0].kind,
+            crate::models::McpSyncEntryKind::LiveOnly
+        );
+        assert!(context.database.mcp_server_records().unwrap().is_empty());
+        let adopt = crate::models::McpDiffEntryAction {
+            name: "native".into(),
+            fragment: preview.entries[0].live_toml.clone(),
+        };
+        context.claude_resolve_mcp_entries(&[adopt], true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap(),
+            external
+        );
+        let record = context
+            .database
+            .mcp_server_record("native")
+            .unwrap()
+            .unwrap();
+        assert!(!record.codex_installed && !record.codex_enabled);
+        assert!(record.claude_installed && record.claude_enabled);
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+        // 仅原生字段变化也必须显示差异，撤销保留 SSE 与其他顶层内容。
+        std::fs::write(
+            context.paths.claude_mcp_config(),
+            external.replace("\"custom\":1", "\"custom\":2"),
+        )
+        .unwrap();
+        let preview = context.mcp_sync_preview(SkillTool::Claude).unwrap();
+        assert_eq!(
+            preview.entries[0].kind,
+            crate::models::McpSyncEntryKind::Changed
+        );
+        let revert = crate::models::McpDiffEntryAction {
+            name: "native".into(),
+            fragment: preview.entries[0].db_toml.clone(),
+        };
+        context
+            .claude_resolve_mcp_entries(&[revert], false)
+            .unwrap();
+        assert_eq!(read_claude_mcp(&home)["mcpServers"]["native"]["custom"], 1);
+        assert_eq!(read_claude_mcp(&home)["projects"]["keep"], true);
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+        std::fs::write(context.paths.claude_mcp_config(), "{\"mcpServers\":{}}").unwrap();
+        let preview = context.mcp_sync_preview(SkillTool::Claude).unwrap();
+        assert_eq!(
+            preview.entries[0].kind,
+            crate::models::McpSyncEntryKind::DbOnly
+        );
+        context
+            .claude_resolve_mcp_entries(
+                &[crate::models::McpDiffEntryAction {
+                    name: "native".into(),
+                    fragment: None,
+                }],
+                true,
+            )
+            .unwrap();
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+    }
+
+    #[test]
+    fn claude_mcp_diff_batch_validation_and_unreadable_live_keep_snapshots() {
+        let (_home, context) = test_context();
+        context
+            .claude_save_mcp_server(None, "native", r#"{"command":"echo"}"#)
+            .unwrap();
+        let before = context
+            .database
+            .mcp_server_record("native")
+            .unwrap()
+            .unwrap();
+        let live = std::fs::read(context.paths.claude_mcp_config()).unwrap();
+        let actions = [
+            crate::models::McpDiffEntryAction {
+                name: "native".into(),
+                fragment: Some(r#"{"command":"changed"}"#.into()),
+            },
+            crate::models::McpDiffEntryAction {
+                name: "invalid".into(),
+                fragment: Some("{".into()),
+            },
+        ];
+        for adopt in [true, false] {
+            assert!(context.claude_resolve_mcp_entries(&actions, adopt).is_err());
+            assert_eq!(
+                context
+                    .database
+                    .mcp_server_record("native")
+                    .unwrap()
+                    .unwrap()
+                    .toml,
+                before.toml
+            );
+            assert_eq!(
+                std::fs::read(context.paths.claude_mcp_config()).unwrap(),
+                live
+            );
+        }
+        std::fs::write(context.paths.claude_mcp_config(), "{").unwrap();
+        assert!(context.mcp_sync_preview(SkillTool::Claude).is_err());
+        assert!(context
+            .claude_resolve_mcp_entries(&actions[..1], false)
+            .is_err());
+        assert_eq!(
+            std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap(),
+            "{"
+        );
+        assert_eq!(
+            context
+                .database
+                .mcp_server_record("native")
+                .unwrap()
+                .unwrap()
+                .toml,
+            before.toml
+        );
+        std::fs::write(context.paths.claude_mcp_config(), live).unwrap();
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+    }
 
     #[test]
     fn settings_validation_preserves_unknown_template_fields() {

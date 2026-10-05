@@ -319,84 +319,115 @@ impl AppContext {
     /// 对比 live config.toml 与数据库镜像的 MCP 差异（只读，不写任何一侧），
     /// 供同步前人工裁决。live 无法解析时返回错误，前端进入“仅可从数据库恢复”降级模式。
     pub fn codex_mcp_sync_preview(&self) -> AppResult<McpSyncPreview> {
+        self.mcp_sync_preview(SkillTool::Codex)
+    }
+
+    pub fn mcp_sync_preview(&self, tool: SkillTool) -> AppResult<McpSyncPreview> {
         let _guard = self
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        let document = codex_config::parse_document(&self.read_live_config()?)?;
-        let live_fragments = codex_config::mcp_server_fragments_from_document(&document);
-        // 旧镜像可能残留 Codex 托管条目（node_repl）的片段：过滤掉，避免误报“仅数据库有”
-        let db_fragments: Vec<(String, String)> =
-            Self::codex_active_fragments(&self.database.mcp_server_records()?)
-                .into_iter()
-                .filter(|(name, _)| !codex_config::is_managed_mcp_name(name))
-                .collect();
-        let db_map: BTreeMap<&str, &str> = db_fragments
-            .iter()
-            .map(|(name, toml)| (name.as_str(), toml.as_str()))
-            .collect();
-        let live_specs: BTreeMap<String, McpServerSpec> =
-            codex_config::mcp_servers_from_document(&document)
-                .into_iter()
-                .map(|spec| (spec.name.clone(), spec))
-                .collect();
-
+        let records = self.database.mcp_server_records()?;
+        // 每侧只保存一份名称 -> (展示片段, 建模字段, Claude JSON)，不另建索引。
+        let (live, db) = match tool {
+            SkillTool::Codex => {
+                let document = codex_config::parse_document(&self.read_live_config()?)?;
+                let convert = |fragments: Vec<(String, String)>| -> BTreeMap<_, _> {
+                    fragments
+                        .into_iter()
+                        .filter(|(name, _)| !codex_config::is_managed_mcp_name(name))
+                        .map(|(name, raw)| {
+                            let spec = codex_config::spec_from_fragment(&name, &raw);
+                            (name, (raw, spec, None))
+                        })
+                        .collect()
+                };
+                (
+                    convert(codex_config::mcp_server_fragments_from_document(&document)),
+                    convert(Self::codex_active_fragments(&records)),
+                )
+            }
+            SkillTool::Claude => {
+                let document = self.read_claude_mcp_document()?;
+                let convert = |name: &str, entry: &serde_json::Value| -> AppResult<_> {
+                    let spec = super::claude::claude_entry_to_spec(name, entry)?;
+                    // 复用投影规则比较 JSON，键顺序和缺省字段不会产生伪差异。
+                    let normalized =
+                        super::claude::claude_mcp_entry_from_spec(spec.clone(), entry.clone())?;
+                    let raw = serde_json::to_string_pretty(entry)
+                        .map_err(|error| app_err!("Claude MCP JSON 序列化失败: {error}"))?;
+                    Ok((name.to_owned(), (raw, Some(spec), Some(normalized))))
+                };
+                let live: BTreeMap<_, _> = document
+                    .get("mcpServers")
+                    .and_then(serde_json::Value::as_object)
+                    .into_iter()
+                    .flat_map(|servers| servers.iter())
+                    .filter(|(name, _)| !codex_config::is_managed_mcp_name(name))
+                    .map(|(name, entry)| convert(name, entry))
+                    .collect::<AppResult<_>>()?;
+                let db: BTreeMap<_, _> = records
+                    .iter()
+                    .filter(|record| {
+                        record.claude_installed
+                            && record.claude_enabled
+                            && !codex_config::is_managed_mcp_name(&record.name)
+                    })
+                    .map(|record| {
+                        convert(
+                            &record.name,
+                            &super::claude::claude_mcp_entry(record, None)?,
+                        )
+                    })
+                    .collect::<AppResult<_>>()?;
+                (live, db)
+            }
+        };
         let mut entries = Vec::new();
-        for (name, live_toml) in &live_fragments {
-            let live_spec = live_specs.get(name).cloned();
-            let Some(db_toml) = db_map.get(name.as_str()) else {
+        for (name, (live_raw, live_spec, live_json)) in &live {
+            let Some((db_raw, db_spec, db_json)) = db.get(name) else {
                 entries.push(McpSyncDiffEntry {
                     name: name.clone(),
                     kind: McpSyncEntryKind::LiveOnly,
-                    live_spec,
+                    live_spec: live_spec.clone(),
                     db_spec: None,
-                    live_toml: Some(live_toml.clone()),
+                    live_toml: Some(live_raw.clone()),
                     db_toml: None,
                 });
                 continue;
             };
-            if without_blank_lines(live_toml) == without_blank_lines(db_toml) {
+            // Codex 沿用建模字段比较；Claude 比较完整 JSON，包含原生扩展字段。
+            if (tool == SkillTool::Claude && live_json == db_json)
+                || without_blank_lines(live_raw) == without_blank_lines(db_raw)
+                || (tool == SkillTool::Codex && live_spec.is_some() && live_spec == db_spec)
+            {
                 continue;
-            }
-            let db_spec = codex_config::spec_from_fragment(name, db_toml);
-            // 建模字段全部相等 = 语义等价（差异只在注释/格式/未建模键），不构成差异：
-            // 展示会诱导无意义的“同步”，写回反而会回滚 live 侧的注释与未建模键。
-            // 展示按行对比（前端做），这里的判定仍按建模字段——故用 == 而非文本比较。
-            if let (Some(live), Some(db)) = (&live_spec, &db_spec) {
-                if live == db {
-                    continue;
-                }
             }
             entries.push(McpSyncDiffEntry {
                 name: name.clone(),
                 kind: McpSyncEntryKind::Changed,
-                live_spec,
-                db_spec,
-                live_toml: Some(live_toml.clone()),
-                db_toml: Some((*db_toml).to_string()),
+                live_spec: live_spec.clone(),
+                db_spec: db_spec.clone(),
+                live_toml: Some(live_raw.clone()),
+                db_toml: Some(db_raw.clone()),
             });
         }
-        let live_names: std::collections::BTreeSet<&str> = live_fragments
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect();
-        for (name, db_toml) in &db_fragments {
-            if live_names.contains(name.as_str()) {
-                continue;
+        for (name, (db_raw, db_spec, _)) in &db {
+            if !live.contains_key(name) {
+                entries.push(McpSyncDiffEntry {
+                    name: name.clone(),
+                    kind: McpSyncEntryKind::DbOnly,
+                    live_spec: None,
+                    db_spec: db_spec.clone(),
+                    live_toml: None,
+                    db_toml: Some(db_raw.clone()),
+                });
             }
-            entries.push(McpSyncDiffEntry {
-                name: name.clone(),
-                kind: McpSyncEntryKind::DbOnly,
-                live_spec: None,
-                db_spec: codex_config::spec_from_fragment(name, db_toml),
-                live_toml: None,
-                db_toml: Some(db_toml.clone()),
-            });
         }
         Ok(McpSyncPreview {
             entries,
-            live_count: live_fragments.len(),
-            db_count: db_fragments.len(),
+            live_count: live.len(),
+            db_count: db.len(),
         })
     }
 

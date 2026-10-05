@@ -40,6 +40,19 @@ describe("managementDataCache", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it("两端 MCP 差异角标独立更新和恢复，不互相覆盖", async () => {
+    const cache = await import("./managementDataCache");
+    cache.setMcpDiffBadge({ count: 7, error: false });
+    cache.setMcpDiffBadge({ count: 8, error: false }, "claude");
+    expect(cache.getMcpDiffBadge()).toEqual({ count: 7, error: false });
+    expect(cache.getMcpDiffBadge("claude")).toEqual({ count: 8, error: false });
+    cache.setMcpDiffBadge({ count: 0, error: false });
+    vi.resetModules();
+    const restored = await import("./managementDataCache");
+    expect(restored.getMcpDiffBadge()).toEqual({ count: 0, error: false });
+    expect(restored.getMcpDiffBadge("claude")).toEqual({ count: 8, error: false });
+  });
+
   it("代理状态刷新时保留缓存并合并请求，失败缓存能在下一次刷新自愈", async () => {
     const cache = await import("./managementDataCache");
     getProxyStatus.mockResolvedValueOnce("http://proxy.invalid:8080/");

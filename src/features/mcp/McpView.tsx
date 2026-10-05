@@ -1,10 +1,10 @@
 import { CircleDashed, GitCompare, Globe, MoreHorizontal, Pencil, Plus, Terminal, Wifi, Wrench } from "lucide-react";
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
-import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setClaudeMcpServersCache, setMcpDiffBadge, setMcpServersCache, type McpProbeScope } from "../../app/managementDataCache";
+import { deleteCachedMcpProbe, getCachedClaudeMcpServers, getCachedMcpProbe, getCachedMcpServers, getMcpDiffBadge, loadClaudeMcpServers, loadMcpServers, mcpDiffBadgeText, setCachedMcpProbe, setClaudeMcpServersCache, setMcpDiffBadge, setMcpServersCache, subscribeMcpDiffBadge, type McpProbeScope } from "../../app/managementDataCache";
 import { AppSwitch } from "../../components/AppSwitch";
 import { AppSegmentedControl } from "../../components/AppSegmentedControl";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
@@ -27,8 +27,6 @@ export type McpTarget = "codex" | "claude";
 
 interface McpHeaderState {
   count?: number;
-  badgeText?: string | null;
-  diffCount?: number;
   editing: boolean;
   onCreate: () => void;
   onDiff?: () => void;
@@ -45,9 +43,12 @@ export type McpDiffAction = { side: "mirror" | "live" } & McpDiffEntryAction;
 
 export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChange: (target: McpTarget) => void }) {
   const { t } = useTranslation("mcp");
+  const codexBadge = useSyncExternalStore(subscribeMcpDiffBadge, getMcpDiffBadge, getMcpDiffBadge);
+  const claudeBadge = useSyncExternalStore(subscribeMcpDiffBadge, () => getMcpDiffBadge("claude"), () => getMcpDiffBadge("claude"));
+  const badges = { codex: mcpDiffBadgeText(codexBadge), claude: mcpDiffBadgeText(claudeBadge) };
   return (
     <AppSegmentedControl
-      className="h-[var(--toolbar-control-height)] shrink-0"
+      className="mcp-target-switch h-[var(--toolbar-control-height)] shrink-0"
       selectedIndex={value === "codex" ? 0 : 1}
       role="tablist"
       label={t("target.label")}
@@ -64,6 +65,7 @@ export function McpTargetSwitch({ value, onChange }: { value: McpTarget; onChang
         >
           <SkillTargetLogo target={target} variant="title" />
           {t(`target.${target}`)}
+          {badges[target] ? <span className="apple-count-badge" aria-hidden="true">{badges[target]}</span> : null}
         </button>
       ))}
     </AppSegmentedControl>
@@ -367,17 +369,17 @@ export function McpServerRow({ server, result, probing, detailsVisible, toolsBus
   );
 }
 
-function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
+function McpClientView({ target, activationEpoch, onHeaderChange }: McpClientViewProps & { target: McpTarget }) {
   const feedback = useFeedback();
   const { t } = useTranslation("mcp");
-  const cachedServers = getCachedMcpServers();
+  const cachedServers = target === "codex" ? getCachedMcpServers() : getCachedClaudeMcpServers();
   const [servers, setServers] = useState<McpServerSpec[]>(() => cachedServers ?? []);
   const [loaded, setLoaded] = useState(cachedServers !== null);
   const [loadError, setLoadError] = useState("");
   const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
   const [creatingServer, setCreatingServer] = useState(false);
-  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("codex", cachedServers ?? []);
-  const optimisticToggle = optimisticToggleEnabled(setServers, setMcpServersCache);
+  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes(target, cachedServers ?? []);
+  const optimisticToggle = optimisticToggleEnabled(setServers, target === "codex" ? setMcpServersCache : setClaudeMcpServersCache);
   const [syncPreview, setSyncPreview] = useState<McpSyncPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [diffOpen, setDiffOpen] = useState(false);
@@ -388,18 +390,18 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
     if (previewInFlight.current) return;
     previewInFlight.current = true;
     try {
-      const preview = await api.codexMcpSyncPreview();
+      const preview = await (target === "codex" ? api.codexMcpSyncPreview() : api.claudeMcpSyncPreview());
       setSyncPreview(preview);
       setPreviewError("");
       // 侧栏角标与页面同源：页面查到就写回共享缓存
-      setMcpDiffBadge({ count: preview.entries.length, error: false });
+      setMcpDiffBadge({ count: preview.entries.length, error: false }, target);
     }
     catch (error) {
       setPreviewError(String(error));
       setSyncPreview(null);
       // 差异算不出来本身就是一种状态：写回 error 让侧栏跟着亮，
       // 否则用户不点进 MCP 页就不知道 config.toml 坏了
-      setMcpDiffBadge({ count: 0, error: true });
+      setMcpDiffBadge({ count: 0, error: true }, target);
     }
     finally { previewInFlight.current = false; }
   };
@@ -413,7 +415,7 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
   const refresh = async (force = false, only?: string[]) => {
     let next: McpServerSpec[] | null = null;
     try {
-      next = await loadMcpServers(force);
+      next = await (target === "codex" ? loadMcpServers(force) : loadClaudeMcpServers(force));
       setServers(next);
       applyCache(next);
       setLoadError("");
@@ -433,19 +435,19 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
     // 否则每次进页全量探测两遍（stdio 服务器会被拉起两次）
     if (probedOnceRef.current) return;
     probedOnceRef.current = true;
-    void refresh();
+    void refresh(true);
   }, []);
 
-  // 窗口激活时刷新差异预览：差异只可能来自 Codex 侧先改，激活是唯一需要重查差异的时机。
+  // 窗口激活时刷新当前客户端的差异预览。
   // epoch=0 表示尚未激活过（含首次挂载，此时上面的 refresh 已经取过预览），不重复请求。
-  useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);
+  useEffect(() => { if (activationEpoch === 0) return; if (target === "claude") void refresh(true, []); else void loadPreview(); }, [activationEpoch]);
 
   const removeServer = async (server: McpServerSpec) => {
     const confirmed = await feedback.confirm({ title: t("confirm.deleteTitle"), description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />, confirmText: t("confirm.delete"), destructive: true });
     if (!confirmed) return;
     try {
-      await api.codexDeleteMcpServer(server.name);
-      deleteCachedMcpProbe(server.name);
+      await (target === "codex" ? api.codexDeleteMcpServer(server.name) : api.claudeDeleteMcpServer(server.name));
+      deleteCachedMcpProbe(server.name, target);
       setEditingServer(null);
       feedback.success(t("feedback.deleted"));
       // 删掉的那台已经不存在了，其余几台的配置一个字没动 → 一台都不用重连
@@ -454,10 +456,9 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
     catch (error) { feedback.error(String(error)); }
   };
 
-  const applyDiffAction = async (action: McpDiffAction) => {
-    if (action.side === "mirror") await api.setMcpMirror(action.name, action.fragment);
-    else await api.revertMcpLive(action.name, action.fragment);
-  };
+  const applyDiffActions = (actions: McpDiffEntryAction[], verb: McpDiffVerb) =>
+    target === "claude" ? api.claudeResolveMcpEntries(actions, verb === "adopt")
+      : verb === "adopt" ? api.setMcpMirrorEntries(actions) : api.revertMcpLiveEntries(actions);
 
   const resolveEntry = async (entry: McpSyncDiffEntry, verb: McpDiffVerb) => {
     if (resolving) return;
@@ -465,7 +466,7 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
     if (!action) { feedback.error(t("diff.resolveFailed", { name: entry.name })); return; }
     setResolving(true);
     try {
-      await applyDiffAction(action);
+      await applyDiffActions([{ name: action.name, fragment: action.fragment }], verb);
       feedback.success(t(verb === "adopt" ? "diff.adoptedToast" : "diff.revertedToast", { name: entry.name }));
       // 同步只写数据库镜像，配置文件没被碰过 → 一台都不用重连；
       // 撤回写回了 live，只有这一台的内容变了 → 只重连它
@@ -493,9 +494,7 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
     if (!confirmed) return;
     setResolving(true);
     try {
-      const count = verb === "adopt"
-        ? await api.setMcpMirrorEntries(actions)
-        : await api.revertMcpLiveEntries(actions);
+      const count = await applyDiffActions(actions, verb);
       feedback.success(t("diff.resolvedAllToast", { count }));
       // 同 resolveEntry：同步不碰配置文件，撤回只动被处理的那几台
       await refresh(true, verb === "revert" ? actions.map((action) => action.name) : []);
@@ -516,16 +515,13 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
   };
 
   const orderedServers = [...servers].sort(compareMcpServers);
-  const diffCount = syncPreview?.entries.length ?? 0;
-  // 角标文本与侧栏同源：这条规则只住在 managementDataCache，不在这里再写一遍
-  const badgeText = mcpDiffBadgeText({ count: diffCount, error: Boolean(previewError) });
   const editing = diffOpen || Boolean(editingServer) || creatingServer;
   useLayoutEffect(() => {
     onHeaderChange({
-      count: loaded ? servers.length : undefined, badgeText, diffCount, editing,
+      count: loaded ? servers.length : undefined, editing,
       onCreate: () => setCreatingServer(true), onDiff: () => setDiffOpen(true),
     });
-  }, [onHeaderChange, loaded, servers.length, badgeText, diffCount, editing]);
+  }, [onHeaderChange, loaded, servers.length, editing]);
 
   if (diffOpen) {
     return (
@@ -536,11 +532,19 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
         onBack={() => setDiffOpen(false)}
         onResolve={(entry, verb) => void resolveEntry(entry, verb)}
         onResolveAll={(verb) => void resolveAll(verb)}
-        onRebuild={() => void rebuildFromDatabase()}
+        onRebuild={target === "codex" ? () => void rebuildFromDatabase() : undefined}
       />
     );
   }
   if (editingServer || creatingServer) {
+    if (target === "claude") return (
+      <ClaudeMcpEdit
+        server={editingServer}
+        create={creatingServer}
+        onBack={() => { setEditingServer(null); setCreatingServer(false); }}
+        onSaved={(name) => { setEditingServer(null); setCreatingServer(false); void refresh(true, [name]); }}
+      />
+    );
     return (
       <McpEdit
         server={editingServer}
@@ -566,7 +570,7 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
       {loadError ? (
         <p className="muted mt-4 text-sm">
           {loadError}
-          {loaded ? t("list.loadErrorHint") : ""}
+          {loaded && target === "codex" ? t("list.loadErrorHint") : ""}
         </p>
       ) : null}
       <div>
@@ -599,116 +603,11 @@ function CodexMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
   );
 }
 
-function ClaudeMcpView({ activationEpoch, onHeaderChange }: McpClientViewProps) {
-  const feedback = useFeedback();
-  const { t } = useTranslation("mcp");
-  const cachedServers = getCachedClaudeMcpServers();
-  const [servers, setServers] = useState<McpServerSpec[]>(() => cachedServers ?? []);
-  const [loaded, setLoaded] = useState(cachedServers !== null);
-  const [loadError, setLoadError] = useState("");
-  const [editingServer, setEditingServer] = useState<McpServerSpec | null>(null);
-  const [creatingServer, setCreatingServer] = useState(false);
-  const { probingNames, probeResults, toolsOpen, toolsLoading, toolsLoaded, probe, toggleTools, toggleEnabled, applyCache } = useMcpProbes("claude", cachedServers ?? []);
-  const optimisticToggle = optimisticToggleEnabled(setServers, setClaudeMcpServersCache);
-
-  const refresh = async (force = false, only?: string[]) => {
-    let next: McpServerSpec[] | null = null;
-    try {
-      next = await loadClaudeMcpServers(force);
-      setServers(next);
-      applyCache(next);
-      setLoadError("");
-    } catch (error) {
-      setLoadError(String(error));
-    } finally {
-      setLoaded(true);
-    }
-    if (next) {
-      const targets = only ? next.filter((server) => only.includes(server.name)) : next;
-      void Promise.all(targets.filter((server) => server.enabled !== false).map((server) => probe(server, { manual: false })));
-    }
-  };
-
-  const probedOnceRef = useRef(false);
-  useEffect(() => {
-    if (probedOnceRef.current) return;
-    probedOnceRef.current = true;
-    void refresh(true);
-  }, []);
-
-  useEffect(() => { if (activationEpoch === 0) return; void refresh(true, []); }, [activationEpoch]);
-
-  const removeServer = async (server: McpServerSpec) => {
-    const confirmed = await feedback.confirm({
-      title: t("confirm.deleteTitle"),
-      description: <Trans ns="mcp" i18nKey="confirm.deleteDescription" values={{ name: server.name }} components={{ strong: <strong /> }} />,
-      confirmText: t("confirm.delete"),
-      destructive: true,
-    });
-    if (!confirmed) return;
-    try {
-      await api.claudeDeleteMcpServer(server.name);
-      deleteCachedMcpProbe(server.name, "claude");
-      feedback.success(t("feedback.deleted"));
-      setEditingServer(null);
-      await refresh(true, []);
-    } catch (error) {
-      feedback.error(String(error));
-    }
-  };
-
-  const editing = Boolean(editingServer) || creatingServer;
-  useLayoutEffect(() => {
-    onHeaderChange({ count: loaded ? servers.length : undefined, editing, onCreate: () => setCreatingServer(true) });
-  }, [onHeaderChange, loaded, servers.length, editing]);
-
-  if (editingServer || creatingServer) {
-    return (
-      <ClaudeMcpEdit
-        server={editingServer}
-        create={creatingServer}
-        onBack={() => { setEditingServer(null); setCreatingServer(false); }}
-        onSaved={(name) => { setEditingServer(null); setCreatingServer(false); void refresh(true, [name]); }}
-      />
-    );
-  }
-
-  const orderedServers = [...servers].sort(compareMcpServers);
-  return (
-    <div className="apple-edit-content">
-      {loadError ? <p className="muted mt-4 text-sm">{loadError}</p> : null}
-      {!servers.length ? (
-        <EmptyStateCard loading={!loaded} icon={<McpIcon className="h-5 w-5" />}>
-          <p className="muted">{t("empty.description")}</p>
-        </EmptyStateCard>
-      ) : (
-        <div className="apple-group apple-list-card">
-          {orderedServers.map((server) => (
-            <McpServerRow
-              key={server.name}
-              server={server}
-              result={probeResults[server.name]}
-              probing={Boolean(probingNames[server.name])}
-              detailsVisible={Boolean(toolsOpen[server.name])}
-              toolsBusy={Boolean(toolsLoading[server.name])}
-              toolsLoaded={Boolean(toolsLoaded[server.name])}
-              onEdit={setEditingServer}
-              onDelete={(target) => void removeServer(target)}
-              onProbe={(target) => void probe(target)}
-              onToggleTools={toggleTools}
-              onToggleEnabled={(target, enabled) => void toggleEnabled(target, enabled, () => refresh(true, enabled ? [target.name] : []), optimisticToggle)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function McpView({ activationEpoch }: { activationEpoch: number }) {
   const { t } = useTranslation("mcp");
   const [target, setTarget] = useState<McpTarget>("codex");
   const [header, setHeader] = useState<McpHeaderState | null>(null);
+  const targetBadge = useSyncExternalStore(subscribeMcpDiffBadge, () => getMcpDiffBadge(target), () => getMcpDiffBadge(target));
 
   // 客户端仅上报页头数据；切换器在父层保持同一实例，CSS 才能从旧位置过渡到新位置。
   return (
@@ -722,13 +621,6 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
             countLabel={header?.count !== undefined ? t("list.serverCount", { count: header.count }) : undefined}
           />
           <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
-            {header?.badgeText ? (
-              <button type="button" className="apple-action-button relative" aria-label={header.diffCount ? t("list.updateDiffAria", { count: header.diffCount }) : t("list.resolveDiff")} title={header.diffCount ? t("list.updateDiffAria", { count: header.diffCount }) : undefined} onClick={header.onDiff}>
-                <GitCompare className="h-4 w-4" strokeWidth={2} />
-                {t("list.resolveDiff")}
-                <span className="apple-count-badge" aria-hidden="true">{header.badgeText}</span>
-              </button>
-            ) : null}
             <McpTargetSwitch key="target-switch" value={target} onChange={setTarget} />
             <button type="button" className="apple-action-button app-button--primary" disabled={!header} onClick={header?.onCreate}>
               <Plus className="h-4 w-4" strokeWidth={2} />
@@ -737,9 +629,16 @@ export default function McpView({ activationEpoch }: { activationEpoch: number }
           </div>
         </header>
       ) : null}
-      {target === "codex"
-        ? <CodexMcpView activationEpoch={activationEpoch} onHeaderChange={setHeader} />
-        : <ClaudeMcpView activationEpoch={activationEpoch} onHeaderChange={setHeader} />}
+      {!header?.editing && mcpDiffBadgeText(targetBadge) ? (
+        <div className="flex items-center gap-3 rounded-[var(--radius-control)] bg-(--selection-bg) px-3 py-2">
+          <GitCompare className="h-4 w-4 shrink-0 text-accent" strokeWidth={2} />
+          <span className="setting-description min-w-0 flex-1">
+            {targetBadge?.error ? t("list.diffUnavailable") : t("list.diffNotice", { count: targetBadge?.count ?? 0 })}
+          </span>
+          <button type="button" className="apple-inline-btn shrink-0" disabled={!header} onClick={header?.onDiff}>{t("list.viewDiff")}</button>
+        </div>
+      ) : null}
+      <McpClientView key={target} target={target} activationEpoch={activationEpoch} onHeaderChange={setHeader} />
     </section>
   );
 }

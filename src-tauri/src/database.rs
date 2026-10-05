@@ -642,13 +642,6 @@ impl Database {
         before_commit: impl FnOnce(&mut [McpServerRecord]) -> AppResult<()>,
     ) -> AppResult<()> {
         let previous = self.mcp_server_records()?;
-        let mut connection = self.lock()?;
-        let transaction = connection
-            .transaction()
-            .map_err(|error| app_err!("无法开始 MCP 写入事务: {error}"))?;
-        transaction
-            .execute("DELETE FROM mcp_servers", [])
-            .map_err(|error| app_err!("无法清理 MCP 服务器: {error}"))?;
         let mut rows: Vec<McpServerRecord> = fragments
             .iter()
             .map(|(name, toml)| {
@@ -675,7 +668,23 @@ impl Database {
                 rows.push(record);
             }
         }
-        // 回调只能读写文件，不能重新进入数据库连接锁。
+        self.replace_mcp_server_records_with(rows, timestamp, before_commit)
+    }
+
+    pub fn replace_mcp_server_records_with(
+        &self,
+        mut rows: Vec<McpServerRecord>,
+        timestamp: &str,
+        before_commit: impl FnOnce(&mut [McpServerRecord]) -> AppResult<()>,
+    ) -> AppResult<()> {
+        let mut connection = self.lock()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| app_err!("无法开始 MCP 写入事务: {error}"))?;
+        transaction
+            .execute("DELETE FROM mcp_servers", [])
+            .map_err(|error| app_err!("无法清理 MCP 服务器: {error}"))?;
+        // 回调不能重新进入数据库连接锁。
         before_commit(&mut rows)?;
         for (index, record) in rows.iter().enumerate() {
             transaction

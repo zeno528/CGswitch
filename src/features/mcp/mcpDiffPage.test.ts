@@ -83,16 +83,18 @@ describe("MCP 差异行级对比", () => {
 });
 
 describe("MCP 差异二级页", () => {
-  it("差异入口仅在存在差异或解析失败时出现，徽章显示待处理数量", () => {
+  it("有差异才显示列表提示，数字显示在客户端切换器", () => {
     // 入口条件与角标文本都走共享规则（见 managementDataCache），页面不再自己判一遍
-    expect(viewSource).toContain("{header?.badgeText ? (");
+    expect(viewSource).toContain("!header?.editing && mcpDiffBadgeText(targetBadge)");
+    expect(viewSource).toContain('t("list.viewDiff")');
+    expect(viewSource).not.toContain("{header?.badgeText ? (");
     expect(viewSource).toContain('className="apple-count-badge"');
     expect(viewSource).not.toContain("list.diffChip");
     expect(viewSource).not.toContain("McpSyncDialog");
   });
 
   it("窗口激活时刷新差异预览（差异只可能来自 Codex 侧先改），首次挂载不重复请求", () => {
-    expect(viewSource).toContain("useEffect(() => { if (activationEpoch === 0) return; void loadPreview(); }, [activationEpoch]);");
+    expect(viewSource).toContain('useEffect(() => { if (activationEpoch === 0) return; if (target === "claude") void refresh(true, []); else void loadPreview(); }, [activationEpoch]);');
   });
 
   it("差异始终展开，保留 MCP 卡片头部", () => {
@@ -136,7 +138,7 @@ describe("MCP 差异二级页", () => {
   it("解析失败时先讲后果与重建边界，报错原文默认摊开", () => {
     // 用户要知道的是"Codex 起不来"，不是解析器报错原文
     expect(pageSource).toContain('{t("diff.parseFailedTitle")}');
-    expect(pageSource).toContain('{t("diff.parseFailedImpact")}');
+    expect(pageSource).toContain('{t(onRebuild ? "diff.parseFailedImpact" : "diff.claudeParseFailedImpact")}');
     expect(pageSource).toContain('{t("diff.rebuild")}');
     // 报错原文是唯一能定位到行的信息，这页就是为它存在的：摊开，不藏进折叠
     expect(pageSource).toContain('{t("diff.rawError")}');
@@ -183,8 +185,9 @@ describe("MCP 差异二级页", () => {
   });
 
   it("批量动作整批一次提交，不再逐条调用（逐条会各备份一次并留下半完成状态）", () => {
-    expect(viewSource).toContain("await api.setMcpMirrorEntries(actions)");
-    expect(viewSource).toContain("await api.revertMcpLiveEntries(actions)");
+    expect(viewSource).toContain("api.setMcpMirrorEntries(actions)");
+    expect(viewSource).toContain("api.revertMcpLiveEntries(actions)");
+    expect(viewSource).toContain("await applyDiffActions(actions, verb)");
     expect(viewSource).not.toContain("for (const entry of entries)");
   });
 });

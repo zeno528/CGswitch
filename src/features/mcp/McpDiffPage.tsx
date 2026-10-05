@@ -14,7 +14,7 @@ interface McpDiffPageProps {
   onBack: () => void;
   onResolve: (entry: McpSyncDiffEntry, verb: McpDiffVerb) => void;
   onResolveAll: (verb: McpDiffVerb) => void;
-  onRebuild: () => void;
+  onRebuild?: () => void;
 }
 
 const kindText = (entry: McpSyncDiffEntry, t: TFunction<"mcp">) => entry.kind === "live_only" ? t("diff.kind.liveOnly") : entry.kind === "db_only" ? t("diff.kind.dbOnly") : t("diff.kind.changed");
@@ -134,8 +134,8 @@ export default function McpDiffPage({ preview, previewError, resolving, onBack, 
               <div className="setting-title">{t("diff.parseFailedTitle")}</div>
               <CircleAlert className="h-[18px] w-[18px] shrink-0 text-[var(--danger)]" strokeWidth={2} aria-hidden="true" />
             </div>
-            <p className="setting-description mt-1">{t("diff.parseFailedImpact")}</p>
-            <button type="button" className="apple-action-button app-button--primary mt-3" disabled={resolving} onClick={onRebuild}>{t("diff.rebuild")}</button>
+            <p className="setting-description mt-1">{t(onRebuild ? "diff.parseFailedImpact" : "diff.claudeParseFailedImpact")}</p>
+            {onRebuild ? <button type="button" className="apple-action-button app-button--primary mt-3" disabled={resolving} onClick={onRebuild}>{t("diff.rebuild")}</button> : null}
             {/* 报错原文是唯一能定位到行的信息，默认摊开——这页就是为它存在的 */}
             <div className="field-label mt-3">{t("diff.rawError")}</div>
             <pre className="mono meta-xs muted m-0 mt-1.5 whitespace-pre-wrap break-all rounded-[var(--radius-control)] border border-[var(--panel-border)] bg-(--profile-chip-bg) px-2.5 py-2">{previewError}</pre>
