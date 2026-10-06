@@ -24,7 +24,6 @@ export function useCliManagement(client: Client, active: boolean) {
   const [busy, setBusy] = useState(false);
   const [operation, setOperation] = useState<CliOperation>(null);
   const running = useRef(false);
-  const detected = useRef(false);
   const commands = clients[client];
 
   // 缓存写穿：检测/安装/升级的每个落点都同步进缓存，下次进页直出最新状态。
@@ -49,22 +48,24 @@ export function useCliManagement(client: Client, active: boolean) {
     }
   };
 
+  // 其他页面发起的任务也要跟踪到结束；离页或任务结束即停止检测。
+  useEffect(() => {
+    if (!active || !status?.busy) return;
+    const timer = setInterval(() => void refresh(), 2000);
+    return () => clearInterval(timer);
+  }, [active, status?.busy]);
+
   // 每次重新进入 Agent 工具分区都检测一次，纠正外部安装/升级造成的本地缓存过期；
   // 检测成功且为原生安装时顺带静默检查线上更新。
   // 离开分区时丢弃"当前没有更新"这类一次性反馈（常驻只会变成视觉噪音）；
   // 升级胶囊是可行动状态，保留到真正升级或版本变化。
   useEffect(() => {
-    if (!active) {
-      detected.current = false;
-      return;
-    }
-    if (detected.current && status) return;
-    detected.current = true;
+    if (!active) return;
     void (async () => {
       const next = await refresh();
-      if (next?.installation === "native") await check(false);
+      if (next?.installation === "native" && !next.busy) await check(false);
     })();
-  }, [active, status]);
+  }, [active, client]);
 
   // 静默和主动检查共用状态；静默检查仅更新缓存，不弹通知。
   const check = async (notify = true) => {

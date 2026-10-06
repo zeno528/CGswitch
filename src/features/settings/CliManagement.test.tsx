@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { Children, isValidElement, type ReactNode } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createInstance, type TFunction } from "i18next";
 import enSettings from "../../i18n/locales/en-US/settings";
 import zhSettings from "../../i18n/locales/zh-CN/settings";
@@ -9,7 +9,7 @@ import { CliCard, useCliManagement } from "./CliManagement";
 import { cliFailureMessage } from "../../components/CliUpgradePill";
 
 const hooks = vi.hoisted(() => ({
-  cells: [] as unknown[], effects: [] as (() => void)[], index: 0, t: null as TFunction<"settings"> | null,
+  cells: [] as unknown[], effects: [] as (() => void | (() => void))[], index: 0, t: null as TFunction<"settings"> | null,
   error: vi.fn(), info: vi.fn(), success: vi.fn(), command: vi.fn(),
   cached: vi.fn((): import("../../types").CliStatus | null => null), cacheSet: vi.fn(),
   cachedUpdate: vi.fn((): { latest_version: string; channel: string; available: boolean } | null => null),
@@ -17,7 +17,12 @@ const hooks = vi.hoisted(() => ({
 }));
 vi.mock("react", async (original) => ({
   ...await original<typeof import("react")>(),
-  useEffect: (effect: () => void) => { hooks.effects.push(effect); },
+  useEffect: (effect: () => void | (() => void), deps: unknown[]) => {
+    const index = hooks.index++;
+    const previous = hooks.cells[index] as unknown[] | undefined;
+    hooks.cells[index] = deps;
+    hooks.effects.push(!previous || deps.some((dep, i) => !Object.is(dep, previous[i])) ? effect : () => undefined);
+  },
   useRef: (initial: unknown) => {
     const index = hooks.index++;
     hooks.cells[index] ??= { current: initial };
@@ -52,6 +57,7 @@ beforeEach(() => {
   hooks.touch.mockClear();
   hooks.cacheUpdate.mockClear();
 });
+afterEach(() => vi.useRealTimers());
 
 const status: CliStatus = {
   installation: "native", source: null, version: "1.2.3", path: "/fixture/bin/cli", other_paths: [],
@@ -62,6 +68,26 @@ const management = {
 };
 // 清空全部微任务：effect 里检测 → 静默更新检查是链式异步，单次微任务等不完。
 const flush = () => new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+
+it.each(["codex", "claude"] as const)("%s 首页任务结束后恢复 Agent 页状态", async (client) => {
+  vi.useFakeTimers();
+  hooks.cached.mockReturnValue(status);
+  hooks.command.mockResolvedValueOnce({ ...status, busy: true }).mockResolvedValueOnce(status);
+  const render = () => { hooks.index = 0; hooks.effects.length = 0; return useCliManagement(client, true); };
+  render();
+  hooks.effects[hooks.effects.length - 1](); // 进页检测读到首页任务仍在执行。
+  await vi.advanceTimersByTimeAsync(0);
+  const working = render();
+  expect(working.status?.busy).toBe(true);
+  expect(hooks.serviceCheck).not.toHaveBeenCalled();
+  const stop = hooks.effects[0](); // 跟踪外部任务。
+  await vi.advanceTimersByTimeAsync(2000);
+  const settled = render();
+  expect(settled.status).toEqual(status);
+  expect(buttons(CliCard({ client, management: settled }))[0].disabled).toBe(false);
+  if (stop) stop();
+  expect(hooks.effects[0]()).toBeUndefined(); // 任务结束后不再轮询。
+});
 
 it.each(["codex", "claude"] as const)("%s 静默和主动检查共用按钮检查中状态，结束后恢复", async (client) => {
   const checked = { status, latest_version: "1.2.3", channel: "latest", available: false };
@@ -117,7 +143,7 @@ it.each(["codex", "claude"] as const)("%s 本地检测期间安装按钮禁用�
   expect(hooks.serviceCheck).not.toHaveBeenCalled();
 });
 
-it.each(["codex", "claude"] as const)("%s 每次重新进入都刷新本地并静默检查更新", async (client) => {
+it.each(["codex", "claude"] as const)("%s Activity 隐藏后重新进入会检测升级后的版本", async (client) => {
   const render = (active: boolean) => { hooks.index = 0; const current = useCliManagement(client, active); hooks.effects[hooks.effects.length - 1](); return current; };
   render(false);
   expect(hooks.command).not.toHaveBeenCalled();
@@ -125,6 +151,7 @@ it.each(["codex", "claude"] as const)("%s 每次重新进入都刷新本地并�
   hooks.command.mockResolvedValueOnce(status); // 本地检测
   hooks.serviceCheck.mockResolvedValueOnce(checked); // 静默更新检查走共享服务
   render(true);
+  const reconnect = hooks.effects[hooks.effects.length - 1];
   expect(render(true).busy).toBe(true);
   expect(render(true).operation).toBe("refresh");
   await flush();
@@ -135,8 +162,7 @@ it.each(["codex", "claude"] as const)("%s 每次重新进入都刷新本地并�
   const checkedAgain = { status: refreshed, latest_version: "1.2.5", channel: "latest", available: false };
   hooks.command.mockResolvedValueOnce(refreshed);
   hooks.serviceCheck.mockResolvedValueOnce(checkedAgain);
-  render(false);
-  render(true);
+  reconnect(); // Activity 重新显示时重跑 effect，不依赖 active=false 分支清理标记。
   await flush();
   const reentered = render(true);
   expect(hooks.command).toHaveBeenCalledTimes(2);

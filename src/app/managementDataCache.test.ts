@@ -38,7 +38,7 @@ describe("managementDataCache", () => {
     vi.stubGlobal("localStorage", localStorageMock);
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
   it("两端 MCP 差异角标独立更新和恢复，不互相覆盖", async () => {
     const cache = await import("./managementDataCache");
@@ -113,7 +113,7 @@ describe("managementDataCache", () => {
     expect(invalid.getCachedProxyStatus()).toBeNull();
   });
 
-  it("CLI 更新检查跨重启持久化并充当冷却闸，静默失败推进冷却且保留旧结果", async () => {
+  it("CLI 更新提示跨重启保留，冷却只在本次运行生效，静默失败保留旧结果", async () => {
     claudeCheckCliUpdate.mockResolvedValueOnce({ status: {}, latest_version: "2.0.0", channel: "latest", available: true });
     const cache = await import("./managementDataCache");
     await cache.runCliUpdateCheckQuietly("claude");
@@ -124,7 +124,7 @@ describe("managementDataCache", () => {
     vi.resetModules();
     const restored = await import("./managementDataCache");
     expect(restored.getCachedCliUpdate("claude")).toEqual({ available: true, latest_version: "2.0.0", channel: "latest" });
-    expect(restored.cliUpdateCheckStale("claude")).toBe(false);
+    expect(restored.cliUpdateCheckStale("claude")).toBe(true);
 
     // 静默失败：冷却推进、旧结果保留、不抛错
     claudeCheckCliUpdate.mockRejectedValueOnce(new Error("fixture"));
@@ -133,10 +133,9 @@ describe("managementDataCache", () => {
     expect(restored.cliUpdateCheckStale("claude")).toBe(false);
 
     // 冷却过期后才再次放行
-    persistedStorage.set("budtty.claude-cli-update-v1", JSON.stringify({ checked_at: Date.now() - 7 * 60 * 60 * 1000, update: null }));
-    vi.resetModules();
-    const stale = await import("./managementDataCache");
-    expect(stale.cliUpdateCheckStale("claude")).toBe(true);
+    vi.useFakeTimers();
+    vi.advanceTimersByTime(6 * 60 * 60 * 1000 + 1);
+    expect(restored.cliUpdateCheckStale("claude")).toBe(true);
   });
 
   it("无更新结果只推进冷却，不跨页面或重启恢复结果", async () => {
@@ -149,7 +148,7 @@ describe("managementDataCache", () => {
     vi.resetModules();
     const restored = await import("./managementDataCache");
     expect(restored.getCachedCliUpdate("claude")).toBeNull();
-    expect(restored.cliUpdateCheckStale("claude")).toBe(false);
+    expect(restored.cliUpdateCheckStale("claude")).toBe(true);
   });
 
   it("恢复前发生的静默失败也保留持久化的旧升级结果", async () => {

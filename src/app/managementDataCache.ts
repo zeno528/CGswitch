@@ -308,7 +308,8 @@ function restoreCliUpdateEntry(raw: unknown): CliUpdateEntry | null {
   if (typeof candidate.checked_at !== "number") return null;
   const update = candidate.update;
   if (update !== null && (typeof update !== "object" || typeof (update as CliUpdateInfo).latest_version !== "string" || typeof (update as CliUpdateInfo).channel !== "string" || typeof (update as CliUpdateInfo).available !== "boolean")) return null;
-  return { checked_at: candidate.checked_at, update: update && (update as CliUpdateInfo).available ? { ...(update as CliUpdateInfo) } : null };
+  // 只恢复更新提示，冷却不跨会话：冷启动必须重新检查官方版本。
+  return { checked_at: 0, update: update && (update as CliUpdateInfo).available ? { ...(update as CliUpdateInfo) } : null };
 }
 
 function notifyCliUpdate(): void {
@@ -326,11 +327,11 @@ export function getCachedCliUpdate(client: CliClient): CliUpdateInfo | null {
 /// 升级/安装成功的权威落点：本机版本已追平官方（后端 verify_update 校验过），
 /// 直接翻转缓存让所有页面的胶囊同步消失，不再发网络请求确认。
 export function clearCachedCliUpdate(client: CliClient): void {
-  if (!cliUpdateRestored[client]) getCachedCliUpdate(client);
   setCliUpdateEntry(client, { checked_at: Date.now(), update: null });
 }
 
 function setCliUpdateEntry(client: CliClient, entry: CliUpdateEntry): void {
+  cliUpdateRestored[client] = true;
   cliUpdateEntries[client] = entry;
   writeJson(cliUpdateStorageKeys[client], entry);
   notifyCliUpdate();
@@ -341,7 +342,7 @@ export function subscribeCliUpdate(listener: () => void): () => void {
   return () => { cliUpdateListeners.delete(listener); };
 }
 
-/// 冷却闸：6 小时内的检查（无论成败）都不重复发起。
+/// 自动轮询的冷却闸：本次运行内检查后 6 小时不重复，冷启动重新放行。
 export function cliUpdateCheckStale(client: CliClient): boolean {
   if (!cliUpdateRestored[client]) getCachedCliUpdate(client);
   const entry = cliUpdateEntries[client];
