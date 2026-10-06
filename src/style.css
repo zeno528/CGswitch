@@ -10,6 +10,8 @@
 :root {
   color-scheme: light;
   --accent: #007aff;
+  /* Ultra 推理档位的标题与轨道共用紫色，按浅深主题适配。 */
+  --reasoning-ultra: #af52de;
   --primary-button-bg: #2d2d2b;
   --primary-button-hover-bg: #1c1c1e;
   --primary-button-text: #ffffff;
@@ -121,6 +123,7 @@
   color-scheme: dark;
   /* VS Code Dark+：编辑区/侧栏/标题栏/输入框/选中项/主按钮 */
   --accent: #007aff;
+  --reasoning-ultra: #bf5af2;
   --primary-button-bg: #f0f0ee;
   --primary-button-hover-bg: #d6d6d3;
   --primary-button-text: #1c1c1e;
@@ -850,11 +853,11 @@ body:has(.app-dialog-overlay) .window-control-button {
 .profile-model-current::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-control); }
 .profile-model-current:focus-visible { outline: none; }
 .profile-model-current:focus-visible::after { outline: 2px solid var(--accent); }
-.profile-model-list-title { padding: 0.125rem 0.75rem 0.5rem; }
-.profile-model-option { padding-block: 0.5rem; }
+.profile-model-list-title { padding: 0.125rem 0.75rem; }
+.profile-model-option { padding-block: 0.25rem; }
 
 /* 原生 range 负责拖动/键盘，圆头与填色复用主题分段控件的动效 token。 */
-.reasoning-effort-slider { --effort-thumb-size: 1.5rem; --effort-track-height: 1.25rem; min-width: 0; }
+.reasoning-effort-slider { --effort-thumb-size: 1.75rem; --effort-track-height: 1.5rem; min-width: 0; }
 .reasoning-effort-slider__header { display: grid; grid-template-columns: var(--icon-button-size) minmax(0, 1fr) var(--icon-button-size); align-items: start; gap: 0.25rem; margin-bottom: calc(var(--gap-section) * 0.5); }
 .reasoning-effort-slider__heading { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; gap: 0.125rem; padding: 0.125rem; border-radius: var(--radius-control); transition: background-color var(--motion-fast) ease-out; }
 .reasoning-effort-slider__heading:is(:hover, :focus-within) { background: var(--secondary-button-hover-bg); }
@@ -898,7 +901,9 @@ body:has(.app-dialog-overlay) .window-control-button {
   transition: transform var(--motion-segment-slide);
   pointer-events: none;
 }
-.reasoning-effort-slider__thumb { display: block; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; background: #fff; }
+.reasoning-effort-slider__thumb { display: block; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; background: #fff; box-shadow: var(--card-edge-shadow); transition: transform var(--motion-segment-slide); }
+/* 仅命中白色圆头时放大，移开沿同一过渡回落；不拦截原生 range 的拖动。 */
+.reasoning-effort-slider__track[data-thumb-hover]:not(:has(input[aria-disabled="true"])) .reasoning-effort-slider__thumb { transform: scale(1.1); }
 /* 等级圆点可直接点选；当前圆点让出事件，使白色圆头仍由原生 range 拖动。 */
 .reasoning-effort-slider__stops { position: absolute; inset: 0; pointer-events: none; }
 .reasoning-effort-slider__stop { position: absolute; top: calc((var(--effort-track-height) - var(--effort-thumb-size)) / 2); left: calc(var(--effort-progress) * (100cqw - var(--effort-thumb-size))); z-index: 2; display: grid; place-items: center; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; pointer-events: auto; cursor: pointer; }
@@ -941,7 +946,7 @@ body:has(.app-dialog-overlay) .window-control-button {
 .reasoning-effort-slider button:disabled, .reasoning-effort-slider input[aria-disabled="true"] { cursor: not-allowed; }
 @keyframes effort-particle-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(-1 * var(--effort-particle-span)), 0, 0); } }
 @media (prefers-reduced-motion: reduce) {
-  .reasoning-effort-slider__thumb-rail, .reasoning-effort-slider__fill { transition: none; }
+  .reasoning-effort-slider__thumb-rail, .reasoning-effort-slider__thumb, .reasoning-effort-slider__fill { transition: none; }
   .reasoning-effort-slider__particles::before, .reasoning-effort-slider__particles::after { animation: none; }
 }
 

@@ -2,7 +2,15 @@ import { createInstance } from "i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nextProvider } from "react-i18next";
 import { expect, it } from "vitest";
-import { codexEffortLevels, ReasoningEffortSlider } from "./ReasoningEffortSlider";
+import { codexEffortLevels, isOverEffortThumb, ReasoningEffortSlider } from "./ReasoningEffortSlider";
+
+it("只有圆形滑块命中悬停，轨道与滑块外接矩形的角落不命中", () => {
+  const rect = { left: 100, top: 20, width: 26, height: 26 };
+  expect(isOverEffortThumb(rect, 113, 33)).toBe(true);
+  expect(isOverEffortThumb(rect, 126, 33)).toBe(true);
+  expect(isOverEffortThumb(rect, 150, 33)).toBe(false);
+  expect(isOverEffortThumb(rect, 100, 20)).toBe(false);
+});
 
 it("快速模式只隐藏已滑过的等级圆点，未滑到的圆点与原生滑块保留", () => {
   const i18n = createInstance();
@@ -30,7 +38,8 @@ it("快速模式只隐藏已滑过的等级圆点，未滑到的圆点与原生�
   expect(normal).toMatch(/<input[^>]*type="range"[^>]*max="2"[^>]*value="1"/);
   for (const value of codexEffortLevels) {
     const markup = render(false, value);
-    expect(markup).toContain("--effort-color:var(--accent)");
+    expect(markup).toContain(`--effort-color:var(${value === "ultra" ? "--reasoning-ultra" : "--accent"})`);
+    expect(render(true, value)).toContain(`--effort-particle-duration:${value === "ultra" ? "0.5s" : "1s"}`);
   }
   expect(render(false, "")).toContain("--effort-color:var(--text-secondary)");
   const pendingInput = render(false, "high", true).match(/<input[^>]*>/)?.[0];

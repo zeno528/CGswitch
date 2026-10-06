@@ -5,6 +5,10 @@ import { useTranslation } from "react-i18next";
 export const claudeEffortLevels = ["low", "medium", "high", "xhigh", "max"] as const;
 export const codexEffortLevels = [...claudeEffortLevels, "ultra"] as const;
 
+export function isOverEffortThumb(rect: Pick<DOMRect, "left" | "top" | "width" | "height">, x: number, y: number) {
+  return Math.hypot(x - rect.left - rect.width / 2, y - rect.top - rect.height / 2) <= rect.width / 2;
+}
+
 export function ReasoningEffortSlider({ value, levels, onChange, onCommit, children, leading, fast = false, disabled = false }: {
   value: string;
   levels: readonly string[];
@@ -20,10 +24,10 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, child
   const index = levels.indexOf(value);
   return (
     <div className="reasoning-effort-slider" data-selected={index >= 0} style={{
-      "--effort-color": value ? "var(--accent)" : "var(--text-secondary)",
+      "--effort-color": value === "ultra" ? "var(--reasoning-ultra)" : value ? "var(--accent)" : "var(--text-secondary)",
       "--effort-progress": index < 0 ? 0 : index / Math.max(1, levels.length - 1),
       "--effort-energy": index < 0 ? 0 : 0.3 + index / Math.max(1, levels.length - 1) * 0.7,
-      "--effort-particle-duration": `${index < 0 ? 7 : 7 - index / Math.max(1, levels.length - 1) * 5.5}s`,
+      "--effort-particle-duration": value === "ultra" ? "0.5s" : "1s",
     } as CSSProperties}>
       <div className="reasoning-effort-slider__header">
         <div className="reasoning-effort-slider__leading">{leading}</div>
@@ -35,7 +39,11 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, child
           title={t("modelSelection.resetEffort")} aria-label={t("modelSelection.resetEffort")}
           onClick={() => { onChange(""); onCommit?.(""); }}><RotateCcw size={16} aria-hidden="true" /></button>
       </div>
-      <div className="reasoning-effort-slider__track">
+      <div className="reasoning-effort-slider__track" onPointerMove={(event) => {
+        const thumb = event.currentTarget.querySelector<HTMLElement>(".reasoning-effort-slider__thumb")!;
+        event.currentTarget.toggleAttribute("data-thumb-hover", event.pointerType === "mouse"
+          && isOverEffortThumb(thumb.getBoundingClientRect(), event.clientX, event.clientY));
+      }} onPointerLeave={(event) => event.currentTarget.removeAttribute("data-thumb-hover")}>
         <span className="reasoning-effort-slider__fill" aria-hidden="true">
           {fast && <span className="reasoning-effort-slider__particles" />}
         </span>

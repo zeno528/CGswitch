@@ -95,7 +95,7 @@ export function ProviderSecretField({ label, placeholder, value, onChange, visib
   </>;
 }
 
-export function ProviderModelFields({ value, onChange, models, fetching, disabled, onFetch, onApplyModel, mappingFields, labels }: {
+export function ProviderModelFields({ value, onChange, models: fetchedModels, fetching, disabled, onFetch, onApplyModel, mappingFields, labels }: {
   value: string;
   onChange: (value: string) => void;
   models: string[];
@@ -137,8 +137,9 @@ export function ProviderModelFields({ value, onChange, models, fetching, disable
     clear?: string;
   };
 }) {
+  const models = [...new Set([value, ...(mappingFields?.map((field) => field.value) ?? []), ...fetchedModels].map((model) => model.trim()))].filter(Boolean);
   if (mappingFields) {
-    // 去重后的模型下拉项只依赖 models：建一次给每一行用，别在 map 里重建。
+    // 去重后的模型下拉项建一次给每一行用，别在 map 里重建。
     const optionsByLabel = new Map<string, string>();
     for (const item of models) {
       const label = displayModelLabel(item);

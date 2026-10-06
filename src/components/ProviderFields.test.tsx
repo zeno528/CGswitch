@@ -1,21 +1,25 @@
-import { Children, isValidElement, type ReactNode } from "react";
+import { Children, isValidElement, type ElementType, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { setupI18n } from "../i18n";
 import { patchModelMappings, readModelMappings, patchModelDisplayNames, readModelDisplayNames, hasOneMillionModelSuffix } from "../features/claude/profileEnvText";
 import { ProviderModelFields } from "./ProviderFields";
+import { AppSelect } from "./AppSelect";
 
 setupI18n("zh-CN");
 
-type ControlProps = { children?: ReactNode; "aria-label"?: string; disabled?: boolean; checked?: boolean; onClick?: () => void };
-function findControl(node: ReactNode, type: string, label: string): ControlProps | undefined {
+type ControlProps = { children?: ReactNode; "aria-label"?: string; disabled?: boolean; checked?: boolean; onClick?: () => void;
+  value?: string; options?: Array<{ value: string }> };
+function findControls(node: ReactNode, type: ElementType, label?: string): ControlProps[] {
+  const found: ControlProps[] = [];
   for (const child of Children.toArray(node)) {
     if (!isValidElement<ControlProps>(child)) continue;
-    if (child.type === type && child.props["aria-label"] === label) return child.props;
-    const found = findControl(child.props.children, type, label);
-    if (found) return found;
+    if (child.type === type && (label === undefined || child.props["aria-label"] === label)) found.push(child.props);
+    else found.push(...findControls(child.props.children, type, label));
   }
+  return found;
 }
+const findControl = (node: ReactNode, type: ElementType, label: string) => findControls(node, type, label)[0];
 
 function mappingFields(value: string, onChange: (value: string) => void, displayValue = "", onDisplayChange: (value: string) => void = () => {}) {
   return ProviderModelFields({
@@ -26,6 +30,21 @@ function mappingFields(value: string, onChange: (value: string) => void, display
 }
 
 describe("模型映射行操作", () => {
+  it.each([false, true])("手输模型进入列表并去重（映射模式 %j）", (mapping) => {
+    const onChange = vi.fn();
+    const tree = ProviderModelFields({
+      value: "manual-model", onChange, models: ["fetched-model", "manual-model", "fetched-model"],
+      fetching: false, disabled: false, onFetch: vi.fn(),
+      mappingFields: mapping ? [{ key: "opus", label: "Opus", value: "other-model[1M]", onChange }] : undefined,
+      labels: { model: "模型", placeholder: "", models: "模型列表", fetch: "获取", available: "", select: "选择", fetchFirst: "先获取" },
+    });
+    const selects = findControls(tree, AppSelect);
+    expect(selects).toHaveLength(1);
+    expect(selects[0].options!.map((option) => option.value)).toEqual(mapping
+      ? ["manual-model", "other-model[1M]", "fetched-model"] : ["manual-model", "fetched-model"]);
+    expect(selects[0].value).toBe(mapping ? "other-model[1M]" : "manual-model");
+  });
+
   it.each(["", "   ", "[1M]"])("请求模型为空（%j）时清空与 1M 都禁用且不选中", (value) => {
     const tree = mappingFields(value, vi.fn());
     expect(findControl(tree, "button", "清空 Opus")?.disabled).toBe(true);

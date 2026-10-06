@@ -1,6 +1,6 @@
 import { balanceQueryProviders, codexBuiltinHasCatalog, codexPresetByKind, type ClientPreset } from "../presets";
 import { buildSettingsText, readAdvancedSettings, splitEnvExtras } from "../features/claude/profileEnvText";
-import { patchModelValue } from "../features/codex/profileEditText";
+import { patchModelValue, readModelValue } from "../features/codex/profileEditText";
 import type {
   AppState,
   DatabaseBackupInfo,
@@ -35,6 +35,7 @@ const webProfiles: CodexProfileSummary[] = [
     model: "glm-5.3",
     provider: "ZAI",
     reasoning_effort: "high",
+    fast_mode: false,
     has_base_url: true,
     has_key: true,
     admin_url: "https://open.bigmodel.cn/console",
@@ -54,6 +55,7 @@ const webProfiles: CodexProfileSummary[] = [
     model: "gpt-5.6",
     provider: null,
     reasoning_effort: "medium",
+    fast_mode: false,
     has_base_url: false,
     has_key: false,
     admin_url: "https://chatgpt.com",
@@ -799,6 +801,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         model: "glm-5.3",
         provider: "ZAI",
         reasoning_effort: "high",
+        fast_mode: false,
         has_base_url: true,
         has_key: true,
         admin_url: null,
@@ -832,6 +835,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         model: preset.model,
         provider: preset.provider,
         reasoning_effort: "high",
+        fast_mode: false,
         has_base_url: Boolean(baseUrl),
         has_key: preset.provider ? Boolean(rawKey.trim()) : false,
         admin_url: adminUrl,
@@ -865,6 +869,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         model: null,
         provider,
         reasoning_effort: null,
+        fast_mode: readModelValue(configText, "service_tier") === "fast",
         has_base_url: Boolean(baseUrl),
         has_key: Boolean(apiKey),
         admin_url:
@@ -1108,6 +1113,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         else profile.reasoning_effort = value || null;
       }
       if (typeof args?.fast === "boolean") {
+        profile.fast_mode = args.fast;
         const value = args.fast ? "fast" : "";
         text = patchModelValue(text, value, "service_tier");
         if (value) detail.model_values.service_tier = JSON.stringify(value);
@@ -1127,7 +1133,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       }
       const detail = webDetails[profile.id];
       if (detail) {
-        if (typeof args?.configText === "string") detail.raw_config = args.configText;
+        if (typeof args?.configText === "string") {
+          detail.raw_config = args.configText;
+          profile.fast_mode = readModelValue(args.configText, "service_tier") === "fast";
+        }
         if (typeof args?.catalogText === "string") detail.raw_catalog = args.catalogText.trim() ? args.catalogText : null;
         if (typeof args?.authText === "string") detail.raw_auth = args.authText.trim() ? args.authText : null;
       }

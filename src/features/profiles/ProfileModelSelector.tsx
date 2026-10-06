@@ -17,15 +17,17 @@ export function selectModel(model: string, effort: string, advertised?: readonly
   return { model, effort: advertised && !advertised.includes(effort) ? "" : effort };
 }
 
-const modelLabel = (value: string) => value.replace(/^gpt-/i, "GPT-")
+const modelLabel = (value: string, format?: (value: string) => string) => (format ? format(value) : value).replace(/^gpt-/i, "GPT-")
   .replace(/-(sol|astra|luna|terra)$/i, (_, name: string) => " " + name[0].toUpperCase() + name.slice(1));
 
-export default function ProfileModelSelector({ model, effort, levels, disabled, supportsFastMode = false, onLoad, onSave }: {
+export default function ProfileModelSelector({ model, effort, levels, disabled, supportsFastMode = false, fast = false, formatModelLabel, onLoad, onSave }: {
   model: string | null;
   effort: string | null;
   levels: readonly string[];
   disabled: boolean;
   supportsFastMode?: boolean;
+  fast?: boolean;
+  formatModelLabel?: (value: string) => string;
   onLoad: () => Promise<ModelSelectionOptions>;
   onSave: (changes: Partial<ModelSelection>) => Promise<void>;
 }) {
@@ -86,7 +88,8 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
       onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}>
       <button ref={triggerRef} type="button" className="profile-card-action-meta profile-model-trigger" disabled={disabled || busy}
         title={t("modelSelection.title")} aria-haspopup="dialog" aria-expanded={view !== null} aria-busy={busy} onClick={() => void open()}>
-        <span className="profile-card-action-meta__model">{modelLabel((view ? draft.model : model) || t("modelSelection.default"))}</span>
+        {supportsFastMode && (view ? draft.fast : fast) && <Zap size={14} fill="currentColor" className="shrink-0" role="img" aria-label={t("modelSelection.fastMode")} />}
+        <span className="profile-card-action-meta__model">{modelLabel((view ? draft.model : model) || t("modelSelection.default"), formatModelLabel)}</span>
         <span aria-hidden="true">·</span><span>{(view ? draft.effort : effort) || t("modelSelection.default")}</span>
       </button>
       {view && options && createPortal(
@@ -95,6 +98,7 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
           {view === "effort" ? <ReasoningEffortSlider value={draft.effort} levels={availableLevels} disabled={busy || disabled}
             fast={supportsFastMode && !!draft.fast}
             leading={supportsFastMode ? <button type="button" className="apple-icon-button profile-model-fast"
+              style={{ color: draft.fast && draft.effort === "ultra" ? "var(--reasoning-ultra)" : undefined }}
               disabled={busy || disabled} aria-pressed={!!draft.fast} title={t("modelSelection.fastMode")} aria-label={t("modelSelection.fastMode")}
               onClick={() => void commit({ ...draft, fast: !draft.fast })}><Zap size={18} fill={draft.fast ? "currentColor" : "none"} aria-hidden="true" /></button> : undefined}
             onChange={(value) => setDraft({ ...draft, effort: value })} onCommit={(value) => void commit({ ...draft, effort: value })}>
@@ -103,7 +107,7 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
               <span>{modelLabel(draft.model || t("modelSelection.default"))}</span><ChevronRight size={14} aria-hidden="true" />
             </button>
           </ReasoningEffortSlider> : <>
-            <div className="profile-model-list-title field-subtitle muted">{t("modelSelection.chooseModel")}</div>
+            <div className="profile-model-list-title muted">{t("modelSelection.chooseModel")}</div>
             <div role="listbox" aria-label={t("modelSelection.chooseModel")} onKeyDown={(event) => {
               if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
               event.preventDefault();

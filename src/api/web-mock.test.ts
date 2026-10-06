@@ -40,9 +40,13 @@ describe("web mock", () => {
       const enabled = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: copy.id, fast: true });
       expect(enabled.model_values).toEqual({ ...before.model_values, service_tier: '"fast"' });
       expect(enabled.raw_config).toContain('service_tier = "fast"');
+      expect((await webInvoke<AppState>("get_state")).codex_profiles.find((profile) => profile.id === copy.id)?.fast_mode).toBe(true);
       const disabled = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: copy.id, fast: false });
       expect(disabled.model_values).toEqual(before.model_values);
       expect(disabled.raw_config).not.toContain("service_tier");
+      expect((await webInvoke<AppState>("get_state")).codex_profiles.find((profile) => profile.id === copy.id)?.fast_mode).toBe(false);
+      await webInvoke("codex_update_profile_config", { id: copy.id, configText: 'service_tier = "fast"' });
+      expect((await webInvoke<AppState>("get_state")).codex_profiles.find((profile) => profile.id === copy.id)?.fast_mode).toBe(true);
     } finally { await webInvoke("codex_delete_profile", { id: copy.id }); }
   });
   it("模拟 Claude Code 的 CLI 更新角标", async () => {

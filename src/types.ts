@@ -13,6 +13,7 @@ export interface CodexProfileSummary {
   model: string | null;
   provider: string | null;
   reasoning_effort: string | null;
+  fast_mode: boolean;
   /** 供应商是否已配置非空 API 端点。 */
   has_base_url: boolean;
   has_key: boolean;

@@ -178,7 +178,7 @@ export function withMcpSection(base: string, mcpSection: string): string {
 
 /** 读取顶层 `model = "..."` 的值（剥引号）；无该行返回 null。
  * `^model\s*=` 不匹配 model_provider / model_reasoning_effort 等前缀键。 */
-export function readModelValue(text: string, key: "model" | "model_reasoning_effort" = "model"): string | null {
+export function readModelValue(text: string, key: "model" | "model_reasoning_effort" | "service_tier" = "model"): string | null {
   for (const line of text.split("\n")) {
     if (line.trimStart().startsWith("[")) break;
     const match = new RegExp(`^${key}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s#]+))`).exec(line.trim());

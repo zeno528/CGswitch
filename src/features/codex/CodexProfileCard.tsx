@@ -114,6 +114,7 @@ export default function CodexProfileCard({
       <ProfileCardActions modelControl={
         <ProfileModelSelector model={profile.model} effort={profile.reasoning_effort} levels={codexEffortLevels} disabled={busy}
           supportsFastMode={profile.kind === "official" && profile.provider === null}
+          fast={profile.fast_mode}
           onLoad={async () => {
             const detail = await api.codexGetProfile(profile.id);
             const efforts = readCatalogEfforts(detail.raw_catalog ?? detail.catalog_content);

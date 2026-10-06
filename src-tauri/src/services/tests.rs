@@ -142,6 +142,7 @@ fn card_model_selection_only_updates_top_level_config_and_preserves_other_files(
     let config = "model = \"fixture\" # keep\nmodel_reasoning_effort = \"high\"\nbase_instructions = '''\nmodel = \"inside-string\"\n'''\n[profiles.other]\nmodel = \"nested\"\n[mcp_servers.keep]\ncommand = \"node\"\n";
     std::fs::write(context.paths.codex_config(), config).unwrap();
     let profile = context.codex_capture_profile("Fixture").unwrap();
+    assert!(!profile.fast_mode);
     context
         .codex_set_profile_model(&profile.id, None, Some("low"), None)
         .unwrap();
@@ -156,6 +157,12 @@ fn card_model_selection_only_updates_top_level_config_and_preserves_other_files(
         .codex_set_profile_model(&profile.id, None, None, Some(true))
         .unwrap();
     let before = context.codex_get_profile(&profile.id).unwrap();
+    assert!(
+        crate::database::codex_profile_summary(
+            &context.database.codex_profile(&profile.id).unwrap()
+        )
+        .fast_mode
+    );
     assert_eq!(
         before.model_values.get("service_tier").map(String::as_str),
         Some("\"fast\"")
@@ -195,6 +202,12 @@ fn card_model_selection_only_updates_top_level_config_and_preserves_other_files(
     assert!(!defaults.model_values.contains_key("model"));
     assert!(!defaults.model_values.contains_key("model_reasoning_effort"));
     assert!(!defaults.model_values.contains_key("service_tier"));
+    assert!(
+        !crate::database::codex_profile_summary(
+            &context.database.codex_profile(&profile.id).unwrap()
+        )
+        .fast_mode
+    );
     let third = context.codex_add_custom_profile("Third", None,
         "model_provider = \"fixture\"\n[model_providers.fixture]\nbase_url = \"https://example.test\"\n",
         None, None, None, None, None).unwrap();

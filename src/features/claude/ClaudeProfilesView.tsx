@@ -20,7 +20,7 @@ import ClaudeProfileEdit from "./ClaudeProfileEdit";
 import type { ClaudeProfileDetail, ClaudeProfileSummary, ProfileBalanceInfo } from "../../types";
 import ProfileModelSelector from "../profiles/ProfileModelSelector";
 import { claudeEffortLevels } from "../../components/ReasoningEffortSlider";
-import { buildSettingsText, patchEnvValue, readAdvancedSettings, readEnvValue } from "./profileEnvText";
+import { buildSettingsText, patchEnvValue, readAdvancedSettings, readEnvValue, setOneMillionModelSuffix } from "./profileEnvText";
 
 function cardProfile(profile: ClaudeProfileSummary) {
   return {
@@ -77,6 +77,7 @@ function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, co
       <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onRename} />
       <ProfileCardActions modelControl={
         <ProfileModelSelector model={profile.model} effort={profile.reasoning_effort} levels={claudeEffortLevels} disabled={busy}
+          formatModelLabel={(value) => setOneMillionModelSuffix(value, false)}
           onLoad={async () => {
             const detail = await api.claudeGetProfile(profile.id);
             const text = buildSettingsText(detail);

@@ -1440,6 +1440,8 @@ fn summary(
         model: display_text(payload.model_values.get("model")),
         provider: payload.provider_id.clone(),
         reasoning_effort: display_text(payload.model_values.get("model_reasoning_effort")),
+        fast_mode: display_text(payload.model_values.get("service_tier")).as_deref()
+            == Some("fast"),
         has_base_url: payload
             .provider_body
             .as_deref()
