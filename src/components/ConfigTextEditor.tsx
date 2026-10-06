@@ -441,24 +441,8 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
     // 滚轮路由：下滚页面优先（页面没到底先滚页面露出完整编辑器），上滚编辑器优先
     // （编辑器没到顶先滚内容，到顶后滚页面）——合起来就是"滚轮滚还没到边的那个容器"。
     // cm-scroller 自带边界链式滚动拦截（见 style.css 滚动容器规则），越界方向必须在这里
-    // 显式转发；横向滚动与缩放手势照常原生。preventDefault 会一并跳过浏览器原生的滚轮
-    // 平滑动画，所以目标位置经 rAF 指数逼近还原顺滑手感。监听挂在实例的 scrollDOM 上，
-    // 保活复显原样挂回时随实例一起存活，无需摘除。
-    let smoothPage: HTMLElement | null = null;
-    let smoothTarget = 0;
-    let smoothFrame = 0;
-    const smoothStep = () => {
-      const page = smoothPage;
-      if (!page) return;
-      const remaining = smoothTarget - page.scrollTop;
-      if (Math.abs(remaining) < 1) {
-        page.scrollTop = smoothTarget;
-        smoothFrame = 0;
-        return;
-      }
-      page.scrollTop += remaining * 0.28; // scrollTop 赋值自带 [0, maxScroll] 钳制，无需封顶
-      smoothFrame = requestAnimationFrame(smoothStep);
-    };
+    // 显式转发；横向滚动与缩放手势照常原生。直接写入页面滚动位置，避免反向滚动时
+    // 旧的平滑目标继续追赶造成跳动。监听挂在实例的 scrollDOM 上，保活复显原样挂回时随实例一起存活。
     editor.scrollDOM.addEventListener("wheel", (event) => {
       if (event.ctrlKey) return; // 缩放手势（触控板捏合）放行原生
       const page = editor.dom.closest<HTMLElement>(".apple-edit-content");
@@ -467,14 +451,7 @@ const ConfigTextEditor = forwardRef<ConfigTextEditorHandle, ConfigTextEditorProp
       const routeUp = event.deltaY < 0 && editor.scrollDOM.scrollTop <= 0 && page.scrollTop > 1;
       if (!routeDown && !routeUp) return;
       event.preventDefault();
-      if (smoothPage !== page) {
-        cancelAnimationFrame(smoothFrame);
-        smoothFrame = 0;
-        smoothPage = page;
-      }
-      if (!smoothFrame) smoothTarget = page.scrollTop; // 新手势从当前实际位置起步
-      smoothTarget = Math.max(0, Math.min(smoothTarget + event.deltaY, page.scrollHeight - page.clientHeight));
-      if (!smoothFrame) smoothFrame = requestAnimationFrame(smoothStep);
+      page.scrollTop = Math.max(0, Math.min(page.scrollTop + event.deltaY, page.scrollHeight - page.clientHeight));
     }, { passive: false });
     const resizeObserver = new ResizeObserver(() => scheduleContentWidthSync(editor));
     resizeObserver.observe(editor.dom);

@@ -261,6 +261,7 @@ pub fn run() {
             commands::codex_test_profile_connection,
             commands::codex_test_provider_connection,
             commands::codex_fetch_provider_models,
+            commands::codex_fetch_chatgpt_models,
             commands::codex_get_profile_balance,
             commands::claude_get_profile_balance,
             commands::export_database,

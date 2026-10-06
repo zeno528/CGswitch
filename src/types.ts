@@ -1,3 +1,10 @@
+export interface ChatgptModel {
+  slug: string;
+  display_name: string;
+  supported_reasoning_levels: { effort: string }[];
+  default_reasoning_level: string | null;
+}
+
 export interface CodexProfileSummary {
   id: string;
   name: string;
@@ -52,6 +59,8 @@ export interface CodexProfileDetail {
   show_balance: boolean;
   /** 最近一次成功获取的供应商模型列表。 */
   fetched_models: string[];
+  fetched_model_efforts?: Record<string, string[]>;
+  fetched_model_defaults?: Record<string, string>;
   updated_at: string;
 }
 

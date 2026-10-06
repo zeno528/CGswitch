@@ -1,6 +1,6 @@
 import { balanceQueryProviders, codexBuiltinHasCatalog, codexPresetByKind, type ClientPreset } from "../presets";
 import { buildSettingsText, readAdvancedSettings, splitEnvExtras } from "../features/claude/profileEnvText";
-import { patchModelValue, readModelValue } from "../features/codex/profileEditText";
+import { patchModelValue, readCatalogOptions, readModelValue } from "../features/codex/profileEditText";
 import type {
   AppState,
   DatabaseBackupInfo,
@@ -454,6 +454,8 @@ interface WebDetail {
   raw_auth?: string | null;
   desktop_login?: string | null;
   fetched_models?: string[];
+  fetched_model_efforts?: Record<string, string[]>;
+  fetched_model_defaults?: Record<string, string>;
 }
 
 const webDetails: Record<string, WebDetail> = {
@@ -519,6 +521,8 @@ function webProfileDetail(id: string): CodexProfileDetail {
     admin_url: profile.admin_url,
     show_balance: profile.show_balance,
     fetched_models: detail?.fetched_models ?? [],
+    fetched_model_efforts: detail?.fetched_model_efforts ?? {},
+    fetched_model_defaults: detail?.fetched_model_defaults ?? {},
     updated_at: profile.updated_at,
   };
 }
@@ -664,7 +668,17 @@ function databaseBackupName(date = new Date()): string {
 
 function webState(): AppState {
   return {
-    codex_profiles: [...webProfiles],
+    codex_profiles: webProfiles.map((profile) => {
+      const cached = profile.kind === "official" && !profile.provider ? webDetails[profile.id] : undefined;
+      const text = cached?.raw_config ?? cached?.config_fragment ?? "";
+      const hasLocal = !!readModelValue(text, "model_catalog_json");
+      let local = readCatalogOptions(null);
+      if (hasLocal) {
+        try { local = readCatalogOptions(cached?.raw_catalog ?? null); } catch { /* 与桌面版一样，损坏目录不回退到远程缓存。 */ }
+      }
+      const model = profile.model || (hasLocal ? local.models[0] : cached?.fetched_models?.[0]) || null;
+      return { ...profile, model, reasoning_effort: profile.reasoning_effort || (hasLocal ? local.defaults[model ?? ""] : cached?.fetched_model_defaults?.[model ?? ""]) || null };
+    }),
     active_codex_profile_id: webActiveProfileId,
     active_claude_profile_id: webActiveClaudeProfileId,
     codex: {
@@ -906,6 +920,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     // 浏览器跨域请求无法可靠模拟供应商模型接口，保持明确失败。
     case "codex_fetch_provider_models":
       throw new Error("请在桌面版获取供应商模型列表");
+    case "codex_fetch_chatgpt_models":
+      throw new Error("请在桌面版获取 ChatGPT 模型列表");
     case "codex_test_provider_connection": {
       const apiKey = String(args?.apiKey ?? "");
       const baseUrl = String(args?.baseUrl ?? "");
@@ -1038,7 +1054,11 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     }
     case "codex_set_profile_fetched_models": {
       const detail = webDetails[String(args?.id)];
-      if (detail) detail.fetched_models = Array.isArray(args?.models) ? args.models.filter((model): model is string => typeof model === "string") : [];
+      if (detail) {
+        detail.fetched_models = Array.isArray(args?.models) ? args.models.filter((model): model is string => typeof model === "string") : [];
+        detail.fetched_model_efforts = (args?.efforts as Record<string, string[]> | undefined) ?? {};
+        detail.fetched_model_defaults = (args?.defaults as Record<string, string> | undefined) ?? {};
+      }
       return undefined as T;
     }
     case "set_profile_balance": {
@@ -1133,6 +1153,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       }
       const detail = webDetails[profile.id];
       if (detail) {
+        if (source === "desktop" && typeof args?.authText === "string" && (args.authText.trim() || null) !== (detail.raw_auth ?? null)) {
+          // 浏览器 mock 无法验证 Desktop JWT 身份，不能假装更新认证和账号模型缓存。
+          throw new Error("请在桌面版更新 Desktop 认证和模型缓存");
+        }
         if (typeof args?.configText === "string") {
           detail.raw_config = args.configText;
           profile.fast_mode = readModelValue(args.configText, "service_tier") === "fast";
@@ -1518,6 +1542,10 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       const source = profile.auth_source ?? (profile.account_id ? "oauth" : profile.kind === "official" ? "desktop" : null);
       if (source !== "oauth") throw new Error("Desktop 配置不能切换为 OAuth，请新建 ChatGPT 配置");
       if (typeof args?.accountId !== "string" || !args.accountId) throw new Error("OAuth 配置必须绑定一个订阅账号");
+      if (profile.account_id !== args.accountId) {
+        const detail = webDetails[profile.id];
+        if (detail) { detail.fetched_models = []; detail.fetched_model_efforts = {}; detail.fetched_model_defaults = {}; }
+      }
       profile.account_id = args.accountId;
       return undefined as T;
     }

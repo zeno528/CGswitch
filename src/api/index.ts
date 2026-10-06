@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Update } from "@tauri-apps/plugin-updater";
 import type {
   AppState,
+  ChatgptModel,
   CliStatus,
   CliUpdate,
   AuthStatus,
@@ -72,6 +73,8 @@ export const api = {
   getCodexStatus: () => call<CodexAppStatus>("get_codex_status"),
   codexFetchProviderModels: (baseUrl: string, apiKey: string) =>
     call<string[]>("codex_fetch_provider_models", { baseUrl, apiKey }),
+  codexFetchChatgptModels: (id: string | null, source: "desktop" | "oauth", accountId: string | null) =>
+    call<ChatgptModel[]>("codex_fetch_chatgpt_models", { id, source, accountId }),
   codexCaptureProfile: (name: string) => call<CodexProfileSummary>("codex_capture_profile", { name }),
   codexAddBuiltinProfile: (
     kind: string,
@@ -124,8 +127,8 @@ export const api = {
   codexSetProfileIcon: (id: string, icon: string | null) => call<void>("codex_set_profile_icon", { id, icon }),
   codexSetProfileShowBalance: (id: string, enabled: boolean) =>
     call<void>("codex_set_profile_show_balance", { id, enabled }),
-  codexSetProfileFetchedModels: (id: string, models: string[]) =>
-    call<void>("codex_set_profile_fetched_models", { id, models }),
+  codexSetProfileFetchedModels: (id: string, models: string[], efforts?: Record<string, string[]>, defaults?: Record<string, string>) =>
+    call<void>("codex_set_profile_fetched_models", { id, models, ...(efforts ? { efforts } : {}), ...(defaults ? { defaults } : {}) }),
   setProfileBalance: (id: string, info: ProfileBalanceInfo) =>
     call<void>("set_profile_balance", { id, info }),
   codexSetProfileAccount: (id: string, accountId: string | null) =>

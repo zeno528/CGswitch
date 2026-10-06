@@ -838,17 +838,27 @@ body:has(.app-dialog-overlay) .window-control-button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.profile-model-default { font-weight: 500; }
 
 /* 模型与档位整体可点击；悬浮卡片沿用全局菜单定位、描边和阴影。 */
-.profile-model-trigger { border-radius: 999px; padding: 0.375rem 0.625rem; cursor: pointer; transition: background-color 150ms ease-out; }
+.profile-model-trigger { position: relative; border-radius: 999px; padding: 0.375rem 0.625rem; cursor: pointer; }
+/* 原内容隐藏但保留占位，浮卡提示覆盖其上，药丸宽度不随提示文字改变。 */
+.profile-model-trigger[aria-expanded="true"] > :not(.profile-model-trigger__prompt) { visibility: hidden; }
+.profile-model-trigger__prompt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .profile-model-trigger:hover, .profile-model-trigger[aria-expanded="true"] { background: var(--secondary-button-hover-bg); }
 .profile-model-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .profile-model-trigger:disabled { cursor: not-allowed; }
 .app-select-menu.profile-model-popover { border-radius: var(--radius-card); padding: calc(var(--gap-section) * 0.625); overflow-x: hidden; }
+/* 切换时保留浮卡外壳，内容轻移淡入，避免整张卡片透明重现造成闪烁。 */
+.profile-model-content { animation: profile-model-content-in var(--motion-popover) var(--motion-popover-in) both; }
+@keyframes profile-model-content-in {
+  from { opacity: 0.6; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) { .profile-model-content { animation: none; } }
 .profile-model-current { display: inline-flex; align-items: center; justify-content: center; gap: 0.125rem; min-width: 0; max-width: 100%; padding: 0.125rem 0.375rem; border-radius: var(--radius-control); color: var(--text-secondary); }
 .profile-model-current svg { flex-shrink: 0; }
 .profile-model-current span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-model-current:hover { color: var(--text-primary); }
 /* 原生模型按钮的热区覆盖整个等级/模型标题区，复用原点击和键盘行为。 */
 .profile-model-current::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-control); }
 .profile-model-current:focus-visible { outline: none; }
@@ -873,6 +883,11 @@ body:has(.app-dialog-overlay) .window-control-button {
   box-shadow: var(--card-edge-shadow);
   isolation: isolate;
 }
+.reasoning-effort-slider__quota-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--reasoning-ultra); font-size: 13px; font-weight: 550; white-space: nowrap; opacity: 0; pointer-events: none; }
+.reasoning-effort-slider:has(.reasoning-effort-slider__quota-hint):has(input:active) .reasoning-effort-slider__quota-hint { opacity: 1; }
+.reasoning-effort-slider:has(.reasoning-effort-slider__quota-hint):has(input:active) .reasoning-effort-slider__heading > :not(.reasoning-effort-slider__quota-hint),
+.reasoning-effort-slider:has(.reasoning-effort-slider__quota-hint):has(input:active) .reasoning-effort-slider__leading,
+.reasoning-effort-slider:has(.reasoning-effort-slider__quota-hint):has(input:active) .reasoning-effort-slider__header > .apple-icon-button { visibility: hidden; }
 .reasoning-effort-slider__fill { position: absolute; inset: 0; border-radius: inherit; background: var(--effort-color); clip-path: inset(0 calc((1 - var(--effort-progress)) * (100cqw - var(--effort-thumb-size)) + var(--effort-thumb-size) / 2) 0 0); transition: clip-path var(--motion-segment-slide); pointer-events: none; }
 .reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__fill { opacity: 0; }
 .reasoning-effort-slider:has(input:focus-visible) strong { text-decoration: underline; text-underline-offset: 0.2em; }
@@ -888,6 +903,8 @@ body:has(.app-dialog-overlay) .window-control-button {
   opacity: 0;
   cursor: pointer;
 }
+/* 真拖动（按住且移动）才显示抓紧光标；单击、长按不动不算，悬停不改光标。 */
+.reasoning-effort-slider__track[data-thumb-drag] input { cursor: grabbing; }
 .reasoning-effort-slider__track input::-webkit-slider-thumb { appearance: none; width: var(--effort-thumb-size); height: var(--effort-thumb-size); }
 .reasoning-effort-slider__track input::-moz-range-thumb { width: var(--effort-thumb-size); height: var(--effort-thumb-size); border: 0; }
 .reasoning-effort-slider__thumb-rail {
@@ -902,8 +919,8 @@ body:has(.app-dialog-overlay) .window-control-button {
   pointer-events: none;
 }
 .reasoning-effort-slider__thumb { display: block; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; background: #fff; box-shadow: var(--card-edge-shadow); transition: transform var(--motion-segment-slide); }
-/* 仅命中白色圆头时放大，移开沿同一过渡回落；不拦截原生 range 的拖动。 */
-.reasoning-effort-slider__track[data-thumb-hover]:not(:has(input[aria-disabled="true"])) .reasoning-effort-slider__thumb { transform: scale(1.1); }
+/* 悬停圆头或拖动时保持放大，结束后沿同一过渡回落；不拦截原生 range 的拖动。 */
+.reasoning-effort-slider__track:is([data-thumb-hover], :has(input:active)):not(:has(input[aria-disabled="true"])) .reasoning-effort-slider__thumb { transform: scale(1.1); }
 /* 等级圆点可直接点选；当前圆点让出事件，使白色圆头仍由原生 range 拖动。 */
 .reasoning-effort-slider__stops { position: absolute; inset: 0; pointer-events: none; }
 .reasoning-effort-slider__stop { position: absolute; top: calc((var(--effort-track-height) - var(--effort-thumb-size)) / 2); left: calc(var(--effort-progress) * (100cqw - var(--effort-thumb-size))); z-index: 2; display: grid; place-items: center; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; pointer-events: auto; cursor: pointer; }
@@ -912,6 +929,7 @@ body:has(.app-dialog-overlay) .window-control-button {
 .reasoning-effort-slider__stop:is(:hover, :focus-visible) span { transform: scale(1.75); opacity: 1; }
 .reasoning-effort-slider__stop:focus-visible { outline: 2px solid var(--accent); }
 .reasoning-effort-slider__stop[aria-pressed="true"] { visibility: hidden; pointer-events: none; }
+.reasoning-effort-slider__gradient { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.04) 22%, rgb(255 255 255 / 0.14) 50%, rgb(255 255 255 / 0.04) 78%, transparent 100%); background-size: 220% 100%; filter: blur(1px); animation: effort-gradient-flow 1.6s linear infinite; pointer-events: none; }
 .reasoning-effort-slider__particles { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; opacity: var(--effort-energy); }
 .reasoning-effort-slider__particles::before, .reasoning-effort-slider__particles::after {
   --effort-particle-span: 17rem;
@@ -943,10 +961,18 @@ body:has(.app-dialog-overlay) .window-control-button {
 }
 .reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__particles::before,
 .reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__particles::after { animation-play-state: paused; }
-.reasoning-effort-slider button:disabled, .reasoning-effort-slider input[aria-disabled="true"] { cursor: not-allowed; }
+/* 禁用光标只给滑轨；档位圆点在保存 busy 的一瞬也会短暂禁用，标 not-allowed 会让点击处闪红色光标。 */
+.reasoning-effort-slider input[aria-disabled="true"] { cursor: not-allowed; }
+/* 圆点豁免全局禁用光标：busy 瞬间的短暂禁用不该在点击处闪红。 */
+.reasoning-effort-slider__stop:disabled { cursor: pointer; }
+/* 保存 busy 期间浮卡整体静默：点选后的圆点会让出事件、指针落到 aria-disabled 的滑轨上，
+   瞬态禁用一律不显示禁用光标；浮卡之外真正禁用的场景不受影响。 */
+.profile-model-popover[aria-busy="true"] :is(button:disabled, [aria-disabled="true"]) { cursor: pointer; }
 @keyframes effort-particle-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(-1 * var(--effort-particle-span)), 0, 0); } }
+@keyframes effort-gradient-flow { from { background-position: -100% 0; } to { background-position: 100% 0; } }
 @media (prefers-reduced-motion: reduce) {
-  .reasoning-effort-slider__thumb-rail, .reasoning-effort-slider__thumb, .reasoning-effort-slider__fill { transition: none; }
+  .reasoning-effort-slider__thumb-rail, .reasoning-effort-slider__thumb, .reasoning-effort-slider__fill, .reasoning-effort-slider__quota-hint { transition: none; }
+  .reasoning-effort-slider__gradient,
   .reasoning-effort-slider__particles::before, .reasoning-effort-slider__particles::after { animation: none; }
 }
 

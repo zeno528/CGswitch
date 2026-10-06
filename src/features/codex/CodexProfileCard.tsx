@@ -12,7 +12,7 @@ import { useProfileBalance } from "../profiles/useProfileBalance";
 import { connectionErrorMessage, connectionFailureMessage } from "../profiles/connectionText";
 import ProfileModelSelector from "../profiles/ProfileModelSelector";
 import { codexEffortLevels } from "../../components/ReasoningEffortSlider";
-import { readCatalogEfforts, readModelValue } from "./profileEditText";
+import { readCatalogOptions, readModelValue } from "./profileEditText";
 
 interface ProfileCardProps {
   profile: CodexProfileSummary;
@@ -115,15 +115,29 @@ export default function CodexProfileCard({
         <ProfileModelSelector model={profile.model} effort={profile.reasoning_effort} levels={codexEffortLevels} disabled={busy}
           supportsFastMode={profile.kind === "official" && profile.provider === null}
           fast={profile.fast_mode}
-          onLoad={async () => {
+          onLoad={async (refreshDefaults = false) => {
             const detail = await api.codexGetProfile(profile.id);
-            const efforts = readCatalogEfforts(detail.raw_catalog ?? detail.catalog_content);
+            const official = profile.kind === "official" && profile.provider === null;
+            const localText = detail.raw_catalog ?? detail.catalog_content;
+            const local = readCatalogOptions(localText);
+            const useLocal = official && !!detail.model_values.model_catalog_json && !!localText?.trim();
+            const catalog = official && !useLocal && (!detail.fetched_models.length || refreshDefaults)
+              ? await api.codexFetchChatgptModels(profile.id, detail.auth_source ?? "desktop", detail.account_id) : null;
+            const fetchedEfforts = catalog
+              ? Object.fromEntries(catalog.map((model) => [model.slug, model.supported_reasoning_levels.map((level) => level.effort)]))
+              : detail.fetched_model_efforts ?? {};
+            const efforts = useLocal || !official ? local.efforts : fetchedEfforts;
+            const defaults = catalog
+              ? Object.fromEntries(catalog.map((model) => [model.slug, model.default_reasoning_level ?? "none"]))
+              : detail.fetched_model_defaults ?? {};
+            if (catalog) await api.codexSetProfileFetchedModels(profile.id, catalog.map((model) => model.slug), fetchedEfforts, defaults);
             return {
               model: readModelValue(`model = ${detail.model_values.model ?? '""'}`) ?? "",
               effort: readModelValue(`model = ${detail.model_values.model_reasoning_effort ?? '""'}`) ?? "",
               fast: readModelValue(`model = ${detail.model_values.service_tier ?? '""'}`) === "fast",
-              models: [...detail.fetched_models, ...Object.keys(efforts)],
+              models: useLocal ? local.models : catalog ? catalog.map((model) => model.slug) : [...detail.fetched_models, ...Object.keys(efforts)],
               efforts,
+              defaults: official ? useLocal ? local.defaults : defaults : undefined,
             };
           }}
           onSave={async (changes) => { await api.codexSetProfileModel(profile.id, changes); await onChanged(); }} />

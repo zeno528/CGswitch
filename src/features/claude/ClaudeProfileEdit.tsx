@@ -430,12 +430,12 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
           </div>
           <div className="apple-panel-section">
             <ProviderModelFields
-              value={model} onChange={(value) => updateModelMapping("ANTHROPIC_MODEL", value)} models={fetchedModels} fetching={fetchingModels}
+              value={model} models={fetchedModels} fetching={fetchingModels}
               disabled={!authToken.trim() || !baseUrl.trim()} onFetch={() => void fetchModelList()}
               onApplyModel={applyModelToMappings}
               mappingFields={modelMappingFields}
               labels={{
-                model: tProfiles("edit.modelIdLabel"), placeholder: tProfiles("edit.modelIdPlaceholder"),
+                model: tProfiles("edit.modelIdLabel"),
                 models: tProfiles("edit.modelsLabel"), fetch: tProfiles("edit.fetchModels"),
                 available: tProfiles("edit.modelsAvailable", { count: fetchedModels.length }),
                 select: tProfiles("edit.selectModel"), fetchFirst: tProfiles("edit.fetchModelsFirst"),

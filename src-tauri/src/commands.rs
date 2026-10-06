@@ -555,7 +555,21 @@ pub async fn codex_test_provider_connection(
     crate::services::test_provider_connection(&base_url, &api_key).await
 }
 
-// 获取供应商可用模型 ID 列表（OpenAI 兼容 GET /models）
+// 获取 ChatGPT 订阅账号的 Codex 模型目录。
+#[tauri::command]
+pub async fn codex_fetch_chatgpt_models(
+    id: Option<String>,
+    source: AuthSource,
+    account_id: Option<String>,
+    state: State<'_, AppContext>,
+    oauth: State<'_, CodexOAuthState>,
+) -> AppResult<Vec<crate::services::ChatgptModel>> {
+    state
+        .codex_fetch_chatgpt_models(id.as_deref(), source, account_id.as_deref(), &oauth.0)
+        .await
+}
+
+// 获取供应商可用模型 ID 列表（OpenAI 兼容 GET /models）。
 #[tauri::command]
 pub async fn codex_fetch_provider_models(
     base_url: String,
@@ -665,9 +679,11 @@ pub fn codex_set_profile_show_balance(
 pub fn codex_set_profile_fetched_models(
     id: String,
     models: Vec<String>,
+    efforts: Option<std::collections::BTreeMap<String, Vec<String>>>,
+    defaults: Option<std::collections::BTreeMap<String, String>>,
     state: State<'_, AppContext>,
 ) -> AppResult<()> {
-    state.codex_set_profile_fetched_models(&id, models)
+    state.codex_set_profile_fetched_models(&id, models, efforts, defaults)
 }
 
 #[tauri::command]

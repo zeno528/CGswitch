@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { patchModelValue, patchProviderFields, readCatalogEfforts, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
+import { patchModelValue, patchProviderFields, readCatalogOptions, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
 
 describe("model value read/patch", () => {
   it("reads and patches effort only at the top level, including configs without a provider", () => {
@@ -18,14 +18,24 @@ describe("model value read/patch", () => {
       { slug: "no-reasoning", supported_reasoning_levels: [] },
       { slug: "unknown" }, { slug: "__proto__", supported_reasoning_levels: [{ effort: "high" }] },
     ] });
-    const efforts = readCatalogEfforts(catalog);
+    const { efforts } = readCatalogOptions(catalog);
     expect(efforts.fixture).toEqual(["low", "max"]);
     expect(efforts["no-reasoning"]).toEqual([]);
     expect(Object.keys(efforts)).toContain("unknown");
     expect(efforts.unknown).toBeUndefined();
     expect(efforts.__proto__).toEqual(["high"]);
-    expect(readCatalogEfforts(null).toString).toBeUndefined();
-    expect(() => readCatalogEfforts("{")).toThrow();
+    expect(readCatalogOptions(null).efforts.toString).toBeUndefined();
+    expect(() => readCatalogOptions("{")).toThrow();
+  });
+  it("自定义目录按优先级提供可见模型和默认档位，保留隐藏模型的显式档位", () => {
+    const options = readCatalogOptions(JSON.stringify({ models: [
+      { slug: "second", priority: 2, default_reasoning_level: "high" },
+      { slug: "hidden", priority: 0, visibility: "hide", supported_reasoning_levels: [{ effort: "low" }] },
+      { slug: "first", priority: 1, visibility: "list", default_reasoning_level: "low" },
+    ] }));
+    expect(options.models).toEqual(["first", "second"]);
+    expect(options.defaults.first).toBe("low");
+    expect(options.efforts.hidden).toEqual(["low"]);
   });
   const source = [
     'model = "glm-5.2"',

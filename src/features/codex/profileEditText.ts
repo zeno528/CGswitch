@@ -8,13 +8,20 @@ export interface ProviderFields {
 export type AuthSourceValue = "desktop" | "oauth" | null;
 
 /** 模型目录广告的档位优先于客户端通用选项；空数组表示该模型不支持推理档位。 */
-export function readCatalogEfforts(text: string | null): Record<string, string[] | undefined> {
+export function readCatalogOptions(text: string | null) {
+  const models: string[] = [];
   const efforts: Record<string, string[] | undefined> = Object.create(null);
-  if (!text?.trim()) return efforts;
+  const defaults: Record<string, string> = Object.create(null);
+  const options = { models, efforts, defaults };
+  if (!text?.trim()) return options;
   const catalog = JSON.parse(text);
-  if (!Array.isArray(catalog?.models)) return efforts;
-  for (const model of catalog.models) {
-    if (typeof model?.slug !== "string") continue;
+  if (!Array.isArray(catalog?.models)) return options;
+  const entries = catalog.models.filter((model: { slug?: unknown } | null) => typeof model?.slug === "string");
+  entries.sort((a: { priority?: number }, b: { priority?: number }) => (a.priority ?? 0) - (b.priority ?? 0));
+  for (const model of entries) {
+    if (!model.slug.trim()) continue;
+    if (!model.visibility || model.visibility === "list") models.push(model.slug);
+    defaults[model.slug] = typeof model.default_reasoning_level === "string" ? model.default_reasoning_level : "";
     efforts[model.slug] = undefined;
     if (Array.isArray(model.supported_reasoning_levels)) {
       efforts[model.slug] = [...new Set<string>(model.supported_reasoning_levels
@@ -22,7 +29,7 @@ export function readCatalogEfforts(text: string | null): Record<string, string[]
         .filter((level: unknown): level is string => typeof level === "string" && !!level))];
     }
   }
-  return efforts;
+  return options;
 }
 
 /**
@@ -178,7 +185,7 @@ export function withMcpSection(base: string, mcpSection: string): string {
 
 /** 读取顶层 `model = "..."` 的值（剥引号）；无该行返回 null。
  * `^model\s*=` 不匹配 model_provider / model_reasoning_effort 等前缀键。 */
-export function readModelValue(text: string, key: "model" | "model_reasoning_effort" | "service_tier" = "model"): string | null {
+export function readModelValue(text: string, key: "model" | "model_reasoning_effort" | "service_tier" | "model_catalog_json" = "model"): string | null {
   for (const line of text.split("\n")) {
     if (line.trimStart().startsWith("[")) break;
     const match = new RegExp(`^${key}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s#]+))`).exec(line.trim());

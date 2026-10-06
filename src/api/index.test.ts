@@ -33,6 +33,21 @@ it("浏览器 mock 明确说明模型列表需要在桌面版获取", async () =
     baseUrl: "https://example.test",
     apiKey: "fixture-key",
   })).rejects.toThrow("请在桌面版获取供应商模型列表");
+  await expect(webInvoke("codex_fetch_chatgpt_models", { id: "fixture-profile", source: "desktop", accountId: null }))
+    .rejects.toThrow("请在桌面版获取 ChatGPT 模型列表");
+});
+
+it("ChatGPT 模型目录命令传递指定配置与账号身份", async () => {
+  mocks.invoke.mockImplementation(async (command: string) => {
+    if (!registered.has(command)) throw new Error(`未注册 Tauri 命令：${command}`);
+    return [];
+  });
+  vi.stubGlobal("window", { __TAURI_INTERNALS__: {} });
+  const { api } = await import("./index");
+  expect(await api.codexFetchChatgptModels("fixture-profile", "oauth", "fixture-account")).toEqual([]);
+  expect(mocks.invoke).toHaveBeenLastCalledWith("codex_fetch_chatgpt_models", {
+    id: "fixture-profile", source: "oauth", accountId: "fixture-account",
+  });
 });
 
 it("代理状态使用已注册的后端命令，浏览器预览不能假装已接管网络", async () => {

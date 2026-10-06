@@ -1,6 +1,59 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { webInvoke } from "../../api/web-mock";
+import { setupI18n } from "../../i18n";
+import type { AppState, CodexProfileDetail, CodexProfileSummary } from "../../types";
+import CodexProfileEdit from "./CodexProfileEdit";
+
+vi.mock("../../app/Feedback", () => ({ useFeedback: () => ({ error: vi.fn() }) }));
+// CodeMirror 依赖浏览器 DOM；回归测试仅渲染真实表单和下拉组件。
+vi.mock("../../components/ConfigTextEditor", () => ({ default: () => null }));
+
+it.each([
+  { name: "无效对象仍可编辑", catalog: "{", model: null },
+  { name: "无效数组仍可编辑", catalog: '{"models": [}', model: null },
+  { name: "自定义目录优先", catalog: JSON.stringify({ models: [{ slug: "local-model", default_reasoning_level: "low",
+    supported_reasoning_levels: [{ effort: "low" }] }] }), model: "local-model" },
+  { name: "远程缓存保留动态默认", catalog: null, model: "fixture-model" },
+])("官方编辑页：$name", async ({ catalog, model }) => {
+  setupI18n("zh-CN");
+  const profile = await webInvoke<CodexProfileSummary>("codex_add_builtin_profile", { kind: "chatgpt" });
+  try {
+    await webInvoke("codex_set_profile_fetched_models", { id: profile.id, models: ["fixture-model"],
+      efforts: { "fixture-model": ["low", "max"] }, defaults: { "fixture-model": "low" } });
+    const detail = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: profile.id, model: "", effort: "" });
+    const state = await webInvoke<AppState>("get_state");
+    if (catalog !== null) {
+      detail.raw_catalog = catalog;
+      detail.raw_config = 'model_catalog_json = "models.json"\n';
+    } else {
+      expect(state.codex_profiles.find((item) => item.id === profile.id))
+        .toMatchObject({ model: "fixture-model", reasoning_effort: "low" });
+    }
+    const markup = renderToStaticMarkup(createElement(CodexProfileEdit, {
+      profile, initialDetail: detail, authStatus: state.auth_status, authStatusReady: true,
+      onBack: () => {}, onChanged: () => {}, onManageChatgptAccounts: () => {},
+    }));
+    const fetchButton = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g)?.find((button) => button.includes("获取模型列表"));
+    expect(fetchButton).toBeDefined();
+    expect(fetchButton!.includes('disabled=""')).toBe(catalog !== null);
+    if (catalog !== null) expect(markup).toContain("models.json");
+    if (model) {
+      expect(markup).toMatch(new RegExp(`aria-label="选择模型"[^>]*>[\\s\\S]*?${model}`));
+      expect(markup).toContain(`value="${model}"`);
+      expect(markup).toMatch(/aria-label="推理强度"[^>]*>[\s\S]*?low/);
+    }
+    if (model === "local-model") expect(markup).not.toContain("fixture-model");
+    expect(markup.indexOf("登录方式")).toBeLessThan(markup.indexOf("模型 ID"));
+    expect(markup.indexOf("模型 ID")).toBeLessThan(markup.indexOf("可用模型"));
+    expect(markup.indexOf("可用模型")).toBeLessThan(markup.indexOf("推理强度"));
+    expect(detail.model_values.model).toBeUndefined();
+    expect(detail.model_values.model_reasoning_effort).toBeUndefined();
+  } finally { await webInvoke("codex_delete_profile", { id: profile.id }); }
+});
 
 const source = readFileSync(new URL("./CodexProfileEdit.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 const endpointFieldSource = readFileSync(new URL("../../components/EndpointField.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");

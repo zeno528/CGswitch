@@ -6,6 +6,38 @@ use super::{
 use crate::auth::codex_oauth::{account_subject, parse_external_auth_json, CodexOAuthManager};
 use crate::network::{proxy_note, Network};
 
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct ChatgptModel {
+    pub slug: String,
+    pub display_name: String,
+    pub supported_reasoning_levels: Vec<ChatgptReasoningLevel>,
+    #[serde(default)]
+    pub default_reasoning_level: Option<String>,
+    #[serde(skip_serializing)]
+    visibility: String,
+    #[serde(default, skip_serializing)]
+    priority: i64,
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct ChatgptReasoningLevel {
+    pub effort: String,
+}
+
+pub(crate) fn parse_chatgpt_models(value: serde_json::Value) -> AppResult<Vec<ChatgptModel>> {
+    #[derive(serde::Deserialize)]
+    struct Catalog {
+        models: Vec<ChatgptModel>,
+    }
+    let mut catalog: Catalog =
+        serde_json::from_value(value).map_err(|_| app_err!("ChatGPT 模型目录格式无效"))?;
+    catalog
+        .models
+        .retain(|model| model.visibility == "list" && !model.slug.trim().is_empty());
+    catalog.models.sort_by_key(|model| model.priority);
+    Ok(catalog.models)
+}
+
 /// 供应商连通性测试结果
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CodexProfileConnectionResult {
@@ -57,6 +89,35 @@ fn preferred_deepseek_balance(mut balances: Vec<ProfileBalanceInfo>) -> Vec<Prof
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn chatgpt_catalog_filters_hidden_models_and_keeps_order_and_efforts() {
+        let entry = |slug: &str, visibility: &str, priority: i64| {
+            serde_json::json!({
+                "slug": slug, "display_name": slug, "visibility": visibility, "priority": priority,
+                "supported_reasoning_levels": [{"effort": "high"}],
+                "default_reasoning_level": "high",
+            })
+        };
+        let models = super::parse_chatgpt_models(serde_json::json!({"models": [
+            entry("second", "list", 2), entry("hidden", "hide", 0), entry("first", "list", 1),
+        ]}))
+        .unwrap();
+        assert_eq!(
+            models
+                .iter()
+                .map(|model| model.slug.as_str())
+                .collect::<Vec<_>>(),
+            ["first", "second"]
+        );
+        assert_eq!(models[0].supported_reasoning_levels[0].effort, "high");
+        assert_eq!(models[0].default_reasoning_level.as_deref(), Some("high"));
+        assert!(super::parse_chatgpt_models(serde_json::json!({"data": []})).is_err());
+        assert!(
+            super::parse_chatgpt_models(serde_json::json!({"models": [{"slug": "invalid"}]}))
+                .is_err()
+        );
+    }
+
     use super::{
         claude_balance_base, preferred_deepseek_balance, provider_default_balance_base,
         provider_request_error_message, quota_failure_error, subscription_http_error_message,
@@ -1465,8 +1526,101 @@ impl AppContext {
         Ok(result)
     }
 
-    /// 验证 ChatGPT 订阅认证连通性：用当前 access_token 请求 Codex 官方后端用量端点
-    /// （Codex CLI 后台轮询同一个端点）。2xx 可用；非 2xx 和网络错误按订阅链路分类提示。
+    /// 用指定配置或编辑草稿绑定的账号获取 Codex 模型目录，不切换实时认证。
+    pub async fn codex_fetch_chatgpt_models(
+        &self,
+        id: Option<&str>,
+        source: AuthSource,
+        account_id: Option<&str>,
+        oauth: &CodexOAuthManager,
+    ) -> AppResult<Vec<ChatgptModel>> {
+        let credentials = if let Some(id) = id {
+            let stored = self.database.codex_profile(id)?;
+            if stored.kind != CodexProfileKind::Official {
+                return Err(app_err!("该配置不是 ChatGPT 订阅配置"));
+            }
+            match stored
+                .payload
+                .effective_auth_source(stored.kind, stored.account_id.as_deref())
+            {
+                Some(AuthSource::Desktop) => {
+                    let auth = stored
+                        .payload
+                        .raw_auth
+                        .as_deref()
+                        .and_then(parse_external_auth_json)
+                        .ok_or_else(|| app_err!("该 Codex 配置尚未保存有效登录"))?;
+                    (
+                        auth.access_token,
+                        Some(auth.account_id),
+                        format!("profile_id={id}"),
+                    )
+                }
+                Some(AuthSource::Oauth) => {
+                    self.auth_account_credentials(
+                        AuthSource::Oauth,
+                        stored.account_id.as_deref(),
+                        oauth,
+                    )
+                    .await?
+                }
+                None => return Err(app_err!("官方配置缺少登录方式")),
+            }
+        } else {
+            self.auth_account_credentials(source, account_id, oauth)
+                .await?
+        };
+        let (token, workspace, _) = credentials;
+        let network = Network::current()
+            .await
+            .map_err(|error| app_err!("{error}"))?;
+        let client = network
+            .builder()
+            .timeout(std::time::Duration::from_secs(
+                super::model_fetch::FETCH_TIMEOUT_SECS,
+            ))
+            .build()
+            .map_err(|_| app_err!("无法创建模型目录请求"))?;
+        // 使用 Codex 实际缓存记录的客户端版本，不把 Budtty 版本冒充 Codex 版本。
+        let version = std::fs::read_to_string(self.paths.codex_home.join("models_cache.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+            .and_then(|value| value["client_version"].as_str().map(str::to_string));
+        let version = match version {
+            Some(version) => version,
+            None => super::codex_cli::model_client_version(
+                self.paths
+                    .codex_home
+                    .parent()
+                    .ok_or_else(|| app_err!("无法定位用户目录"))?,
+                &self.paths.codex_home,
+            )
+            .map_err(|_| app_err!("无法读取 Codex 客户端版本，请先安装或打开 Codex"))?,
+        };
+        let mut url = reqwest::Url::parse("https://chatgpt.com/backend-api/codex/models")
+            .expect("static Codex catalog URL");
+        url.query_pairs_mut()
+            .append_pair("client_version", &version);
+        let request = chatgpt_request(client.get(url), &token, workspace.as_deref());
+        let response = request
+            .send()
+            .await
+            .map_err(|error| app_err!("{}", subscription_request_error_message(&error)))?;
+        if !response.status().is_success() {
+            return Err(app_err!(
+                "HTTP {}: requestFailed",
+                response.status().as_u16()
+            ));
+        }
+        let value = response
+            .json()
+            .await
+            .map_err(|_| app_err!("ChatGPT 模型目录格式无效"))?;
+        parse_chatgpt_models(value)
+    }
+
+    /// 验证 ChatGPT 订阅认证连通性（Codex CLI 后台轮询同一个用量端点）。
+    /// 2xx 可用；非 2xx 和网络错误按订阅链路分类提示。
     /// 仅手动点击测试时调用，不参与切换流程。
     pub async fn test_subscription_connection(
         &self,

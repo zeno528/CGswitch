@@ -23,26 +23,25 @@ const findControl = (node: ReactNode, type: ElementType, label: string) => findC
 
 function mappingFields(value: string, onChange: (value: string) => void, displayValue = "", onDisplayChange: (value: string) => void = () => {}) {
   return ProviderModelFields({
-    value, onChange, models: [], fetching: false, disabled: false, onFetch: () => {},
+    value, models: [], fetching: false, disabled: false, onFetch: () => {},
     mappingFields: [{ key: "ANTHROPIC_DEFAULT_OPUS_MODEL", label: "Opus", value, onChange, displayValue, onDisplayChange, oneMillion: hasOneMillionModelSuffix(value), onToggleOneMillion: () => {} }],
-    labels: { model: "模型", placeholder: "", models: "模型列表", fetch: "获取", available: "", select: "选择", fetchFirst: "先获取", requestModel: "请求模型", displayName: "显示名", oneMillion: "1M", clear: "清空" },
+    labels: { model: "模型", models: "模型列表", fetch: "获取", available: "", select: "选择", fetchFirst: "先获取", requestModel: "请求模型", displayName: "显示名", oneMillion: "1M", clear: "清空" },
   });
 }
 
 describe("模型映射行操作", () => {
-  it.each([false, true])("手输模型进入列表并去重（映射模式 %j）", (mapping) => {
+  it("手输模型进入映射列表并去重", () => {
     const onChange = vi.fn();
     const tree = ProviderModelFields({
-      value: "manual-model", onChange, models: ["fetched-model", "manual-model", "fetched-model"],
+      value: "manual-model", models: ["fetched-model", "manual-model", "fetched-model"],
       fetching: false, disabled: false, onFetch: vi.fn(),
-      mappingFields: mapping ? [{ key: "opus", label: "Opus", value: "other-model[1M]", onChange }] : undefined,
-      labels: { model: "模型", placeholder: "", models: "模型列表", fetch: "获取", available: "", select: "选择", fetchFirst: "先获取" },
+      mappingFields: [{ key: "opus", label: "Opus", value: "other-model[1M]", onChange }],
+      labels: { model: "模型", models: "模型列表", fetch: "获取", available: "", select: "选择", fetchFirst: "先获取" },
     });
     const selects = findControls(tree, AppSelect);
     expect(selects).toHaveLength(1);
-    expect(selects[0].options!.map((option) => option.value)).toEqual(mapping
-      ? ["manual-model", "other-model[1M]", "fetched-model"] : ["manual-model", "fetched-model"]);
-    expect(selects[0].value).toBe(mapping ? "other-model[1M]" : "manual-model");
+    expect(selects[0].options!.map((option) => option.value)).toEqual(["fetched-model", "manual-model", "other-model[1M]"]);
+    expect(selects[0].value).toBe("other-model[1M]");
   });
 
   it.each(["", "   ", "[1M]"])("请求模型为空（%j）时清空与 1M 都禁用且不选中", (value) => {

@@ -1417,6 +1417,43 @@ fn summary(
     created_at: &str,
     updated_at: &str,
 ) -> CodexProfileSummary {
+    let mut model = display_text(payload.model_values.get("model"));
+    let mut reasoning_effort = display_text(payload.model_values.get("model_reasoning_effort"));
+    if payload.provider_id.is_none() {
+        let has_local_catalog = payload.model_values.contains_key("model_catalog_json");
+        let local_catalog = if has_local_catalog {
+            payload
+                .raw_catalog
+                .as_deref()
+                .and_then(|text| serde_json::from_str(text).ok())
+                .and_then(|value| crate::services::parse_chatgpt_models(value).ok())
+        } else {
+            None
+        };
+        model = model.or_else(|| {
+            if has_local_catalog {
+                local_catalog
+                    .as_ref()?
+                    .first()
+                    .map(|model| model.slug.clone())
+            } else {
+                payload.fetched_models.first().cloned()
+            }
+        });
+        reasoning_effort = reasoning_effort.or_else(|| {
+            let id = model.as_ref()?;
+            if has_local_catalog {
+                local_catalog
+                    .as_ref()?
+                    .iter()
+                    .find(|model| &model.slug == id)?
+                    .default_reasoning_level
+                    .clone()
+            } else {
+                payload.fetched_model_defaults.get(id).cloned()
+            }
+        });
+    }
     CodexProfileSummary {
         id: id.into(),
         name: name.into(),
@@ -1437,9 +1474,9 @@ fn summary(
         auth_account_id: None,
         // 套餐由 get_state 聚合时按绑定账号/live 认证填充，Database 层不知道
         plan_type: None,
-        model: display_text(payload.model_values.get("model")),
+        model,
         provider: payload.provider_id.clone(),
-        reasoning_effort: display_text(payload.model_values.get("model_reasoning_effort")),
+        reasoning_effort,
         fast_mode: display_text(payload.model_values.get("service_tier")).as_deref()
             == Some("fast"),
         has_base_url: payload

@@ -955,15 +955,18 @@ impl AppContext {
     }
 
     pub fn claude_get(&self, id: &str) -> AppResult<ClaudeProfileDetail> {
-        // 打开激活供应商的编辑页：先把外部改动同步回数据库快照
-        let _ = sync::registry().harvest(
-            self,
-            &sync::SyncTrigger::BeforeProfileRead {
-                client: sync::ClientId::Claude,
-                target_id: id.to_string(),
-            },
-            sync::SyncMaterial::default(),
-        );
+        // 打开激活供应商的编辑页：先把外部改动同步回数据库快照；
+        // 非激活配置不参与 live→库同步（结局注定 TargetMismatch），不发起也不留日志
+        if self.database.active_claude_profile()?.as_deref() == Some(id) {
+            let _ = sync::registry().harvest(
+                self,
+                &sync::SyncTrigger::BeforeProfileRead {
+                    client: sync::ClientId::Claude,
+                    target_id: id.to_string(),
+                },
+                sync::SyncMaterial::default(),
+            );
+        }
         let mut stored = self.database.claude_profile(id)?;
         if stored.raw_settings.is_none() {
             if let Ok(raw) = std::fs::read_to_string(self.claude_settings_path()) {
@@ -1107,15 +1110,18 @@ impl AppContext {
 
     /// 完整复制配置（列值、图标、附加 env），新名称加 `copy` 后缀、同名追加序号，插到源卡片后面（对齐 Codex codex_duplicate_profile）。
     pub fn claude_duplicate(&self, id: &str) -> AppResult<ClaudeProfileDetail> {
-        // 使用中的供应商：先把 live 的外部改动同步回快照，副本取到最新状态（对齐 Codex duplicate）
-        let _ = sync::registry().harvest(
-            self,
-            &sync::SyncTrigger::BeforeProfileClone {
-                client: sync::ClientId::Claude,
-                target_id: id.to_string(),
-            },
-            sync::SyncMaterial::default(),
-        );
+        // 使用中的供应商：先把 live 的外部改动同步回快照，副本取到最新状态（对齐 Codex duplicate）；
+        // 非激活配置不参与 live→库同步，不发起也不留日志
+        if self.database.active_claude_profile()?.as_deref() == Some(id) {
+            let _ = sync::registry().harvest(
+                self,
+                &sync::SyncTrigger::BeforeProfileClone {
+                    client: sync::ClientId::Claude,
+                    target_id: id.to_string(),
+                },
+                sync::SyncMaterial::default(),
+            );
+        }
         let stored = self.database.claude_profile(id)?;
         let profiles = self.database.claude_profiles()?;
         let (candidate, copy_index) = super::profile_copy_plan(

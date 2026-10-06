@@ -39,7 +39,10 @@ pub(crate) mod sync;
 
 pub use claude::{fetch_claude_models, test_claude_connection};
 pub use cli::{CliStatus, CliUpdate, Failure as CliFailure};
-pub use connections::{test_provider_connection, CodexProfileConnectionResult, ProfileBalance};
+pub(crate) use connections::parse_chatgpt_models;
+pub use connections::{
+    test_provider_connection, ChatgptModel, CodexProfileConnectionResult, ProfileBalance,
+};
 pub use model_fetch::fetch_models;
 pub use plugins::{
     MarketplacePlugin, PluginCandidate, PluginMarketplace, PluginPreview, PluginSkill,
@@ -132,6 +135,10 @@ impl AppContext {
                             live.admin_url = stored.payload.admin_url.clone();
                             live.show_balance = stored.payload.show_balance;
                             live.fetched_models = stored.payload.fetched_models.clone();
+                            live.fetched_model_efforts =
+                                stored.payload.fetched_model_efforts.clone();
+                            live.fetched_model_defaults =
+                                stored.payload.fetched_model_defaults.clone();
                             stored.payload = live;
                         }
                     }

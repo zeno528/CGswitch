@@ -5,9 +5,12 @@ export default {
     chooseModel: "Choose model",
     effort: "Reasoning effort",
     default: "Default",
+    recommendedModels: "Recommended models",
+    noModels: "No available models. Fetch the model list again.",
     resetEffort: "Restore default reasoning effort",
-    useDefaultEffort: "Uses default reasoning effort when selected",
+    ultraQuotaHint: "Uses your quota faster",
     fastMode: "Fast mode",
+    fastModeHint: "1.5× speed, uses more quota",
   },
   status: {
     running: "Running",

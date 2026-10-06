@@ -1,4 +1,4 @@
-import { ArrowLeft, CodeXml, ExternalLink, FileBraces, Save, Settings, Webhook } from "lucide-react";
+import { ArrowLeft, CodeXml, Download, ExternalLink, FileBraces, Save, Settings, Webhook } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
@@ -7,11 +7,13 @@ import { useFeedback } from "../../app/Feedback";
 import { AuthSourceIcon } from "../../components/AuthSourceIcon";
 import { AppSelect } from "../../components/AppSelect";
 import { AppSwitch } from "../../components/AppSwitch";
+import { LoadingSpinner } from "../../components/LoadingSpinner";
+import { codexEffortLevels } from "../../components/ReasoningEffortSlider";
 import ConfigTextEditor, { type ConfigTextEditorHandle } from "../../components/ConfigTextEditor";
 import { DiagnosticsChip } from "../../components/DiagnosticsChip";
 import EndpointField from "../../components/EndpointField";
 import PresetGrid from "../../components/PresetGrid";
-import { ProviderIdentityFields, ProviderModelFields, ProviderSecretField } from "../../components/ProviderFields";
+import { ProviderIdentityFields, ProviderSecretField } from "../../components/ProviderFields";
 import {
   balanceQueryProviders,
   codexBuiltinHasCatalog,
@@ -22,6 +24,7 @@ import {
 import {
   patchModelValue,
   patchProviderFields,
+  readCatalogOptions,
   readModelValue,
   readProviderFields,
   resolveAuthSource,
@@ -33,6 +36,7 @@ import TabFileControls from "./editor/TabFileControls";
 import { useProfileAdvancedPatches } from "./editor/useProfileAdvancedPatches";
 import type { AuthStatus, EditorDiagnosticSummary, CodexProfileDetail, CodexProfileSummary } from "../../types";
 import ProfileIconEdit from "../profiles/ProfileIconEdit";
+import { getModelChoices, resolveEffortLevels, resolveModelSelection, selectModel } from "../profiles/ProfileModelSelector";
 
 type EditTab = "config" | "auth" | "models";
 
@@ -99,6 +103,9 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
   const [mcpSection, setMcpSection] = useState("");
   const initialized = useRef(false);
   const authPreviewRequest = useRef(0);
+  const modelListRequest = useRef(0);
+  const fetchedModelEfforts = useRef<Record<string, string[]>>(initialDetail?.fetched_model_efforts ?? {});
+  const fetchedModelDefaults = useRef<Record<string, string>>(initialDetail?.fetched_model_defaults ?? {});
   const presetTemplateRequest = useRef(0);
   const editorRef = useRef<ConfigTextEditorHandle>(null);
   const editorMinLines = Math.max(configText.split(/\r?\n/).length, catalogText.split(/\r?\n/).length, authText.split(/\r?\n/).length);
@@ -137,6 +144,17 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
     const match = /^\s*model_catalog_json\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+))/m.exec(configText);
     return match ? match[1] ?? match[2] ?? match[3] ?? "" : "";
   }, [configText]);
+  const catalogOptions = useMemo(() => {
+    try { return readCatalogOptions(catalogText); }
+    catch { return readCatalogOptions(null); } // 编辑中的无效 JSON 由编辑器诊断，不能中断表单。
+  }, [catalogText]);
+  const useLocalCatalog = isOfficial && !!liveCatalogPath && !!catalogText.trim();
+  const modelEfforts = useLocalCatalog || !isOfficial ? catalogOptions.efforts : fetchedModelEfforts.current;
+  const models = useLocalCatalog ? catalogOptions.models : fetchedModels;
+  const selection = resolveModelSelection({ model: modelValue, effort: readModelValue(configText, "model_reasoning_effort") ?? "" }, {
+    model: "", effort: "", models, defaults: isOfficial ? useLocalCatalog ? catalogOptions.defaults : fetchedModelDefaults.current : undefined,
+  });
+  const effortLevels = resolveEffortLevels(selection.model, modelEfforts, codexEffortLevels);
   const catalogFileName = liveCatalogPath.split(/[\\/]/).pop() || "models.json";
   const formatTarget = activeTab === "config"
     ? { label: "config.toml", title: t("edit.formatTitle", { label: "config.toml", format: "TOML" }) }
@@ -202,9 +220,17 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
       return;
     }
     setBoundAccountId(value || null);
+    modelListRequest.current++;
+    setFetchedModels([]);
+    fetchedModelEfforts.current = {};
+    fetchedModelDefaults.current = {};
     if (create && value && activeTab === "auth") setActiveTab("config");
     if (!create && authSource === "oauth" && value) void refreshAuthPreview(value);
   };
+
+  useEffect(() => {
+    if (authSource === "desktop") modelListRequest.current++;
+  }, [authText, authSource]);
 
   useEffect(() => {
     let cancelled = false;
@@ -242,6 +268,8 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
           setApiKey(loaded.api_key ?? "");
           setModelValue(readModelValue(loadedConfigText) ?? "");
           setFetchedModels(loaded.fetched_models);
+          fetchedModelEfforts.current = loaded.fetched_model_efforts ?? {};
+          fetchedModelDefaults.current = loaded.fetched_model_defaults ?? {};
           setAdminUrl(loaded.admin_url ?? "");
           setSelectedIcon(loaded.icon);
           setBoundAccountId(loaded.account_id);
@@ -299,7 +327,10 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
   useEffect(() => {
     if (!initialized.current) return;
     setConfigText((current) => {
-      const next = patchModelValue(current, modelValue);
+      const effort = readModelValue(current, "model_reasoning_effort") ?? "";
+      const picked = selectModel(modelValue, effort, modelEfforts[modelValue]);
+      let next = patchModelValue(current, modelValue);
+      if (picked.effort !== effort) next = patchModelValue(next, picked.effort, "model_reasoning_effort");
       return next === current ? current : next;
     });
   }, [modelValue]);
@@ -328,6 +359,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
   }, [configText, create, liveConfigFragment]);
 
   const selectPreset = async (kind: string) => {
+    modelListRequest.current++;
     const preset = codexPresets.find((item) => item.kind === kind);
     if (!preset) return;
     // 模板取回后才一次性更新全部状态：避免"表单已切、configText 未切"的中间渲染
@@ -355,6 +387,8 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
     setApiKey("");
     setModelValue(kind === "custom" ? "" : preset.model);
     setFetchedModels([]);
+    fetchedModelEfforts.current = {};
+    fetchedModelDefaults.current = {};
     setAdminUrl(preset.admin_url ?? "");
     setSelectedIcon(preset.icon);
     setPresetFragment(template);
@@ -399,14 +433,20 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
   };
 
   const fetchModelList = async () => {
-    if (fetchingModels) return;
-    if (!baseUrl.trim()) { feedback.warning(t("edit.baseUrlRequired")); return; }
-    if (!apiKey.trim()) { feedback.warning(t("edit.apiKeyRequired")); return; }
+    if (fetchingModels || useLocalCatalog) return;
+    if (!isOfficial && !baseUrl.trim()) { feedback.warning(t("edit.baseUrlRequired")); return; }
+    if (!isOfficial && !apiKey.trim()) { feedback.warning(t("edit.apiKeyRequired")); return; }
     setFetchingModels(true);
+    const request = ++modelListRequest.current;
     try {
-      const models = await api.codexFetchProviderModels(baseUrl.trim(), apiKey.trim());
+      const catalog = isOfficial
+        ? await api.codexFetchChatgptModels(!create && boundAccountId === detail?.account_id ? profile!.id : null, authSource ?? "desktop", boundAccountId) : null;
+      const models = catalog ? catalog.map((model) => model.slug) : await api.codexFetchProviderModels(baseUrl.trim(), apiKey.trim());
+      if (request !== modelListRequest.current) return;
       setFetchedModels(models);
-      if (!create && profile) await api.codexSetProfileFetchedModels(profile.id, models);
+      fetchedModelEfforts.current = catalog ? Object.fromEntries(catalog.map((model) => [model.slug, model.supported_reasoning_levels.map((level) => level.effort)])) : {};
+      fetchedModelDefaults.current = catalog ? Object.fromEntries(catalog.map((model) => [model.slug, model.default_reasoning_level ?? "none"])) : {};
+      if (!create && profile && (!isOfficial || boundAccountId === detail?.account_id)) await api.codexSetProfileFetchedModels(profile.id, models, fetchedModelEfforts.current, fetchedModelDefaults.current);
       if (models.length === 0) feedback.info(t("edit.noModelsReturned"));
       else feedback.success(t("edit.modelsFetched", { count: models.length }));
     } catch (error) { feedback.error(t("edit.fetchFailed", { error: connectionExceptionMessage(error, t) })); }
@@ -461,7 +501,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
     try {
       if (create && isCustom) {
         const created = await api.codexAddCustomProfile(name.trim() || t("edit.customProviderName"), description, configText, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, liveCatalogPath && catalogText.trim() ? catalogText : null, authText.trim() ? authText : null);
-        if (fetchedModels.length) await api.codexSetProfileFetchedModels(created.id, fetchedModels);
+        if (fetchedModels.length) await api.codexSetProfileFetchedModels(created.id, fetchedModels, fetchedModelEfforts.current, fetchedModelDefaults.current);
         notifySaved(t("edit.customProviderAdded"));
       } else if (create) {
         const created = await api.codexAddBuiltinProfile(presetKind, description, baseUrl.trim() || undefined, apiKey.trim() || undefined, adminUrl.trim() || undefined, isOfficial ? boundAccountId || undefined : undefined);
@@ -471,7 +511,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
         if (configTouched || catalogTouched || authTextToSave !== null) {
           await api.codexUpdateProfileConfig(created.id, configText, liveCatalogPath ? catalogText || null : null, authTextToSave);
         }
-        if (fetchedModels.length) await api.codexSetProfileFetchedModels(created.id, fetchedModels);
+        if (fetchedModels.length && !(isOfficial && authSource === "desktop" && authDirty)) await api.codexSetProfileFetchedModels(created.id, fetchedModels, fetchedModelEfforts.current, fetchedModelDefaults.current);
         if (showBalance) await api.codexSetProfileShowBalance(created.id, true);
         notifySaved(t("edit.builtinProviderAdded"));
       } else {
@@ -484,6 +524,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
           if (!boundAccountId) throw new Error(t("edit.oauthAccountRequired"));
           await api.codexSetProfileAccount(profile!.id, boundAccountId);
         }
+        if (isOfficial && authSource === "oauth" && fetchedModels.length) await api.codexSetProfileFetchedModels(profile!.id, fetchedModels, fetchedModelEfforts.current, fetchedModelDefaults.current);
         notifySaved(t("edit.providerUpdated"));
       }
       onChanged();
@@ -494,6 +535,13 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
 
   const needsAuthStatus = create ? isOfficial : profile?.auth_source === "oauth" || Boolean(profile?.account_id);
   const authStatusPending = needsAuthStatus && !authStatusReady;
+  const effortField = <div className="min-w-0 w-28">
+    <div className="field-label mb-1.5 flex h-6 items-center">{t("modelSelection.effort")}</div>
+    <AppSelect value={selection.effort} disabled={saving || !effortLevels.length} menuWidth="max-content"
+      options={[{ value: "", label: t("modelSelection.default") }, ...effortLevels.map((level) => ({ value: level, label: level }))]}
+      placeholder={t("modelSelection.effort")}
+      onChange={(value) => setConfigText((current) => patchModelValue(current, value, "model_reasoning_effort"))} />
+  </div>;
   if (((!create && !detail) || authStatusPending) && !loadError) return null;
   if (pickingIcon) return <ProfileIconEdit icon={selectedIcon} onBack={() => setPickingIcon(false)} onSave={(icon) => void saveIcon(icon)} />;
 
@@ -550,20 +598,30 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
                     </button>
                   ) : null}
                 />
-                <ProviderModelFields
-                  value={modelValue} onChange={setModelValue} models={fetchedModels}
-                  fetching={fetchingModels} disabled={!apiKey.trim() || !baseUrl.trim()}
-                  onFetch={() => void fetchModelList()}
-                  labels={{
-                    model: t("edit.modelIdLabel"), placeholder: t("edit.modelIdPlaceholder"),
-                    models: t("edit.modelsLabel"), fetch: t("edit.fetchModels"),
-                    available: t("edit.modelsAvailable", { count: fetchedModels.length }),
-                    select: t("edit.selectModel"), fetchFirst: t("edit.fetchModelsFirst"),
-                  }}
-                />
               </>
             ) : null}
             {isOfficial ? <div className="mt-4"><div className="field-label mb-1.5">{t("edit.authMethodLabel")}</div>{create ? <AppSelect value={boundAccountId ?? ""} options={accountOptions} onChange={selectAccount} placeholder={t("card.authDesktop")} renderLabel={renderAccountLabel} /> : authSource === "oauth" ? <AppSelect value={boundAccountId ?? ""} options={oauthAccountOptions} onChange={selectAccount} placeholder={t("edit.selectOauthAccount")} renderLabel={renderAccountLabel} /> : <div className="app-input flex min-w-0 items-center gap-2"><AuthSourceIcon source="desktop" className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} aria-hidden="true" /><span className="shrink-0 text-xs font-medium text-[var(--text-secondary)]">{t("card.authDesktop")}</span>{detail?.desktop_login ? <><span className="muted" aria-hidden="true">·</span><span className="min-w-0 truncate text-xs font-medium text-[var(--text-secondary)]" title={detail.desktop_login}>{detail.desktop_login}</span></> : null}</div>}</div> : null}
+            {showProviderFields || isOfficial ? <div className="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <div className="min-w-0">
+                <div className="field-label mb-1.5 flex h-6 items-center">{t("edit.modelIdLabel")}</div>
+                <input className="app-input" placeholder={t("edit.modelIdPlaceholder")} value={selection.model}
+                  onChange={(event) => setModelValue(event.target.value)} />
+              </div>
+              <div className="min-w-0">
+                <div className="mb-1.5 flex h-6 items-center gap-2">
+                  <span className="field-label">{t("edit.modelsLabel")}</span>
+                  <button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5" disabled={useLocalCatalog || fetchingModels || saving || (isOfficial && authSource === "desktop" && authDirty) || (!isOfficial && (!apiKey.trim() || !baseUrl.trim()))} onClick={() => void fetchModelList()}>
+                    {fetchingModels ? <LoadingSpinner /> : <Download className="h-3 w-3" strokeWidth={2} aria-hidden="true" />}
+                    {t("edit.fetchModels")}
+                  </button>
+                  {!!models.length && <span className="muted text-xs">{t("edit.modelsAvailable", { count: models.length })}</span>}
+                </div>
+                <AppSelect value={selection.model} options={getModelChoices(selection.model, models).map((value) => ({ value, label: value }))}
+                  onChange={setModelValue} disabled={saving || (!isOfficial && (!apiKey.trim() || !baseUrl.trim()))} menuWidth="max-content" searchable
+                  placeholder={t(models.length ? "edit.selectModel" : "edit.fetchModelsFirst")} />
+              </div>
+              {effortField}
+            </div> : null}
             {(!create || Boolean(selectedPreset?.admin_url)) ? <div className="mt-4"><div className="mb-1.5 flex items-center gap-2"><span className="field-label">{t("edit.adminUrlLabel")}</span><button type="button" className="apple-inline-btn apple-inline-btn--quiet !h-5 shrink-0" disabled={!adminUrl.trim()} aria-label={t("card.openWebsite")} onClick={() => void api.openUrl(adminUrl.trim()).catch((error) => feedback.error(String(error)))}><ExternalLink className="h-3 w-3" strokeWidth={2} aria-hidden="true" />{t("card.openWebsite")}</button></div><input className="app-input" placeholder={t("edit.adminUrlPlaceholder")} value={adminUrl} onChange={(event) => setAdminUrl(event.target.value)} /></div> : null}
               {supportsBalance ? <div className="mt-4 flex min-h-[var(--input-min-height)] items-center justify-between gap-4"><div className="min-w-0"><div className="setting-title">{t("edit.balanceUsage")}</div><div className="setting-description mt-0.5">{t("edit.balanceAutoRefresh")}</div></div><AppSwitch checked={showBalance} disabled={saving || savingBalance} label={t("edit.balanceUsage")} onCheckedChange={(value) => void toggleBalance(value)} /></div> : null}
           </div>

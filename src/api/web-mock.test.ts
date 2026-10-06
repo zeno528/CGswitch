@@ -4,6 +4,33 @@ import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../featur
 import type { AppState, ClaudeProfileDetail, ClaudeProfileSummary, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary, CliStatus, CliUpdate } from "../types";
 
 describe("web mock", () => {
+  it("自定义目录覆盖官方卡片的远程默认模型，Desktop 认证更新明确交给桌面版", async () => {
+    const profile = await webInvoke<CodexProfileSummary>("codex_add_builtin_profile", { kind: "chatgpt" });
+    try {
+      await webInvoke("codex_set_profile_model", { id: profile.id, model: "", effort: "" });
+      await webInvoke("codex_set_profile_fetched_models", { id: profile.id, models: ["remote"], defaults: { remote: "ultra" } });
+      await webInvoke("codex_update_profile_config", { id: profile.id, configText: 'model_catalog_json = "models.json"\n',
+        catalogText: JSON.stringify({ models: [{ slug: "local", default_reasoning_level: "low" }] }) });
+      const state = await webInvoke<AppState>("get_state");
+      expect(state.codex_profiles.find((item) => item.id === profile.id)).toMatchObject({ model: "local", reasoning_effort: "low" });
+      await expect(webInvoke("codex_update_profile_config", { id: profile.id, authText: "{}" })).rejects.toThrow("请在桌面版更新 Desktop 认证和模型缓存");
+      expect((await webInvoke<CodexProfileDetail>("codex_get_profile", { id: profile.id })).raw_auth).toBeNull();
+    } finally { await webInvoke("codex_delete_profile", { id: profile.id }); }
+  });
+
+  it("已有模型缓存通过配置详情回显，包含原顺序和推理档位", async () => {
+    const source = (await webInvoke<AppState>("get_state")).codex_profiles[0];
+    const copy = await webInvoke<CodexProfileSummary>("codex_duplicate_profile", { id: source.id });
+    try {
+      const models = ["first", "second"];
+      const efforts = { first: ["high"], second: ["low", "high"] };
+      const defaults = { first: "high", second: "low" };
+      await webInvoke("codex_set_profile_fetched_models", { id: copy.id, models, efforts, defaults });
+      expect(await webInvoke<CodexProfileDetail>("codex_get_profile", { id: copy.id }))
+        .toMatchObject({ fetched_models: models, fetched_model_efforts: efforts, fetched_model_defaults: defaults });
+    } finally { await webInvoke("codex_delete_profile", { id: copy.id }); }
+  });
+
   it("卡片模型保存同步列表与详情，默认值移除覆盖，其他配置保持不变", async () => {
     const source = (await webInvoke<AppState>("get_state")).codex_profiles[0];
     const copy = await webInvoke<CodexProfileSummary>("codex_duplicate_profile", { id: source.id });

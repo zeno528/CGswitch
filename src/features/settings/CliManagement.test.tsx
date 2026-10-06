@@ -137,10 +137,24 @@ it.each(["codex", "claude"] as const)("%s 本地检测期间安装按钮禁用�
   render();
   hooks.effects[hooks.effects.length - 1]();
   expect(buttons(CliCard({ client, management: render() }))[0].disabled).toBe(true);
+  expect(renderToStaticMarkup(CliCard({ client, management: render() }))).toContain('style="opacity:1"');
   finishDetection(missing);
   await flush();
   expect(buttons(CliCard({ client, management: render() }))[0].disabled).toBe(false);
   expect(hooks.serviceCheck).not.toHaveBeenCalled();
+});
+
+it("首次检测、安装和不可管理状态仍保留禁用外观", () => {
+  for (const current of [
+    { ...management, status: null, busy: true, operation: "refresh" as const },
+    { ...management, busy: true, operation: "install" as const },
+    { ...management, status: { ...status, busy: true }, busy: true, operation: "refresh" as const },
+    { ...management, status: { ...status, installation: "conflict" as const }, busy: true, operation: "refresh" as const },
+  ]) {
+    const card = CliCard({ client: "codex", management: current });
+    expect(buttons(card)[0].disabled).toBe(true);
+    expect(renderToStaticMarkup(card)).not.toContain('style="opacity:1"');
+  }
 });
 
 it.each(["codex", "claude"] as const)("%s Activity 隐藏后重新进入会检测升级后的版本", async (client) => {

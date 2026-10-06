@@ -9,11 +9,12 @@ export function isOverEffortThumb(rect: Pick<DOMRect, "left" | "top" | "width" |
   return Math.hypot(x - rect.left - rect.width / 2, y - rect.top - rect.height / 2) <= rect.width / 2;
 }
 
-export function ReasoningEffortSlider({ value, levels, onChange, onCommit, children, leading, fast = false, disabled = false }: {
+export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onReset, children, leading, fast = false, disabled = false }: {
   value: string;
   levels: readonly string[];
   onChange: (value: string) => void;
   onCommit?: (value: string) => void;
+  onReset?: () => void;
   children?: ReactNode;
   leading?: ReactNode;
   fast?: boolean;
@@ -34,17 +35,25 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, child
         <div className="reasoning-effort-slider__heading">
           <strong id={labelId} className="field-label"><span className="sr-only">{t("modelSelection.effort")}: </span>{value ? value[0].toUpperCase() + value.slice(1) : t("modelSelection.default")}</strong>
           {children}
+          {fast && value === "ultra" && <span className="reasoning-effort-slider__quota-hint" aria-hidden="true">{t("modelSelection.ultraQuotaHint")}</span>}
         </div>
-        <button type="button" className="apple-icon-button" disabled={disabled || !value}
+        <button type="button" className="apple-icon-button" disabled={disabled || (!value && !onReset)}
           title={t("modelSelection.resetEffort")} aria-label={t("modelSelection.resetEffort")}
-          onClick={() => { onChange(""); onCommit?.(""); }}><RotateCcw size={16} aria-hidden="true" /></button>
+          onClick={() => { if (onReset) onReset(); else { onChange(""); onCommit?.(""); } }}><RotateCcw size={16} aria-hidden="true" /></button>
       </div>
       <div className="reasoning-effort-slider__track" onPointerMove={(event) => {
-        const thumb = event.currentTarget.querySelector<HTMLElement>(".reasoning-effort-slider__thumb")!;
-        event.currentTarget.toggleAttribute("data-thumb-hover", event.pointerType === "mouse"
+        const track = event.currentTarget;
+        const thumb = track.querySelector<HTMLElement>(".reasoning-effort-slider__thumb")!;
+        track.toggleAttribute("data-thumb-hover", event.pointerType === "mouse"
           && isOverEffortThumb(thumb.getBoundingClientRect(), event.clientX, event.clientY));
-      }} onPointerLeave={(event) => event.currentTarget.removeAttribute("data-thumb-hover")}>
+        // 仅按住主键且在移动（真拖动）才算抓紧；单击、长按不动不显示。
+        track.toggleAttribute("data-thumb-drag", !disabled && (event.buttons & 1) === 1);
+      }} onPointerLeave={(event) => {
+        event.currentTarget.removeAttribute("data-thumb-hover");
+        event.currentTarget.removeAttribute("data-thumb-drag");
+      }}>
         <span className="reasoning-effort-slider__fill" aria-hidden="true">
+          {fast && value === "ultra" && <span className="reasoning-effort-slider__gradient" />}
           {fast && <span className="reasoning-effort-slider__particles" />}
         </span>
         <div className="reasoning-effort-slider__stops">
@@ -65,6 +74,7 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, child
         onKeyDown={(event) => { if (disabled && event.key !== "Tab") event.preventDefault(); }}
         onChange={(event) => { if (!disabled && levels.length) onChange(levels[Number(event.target.value)]); }}
         onPointerUp={(event) => {
+          event.currentTarget.closest<HTMLElement>(".reasoning-effort-slider__track")?.removeAttribute("data-thumb-drag");
           if (!disabled && levels.length) {
             const next = levels[Number(event.currentTarget.value)];
             onChange(next);

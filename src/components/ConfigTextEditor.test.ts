@@ -155,4 +155,10 @@ describe("routeEditorWheel", () => {
     expect(routeEditorWheel(-120, 300)).toBe(false);
     expect(routeEditorWheel(0, 300)).toBe(false);
   });
+
+  it("边界转发直接跟随当前滚轮增量，不保留反向滚动的旧动画目标", () => {
+    expect(editorSource).toContain("page.scrollTop = Math.max(0, Math.min(page.scrollTop + event.deltaY");
+    expect(editorSource).not.toContain("let smoothTarget");
+    expect(editorSource).not.toContain("const smoothStep");
+  });
 });

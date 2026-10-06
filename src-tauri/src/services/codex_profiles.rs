@@ -296,10 +296,18 @@ impl AppContext {
     }
 
     /// 保存最近一次成功获取的模型列表，避免编辑页每次打开都重复请求供应商接口。
-    pub fn codex_set_profile_fetched_models(&self, id: &str, models: Vec<String>) -> AppResult<()> {
+    pub fn codex_set_profile_fetched_models(
+        &self,
+        id: &str,
+        models: Vec<String>,
+        efforts: Option<std::collections::BTreeMap<String, Vec<String>>>,
+        defaults: Option<std::collections::BTreeMap<String, String>>,
+    ) -> AppResult<()> {
         let stored = self.database.codex_profile(id)?;
         let mut payload = stored.payload;
         payload.fetched_models = models;
+        payload.fetched_model_efforts = efforts.unwrap_or_default();
+        payload.fetched_model_defaults = defaults.unwrap_or_default();
         self.database
             .codex_update_profile(id, &stored.name, &payload, &now_ms().to_string())
             .map(|_| ())
@@ -307,17 +315,19 @@ impl AppContext {
 
     /// 完整复制供应商（配置、关联文件、图标、账号绑定），新供应商名加 `copy` 后缀，同名时追加序号。
     pub fn codex_duplicate_profile(&self, id: &str) -> AppResult<CodexProfileSummary> {
-        // 使用中的供应商：先把 live 的 config/models.json 改动同步回快照，副本取到最新状态
-        // （门控在执行体内部：目标不是激活配置时直接跳过）
+        // 使用中的供应商：先把 live 的 config/models.json 改动同步回快照，副本取到最新状态；
+        // 非激活配置不参与 live→库同步，不发起也不留日志
         let active = self.is_active_profile(id)?;
-        let _ = sync::registry().harvest(
-            self,
-            &sync::SyncTrigger::BeforeProfileClone {
-                client: sync::ClientId::Codex,
-                target_id: id.to_string(),
-            },
-            sync::SyncMaterial::default(),
-        );
+        if active {
+            let _ = sync::registry().harvest(
+                self,
+                &sync::SyncTrigger::BeforeProfileClone {
+                    client: sync::ClientId::Codex,
+                    target_id: id.to_string(),
+                },
+                sync::SyncMaterial::default(),
+            );
+        }
         let mut stored = self.database.codex_profile(id)?;
         stored.payload.raw_auth = normalize_auth_override(stored.payload.raw_auth.as_deref());
         // 使用中的第三方供应商：快照没单独保存 auth 时连当前 live auth.json 一起复制，
@@ -372,18 +382,21 @@ impl AppContext {
     }
 
     pub fn codex_get_profile(&self, id: &str) -> AppResult<CodexProfileDetail> {
-        // 打开激活供应商的编辑页：先把外部改动同步回数据库快照
-        let _ = sync::registry().harvest(
-            self,
-            &sync::SyncTrigger::BeforeProfileRead {
-                client: sync::ClientId::Codex,
-                target_id: id.to_string(),
-            },
-            sync::SyncMaterial::default(),
-        );
+        // 打开激活供应商的编辑页：先把外部改动同步回数据库快照；
+        // 非激活配置不参与 live→库同步（结局注定 TargetMismatch），不发起也不留日志
+        let active = self.is_active_profile(id)?;
+        if active {
+            let _ = sync::registry().harvest(
+                self,
+                &sync::SyncTrigger::BeforeProfileRead {
+                    client: sync::ClientId::Codex,
+                    target_id: id.to_string(),
+                },
+                sync::SyncMaterial::default(),
+            );
+        }
         let stored = self.database.codex_profile(id)?;
         let payload = &stored.payload;
-        let active = self.is_active_profile(id)?;
         let provider = payload
             .provider_body
             .as_deref()
@@ -481,6 +494,8 @@ impl AppContext {
             admin_url: payload.admin_url.clone(),
             show_balance: payload.show_balance,
             fetched_models: payload.fetched_models.clone(),
+            fetched_model_efforts: payload.fetched_model_efforts.clone(),
+            fetched_model_defaults: payload.fetched_model_defaults.clone(),
             updated_at: stored.updated_at.clone(),
         })
     }
@@ -598,7 +613,11 @@ impl AppContext {
             payload.raw_catalog = catalog_text.map(str::to_string);
         }
         if auth_text.is_some() {
+            let previous_auth = payload.raw_auth.clone();
             payload.raw_auth = auth_override.clone();
+            if auth_source == Some(AuthSource::Desktop) {
+                payload.invalidate_models_for_auth_change(previous_auth.as_deref());
+            }
             // Desktop 清空 auth 是移除旧快照并等待下一次桌面认证；有内容才是手动接管。
             payload.auth_auto_sync = if auth_source == Some(AuthSource::Desktop) {
                 Some(auth_override.is_none())

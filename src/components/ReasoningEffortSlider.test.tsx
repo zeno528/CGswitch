@@ -24,6 +24,8 @@ it("快速模式只隐藏已滑过的等级圆点，未滑到的圆点与原生�
   expect(normal).not.toContain('class="reasoning-effort-slider__particles"');
   const fast = render(true);
   expect(fast.match(/class="reasoning-effort-slider__particles"/g)).toHaveLength(1);
+  expect(fast).not.toContain('class="reasoning-effort-slider__gradient"');
+  expect(fast).not.toContain('class="reasoning-effort-slider__quota-hint"');
   expect(fast.match(/class="reasoning-effort-slider__stop"/g)).toHaveLength(1);
   expect(fast).toContain('title="max" aria-pressed="false" data-filled="false"');
   expect(fast).not.toContain('title="low"');
@@ -41,6 +43,8 @@ it("快速模式只隐藏已滑过的等级圆点，未滑到的圆点与原生�
     expect(markup).toContain(`--effort-color:var(${value === "ultra" ? "--reasoning-ultra" : "--accent"})`);
     expect(render(true, value)).toContain(`--effort-particle-duration:${value === "ultra" ? "0.5s" : "1s"}`);
   }
+  expect(render(true, "ultra")).toContain('class="reasoning-effort-slider__quota-hint"');
+  expect(render(true, "ultra")).toContain('class="reasoning-effort-slider__gradient"');
   expect(render(false, "")).toContain("--effort-color:var(--text-secondary)");
   const pendingInput = render(false, "high", true).match(/<input[^>]*>/)?.[0];
   expect(pendingInput).toContain('aria-disabled="true"');

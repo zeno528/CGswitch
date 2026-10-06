@@ -1,13 +1,16 @@
 /** 供应商配置页文案。 */
 export default {
   modelSelection: {
-    title: "模型与思考等级",
+    title: "模型与推理强度",
     chooseModel: "选择模型",
-    effort: "思考等级",
+    effort: "推理强度",
     default: "默认",
-    resetEffort: "恢复默认思考等级",
-    useDefaultEffort: "切换时使用默认思考等级",
+    recommendedModels: "推荐模型集",
+    noModels: "未获取到可用模型，请重新获取模型列表",
+    resetEffort: "重置为默认",
+    ultraQuotaHint: "更快消耗使用额度",
     fastMode: "快速模式",
+    fastModeHint: "1.5倍速度，消耗用量更多",
   },
   status: {
     running: "运行中",

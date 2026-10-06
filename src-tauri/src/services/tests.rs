@@ -238,6 +238,8 @@ fn fetched_models_survive_profile_reload() {
         .codex_set_profile_fetched_models(
             &profile.id,
             vec!["gpt-5.6".into(), "gpt-5.6-mini".into()],
+            Some(BTreeMap::from([("gpt-5.6".into(), vec!["high".into()])])),
+            Some(BTreeMap::from([("gpt-5.6".into(), "high".into())])),
         )
         .unwrap();
     context.codex_apply_profile(&profile.id).unwrap();
@@ -250,6 +252,123 @@ fn fetched_models_survive_profile_reload() {
             .fetched_models,
         vec!["gpt-5.6", "gpt-5.6-mini"]
     );
+    let reloaded = AppContext::new(context.paths.clone()).unwrap();
+    assert_eq!(
+        reloaded
+            .codex_get_profile(&profile.id)
+            .unwrap()
+            .fetched_model_defaults,
+        BTreeMap::from([("gpt-5.6".into(), "high".into())])
+    );
+    assert_eq!(
+        reloaded
+            .codex_get_profile(&profile.id)
+            .unwrap()
+            .fetched_model_efforts,
+        BTreeMap::from([("gpt-5.6".into(), vec!["high".into()])])
+    );
+    reloaded
+        .codex_set_profile_model(&profile.id, Some(""), Some(""), None)
+        .unwrap();
+    let restarted = AppContext::new(context.paths.clone()).unwrap();
+    let state = restarted.get_state().unwrap();
+    let summary = state
+        .codex_profiles
+        .iter()
+        .find(|item| item.id == profile.id)
+        .unwrap();
+    assert_eq!(summary.model.as_deref(), Some("gpt-5.6"));
+    assert_eq!(summary.reasoning_effort.as_deref(), Some("high"));
+    assert!(!restarted
+        .codex_get_profile(&profile.id)
+        .unwrap()
+        .model_values
+        .contains_key("model"));
+}
+
+#[test]
+fn desktop_model_cache_survives_token_refresh_but_not_identity_changes() {
+    for manual in [false, true] {
+        let (_home, context) = chatgpt_test_context();
+        let auth_path = context.paths.codex_home.join("auth.json");
+        let profile = context.codex_capture_profile("缓存身份").unwrap();
+        context.codex_apply_profile(&profile.id).unwrap();
+        std::fs::write(&auth_path, chatgpt_auth("first", "old-token")).unwrap();
+        context.get_state().unwrap();
+        context
+            .codex_set_profile_fetched_models(
+                &profile.id,
+                vec!["fixture".into()],
+                Some(BTreeMap::from([("fixture".into(), vec!["high".into()])])),
+                Some(BTreeMap::from([("fixture".into(), "high".into())])),
+            )
+            .unwrap();
+        let update_auth = |auth: &str| {
+            if manual {
+                let detail = context.codex_get_profile(&profile.id).unwrap();
+                context
+                    .codex_update_profile_config(
+                        &profile.id,
+                        &detail.config_fragment,
+                        None,
+                        Some(auth),
+                    )
+                    .unwrap();
+            } else {
+                std::fs::write(&auth_path, auth).unwrap();
+                context.get_state().unwrap();
+            }
+        };
+        update_auth(&chatgpt_auth("first", "new-token"));
+        let detail = context.codex_get_profile(&profile.id).unwrap();
+        assert_eq!(detail.fetched_models, ["fixture"]);
+        assert_eq!(detail.fetched_model_efforts["fixture"], ["high"]);
+        assert_eq!(detail.fetched_model_defaults["fixture"], "high");
+        update_auth(&chatgpt_auth("second", "second-token"));
+        let detail = context.codex_get_profile(&profile.id).unwrap();
+        assert!(detail.fetched_models.is_empty());
+        assert!(detail.fetched_model_efforts.is_empty());
+        assert!(detail.fetched_model_defaults.is_empty());
+    }
+}
+
+#[test]
+fn official_summary_uses_custom_catalog_instead_of_remote_defaults() {
+    let (_home, context) = chatgpt_test_context();
+    let profile = context
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
+        .unwrap();
+    context
+        .codex_set_profile_fetched_models(
+            &profile.id,
+            vec!["remote".into()],
+            None,
+            Some(BTreeMap::from([("remote".into(), "ultra".into())])),
+        )
+        .unwrap();
+    let catalog = serde_json::json!({"models": [
+        {"slug": "second", "display_name": "Second", "visibility": "list", "priority": 2,
+         "supported_reasoning_levels": [{"effort": "high"}], "default_reasoning_level": "high"},
+        {"slug": "first", "display_name": "First", "visibility": "list", "priority": 1,
+         "supported_reasoning_levels": [{"effort": "low"}], "default_reasoning_level": "low"}
+    ]})
+    .to_string();
+    context
+        .codex_update_profile_config(
+            &profile.id,
+            "model_catalog_json = \"models.json\"\n",
+            Some(&catalog),
+            None,
+        )
+        .unwrap();
+    let state = context.get_state().unwrap();
+    let summary = state
+        .codex_profiles
+        .iter()
+        .find(|item| item.id == profile.id)
+        .unwrap();
+    assert_eq!(summary.model.as_deref(), Some("first"));
+    assert_eq!(summary.reasoning_effort.as_deref(), Some("low"));
 }
 
 #[test]
@@ -654,8 +773,35 @@ fn auth_source_is_fixed_and_oauth_accounts_can_switch() {
         .codex_add_builtin_profile("chatgpt", None, None, None, None, Some("oauth-one"))
         .unwrap();
     context
+        .codex_set_profile_fetched_models(
+            &oauth.id,
+            vec!["fixture-model".into()],
+            Some(BTreeMap::from([(
+                "fixture-model".into(),
+                vec!["high".into()],
+            )])),
+            Some(BTreeMap::from([("fixture-model".into(), "high".into())])),
+        )
+        .unwrap();
+    context
+        .codex_set_profile_account(&oauth.id, Some("oauth-one"))
+        .unwrap();
+    assert_eq!(
+        context
+            .database
+            .codex_profile(&oauth.id)
+            .unwrap()
+            .payload
+            .fetched_models,
+        ["fixture-model"]
+    );
+    context
         .codex_set_profile_account(&oauth.id, Some("oauth-two"))
         .unwrap();
+    let switched = context.database.codex_profile(&oauth.id).unwrap();
+    assert!(switched.payload.fetched_models.is_empty());
+    assert!(switched.payload.fetched_model_efforts.is_empty());
+    assert!(switched.payload.fetched_model_defaults.is_empty());
     assert_eq!(
         context.bound_account_id(&oauth.id).unwrap().as_deref(),
         Some("oauth-two")
@@ -1430,6 +1576,32 @@ async fn balance_rejects_unsupported_or_keyless() {
         .await
         .unwrap_err();
     assert!(error.0.contains("没有配置 API Key"));
+}
+
+#[tokio::test]
+async fn chatgpt_models_require_the_profiles_own_credentials() {
+    let (_home, context) = chatgpt_test_context();
+    let oauth = crate::auth::codex_oauth::CodexOAuthManager::new(context.database.clone());
+    let official = context
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
+        .unwrap();
+    let other = context
+        .codex_add_builtin_profile("minimax", None, None, None, None, None)
+        .unwrap();
+    let live_auth = chatgpt_auth("unrelated-account", "unrelated-token");
+    let auth_path = context.paths.codex_home.join("auth.json");
+    std::fs::write(&auth_path, &live_auth).unwrap();
+    let error = context
+        .codex_fetch_chatgpt_models(Some(&official.id), AuthSource::Desktop, None, &oauth)
+        .await
+        .unwrap_err();
+    assert!(error.0.contains("该 Codex 配置尚未保存有效登录"));
+    let error = context
+        .codex_fetch_chatgpt_models(Some(&other.id), AuthSource::Desktop, None, &oauth)
+        .await
+        .unwrap_err();
+    assert!(error.0.contains("该配置不是 ChatGPT 订阅配置"));
+    assert_eq!(std::fs::read_to_string(&auth_path).unwrap(), live_auth);
 }
 
 #[test]

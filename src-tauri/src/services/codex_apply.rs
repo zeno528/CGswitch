@@ -356,6 +356,8 @@ impl AppContext {
         live.admin_url = profile.payload.admin_url.clone();
         live.show_balance = profile.payload.show_balance;
         live.fetched_models = profile.payload.fetched_models.clone();
+        live.fetched_model_efforts = profile.payload.fetched_model_efforts.clone();
+        live.fetched_model_defaults = profile.payload.fetched_model_defaults.clone();
         // 使用中模型目录按 live 文件回写。
         live.raw_catalog = profile
             .payload
@@ -396,6 +398,9 @@ impl AppContext {
                 live.raw_auth = normalize_auth_override(profile.payload.raw_auth.as_deref());
                 live.auth_auto_sync = profile.payload.auth_auto_sync;
             }
+        }
+        if auth_source == Some(AuthSource::Desktop) {
+            live.invalidate_models_for_auth_change(profile.payload.raw_auth.as_deref());
         }
         // 快照跟随当前 live 完整文本，保证供应商是完整状态（所见即所得，不掩码密钥）
         live.raw_config = Some(codex_config::without_managed_mcp_servers(

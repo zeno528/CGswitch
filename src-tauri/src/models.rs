@@ -74,9 +74,27 @@ pub struct CodexProfilePayload {
     /// 最近一次从供应商接口获取的模型 ID，供编辑页离线复用。
     #[serde(default)]
     pub fetched_models: Vec<String>,
+    /// 最近获取的模型推理档位；与模型 ID 一起缓存，不写入实时配置。
+    #[serde(default)]
+    pub fetched_model_efforts: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub fetched_model_defaults: std::collections::BTreeMap<String, String>,
 }
 
 impl CodexProfilePayload {
+    /// 同账号刷新 token 不影响目录；换 workspace 或用户后不能复用旧目录。
+    pub(crate) fn invalidate_models_for_auth_change(&mut self, previous_auth: Option<&str>) {
+        let identity = |text: Option<&str>| {
+            text.and_then(crate::auth::codex_oauth::parse_external_auth_json)
+                .map(|auth| (auth.account_id, auth.user_identity))
+        };
+        if identity(previous_auth) != identity(self.raw_auth.as_deref()) {
+            self.fetched_models.clear();
+            self.fetched_model_efforts.clear();
+            self.fetched_model_defaults.clear();
+        }
+    }
+
     pub fn effective_auth_source(
         &self,
         kind: CodexProfileKind,
@@ -289,6 +307,8 @@ pub struct CodexProfileDetail {
     pub show_balance: bool,
     pub fetched_models: Vec<String>,
     pub updated_at: String,
+    pub fetched_model_efforts: std::collections::BTreeMap<String, Vec<String>>,
+    pub fetched_model_defaults: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

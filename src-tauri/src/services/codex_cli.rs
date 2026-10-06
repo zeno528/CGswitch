@@ -203,6 +203,25 @@ pub(super) fn find_standalone(home: &Path) -> Option<PathBuf> {
     .find(|path| path.is_file())
 }
 
+pub(super) fn model_client_version(home: &Path, codex_home: &Path) -> Result<String, Failure> {
+    let found = discover(home, codex_home, &default_install_dir(home), path_dirs());
+    for path in found
+        .native
+        .into_iter()
+        .chain(found.other.into_iter().map(PathBuf::from))
+        .chain(found.embedded.into_iter().map(PathBuf::from))
+    {
+        if let Ok(value) = version(&path, parse_version) {
+            return Ok(value);
+        }
+    }
+    Err(failure(
+        "detect",
+        "not_found",
+        "无法读取 Codex 客户端版本，请先安装或打开 Codex",
+    ))
+}
+
 fn parse_version(text: &str) -> Option<String> {
     let mut parts = text.split_whitespace();
     if parts.next()? != "codex-cli" {

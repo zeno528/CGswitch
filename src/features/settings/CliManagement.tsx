@@ -116,6 +116,7 @@ export function useCliManagement(client: Client, active: boolean) {
 export function CliCard({ client, management }: { client: Client; management: ReturnType<typeof useCliManagement> }) {
   const { t } = useTranslation("settings");
   const { status, busy, operation, check, refresh, run } = management;
+  const unavailable = !status || status.busy || !["missing", "broken", "native"].includes(status.installation);
   // 检查进度放在按钮上；安装和外部任务沿用卡片中的反馈。
   const showProgress = busy && operation === "install";
   const stageText = showProgress
@@ -155,7 +156,9 @@ export function CliCard({ client, management }: { client: Client; management: Re
             : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <button type="button" className={status?.installation === "native" ? "apple-action-button" : "apple-action-button app-button--primary"} disabled={busy || !status || status.busy || !["missing", "broken", "native"].includes(status.installation)} onClick={() => status?.installation === "native" ? void check() : void run()}>
+          <button type="button" className={status?.installation === "native" ? "apple-action-button" : "apple-action-button app-button--primary"}
+            style={busy && operation === "refresh" && !unavailable ? { opacity: 1 } : undefined}
+            disabled={busy || unavailable} onClick={() => status?.installation === "native" ? void check() : void run()}>
             {busy && operation === "check"
               ? <span role="status" aria-live="polite">{t("cli.checkingUpdate")}</span>
               : t(status?.installation === "native" ? "cli.checkUpdate" : "cli.install")}

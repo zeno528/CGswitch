@@ -174,7 +174,11 @@ impl AppContext {
             return Err(app_err!("订阅账号不存在"));
         }
         self.database
-            .codex_set_profile_account(id, Some(account_id), &now_ms().to_string())
+            .codex_set_profile_account(id, Some(account_id), &now_ms().to_string())?;
+        if stored.account_id.as_deref() != Some(account_id) {
+            self.codex_set_profile_fetched_models(id, Vec::new(), None, None)?;
+        }
+        Ok(())
     }
 
     /// 切换 OAuth 配置所绑定的账号时，数据库绑定和 live auth 写入必须按激活顺序完成。
