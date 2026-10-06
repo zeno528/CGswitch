@@ -319,8 +319,8 @@ fn desktop_profile_plan_badge_reads_own_database_snapshot() {
     assert_eq!(summary.plan_type.as_deref(), Some("plus"));
 }
 
-#[test]
-fn desktop_accounts_derive_from_database_snapshot_not_live_auth() {
+#[tokio::test]
+async fn desktop_accounts_derive_from_database_snapshot_not_live_auth() {
     let (_home, context) = chatgpt_test_context();
     let profile = context
         .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
@@ -359,6 +359,31 @@ fn desktop_accounts_derive_from_database_snapshot_not_live_auth() {
         .desktop_auth_snapshot_for_account("other-ws")
         .unwrap()
         .is_none());
+    let oauth = crate::auth::codex_oauth::CodexOAuthManager::new(context.database.clone());
+    let (token, workspace, _) = context
+        .auth_account_credentials(AuthSource::Desktop, Some("desktop-ws"), &oauth)
+        .await
+        .unwrap();
+    assert_eq!(
+        (token.as_str(), workspace.as_deref()),
+        ("token-1", Some("desktop-ws"))
+    );
+    assert!(context
+        .auth_account_credentials(AuthSource::Desktop, Some("other-ws"), &oauth)
+        .await
+        .is_err());
+    let (token, workspace, _) = context
+        .auth_account_credentials(AuthSource::Desktop, Some("managed-ws"), &oauth)
+        .await
+        .unwrap();
+    assert_eq!(
+        (token.as_str(), workspace.as_deref()),
+        ("oauth-live", Some("managed-ws"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(context.paths.codex_home.join("auth.json")).unwrap(),
+        chatgpt_auth("managed-ws", "oauth-live")
+    );
 }
 
 #[test]

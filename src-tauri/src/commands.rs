@@ -1115,6 +1115,19 @@ pub async fn auth_get_quota(
 }
 
 #[tauri::command]
+pub async fn auth_warmup(
+    source: AuthSource,
+    account_id: String,
+    state: State<'_, AppContext>,
+    oauth: State<'_, CodexOAuthState>,
+) -> Result<(), String> {
+    state
+        .warmup_auth_account(source, &account_id, &oauth.0)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn auth_preview(
     account_id: String,
     oauth: State<'_, CodexOAuthState>,

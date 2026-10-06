@@ -65,6 +65,83 @@ mod tests {
     use crate::models::ProfileBalanceInfo;
 
     #[tokio::test]
+    async fn warmup_waits_for_completion_and_usage_without_waiting_for_stream_close() {
+        use std::io::{BufRead, Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/responses", listener.local_addr().unwrap());
+        let (done, wait) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = std::io::BufReader::new(&stream);
+            let mut headers = String::new();
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                if line == "\r\n" {
+                    break;
+                }
+                headers.push_str(&line);
+            }
+            assert!(headers.starts_with("POST /responses "));
+            assert!(headers.contains("authorization: Bearer fixture-token"));
+            assert!(headers.contains("chatgpt-account-id: fixture-workspace"));
+            assert!(headers.contains("originator: codex_cli_rs"));
+            let length: usize = headers
+                .lines()
+                .find_map(|line| line.strip_prefix("content-length: "))
+                .unwrap()
+                .parse()
+                .unwrap();
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["model"], "gpt-6-luna");
+            assert_eq!(body["reasoning"]["effort"], "low");
+            assert_eq!(body["input"].as_array().unwrap().len(), 1);
+            assert_eq!(body["input"][0]["content"][0]["text"], "Reply only OK.");
+            assert_eq!(body["tools"], serde_json::json!([]));
+            assert_eq!(body["store"], false);
+            assert_eq!(body["stream"], true);
+            assert!(body.get("max_output_tokens").is_none());
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n").unwrap();
+            for chunk in [
+                "data: {\"type\":\"response.created\"}\r\n\r\ndata: {\"ty",
+                "pe\":\"response.completed\",\r\ndata: \"response\":{\"usage\":{\"total_tokens\":3}}}\r\n",
+                "\r\n",
+            ] {
+                write!(stream, "{:x}\r\n{chunk}\r\n", chunk.len()).unwrap();
+                stream.flush().unwrap();
+            }
+            // 不发送流结束标记；客户端必须在完成事件后主动结束读取。
+            let _ = wait.recv_timeout(std::time::Duration::from_secs(3));
+        });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let result = super::send_chatgpt_warmup(super::chatgpt_request(
+            client.post(url),
+            "fixture-token",
+            Some("fixture-workspace"),
+        ))
+        .await;
+        done.send(()).unwrap();
+        server.join().unwrap();
+        assert_eq!(result.unwrap(), 3);
+        for event in [
+            r#"{"type":"response.created"}"#,
+            r#"{"type":"response.completed","response":{"usage":{"total_tokens":0}}}"#,
+            r#"{"type":"response.completed","response":{}}"#,
+            r#"{"type":"response.failed"}"#,
+            r#"{"type":"response.incomplete"}"#,
+            r#"{"type":"error"}"#,
+            "invalid json",
+        ] {
+            assert!(!matches!(
+                super::warmup_event_tokens(event.as_bytes()),
+                Ok(Some(_))
+            ));
+        }
+    }
+
+    #[tokio::test]
     async fn connection_latency_includes_response_body_for_both_clients() {
         use std::io::{BufRead, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1085,13 +1162,11 @@ pub(crate) fn chatgpt_quota_info(response: ChatgptUsageResponse) -> Option<Profi
 }
 
 fn chatgpt_request(
-    client: &reqwest::Client,
-    url: &str,
+    request: reqwest::RequestBuilder,
     access_token: &str,
     account_id: Option<&str>,
 ) -> reqwest::RequestBuilder {
-    let mut request = client
-        .get(url)
+    let mut request = request
         .bearer_auth(access_token)
         .header("User-Agent", "codex-cli")
         .header("Accept", "application/json");
@@ -1099,6 +1174,99 @@ fn chatgpt_request(
         request = request.header("chatgpt-account-id", account_id);
     }
     request
+}
+
+fn warmup_event_tokens(data: &[u8]) -> AppResult<Option<u64>> {
+    if data.is_empty() {
+        return Ok(None);
+    }
+    let event: serde_json::Value =
+        serde_json::from_slice(data).map_err(|_| app_err!("预热响应格式无效，请重试"))?;
+    match event["type"].as_str() {
+        Some("response.completed") => event["response"]["usage"]["total_tokens"]
+            .as_u64()
+            .filter(|tokens| *tokens > 0)
+            .map(Some)
+            .ok_or_else(|| app_err!("预热响应未返回有效的 Token 用量")),
+        Some("response.failed" | "response.incomplete" | "error") => {
+            Err(app_err!("预热请求未完成，请检查账号额度或模型可用性后重试"))
+        }
+        _ => Ok(None),
+    }
+}
+
+async fn send_chatgpt_warmup(
+    request: reqwest::RequestBuilder,
+) -> Result<u64, (&'static str, String)> {
+    let network_error = |error: reqwest::Error| {
+        (
+            if error.is_timeout() {
+                "timeout"
+            } else {
+                "network_error"
+            },
+            subscription_request_error_message(&error).to_string(),
+        )
+    };
+    // 对齐 openai/codex 的 ResponsesApiRequest；不传订阅端未声明的 max_output_tokens。
+    let mut response = request
+        .header("Accept", "text/event-stream")
+        .header("originator", "codex_cli_rs")
+        .timeout(std::time::Duration::from_secs(60))
+        .json(&serde_json::json!({
+            "model": "gpt-6-luna",
+            "input": [{"type": "message", "role": "user", "content": [
+                {"type": "input_text", "text": "Reply only OK."}
+            ]}],
+            "reasoning": {"effort": "low"},
+            "tools": [],
+            "tool_choice": "auto",
+            "parallel_tool_calls": false,
+            "store": false,
+            "stream": true,
+            "include": []
+        }))
+        .send()
+        .await
+        .map_err(network_error)?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.map_err(network_error)?;
+        return Err((
+            "http_error",
+            format!(
+                "{}（HTTP {}）",
+                subscription_http_error_message(status, &body),
+                status.as_u16()
+            ),
+        ));
+    }
+    let mut pending = Vec::new();
+    let mut data = Vec::new();
+    // 完成事件后立即返回：官方流可能仍保持连接；按行解析兼容分块与 CRLF。
+    while let Some(chunk) = response.chunk().await.map_err(network_error)? {
+        pending.extend_from_slice(&chunk);
+        while let Some(end) = pending.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = pending.drain(..=end).collect();
+            let line = &line[..line.len() - 1];
+            let line = line.strip_suffix(b"\r").unwrap_or(line);
+            if line.is_empty() {
+                if let Some(tokens) = warmup_event_tokens(&data)
+                    .map_err(|error| ("protocol_error", error.to_string()))?
+                {
+                    return Ok(tokens);
+                }
+                data.clear();
+            } else if let Some(value) = line.strip_prefix(b"data:") {
+                data.extend_from_slice(value.strip_prefix(b" ").unwrap_or(value));
+                data.push(b'\n');
+            }
+        }
+    }
+    Err((
+        "protocol_error",
+        "预热连接已结束，但未收到完成事件，请刷新用量后重试".to_string(),
+    ))
 }
 
 pub(crate) fn chatgpt_reset_credit_expiry(value: Option<&str>) -> Option<i64> {
@@ -1113,8 +1281,7 @@ async fn query_chatgpt_reset_credits(
     account_id: Option<&str>,
 ) -> Option<(Option<i64>, Vec<ChatgptResetCredit>)> {
     let response = chatgpt_request(
-        client,
-        "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits",
+        client.get("https://chatgpt.com/backend-api/wham/rate-limit-reset-credits"),
         access_token,
         account_id,
     )
@@ -1179,8 +1346,7 @@ async fn query_chatgpt_quota(
     })?;
     let start = std::time::Instant::now();
     let response = chatgpt_request(
-        &client,
-        "https://chatgpt.com/backend-api/wham/usage",
+        client.get("https://chatgpt.com/backend-api/wham/usage"),
         access_token,
         account_id,
     )
@@ -1315,8 +1481,7 @@ impl AppContext {
         })?;
         let start = std::time::Instant::now();
         match chatgpt_request(
-            &client,
-            "https://chatgpt.com/backend-api/wham/usage",
+            client.get("https://chatgpt.com/backend-api/wham/usage"),
             access_token,
             None,
         )
@@ -1387,13 +1552,13 @@ impl AppContext {
         }
     }
 
-    /// 读取设置页中的 Codex 登录或指定 OAuth 账号的官方额度。
-    pub async fn get_auth_quota(
+    /// 用量查询与预热共用卡片身份，不能回退到其他账号的 live 认证。
+    pub(super) async fn auth_account_credentials(
         &self,
         source: AuthSource,
         account_id: Option<&str>,
         oauth: &CodexOAuthManager,
-    ) -> AppResult<ProfileBalance> {
+    ) -> AppResult<(String, Option<String>, String)> {
         let source_label = match &source {
             AuthSource::Desktop => "desktop",
             AuthSource::Oauth => "oauth",
@@ -1416,6 +1581,7 @@ impl AppContext {
                     None => {
                         let account = self
                             .read_external_codex_auth()
+                            .filter(|account| account_id.is_none_or(|id| id == account.account_id))
                             .ok_or_else(|| app_err!("未检测到有效的 Codex 登录"))?;
                         let token = self
                             .external_codex_access_token_for_account(&account.account_id)?
@@ -1447,7 +1613,65 @@ impl AppContext {
                 None => format!("source={source_label}"),
             },
         };
+        Ok((access_token, account_id, context))
+    }
+
+    /// 读取设置页中的 Codex 登录或指定 OAuth 账号的官方额度。
+    pub async fn get_auth_quota(
+        &self,
+        source: AuthSource,
+        account_id: Option<&str>,
+        oauth: &CodexOAuthManager,
+    ) -> AppResult<ProfileBalance> {
+        let (access_token, account_id, context) = self
+            .auth_account_credentials(source, account_id, oauth)
+            .await?;
         query_chatgpt_quota(&access_token, account_id.as_deref(), &context).await
+    }
+
+    pub async fn warmup_auth_account(
+        &self,
+        source: AuthSource,
+        account_id: &str,
+        oauth: &CodexOAuthManager,
+    ) -> AppResult<()> {
+        let source_label = match source {
+            AuthSource::Desktop => "desktop",
+            AuthSource::Oauth => "oauth",
+        };
+        let result = async {
+            let (token, workspace, _) = self
+                .auth_account_credentials(source, Some(account_id), oauth)
+                .await
+                .map_err(|_| {
+                    (
+                        "auth_error",
+                        "ChatGPT 账号认证不可用，请检查登录状态或网络后重试".to_string(),
+                    )
+                })?;
+            let (client, _) = http_client().map_err(|error| ("internal", error.to_string()))?;
+            send_chatgpt_warmup(chatgpt_request(
+                client.post("https://chatgpt.com/backend-api/codex/responses"),
+                &token,
+                workspace.as_deref(),
+            ))
+            .await
+        }
+        .await;
+        match result {
+            Ok(tokens) => {
+                tauri_plugin_log::log::info!(
+                    "[chatgpt.account.warmup] account_id={account_id:?} source={source_label} model=gpt-6-luna reasoning=low outcome=success total_tokens={tokens} msg=\"ChatGPT 账号预热请求已完成\""
+                );
+                Ok(())
+            }
+            Err((kind, message)) => {
+                tauri_plugin_log::log::warn!(
+                    "[chatgpt.account.warmup] account_id={account_id:?} source={source_label} model=gpt-6-luna reasoning=low outcome=failure failure_kind={kind} error={message:?} msg=\"ChatGPT 账号预热失败\""
+                );
+                Err(app_err!("{message}"))
+            }
+        }
     }
 
     /// 按配置查询余额/用量；ChatGPT 配置只读自身认证来源，不读取 live auth.json。

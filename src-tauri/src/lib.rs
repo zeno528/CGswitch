@@ -317,6 +317,7 @@ pub fn run() {
             commands::auth_cancel_browser_login,
             commands::auth_get_status,
             commands::auth_get_quota,
+            commands::auth_warmup,
             commands::auth_preview,
             commands::auth_remove_account,
             commands::open_url,

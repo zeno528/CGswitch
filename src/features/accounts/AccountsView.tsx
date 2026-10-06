@@ -1,12 +1,16 @@
-import { CircleAlert, CreditCard, LogIn, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { CircleAlert, CreditCard, Flame, LogIn, MoreHorizontal, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { authQuotaCacheKey, authQuotaErrorKind, clearAuthQuotaError, getAuthQuotaBalance, getAuthQuotaError, getVisibleAuthQuota, setAuthQuotaFailure, setAuthQuotaSuccess } from "../../app/authQuotaCache";
 import { useFeedback } from "../../app/Feedback";
 import { AuthSourceIcon } from "../../components/AuthSourceIcon";
+import { LoadingSpinner } from "../../components/LoadingSpinner";
 import { PlanBadge } from "../../components/PlanBadge";
 import { TrashIcon } from "../../components/TrashIcon";
+import { useFixedMenuPosition } from "../../components/useFixedMenuPosition";
+import { useMenuDismiss } from "../../components/useMenuDismiss";
 import { chatgptLogo } from "../../icons";
 import { balanceChipClass } from "../../presets";
 import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
@@ -116,6 +120,11 @@ function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance,
   const [animationFromQuota, setAnimationFromQuota] = useState<ProfileBalanceInfo | null>(null);
   const displayedQuotaRef = useRef(getAuthQuotaBalance(cacheKey) ?? cachedBalance ?? null);
   const loadingRef = useRef(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuStyle = useFixedMenuPosition(menuOpen, menuTriggerRef.current, menuRef, "end");
+  useMenuDismiss(menuOpen, menuTriggerRef, menuRef, setMenuOpen);
 
   const refresh = async (manual = false) => {
     if (loadingRef.current) return;
@@ -151,6 +160,23 @@ function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance,
     }
   };
 
+  const warmup = async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      await api.authWarmup(source, accountId);
+      feedback.success(t("account.warmupComplete"));
+    } catch (cause) {
+      feedback.error(t("account.warmupFailed", { error: String(cause) }));
+      return;
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+    await refresh(true);
+  };
+
   useEffect(() => {
     const knownError = getAuthQuotaError(cacheKey);
     const nextQuota = getAuthQuotaBalance(cacheKey) ?? cachedBalance ?? null;
@@ -176,10 +202,22 @@ function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance,
         <span className="mono min-w-0 truncate title-sm">{login}</span>
         <span className="apple-chip muted shrink-0">{t(source === "desktop" ? "account.followCodex" : "account.oauthDeviceLogin")}</span>
       </div>
-      {quota?.usage_percent != null || onRemove ? <div className="flex shrink-0 items-center gap-2">
-        {quota?.usage_percent != null ? <button type="button" className="apple-icon-button text-[var(--text-secondary)] hover:text-accent" disabled={loading} title={t("account.refreshQuota")} aria-label={t("account.refreshQuota")} onClick={() => void refresh(true)}><RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} strokeWidth={2} /></button> : null}
-        {onRemove ? <button type="button" className="apple-icon-button text-[var(--danger)]/70 hover:bg-(--danger)/10 hover:text-[var(--danger)]" title={t("account.remove")} aria-label={t("account.remove")} onClick={onRemove}><TrashIcon /></button> : null}
-      </div> : null}
+      <button ref={menuTriggerRef} type="button" className="apple-icon-button shrink-0 text-[var(--text-secondary)] hover:text-accent" aria-haspopup="menu" aria-expanded={menuOpen} aria-label={t("account.more")} title={t("account.more")} aria-busy={loading} onClick={() => setMenuOpen((open) => !open)}>
+        {loading ? <LoadingSpinner size="md" /> : <MoreHorizontal size={18} strokeWidth={2} aria-hidden="true" />}
+      </button>
+      {menuOpen ? createPortal(
+        <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("account.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
+          <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={loading} onClick={() => { setMenuOpen(false); void refresh(true); }}>
+            <span className="flex items-center gap-2"><RefreshCw size={16} strokeWidth={2} aria-hidden="true" />{t("account.refreshQuota")}</span>
+          </button>
+          <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={loading || loginExpired} title={t("account.warmupHint")} onClick={() => { setMenuOpen(false); void warmup(); }}>
+            <span className="flex items-center gap-2"><Flame size={16} strokeWidth={2} aria-hidden="true" />{t("account.warmup")}</span>
+          </button>
+          {onRemove ? <button type="button" role="menuitem" className="app-select-option app-selection-state app-select-option--danger disabled:cursor-not-allowed disabled:opacity-40" disabled={loading} onClick={() => { setMenuOpen(false); onRemove(); }}>
+            <span className="flex items-center gap-2"><TrashIcon />{t("account.remove")}</span>
+          </button> : null}
+        </div>, document.body,
+      ) : null}
     </div>
     <SubscriptionExpiry plan={plan} expiresAt={expiresAt} />
     <div className="mt-3 border-t border-[var(--panel-divider)] pt-3">

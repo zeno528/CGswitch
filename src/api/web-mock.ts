@@ -1044,6 +1044,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "auth_get_quota":
       // 与后端一致：Settings 的 Codex/OAuth 账号均返回官方用量窗口。
       return { is_available: true, balance_infos: [webChatgptQuota], latency_ms: 210 } as T;
+    case "auth_warmup":
+      // 浏览器 mock 不持有真实账号凭证，不能模拟消耗订阅额度成功。
+      throw new Error("ChatGPT warm-up requires the desktop app");
     case "codex_duplicate_profile": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
