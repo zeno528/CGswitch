@@ -29,7 +29,9 @@ it("共享圆角分段控件随项数定位浮起的滑块，保持颜色过渡"
   expect(sharedStyles).toContain("border-radius: 0.625rem;");
   expect(sharedStyles).toContain("box-shadow: var(--shadow-sm);");
   expect(sharedStyles).toContain("transform: translateX(calc(var(--segment-index) * 100%));");
-  expect(sharedStyles).toContain("transition: transform 340ms cubic-bezier(0.22, 1, 0.36, 1), background-color 210ms ease;");
+  expect(styles).toContain("--motion-segment-slide: 340ms cubic-bezier(0.22, 1, 0.36, 1);");
+  expect(sharedStyles).toContain("transition: transform var(--motion-segment-slide), background-color 210ms ease;");
+  expect(styles).toContain("transition: transform var(--motion-segment-slide), width var(--motion-segment-slide);");
   expect(sharedStyles).toContain("transition: color 210ms ease;");
   expect(sharedStyles).toContain("background: var(--secondary-button-bg);");
   expect(sharedStyles).toContain("background: var(--main-surface-bg);");

@@ -7,7 +7,7 @@ import {
   RotateCw,
   Wrench,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { useFeedback } from "../../app/Feedback";
@@ -28,12 +28,15 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   const [saving, setSaving] = useState(false);
   const [backupsEpoch, setBackupsEpoch] = useState(0);
   const [openingPath, setOpeningPath] = useState<string | null>(null);
-  const tabBar = useRef<HTMLDivElement>(null);
-  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+  const tabBar = useRef<HTMLElement>(null);
+  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
 
   useEffect(() => setForm(state.settings), [state.settings]);
   useEffect(() => { void api.getSettings().then((settings) => { setForm(settings); onSaved(settings); }).catch((error) => feedback.error(String(error))); }, []);
-  useEffect(() => { const button = tabBar.current?.querySelector<HTMLElement>(`[data-section="${section}"]`); if (button) setIndicator({ left: button.offsetLeft, width: button.offsetWidth }); }, [section]);
+  useLayoutEffect(() => {
+    const button = tabBar.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (button) setIndicator({ left: button.offsetLeft, width: button.offsetWidth });
+  }, [section, t]);
 
   const saveGeneral = async (patch: Partial<Settings>) => {
     if (saving) return false;
@@ -48,13 +51,29 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
   };
 
   const openPath = async (item: PathInfo) => { if (openingPath) return; setOpeningPath(item.path); try { await api.openPath(item.path); } catch (error) { feedback.error(String(error)); } finally { setOpeningPath(null); } };
-  const tab = (id: Section, label: string, Icon: typeof Cog) => <button type="button" data-section={id} className={`settings-tab relative flex h-10 items-center gap-1.5 rounded-md px-3 transition-colors ${section === id ? "text-accent" : "text-[var(--text-secondary)] hover:text-accent"}`} aria-current={section === id ? "page" : undefined} onClick={() => setSection(id)}><Icon className="h-4 w-4 shrink-0" strokeWidth={2} />{label}</button>;
+  const tab = (id: Section, label: string, Icon: typeof Cog) => (
+    <button
+      type="button"
+      className={`settings-tab relative flex h-10 items-center gap-1.5 rounded-md px-3 transition-colors ${section === id ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+      aria-current={section === id ? "page" : undefined}
+      onClick={() => setSection(id)}
+    >
+      <Icon className="h-4 w-4 shrink-0" strokeWidth={2} />{label}
+    </button>
+  );
 
   return <section className="settings-page mx-auto flex w-full max-w-none flex-col">
     <header className="apple-page-bar">
       <h1 className="apple-title">{t("view.title")}</h1>
     </header>
-    <div ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}><span className="settings-tab-indicator absolute -bottom-px h-0.5 rounded-full bg-accent" style={{ left: indicator.left, width: indicator.width }} aria-hidden="true" />{tab("general", t("view.tabGeneral"), Cog)}{tab("codex", t("view.tabApp"), AppWindow)}{tab("advanced", t("view.tabAdvanced"), Wrench)}{tab("about", t("view.tabAbout"), Info)}</div><div key={section} className="apple-edit-content">
+    <nav ref={tabBar} className="settings-tab-bar relative flex items-center gap-1" aria-label={t("view.sectionsLabel")}>
+      {indicator && <span className="settings-tab-indicator" style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }} aria-hidden="true" />}
+      {tab("general", t("view.tabGeneral"), Cog)}
+      {tab("codex", t("view.tabApp"), AppWindow)}
+      {tab("advanced", t("view.tabAdvanced"), Wrench)}
+      {tab("about", t("view.tabAbout"), Info)}
+    </nav>
+    <div key={section} className="apple-edit-content">
     {section === "general" ? (
       <div className="flex flex-col gap-[var(--gap-section)]">
         <SettingsGeneral form={form} onPatch={(patch) => void saveGeneral(patch)} />
@@ -134,5 +153,6 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
         <SettingsAbout paths={state.paths} onOpenPath={openPath} openingPath={openingPath} />
       </SettingsPanelSection>
     ) : null}
-  </div></section>;
+    </div>
+  </section>;
 }
