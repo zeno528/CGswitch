@@ -277,6 +277,7 @@ export interface ClaudeProfileSummary {
   /** token 是否已设置；明文只在详情里回显（卡片测试连通按钮的门控）。 */
   has_token: boolean;
   model: string | null;
+  reasoning_effort: string | null;
   description: string | null;
   icon: string | null;
   admin_url: string | null;

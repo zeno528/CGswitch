@@ -1,5 +1,6 @@
 import { balanceQueryProviders, codexBuiltinHasCatalog, codexPresetByKind, type ClientPreset } from "../presets";
-import { splitEnvExtras } from "../features/claude/profileEnvText";
+import { buildSettingsText, readAdvancedSettings, splitEnvExtras } from "../features/claude/profileEnvText";
+import { patchModelValue } from "../features/codex/profileEditText";
 import type {
   AppState,
   DatabaseBackupInfo,
@@ -644,7 +645,7 @@ const webAuthStatus = {
       subscription_active_until: Date.now() + 14 * 86_400_000,
     },
   ],
-  accounts: ["alpha", "beta", "gamma", "delta", "epsilon"].map((name, index) => ({
+  accounts: ["alpha", "beta"].map((name, index) => ({
     id: "web-" + name,
     login: name + "@example.com",
     authenticated_at: 0,
@@ -1086,6 +1087,37 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
       if (typeof args?.adminUrl === "string") profile.admin_url = args.adminUrl || null;
       return { ...profile } as T;
     }
+    case "codex_set_profile_model": {
+      const profile = webProfiles.find((item) => item.id === args?.id);
+      if (!profile) throw new Error("供应商配置不存在");
+      if (typeof args?.fast === "boolean" && (profile.kind !== "official" || profile.provider !== null)) {
+        throw new Error("快速模式只支持官方 ChatGPT 订阅配置");
+      }
+      const detail = webDetails[profile.id];
+      if (!detail) throw new Error("浏览器 mock 缺少配置详情");
+      let text = detail.raw_config ?? detail.config_fragment;
+      // 浏览器只有行级演示 parser；含多行字符串的配置交给桌面端 TOML parser。
+      if (text.includes('"""') || text.includes("'''")) throw new Error("多行 TOML 配置需要在桌面版修改");
+      for (const [arg, key] of [["model", "model"], ["effort", "model_reasoning_effort"]] as const) {
+        if (typeof args?.[arg] !== "string") continue;
+        const value = (args[arg] as string).trim();
+        text = patchModelValue(text, value, key);
+        if (value) detail.model_values[key] = JSON.stringify(value);
+        else delete detail.model_values[key];
+        if (arg === "model") profile.model = value || null;
+        else profile.reasoning_effort = value || null;
+      }
+      if (typeof args?.fast === "boolean") {
+        const value = args.fast ? "fast" : "";
+        text = patchModelValue(text, value, "service_tier");
+        if (value) detail.model_values.service_tier = JSON.stringify(value);
+        else delete detail.model_values.service_tier;
+      }
+      detail.raw_config = text;
+      detail.config_fragment = text;
+      profile.updated_at = new Date().toISOString();
+      return webProfileDetail(profile.id) as T;
+    }
     case "codex_update_profile_config": {
       const profile = webProfiles.find((item) => item.id === args?.id);
       if (!profile) throw new Error("供应商配置不存在");
@@ -1179,6 +1211,7 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
         base_url: profile.base_url,
         has_token: Boolean(profile.auth_token),
         model: profile.model,
+        reasoning_effort: readAdvancedSettings(buildSettingsText(profile)).effortLevel || null,
         description: profile.description,
         icon: profile.icon,
         admin_url: profile.admin_url,

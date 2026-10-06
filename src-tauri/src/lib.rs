@@ -281,6 +281,7 @@ pub fn run() {
             commands::codex_get_profile,
             commands::codex_update_profile,
             commands::codex_update_profile_config,
+            commands::codex_set_profile_model,
             commands::codex_patch_chatgpt_context_config,
             commands::codex_patch_system_proxy_config,
             commands::codex_patch_context_management_config,

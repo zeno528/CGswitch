@@ -498,6 +498,59 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
+        self.update_profile_config_locked(id, config_text, catalog_text, auth_text)
+    }
+
+    /// 卡片只改顶层模型键；用现有 TOML parser 保留注释、表和多行字符串。
+    pub fn codex_set_profile_model(
+        &self,
+        id: &str,
+        model: Option<&str>,
+        effort: Option<&str>,
+        fast: Option<bool>,
+    ) -> AppResult<CodexProfileDetail> {
+        let _operation = self
+            .operation
+            .lock()
+            .map_err(|_| app_err!("操作锁已损坏"))?;
+        let detail = self.codex_get_profile(id)?;
+        if fast.is_some() && (detail.auth_source.is_none() || detail.provider.is_some()) {
+            return Err(app_err!("快速模式只支持官方 ChatGPT 订阅配置"));
+        }
+        if model.is_none() && effort.is_none() && fast.is_none() {
+            return Ok(detail);
+        }
+        let mut document = codex_config::parse_document(&detail.config_fragment)?;
+        for (key, value) in [
+            ("model", model),
+            ("model_reasoning_effort", effort),
+            (
+                "service_tier",
+                fast.map(|enabled| if enabled { "fast" } else { "" }),
+            ),
+        ] {
+            if let Some(value) = value {
+                if value.trim().is_empty() {
+                    document.remove(key);
+                } else {
+                    let mut next = toml_edit::Value::from(value.trim());
+                    if let Some(old) = document.get(key).and_then(toml_edit::Item::as_value) {
+                        *next.decor_mut() = old.decor().clone();
+                    }
+                    document[key] = toml_edit::Item::Value(next);
+                }
+            }
+        }
+        self.update_profile_config_locked(id, &document.to_string(), None, None)
+    }
+
+    fn update_profile_config_locked(
+        &self,
+        id: &str,
+        config_text: &str,
+        catalog_text: Option<&str>,
+        auth_text: Option<&str>,
+    ) -> AppResult<CodexProfileDetail> {
         let stored = self.database.codex_profile(id)?;
         let auth_source = stored
             .payload

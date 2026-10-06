@@ -140,6 +140,8 @@ export const api = {
     catalogText: string | null,
     authText: string | null,
   ) => call<CodexProfileDetail>("codex_update_profile_config", { id, configText, catalogText, authText }),
+  codexSetProfileModel: (id: string, changes: { model?: string; effort?: string; fast?: boolean }) =>
+    call<CodexProfileDetail>("codex_set_profile_model", { id, ...changes }),
   codexPatchChatgptContextConfig: (configText: string, enabled: boolean, compactTokenLimit: number) =>
     call<string>("codex_patch_chatgpt_context_config", { configText, enabled, compactTokenLimit }),
   codexPatchSystemProxyConfig: (configText: string, enabled: boolean) =>

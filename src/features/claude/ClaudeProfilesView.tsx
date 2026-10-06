@@ -18,6 +18,9 @@ import ProfileNameDialog from "../profiles/ProfileNameDialog";
 import { claudeBalanceQueryKinds } from "../../presets";
 import ClaudeProfileEdit from "./ClaudeProfileEdit";
 import type { ClaudeProfileDetail, ClaudeProfileSummary, ProfileBalanceInfo } from "../../types";
+import ProfileModelSelector from "../profiles/ProfileModelSelector";
+import { claudeEffortLevels } from "../../components/ReasoningEffortSlider";
+import { buildSettingsText, patchEnvValue, readAdvancedSettings, readEnvValue } from "./profileEnvText";
 
 function cardProfile(profile: ClaudeProfileSummary) {
   return {
@@ -26,14 +29,14 @@ function cardProfile(profile: ClaudeProfileSummary) {
     kind: "third_party" as const,
     provider: profile.kind ?? null,
     model: profile.model,
-    reasoning_effort: null,
+    reasoning_effort: profile.reasoning_effort,
     plan_type: null,
     admin_url: profile.admin_url,
     show_balance: profile.show_balance,
   };
 }
 
-function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, coldStart, balanceCache, onRename, onEdit, onApply, onDuplicate, onTest, onRemove }: {
+function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, coldStart, balanceCache, onRename, onEdit, onApply, onDuplicate, onTest, onRemove, onChanged }: {
   profile: ClaudeProfileSummary;
   active: boolean;
   busy: boolean;
@@ -47,6 +50,7 @@ function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, co
   onDuplicate: () => void;
   onTest: () => void;
   onRemove: () => void;
+  onChanged: () => Promise<void>;
 }) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
@@ -71,7 +75,24 @@ function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, co
   return (
     <SortableCard id={profile.id} active={active} onClick={onEdit} title={t("card.clickToEdit")} handleTitle={t("card.dragToReorder")}>
       <ProfileCardContent profile={cardProfile(profile)} hideModel balanceInfos={balance.balanceInfos} balanceError={balance.balanceError} balanceRefreshing={balance.balanceRefreshing} onRefreshBalance={balance.refreshBalance} onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))} onRename={onRename} />
-      <ProfileCardActions active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} terminalProfileId={profile.id} onApply={onApply} onDuplicate={onDuplicate} onTest={onTest} onRemove={onRemove} />
+      <ProfileCardActions modelControl={
+        <ProfileModelSelector model={profile.model} effort={profile.reasoning_effort} levels={claudeEffortLevels} disabled={busy}
+          onLoad={async () => {
+            const detail = await api.claudeGetProfile(profile.id);
+            const text = buildSettingsText(detail);
+            return { model: readEnvValue(text, "ANTHROPIC_MODEL"), effort: readAdvancedSettings(text).effortLevel, models: detail.fetched_models };
+          }}
+          onSave={async (changes) => {
+            const detail = await api.claudeGetProfile(profile.id);
+            let rawSettings = buildSettingsText(detail);
+            if (changes.model !== undefined) rawSettings = patchEnvValue(rawSettings, "ANTHROPIC_MODEL", changes.model || null);
+            if (changes.effort !== undefined) rawSettings = patchEnvValue(rawSettings, "CLAUDE_CODE_EFFORT_LEVEL", changes.effort || null, "effortLevel");
+            await api.claudeSaveProfile({ id: detail.id, name: detail.name, baseUrl: detail.base_url, authToken: detail.auth_token,
+              model: detail.model, description: detail.description, fetchedModels: detail.fetched_models, kind: detail.kind,
+              adminUrl: detail.admin_url, extraEnv: detail.extra_env, rawSettings, icon: detail.icon, showBalance: detail.show_balance });
+            await onChanged();
+          }} />
+      } active={active} busy={busy} testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} terminalProfileId={profile.id} onApply={onApply} onDuplicate={onDuplicate} onTest={onTest} onRemove={onRemove} />
     </SortableCard>
   );
 }
@@ -275,7 +296,7 @@ export default function ClaudeProfilesView({ activeId, onChanged, activationEpoc
               <div className="profile-list relative space-y-[var(--gap-page)]">
                 {items.map((profile) => {
                   return (
-                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void claudeApplyProfile(profile)} onDuplicate={() => void claudeDuplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void claudeDeleteProfile(profile)} />
+                    <ClaudeProfileCard key={profile.id} profile={profile} active={profile.id === activeId} busy={busy} testing={testingId === profile.id} activationEpoch={activationEpoch} coldStart={coldStart} balanceCache={balanceCache} onChanged={async () => { await refresh(); onChanged(); }} onRename={() => openRename(profile)} onEdit={() => void openEdit(profile)} onApply={() => void claudeApplyProfile(profile)} onDuplicate={() => void claudeDuplicateProfile(profile)} onTest={() => void testProfile(profile)} onRemove={() => void claudeDeleteProfile(profile)} />
                   );
                 })}
               </div>

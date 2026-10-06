@@ -1,5 +1,14 @@
 /** 供应商配置页文案。 */
 export default {
+  modelSelection: {
+    title: "模型与思考等级",
+    chooseModel: "选择模型",
+    effort: "思考等级",
+    default: "默认",
+    resetEffort: "恢复默认思考等级",
+    useDefaultEffort: "切换时使用默认思考等级",
+    fastMode: "快速模式",
+  },
   status: {
     running: "运行中",
     stopped: "未运行",

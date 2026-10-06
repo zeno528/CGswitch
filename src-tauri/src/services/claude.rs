@@ -80,6 +80,15 @@ pub(super) fn managed_env(profile: &StoredClaudeProfile) -> Map<String, Value> {
 }
 
 fn summary(profile: &StoredClaudeProfile) -> ClaudeProfileSummary {
+    let settings = profile
+        .raw_settings
+        .as_deref()
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .unwrap_or_else(|| serde_json::json!({ "env": managed_env(profile) }));
+    let effort = settings["env"]["CLAUDE_CODE_EFFORT_LEVEL"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .or_else(|| settings["effortLevel"].as_str());
     ClaudeProfileSummary {
         id: profile.id.clone(),
         name: profile.name.clone(),
@@ -89,6 +98,9 @@ fn summary(profile: &StoredClaudeProfile) -> ClaudeProfileSummary {
             .as_deref()
             .is_some_and(|token| !token.is_empty()),
         model: profile.model.clone(),
+        reasoning_effort: effort
+            .filter(|value| !value.is_empty() && *value != "auto")
+            .map(str::to_string),
         description: profile.description.clone(),
         icon: profile.icon.clone(),
         admin_url: profile.admin_url.clone(),
@@ -1445,6 +1457,48 @@ mod tests {
 
     use super::*;
     use crate::services::plugins::test_context;
+
+    #[test]
+    fn card_effort_matches_editor_env_precedence_and_preserves_unknown_values() {
+        let (_home, context) = test_context();
+        for (raw, expected) in [
+            (
+                r#"{"effortLevel":"high","env":{"CLAUDE_CODE_EFFORT_LEVEL":"low"}}"#,
+                Some("low"),
+            ),
+            (
+                r#"{"effortLevel":"high","env":{"CLAUDE_CODE_EFFORT_LEVEL":"auto"}}"#,
+                None,
+            ),
+            (r#"{"effortLevel":"future-level"}"#, Some("future-level")),
+            ("{}", None),
+        ] {
+            let detail = context
+                .claude_save(
+                    None,
+                    ClaudeProfileInput {
+                        name: "Fixture".into(),
+                        raw_settings: Some(raw.into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            let profile = context.database.claude_profile(&detail.id).unwrap();
+            assert_eq!(summary(&profile).reasoning_effort.as_deref(), expected);
+        }
+        let profile = context
+            .database
+            .insert_claude_profile(
+                &ClaudeProfileInput {
+                    name: "Legacy".into(),
+                    extra_env: Some(r#"{"CLAUDE_CODE_EFFORT_LEVEL":"max"}"#.into()),
+                    ..Default::default()
+                },
+                "1",
+            )
+            .unwrap();
+        assert_eq!(summary(&profile).reasoning_effort.as_deref(), Some("max"));
+    }
 
     #[test]
     fn claude_mcp_diff_empty_database_adopt_and_revert_preserve_native_json() {

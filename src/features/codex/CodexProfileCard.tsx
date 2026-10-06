@@ -10,6 +10,9 @@ import SortableCard from "../../components/SortableCard";
 import { ProfileCardActions, ProfileCardContent, connectionGate } from "../profiles/ProfileCard";
 import { useProfileBalance } from "../profiles/useProfileBalance";
 import { connectionErrorMessage, connectionFailureMessage } from "../profiles/connectionText";
+import ProfileModelSelector from "../profiles/ProfileModelSelector";
+import { codexEffortLevels } from "../../components/ReasoningEffortSlider";
+import { readCatalogEfforts, readModelValue } from "./profileEditText";
 
 interface ProfileCardProps {
   profile: CodexProfileSummary;
@@ -24,6 +27,7 @@ interface ProfileCardProps {
   onEdit: () => void;
   onRemove: () => void;
   onDuplicate: () => void;
+  onChanged: () => Promise<void>;
 }
 
 /** Codex 侧壳：官方订阅（无第三方 provider）不做门控；第三方供应商映射到通用判定。 */
@@ -48,6 +52,7 @@ export default function CodexProfileCard({
   onEdit,
   onRemove,
   onDuplicate,
+  onChanged,
 }: ProfileCardProps) {
   const feedback = useFeedback();
   const { t } = useTranslation("profiles");
@@ -106,7 +111,22 @@ export default function CodexProfileCard({
         onOpenAdmin={() => void api.openUrl(profile.admin_url!).catch((error) => feedback.error(String(error)))}
         onRename={onRename}
       />
-      <ProfileCardActions model={profile.model} reasoningEffort={profile.reasoning_effort} active={active} busy={busy} allowInactiveDeleteWhileBusy testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
+      <ProfileCardActions modelControl={
+        <ProfileModelSelector model={profile.model} effort={profile.reasoning_effort} levels={codexEffortLevels} disabled={busy}
+          supportsFastMode={profile.kind === "official" && profile.provider === null}
+          onLoad={async () => {
+            const detail = await api.codexGetProfile(profile.id);
+            const efforts = readCatalogEfforts(detail.raw_catalog ?? detail.catalog_content);
+            return {
+              model: readModelValue(`model = ${detail.model_values.model ?? '""'}`) ?? "",
+              effort: readModelValue(`model = ${detail.model_values.model_reasoning_effort ?? '""'}`) ?? "",
+              fast: readModelValue(`model = ${detail.model_values.service_tier ?? '""'}`) === "fast",
+              models: [...detail.fetched_models, ...Object.keys(efforts)],
+              efforts,
+            };
+          }}
+          onSave={async (changes) => { await api.codexSetProfileModel(profile.id, changes); await onChanged(); }} />
+      } active={active} busy={busy} allowInactiveDeleteWhileBusy testing={testing} connectionDisabled={connection.disabled} connectionTitle={connection.title} onApply={onApply} onDuplicate={onDuplicate} onTest={() => void testConnection()} onRemove={onRemove} />
     </SortableCard>
   );
 }

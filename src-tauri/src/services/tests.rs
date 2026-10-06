@@ -137,6 +137,86 @@ fn connection_error_body_detects_provider_level_failures() {
 }
 
 #[test]
+fn card_model_selection_only_updates_top_level_config_and_preserves_other_files() {
+    let (_home, context) = chatgpt_test_context();
+    let config = "model = \"fixture\" # keep\nmodel_reasoning_effort = \"high\"\nbase_instructions = '''\nmodel = \"inside-string\"\n'''\n[profiles.other]\nmodel = \"nested\"\n[mcp_servers.keep]\ncommand = \"node\"\n";
+    std::fs::write(context.paths.codex_config(), config).unwrap();
+    let profile = context.codex_capture_profile("Fixture").unwrap();
+    context
+        .codex_set_profile_model(&profile.id, None, Some("low"), None)
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(context.paths.codex_config()).unwrap(),
+        config
+    );
+    context.codex_apply_profile(&profile.id).unwrap();
+    let auth_path = context.paths.codex_home.join("auth.json");
+    std::fs::write(&auth_path, "{\"keep\":true}").unwrap();
+    context
+        .codex_set_profile_model(&profile.id, None, None, Some(true))
+        .unwrap();
+    let before = context.codex_get_profile(&profile.id).unwrap();
+    assert_eq!(
+        before.model_values.get("service_tier").map(String::as_str),
+        Some("\"fast\"")
+    );
+    context
+        .codex_set_profile_model(&profile.id, Some("next"), None, None)
+        .unwrap();
+    let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    let document = codex_config::parse_document(&live).unwrap();
+    assert_eq!(document["model"].as_str(), Some("next"));
+    assert_eq!(document["model_reasoning_effort"].as_str(), Some("low"));
+    assert_eq!(document["service_tier"].as_str(), Some("fast"));
+    assert_eq!(
+        document["profiles"]["other"]["model"].as_str(),
+        Some("nested")
+    );
+    assert_eq!(
+        document["base_instructions"].as_str(),
+        Some("model = \"inside-string\"\n")
+    );
+    assert!(live.contains("# keep") && live.contains("[mcp_servers.keep]"));
+    assert_eq!(
+        std::fs::read_to_string(&auth_path).unwrap(),
+        "{\"keep\":true}"
+    );
+    assert_eq!(
+        context.codex_get_profile(&profile.id).unwrap().raw_catalog,
+        before.raw_catalog
+    );
+    context
+        .codex_set_profile_model(&profile.id, Some(""), Some(""), None)
+        .unwrap();
+    context
+        .codex_set_profile_model(&profile.id, None, None, Some(false))
+        .unwrap();
+    let defaults = context.codex_get_profile(&profile.id).unwrap();
+    assert!(!defaults.model_values.contains_key("model"));
+    assert!(!defaults.model_values.contains_key("model_reasoning_effort"));
+    assert!(!defaults.model_values.contains_key("service_tier"));
+    let third = context.codex_add_custom_profile("Third", None,
+        "model_provider = \"fixture\"\n[model_providers.fixture]\nbase_url = \"https://example.test\"\n",
+        None, None, None, None, None).unwrap();
+    assert!(context
+        .codex_set_profile_model(&third.id, None, None, Some(true))
+        .is_err());
+    std::fs::write(context.paths.codex_config(), "model = [").unwrap();
+    assert!(context
+        .codex_set_profile_model(&profile.id, Some("invalid"), None, None)
+        .is_err());
+    assert_eq!(
+        context
+            .database
+            .codex_profile(&profile.id)
+            .unwrap()
+            .payload
+            .model_values,
+        defaults.model_values
+    );
+}
+
+#[test]
 fn fetched_models_survive_profile_reload() {
     let (_home, context) = chatgpt_test_context();
     let profile = context.codex_capture_profile("模型缓存").unwrap();

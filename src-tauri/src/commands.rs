@@ -729,6 +729,17 @@ pub fn codex_update_profile(
 }
 
 #[tauri::command]
+pub fn codex_set_profile_model(
+    id: String,
+    model: Option<String>,
+    effort: Option<String>,
+    fast: Option<bool>,
+    state: State<'_, AppContext>,
+) -> AppResult<CodexProfileDetail> {
+    state.codex_set_profile_model(&id, model.as_deref(), effort.as_deref(), fast)
+}
+
+#[tauri::command]
 pub fn codex_update_profile_config(
     id: String,
     config_text: String,

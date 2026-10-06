@@ -264,7 +264,7 @@ export function SettingsAdvanced({ form, onPatch, paths, backupsEpoch, onOpenPat
     return () => { document.removeEventListener("pointerdown", close); window.removeEventListener("scroll", close, true); };
   }, [menuTarget]);
   const rowMenu = menuTarget ? createPortal(
-    <div ref={menuRef} className="app-select-menu" data-open="true" data-row-menu role="menu" aria-label={t("backup.moreTooltip")} style={{ ...menuStyle, minWidth: "10rem" }} onKeyDown={(event) => { if (event.key === "Escape") setMenuTarget(null); }}>
+    <div ref={menuRef} className="app-select-menu app-popover" data-open="true" data-popover-in data-row-menu role="menu" aria-label={t("backup.moreTooltip")} style={{ ...menuStyle, minWidth: "10rem" }} onKeyDown={(event) => { if (event.key === "Escape") setMenuTarget(null); }}>
       <button type="button" role="menuitem" className="app-select-option app-selection-state" onClick={() => { const target = menuTarget.backup; setMenuTarget(null); openRename(target); }}>
         <span className="flex items-center gap-2"><Pencil className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("backup.renameAction")}</span>
       </button>

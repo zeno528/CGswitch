@@ -1,5 +1,14 @@
 /** Providers page strings. */
 export default {
+  modelSelection: {
+    title: "Model and reasoning effort",
+    chooseModel: "Choose model",
+    effort: "Reasoning effort",
+    default: "Default",
+    resetEffort: "Restore default reasoning effort",
+    useDefaultEffort: "Uses default reasoning effort when selected",
+    fastMode: "Fast mode",
+  },
   status: {
     running: "Running",
     stopped: "Not running",

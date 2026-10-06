@@ -1,9 +1,50 @@
 import { describe, expect, it, vi } from "vitest";
 import { webInvoke } from "./web-mock";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../features/claude/profileEnvText";
-import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary, CliStatus, CliUpdate } from "../types";
+import type { AppState, ClaudeProfileDetail, ClaudeProfileSummary, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary, CliStatus, CliUpdate } from "../types";
 
 describe("web mock", () => {
+  it("卡片模型保存同步列表与详情，默认值移除覆盖，其他配置保持不变", async () => {
+    const source = (await webInvoke<AppState>("get_state")).codex_profiles[0];
+    const copy = await webInvoke<CodexProfileSummary>("codex_duplicate_profile", { id: source.id });
+    try {
+      const before = await webInvoke<CodexProfileDetail>("codex_get_profile", { id: copy.id });
+      const after = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: copy.id, model: "fixture", effort: "low" });
+      expect(after.model_values.model).toBe('"fixture"');
+      expect(after.model_values.model_reasoning_effort).toBe('"low"');
+      expect(after.api_key).toBe(before.api_key);
+      expect(after.raw_catalog).toBe(before.raw_catalog);
+      expect((await webInvoke<AppState>("get_state")).codex_profiles.find((profile) => profile.id === copy.id))
+        .toMatchObject({ model: "fixture", reasoning_effort: "low" });
+      const defaults = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: copy.id, effort: "" });
+      expect(defaults.model_values).not.toHaveProperty("model_reasoning_effort");
+      expect(defaults.model_values.model).toBe('"fixture"');
+    } finally { await webInvoke("codex_delete_profile", { id: copy.id }); }
+    const claude = await webInvoke<ClaudeProfileDetail>("claude_save_profile", {
+      name: "effort-fixture", rawSettings: '{"env":{"CLAUDE_CODE_EFFORT_LEVEL":"max"}}',
+    });
+    try {
+      expect((await webInvoke<ClaudeProfileSummary[]>("claude_list_profiles")).find((profile) => profile.id === claude.id))
+        .toMatchObject({ model: null, reasoning_effort: "max" });
+    } finally { await webInvoke("claude_delete_profile", { id: claude.id }); }
+  });
+
+  it("快速模式只写官方配置的 service_tier，模型和推理档位不变", async () => {
+    const profiles = (await webInvoke<AppState>("get_state")).codex_profiles;
+    const third = profiles.find((profile) => profile.kind === "third_party")!;
+    await expect(webInvoke("codex_set_profile_model", { id: third.id, fast: true })).rejects.toThrow("官方 ChatGPT");
+    const official = profiles.find((profile) => profile.kind === "official")!;
+    const copy = await webInvoke<CodexProfileSummary>("codex_duplicate_profile", { id: official.id });
+    try {
+      const before = await webInvoke<CodexProfileDetail>("codex_get_profile", { id: copy.id });
+      const enabled = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: copy.id, fast: true });
+      expect(enabled.model_values).toEqual({ ...before.model_values, service_tier: '"fast"' });
+      expect(enabled.raw_config).toContain('service_tier = "fast"');
+      const disabled = await webInvoke<CodexProfileDetail>("codex_set_profile_model", { id: copy.id, fast: false });
+      expect(disabled.model_values).toEqual(before.model_values);
+      expect(disabled.raw_config).not.toContain("service_tier");
+    } finally { await webInvoke("codex_delete_profile", { id: copy.id }); }
+  });
   it("模拟 Claude Code 的 CLI 更新角标", async () => {
     expect((await webInvoke<CliStatus>("claude_get_cli_status")).installation).toBe("native");
     await expect(webInvoke<CliUpdate>("claude_check_cli_update")).resolves.toMatchObject({ latest_version: "99.0.0", available: true });

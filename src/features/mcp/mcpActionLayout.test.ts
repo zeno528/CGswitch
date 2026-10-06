@@ -106,7 +106,7 @@ describe("MCP 操作入口", () => {
 
   it("列表把编辑、测试、工具和卸载收进三点菜单，开关仍在最右侧", () => {
     expect(viewSource).toContain("<MoreHorizontal");
-    expect(viewSource).toContain('className="app-select-menu"');
+    expect(viewSource).toContain('className="app-select-menu app-popover"');
     expect(viewSource).toContain('aria-label={t("list.moreTooltip")}');
     expect(viewSource).toContain("<Pencil");
     expect(viewSource).toContain("<Wrench");

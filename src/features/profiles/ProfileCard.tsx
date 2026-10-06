@@ -1,5 +1,5 @@
 import { Check, Copy, Gauge, Globe, MoreHorizontal, Wifi } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { balanceChipClass, balanceQueryProviders, usageQueryProviders } from "../../presets";
@@ -93,8 +93,7 @@ interface ProfileCardActionsProps {
   busy: boolean;
   testing: boolean;
   allowInactiveDeleteWhileBusy?: boolean;
-  model?: string | null;
-  reasoningEffort?: string | null;
+  modelControl?: ReactNode;
   /** 测试连通按钮是否禁用（调用方按各自领域判定：缺地址/缺密钥）。 */
   connectionDisabled: boolean;
   connectionTitle: string;
@@ -106,7 +105,7 @@ interface ProfileCardActionsProps {
   onRemove?: () => void;
 }
 
-export function ProfileCardActions({ active, busy, testing, allowInactiveDeleteWhileBusy = false, model, reasoningEffort, connectionDisabled, connectionTitle, terminalProfileId, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
+export function ProfileCardActions({ active, busy, testing, allowInactiveDeleteWhileBusy = false, modelControl, connectionDisabled, connectionTitle, terminalProfileId, onApply, onDuplicate, onTest, onRemove }: ProfileCardActionsProps) {
   const { t } = useTranslation("profiles");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -115,7 +114,7 @@ export function ProfileCardActions({ active, busy, testing, allowInactiveDeleteW
   useMenuDismiss(menuOpen, menuTriggerRef, menuRef, setMenuOpen);
   const busyForDelete = busy && !allowInactiveDeleteWhileBusy;
   const menu = menuOpen ? createPortal(
-    <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("actions.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
+    <div ref={menuRef} className="app-select-menu app-popover" data-open="true" data-popover-in role="menu" aria-label={t("actions.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
       <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={connectionDisabled || testing} title={connectionTitle} onClick={() => { setMenuOpen(false); onTest?.(); }}>
         <span className="flex items-center gap-2">{testing ? <LoadingSpinner size="sm" /> : <Wifi className="h-4 w-4" strokeWidth={2} aria-hidden="true" />}{t("connection.test")}</span>
       </button>
@@ -130,12 +129,7 @@ export function ProfileCardActions({ active, busy, testing, allowInactiveDeleteW
   ) : null;
   return (
     <div className="profile-card-actions flex shrink-0 items-center gap-2" title="" onClick={(event) => event.stopPropagation()} onMouseDown={(event) => event.preventDefault()}>
-      {model !== undefined || reasoningEffort ? (
-        <span className="profile-card-action-meta">
-          <span className="profile-card-action-meta__model">{model ?? t("card.notSet")}</span>
-          {reasoningEffort ? <><span aria-hidden="true">·</span><span>{reasoningEffort}</span></> : null}
-        </span>
-      ) : null}
+      {modelControl}
       <div className="profile-card-action-buttons flex shrink-0 items-center gap-2">
         <button type="button" className={`apple-action-button relative !h-[var(--icon-button-size)] !rounded-[var(--radius-control)] app-button--primary ${active ? "disabled:opacity-100" : "disabled:!opacity-100"}`} disabled={busy || active} aria-pressed={active} aria-label={active ? t("actions.inUse") : t("actions.switch")} title={active ? t("actions.inUse") : t("actions.switch")} onClick={onApply}>
           <span className={active ? "invisible" : ""} aria-hidden="true">{t("actions.switch")}</span>

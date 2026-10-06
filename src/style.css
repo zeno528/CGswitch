@@ -98,6 +98,13 @@
   --motion-fast: 150ms;
   --motion-sidebar: 240ms;
   --motion-layout: 360ms;
+  /* 浮层（菜单/下拉/提示）统一的进场节奏：等比 scale + 淡入，200ms 强缓出。
+     出场曲线曾用 antd 的 motionEaseInQuint（cubic-bezier(.755,.05,.855,.06)），
+     但那条 200ms 里前 140ms 只走完 14%，可见动作全挤在最后 3 帧；
+     它是为悬停菜单的 mouseLeaveDelay 设计的，单独用在悬停提示卡的出场上。 */
+  --motion-popover: 200ms;
+  --motion-popover-in: cubic-bezier(0.23, 1, 0.32, 1);
+  --motion-popover-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* 主题滑块与设置导航横条共用同一滑动节奏。 */
   --motion-segment-slide: 340ms cubic-bezier(0.22, 1, 0.36, 1);
   /* 页面顶部栏与底部操作栏统一高度 */
@@ -827,6 +834,115 @@ body:has(.app-dialog-overlay) .window-control-button {
 .profile-card-action-meta__model {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 模型与档位整体可点击；悬浮卡片沿用全局菜单定位、描边和阴影。 */
+.profile-model-trigger { border-radius: 999px; padding: 0.375rem 0.625rem; cursor: pointer; transition: background-color 150ms ease-out; }
+.profile-model-trigger:hover, .profile-model-trigger[aria-expanded="true"] { background: var(--secondary-button-hover-bg); }
+.profile-model-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profile-model-trigger:disabled { cursor: not-allowed; }
+.app-select-menu.profile-model-popover { border-radius: var(--radius-card); padding: calc(var(--gap-section) * 0.625); overflow-x: hidden; }
+.profile-model-current { display: inline-flex; align-items: center; justify-content: center; gap: 0.125rem; min-width: 0; max-width: 100%; padding: 0.125rem 0.375rem; border-radius: var(--radius-control); color: var(--text-secondary); }
+.profile-model-current svg { flex-shrink: 0; }
+.profile-model-current span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-model-current:hover { color: var(--text-primary); }
+/* 原生模型按钮的热区覆盖整个等级/模型标题区，复用原点击和键盘行为。 */
+.profile-model-current::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-control); }
+.profile-model-current:focus-visible { outline: none; }
+.profile-model-current:focus-visible::after { outline: 2px solid var(--accent); }
+.profile-model-list-title { padding: 0.125rem 0.75rem 0.5rem; }
+.profile-model-option { padding-block: 0.5rem; }
+
+/* 原生 range 负责拖动/键盘，圆头与填色复用主题分段控件的动效 token。 */
+.reasoning-effort-slider { --effort-thumb-size: 1.5rem; --effort-track-height: 1.25rem; min-width: 0; }
+.reasoning-effort-slider__header { display: grid; grid-template-columns: var(--icon-button-size) minmax(0, 1fr) var(--icon-button-size); align-items: start; gap: 0.25rem; margin-bottom: calc(var(--gap-section) * 0.5); }
+.reasoning-effort-slider__heading { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; gap: 0.125rem; padding: 0.125rem; border-radius: var(--radius-control); transition: background-color var(--motion-fast) ease-out; }
+.reasoning-effort-slider__heading:is(:hover, :focus-within) { background: var(--secondary-button-hover-bg); }
+.reasoning-effort-slider strong { color: var(--effort-color); }
+.reasoning-effort-slider__header .apple-icon-button { color: var(--text-secondary); }
+.reasoning-effort-slider__header .profile-model-fast[aria-pressed="true"] { color: var(--accent); }
+.reasoning-effort-slider__track {
+  container-type: inline-size;
+  position: relative;
+  height: var(--effort-track-height);
+  border-radius: 999px;
+  background: var(--secondary-button-bg);
+  box-shadow: var(--card-edge-shadow);
+  isolation: isolate;
+}
+.reasoning-effort-slider__fill { position: absolute; inset: 0; border-radius: inherit; background: var(--effort-color); clip-path: inset(0 calc((1 - var(--effort-progress)) * (100cqw - var(--effort-thumb-size)) + var(--effort-thumb-size) / 2) 0 0); transition: clip-path var(--motion-segment-slide); pointer-events: none; }
+.reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__fill { opacity: 0; }
+.reasoning-effort-slider:has(input:focus-visible) strong { text-decoration: underline; text-underline-offset: 0.2em; }
+.reasoning-effort-slider__track input {
+  appearance: none;
+  position: absolute;
+  top: calc((var(--effort-track-height) - var(--effort-thumb-size)) / 2);
+  left: 0;
+  z-index: 1;
+  width: 100%;
+  height: var(--effort-thumb-size);
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.reasoning-effort-slider__track input::-webkit-slider-thumb { appearance: none; width: var(--effort-thumb-size); height: var(--effort-thumb-size); }
+.reasoning-effort-slider__track input::-moz-range-thumb { width: var(--effort-thumb-size); height: var(--effort-thumb-size); border: 0; }
+.reasoning-effort-slider__thumb-rail {
+  position: absolute;
+  top: calc((var(--effort-track-height) - var(--effort-thumb-size)) / 2);
+  left: 0;
+  z-index: 3;
+  width: var(--effort-thumb-size);
+  height: var(--effort-thumb-size);
+  transform: translateX(calc(var(--effort-progress) * (100cqw - var(--effort-thumb-size))));
+  transition: transform var(--motion-segment-slide);
+  pointer-events: none;
+}
+.reasoning-effort-slider__thumb { display: block; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; background: #fff; }
+/* 等级圆点可直接点选；当前圆点让出事件，使白色圆头仍由原生 range 拖动。 */
+.reasoning-effort-slider__stops { position: absolute; inset: 0; pointer-events: none; }
+.reasoning-effort-slider__stop { position: absolute; top: calc((var(--effort-track-height) - var(--effort-thumb-size)) / 2); left: calc(var(--effort-progress) * (100cqw - var(--effort-thumb-size))); z-index: 2; display: grid; place-items: center; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; pointer-events: auto; cursor: pointer; }
+.reasoning-effort-slider__stop span { width: 0.25rem; height: 0.25rem; border-radius: 50%; background: var(--text-secondary); opacity: 0.4; transition: transform var(--motion-fast) ease-out, opacity var(--motion-fast) ease-out; }
+.reasoning-effort-slider__stop[data-filled="true"] span { background: #fff; }
+.reasoning-effort-slider__stop:is(:hover, :focus-visible) span { transform: scale(1.75); opacity: 1; }
+.reasoning-effort-slider__stop:focus-visible { outline: 2px solid var(--accent); }
+.reasoning-effort-slider__stop[aria-pressed="true"] { visibility: hidden; pointer-events: none; }
+.reasoning-effort-slider__particles { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; opacity: var(--effort-energy); }
+.reasoning-effort-slider__particles::before, .reasoning-effort-slider__particles::after {
+  --effort-particle-span: 17rem;
+  content: "";
+  position: absolute;
+  inset: 0 calc(-1 * var(--effort-particle-span));
+  background-image:
+    radial-gradient(circle at 12% 17%, rgb(255 255 255 / 0.8) 1px, transparent 2px),
+    radial-gradient(circle at 29% 71%, rgb(255 255 255 / 0.6) 0.7px, transparent 1.7px),
+    radial-gradient(circle at 43% 43%, rgb(255 255 255 / 0.7) 1.2px, transparent 2.2px),
+    radial-gradient(circle at 56% 84%, rgb(255 255 255 / 0.5) 0.6px, transparent 1.6px),
+    radial-gradient(circle at 72% 29%, rgb(255 255 255 / 0.8) 1.4px, transparent 2.4px),
+    radial-gradient(circle at 84% 62%, rgb(255 255 255 / 0.6) 0.9px, transparent 1.9px),
+    radial-gradient(circle at 96% 51%, rgb(255 255 255 / 0.5) 0.6px, transparent 1.6px);
+  background-size: var(--effort-particle-span) 100%;
+  background-repeat: repeat-x;
+  animation: effort-particle-drift calc(var(--effort-particle-duration) * 2) linear infinite;
+}
+.reasoning-effort-slider__particles::after {
+  --effort-particle-span: 13rem;
+  background-image:
+    radial-gradient(circle at 7% 58%, rgb(255 255 255 / 0.6) 1px, transparent 2px),
+    radial-gradient(circle at 38% 24%, rgb(255 255 255 / 0.8) 0.6px, transparent 1.6px),
+    radial-gradient(circle at 61% 78%, rgb(255 255 255 / 0.5) 0.8px, transparent 1.8px),
+    radial-gradient(circle at 89% 39%, rgb(255 255 255 / 0.7) 1.2px, transparent 2.2px);
+  opacity: 0.6;
+  animation-duration: calc(var(--effort-particle-duration) * 2.7);
+  animation-delay: -3s;
+}
+.reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__particles::before,
+.reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__particles::after { animation-play-state: paused; }
+.reasoning-effort-slider button:disabled, .reasoning-effort-slider input[aria-disabled="true"] { cursor: not-allowed; }
+@keyframes effort-particle-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(-1 * var(--effort-particle-span)), 0, 0); } }
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-effort-slider__thumb-rail, .reasoning-effort-slider__fill { transition: none; }
+  .reasoning-effort-slider__particles::before, .reasoning-effort-slider__particles::after { animation: none; }
 }
 
 /* 实际拖拽开始后统一抓手光标并禁止文本选中，结束时恢复。 */
@@ -2663,6 +2779,46 @@ button:focus-visible {
 .app-select-wrap[data-open="true"] { z-index: 30; }
 .app-select-wrap[data-open="true"] .app-select__icon { color: var(--accent); transform: rotate(180deg); }
 
+/* 浮层进场：等比 scale + 淡入。变换原点由 useFixedMenuPosition 通过
+   --app-popover-origin 注入（贴触发按钮那一侧的角），此处只给不注入时的兜底值。
+   卡片因此像从按钮所在的角"胀开"，而不是一律从左上角。 */
+.app-popover {
+  transform-origin: var(--app-popover-origin, 0 0);
+}
+
+.app-popover[data-popover-in] {
+  animation: app-popover-in var(--motion-popover) var(--motion-popover-in) both;
+}
+
+/* 缩放幅度取 0.8：与上游 antZoomBigIn 一致。曾试过收到 0.9（起点更贴近终态、
+   动画期间可点区域更大），但 10% 幅度叠加强透明度渐变后，视觉上退化成纯淡入，
+   丢掉了"从触发按钮所在角胀开"的空间感——那正是这套动效的辨识度所在。 */
+@keyframes app-popover-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 浮层出场：反向播放。当前只供悬停提示卡（AppTooltip）使用——
+   它靠 exiting 状态让节点在关闭后多活一帧，动画播完才卸载。
+   点击触发的浮层（AppSelect / EndpointField / 行内 ⋯ 菜单）不挂这条：
+   关闭即收，用基础类的短淡出即可，不叠加缩放。 */
+.app-popover[data-popover-out] {
+  animation: app-popover-out var(--motion-popover) var(--motion-popover-out) both;
+}
+
+@keyframes app-popover-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.8); }
+}
+
+/* 尊重系统"减少动态效果"：浮层直接出现/消失，不做缩放。 */
+@media (prefers-reduced-motion: reduce) {
+  .app-popover[data-popover-in],
+  .app-popover[data-popover-out] {
+    animation: none;
+  }
+}
+
 .app-select-menu {
   position: fixed;
   top: 0;
@@ -2685,6 +2841,9 @@ button:focus-visible {
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px var(--panel-ring);
   opacity: 0;
   pointer-events: none;
+  /* 进场走 .app-popover 的 app-popover-in 关键帧（等比缩放 + 淡入）。
+     关闭没有出场关键帧——菜单点掉即收，节点虽常驻，但这一类浮层的出场
+     用基础类原有的短淡出即可，不额外引入缩放，避免与进场观感割裂。 */
   transition: opacity 150ms ease-out, visibility 180ms;
   visibility: hidden;
 }

@@ -206,7 +206,7 @@ function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance,
         {loading ? <LoadingSpinner size="md" /> : <MoreHorizontal size={18} strokeWidth={2} aria-hidden="true" />}
       </button>
       {menuOpen ? createPortal(
-        <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("account.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
+        <div ref={menuRef} className="app-select-menu app-popover" data-open="true" data-popover-in role="menu" aria-label={t("account.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
           <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={loading} onClick={() => { setMenuOpen(false); void refresh(true); }}>
             <span className="flex items-center gap-2"><RefreshCw size={16} strokeWidth={2} aria-hidden="true" />{t("account.refreshQuota")}</span>
           </button>

@@ -37,7 +37,7 @@ export default function EndpointField({ value, onChange, endpoints, onPick, plac
         </button>
       </div>
       {createPortal(
-        <div ref={menuRef} className="app-select-menu" data-open={open} role="listbox" aria-label={label} style={menuStyle}>
+        <div ref={menuRef} className="app-select-menu app-popover" data-open={open} data-popover-in={open ? "" : undefined} role="listbox" aria-label={label} style={menuStyle}>
           {endpoints.map((endpoint) => {
             const selected = endpoint.base_url === value;
             return (

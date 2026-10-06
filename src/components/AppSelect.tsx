@@ -66,9 +66,10 @@ export function AppSelect<T extends string | number>({
     if (!searchable) return;
     const menu = menuRef.current;
     // 锁定展开时的宽高，展开搜索和过滤结果都不改变菜单尺寸。
+    // 用 offsetWidth/Height 而非 getBoundingClientRect：菜单带等比缩放进场，
+    // getBoundingClientRect 会读到动画首帧的缩放尺寸，把菜单永久锁成 80% 大小。
     if (menu) {
-      const { width, height } = menu.getBoundingClientRect();
-      Object.assign(menu.style, { width: `${width}px`, height: `${height}px` });
+      Object.assign(menu.style, { width: `${menu.offsetWidth}px`, height: `${menu.offsetHeight}px` });
     }
     return () => { if (menu) { menu.style.width = ""; menu.style.height = ""; } };
   }, [open, searchable]);
@@ -112,7 +113,7 @@ export function AppSelect<T extends string | number>({
   };
 
   const menu = (
-    <div ref={menuRef} className={`app-select-menu ${iconOnly ? "app-select-menu--arrow" : ""} ${searchable ? "app-select-menu--searchable" : ""}`} data-open={open} style={menuStyle} role={searchable ? undefined : checkedValues ? "menu" : "listbox"} aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
+    <div ref={menuRef} className={`app-select-menu app-popover ${iconOnly ? "app-select-menu--arrow" : ""} ${searchable ? "app-select-menu--searchable" : ""}`} data-open={open} data-popover-in={open ? "" : undefined} style={menuStyle} role={searchable ? undefined : checkedValues ? "menu" : "listbox"} aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
       {searchable ? <div className="app-select-search">
         <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" size={16} strokeWidth={2} aria-hidden="true" />
         <input ref={searchRef} type="search" aria-label={t("select.search")} placeholder={searchFocused ? t("select.search") : `${t("select.search")} ${t("select.availableCount", { count: options.length })}`} value={search} tabIndex={open ? 0 : -1} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} onChange={(event) => setSearch(event.target.value)} />

@@ -466,6 +466,7 @@ pub struct ClaudeProfileSummary {
     /// token 是否已设置；明文只在详情里回显（卡片测试连通按钮的门控）。
     pub has_token: bool,
     pub model: Option<String>,
+    pub reasoning_effort: Option<String>,
     pub description: Option<String>,
     pub icon: Option<String>,
     pub admin_url: Option<String>,

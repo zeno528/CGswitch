@@ -234,7 +234,9 @@ pub fn apply_to_document(
 }
 
 fn is_model_key(key: &str) -> bool {
-    key == "model" || (key.starts_with("model_") && key != "model_providers")
+    key == "model"
+        || key == "service_tier"
+        || (key.starts_with("model_") && key != "model_providers")
 }
 
 fn parse_value(raw: &str) -> AppResult<Value> {

@@ -94,7 +94,7 @@ export default function ProfileTerminalMenu({ profileId }: { profileId: string }
   };
 
   const menu = open ? createPortal(
-    <div ref={menuRef} className="app-select-menu" data-open="true" role="menu" aria-label={t("terminal.menuLabel")} style={{ ...menuStyle, minWidth: "14rem" }}>
+    <div ref={menuRef} className="app-select-menu app-popover" data-open="true" data-popover-in role="menu" aria-label={t("terminal.menuLabel")} style={{ ...menuStyle, minWidth: "14rem" }}>
       <button type="button" role="menuitem" className="app-select-option app-selection-state" onClick={() => void pickAndLaunch()}>
         <span className="flex items-center gap-2"><FolderPlus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />{t("terminal.new")}</span>
       </button>
