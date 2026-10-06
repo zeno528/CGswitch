@@ -116,7 +116,7 @@ describe("AppUpdateProvider", () => {
     expect(providerSource).toContain('className="apple-sidebar-label"');
     expect(providerSource).toContain("sidebarCollapsed && sidebarFlyoutArmed");
     expect(providerSource).toContain("w-[var(--sidebar-icon-size)]");
-    expect(providerSource).toContain('<Download className="!h-3.5 !w-3.5" strokeWidth={2.5}');
+    expect(providerSource).toContain('<Download className="!h-3 !w-3" strokeWidth={2.5}');
     expect(appShellSource).toContain("icon: <McpIcon />");
     expect(appShellSource).not.toContain("McpIcon className=\"h-[18px] w-[18px]\"");
   });

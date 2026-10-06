@@ -77,9 +77,12 @@ it("CLI 命令全部注册且浏览器禁止执行", async () => {
   await api.codexGetCliStatus();
   await api.codexInstallCli();
   await api.codexUpdateCli();
-  for (const command of ["claude_get_cli_status", "claude_check_cli_update", "claude_install_cli", "claude_update_cli", "codex_get_cli_status", "codex_check_cli_update", "codex_install_cli", "codex_update_cli"]) {
+  for (const command of ["claude_install_cli", "claude_update_cli", "codex_get_cli_status", "codex_check_cli_update", "codex_install_cli", "codex_update_cli"]) {
     await expect(webInvoke(command)).rejects.toMatchObject({ stage: "desktop", kind: "validation_error" });
   }
+  // 状态查询与更新检查在浏览器 mock 可用（升级胶囊需要状态展示），主动安装/升级仍仅限桌面版
+  await expect(webInvoke("claude_get_cli_status")).resolves.toMatchObject({ installation: "native" });
+  await expect(webInvoke("claude_check_cli_update")).resolves.toMatchObject({ available: true });
 });
 
 it("两端 CLI 的 Tauri 拒绝保留可翻译的阶段和错误类别", async () => {

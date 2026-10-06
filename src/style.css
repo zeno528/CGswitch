@@ -1529,11 +1529,12 @@ body.drag-active * {
   position: absolute;
   top: -1px;
   right: -1px;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.5625rem;
+  height: 0.5625rem;
   border: 1.5px solid var(--sidebar-bg);
   border-radius: 999px;
   background: var(--accent);
+  box-shadow: 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .apple-action-button:disabled {

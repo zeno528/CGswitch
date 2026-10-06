@@ -47,7 +47,7 @@ export default {
     minimizeTitle: "Minimize to tray on close",
     minimizeDescription: "Hide to the tray instead of quitting when you click close",
     startupViewTitle: "Startup page",
-    startupViewDescription: "Page opened on cold start; restoring from tray is unaffected",
+    startupViewDescription: "Page opened when the app starts; restoring from tray is unaffected",
     terminalAppTitle: "Terminal app (macOS)",
     terminalAppDescription: "Terminal used when opening provider terminals",
   },

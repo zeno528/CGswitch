@@ -20,6 +20,8 @@ import type {
   CodexProfileSummary,
   Settings,
   CliFailure,
+  CliStatus,
+  CliUpdate,
 } from "../types";
 
 const webProfiles: CodexProfileSummary[] = [
@@ -537,6 +539,24 @@ let webSettings: Settings = {
   startup_view: "codexProfiles",
   macos_terminal: "terminal",
   claude_terminal_dirs: [],
+};
+
+const webClaudeCliStatus: CliStatus = {
+  installation: "native",
+  source: "web-mock",
+  version: "1.0.0",
+  path: "C:\\Users\\<user>\\.local\\bin\\claude.exe",
+  other_paths: [],
+  platform: "windows",
+  network: "direct",
+  proxy: null,
+  busy: false,
+};
+const webClaudeCliUpdate: CliUpdate = {
+  status: webClaudeCliStatus,
+  latest_version: "99.0.0",
+  channel: "latest",
+  available: true,
 };
 
 let webBackups: DatabaseBackupInfo[] = [];
@@ -1124,7 +1144,9 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "delete_skill":
       return undefined as T;
     case "claude_get_cli_status":
+      return { ...webClaudeCliStatus } as T;
     case "claude_check_cli_update":
+      return { ...webClaudeCliUpdate, status: { ...webClaudeCliStatus } } as T;
     case "claude_install_cli":
     case "claude_update_cli":
     case "codex_get_cli_status":

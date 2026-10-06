@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import { webInvoke } from "./web-mock";
 import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../features/claude/profileEnvText";
-import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary } from "../types";
+import type { AppState, ClaudeProfileDetail, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary, CliStatus, CliUpdate } from "../types";
 
 describe("web mock", () => {
+  it("模拟 Claude Code 的 CLI 更新角标", async () => {
+    expect((await webInvoke<CliStatus>("claude_get_cli_status")).installation).toBe("native");
+    await expect(webInvoke<CliUpdate>("claude_check_cli_update")).resolves.toMatchObject({ latest_version: "99.0.0", available: true });
+  });
+
   it.each(["codex", "claude"] as const)("%s 复制共用命名规则，每次副本紧跟源卡片", async (client) => {
     const list = async () => client === "codex"
       ? (await webInvoke<AppState>("get_state")).codex_profiles
