@@ -12,18 +12,24 @@ it("只有圆形滑块命中悬停，轨道与滑块外接矩形的角落不命�
   expect(isOverEffortThumb(rect, 100, 20)).toBe(false);
 });
 
-it("快速模式只隐藏已滑过的等级圆点，未滑到的圆点与原生滑块保留", () => {
+it("有粒子时只隐藏已滑过的等级圆点，未滑到的圆点与原生滑块保留", () => {
   const i18n = createInstance();
   void i18n.init({ lng: "en", resources: { en: { profiles: {} } }, initAsync: false });
-  const render = (fast: boolean, value = "high", disabled = false) => renderToStaticMarkup(
+  const render = (fast: boolean, value = "high", disabled = false,
+    levels: readonly string[] = ["low", "high", "max"]) => renderToStaticMarkup(
     <I18nextProvider i18n={i18n}>
-      <ReasoningEffortSlider value={value} levels={["low", "high", "max"]} fast={fast} disabled={disabled} onChange={() => {}} />
+      <ReasoningEffortSlider value={value} levels={levels} fast={fast} disabled={disabled} onChange={() => {}} />
     </I18nextProvider>,
   );
   const normal = render(false);
   expect(normal).not.toContain('class="reasoning-effort-slider__particles"');
   const fast = render(true);
   expect(fast.match(/class="reasoning-effort-slider__particles"/g)).toHaveLength(1);
+  expect(fast).toContain('data-floating="false"');
+  const floating = render(false, "ultra", false, ["low", "ultra", "max"]);
+  expect(floating).toContain('class="reasoning-effort-slider__particles" data-floating="true"');
+  expect(floating).not.toContain('class="reasoning-effort-slider__gradient"');
+  expect(floating).not.toContain('title="ultra"');
   expect(fast).not.toContain('class="reasoning-effort-slider__gradient"');
   expect(fast).not.toContain('class="reasoning-effort-slider__quota-hint"');
   expect(fast.match(/class="reasoning-effort-slider__stop"/g)).toHaveLength(1);
@@ -41,7 +47,7 @@ it("快速模式只隐藏已滑过的等级圆点，未滑到的圆点与原生�
   for (const value of codexEffortLevels) {
     const markup = render(false, value);
     expect(markup).toContain(`--effort-color:var(${value === "ultra" ? "--reasoning-ultra" : "--accent"})`);
-    expect(render(true, value)).toContain(`--effort-particle-duration:${value === "ultra" ? "0.5s" : "1s"}`);
+    expect(render(true, value)).toContain(`--effort-particle-duration:${value === "ultra" ? "0.9s" : "1s"}`);
   }
   expect(render(true, "ultra")).toContain('class="reasoning-effort-slider__quota-hint"');
   expect(render(true, "ultra")).toContain('class="reasoning-effort-slider__gradient"');

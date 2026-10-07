@@ -846,6 +846,8 @@ body:has(.app-dialog-overlay) .window-control-button {
 .profile-model-trigger[aria-expanded="true"] > :not(.profile-model-trigger__prompt) { visibility: hidden; }
 .profile-model-trigger__prompt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .profile-model-trigger:hover, .profile-model-trigger[aria-expanded="true"] { background: var(--secondary-button-hover-bg); }
+/* 关闭浮卡时底色立即消失，避免全局按钮淡出留下提示高亮。 */
+.profile-model-trigger[aria-expanded="false"] { transition-property: transform, opacity; }
 .profile-model-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .profile-model-trigger:disabled { cursor: not-allowed; }
 .app-select-menu.profile-model-popover { border-radius: var(--radius-card); padding: calc(var(--gap-section) * 0.625); overflow-x: hidden; }
@@ -935,30 +937,42 @@ body:has(.app-dialog-overlay) .window-control-button {
   --effort-particle-span: 17rem;
   content: "";
   position: absolute;
-  inset: 0 calc(-1 * var(--effort-particle-span));
+  /* 预留上下漂浮幅度和粒子半径，两种模式共用位置，切换不跳位。 */
+  inset: 6px calc(-1 * var(--effort-particle-span));
   background-image:
     radial-gradient(circle at 12% 17%, rgb(255 255 255 / 0.8) 1px, transparent 2px),
+    radial-gradient(circle at 21% 42%, rgb(255 255 255 / 0.6) 0.7px, transparent 1.7px),
     radial-gradient(circle at 29% 71%, rgb(255 255 255 / 0.6) 0.7px, transparent 1.7px),
     radial-gradient(circle at 43% 43%, rgb(255 255 255 / 0.7) 1.2px, transparent 2.2px),
     radial-gradient(circle at 56% 84%, rgb(255 255 255 / 0.5) 0.6px, transparent 1.6px),
+    radial-gradient(circle at 63% 60%, rgb(255 255 255 / 0.7) 0.8px, transparent 1.8px),
     radial-gradient(circle at 72% 29%, rgb(255 255 255 / 0.8) 1.4px, transparent 2.4px),
     radial-gradient(circle at 84% 62%, rgb(255 255 255 / 0.6) 0.9px, transparent 1.9px),
     radial-gradient(circle at 96% 51%, rgb(255 255 255 / 0.5) 0.6px, transparent 1.6px);
   background-size: var(--effort-particle-span) 100%;
   background-repeat: repeat-x;
-  animation: effort-particle-drift calc(var(--effort-particle-duration) * 2) linear infinite;
+  animation: effort-particle-drift calc(var(--effort-particle-duration) * 2) linear infinite,
+    effort-particle-float 9.5s ease-in-out infinite;
+  animation-play-state: running, paused;
 }
 .reasoning-effort-slider__particles::after {
   --effort-particle-span: 13rem;
   background-image:
     radial-gradient(circle at 7% 58%, rgb(255 255 255 / 0.6) 1px, transparent 2px),
+    radial-gradient(circle at 23% 72%, rgb(255 255 255 / 0.6) 0.7px, transparent 1.7px),
     radial-gradient(circle at 38% 24%, rgb(255 255 255 / 0.8) 0.6px, transparent 1.6px),
+    radial-gradient(circle at 48% 54%, rgb(255 255 255 / 0.6) 0.7px, transparent 1.7px),
     radial-gradient(circle at 61% 78%, rgb(255 255 255 / 0.5) 0.8px, transparent 1.8px),
-    radial-gradient(circle at 89% 39%, rgb(255 255 255 / 0.7) 1.2px, transparent 2.2px);
+    radial-gradient(circle at 74% 16%, rgb(255 255 255 / 0.6) 0.7px, transparent 1.7px),
+    radial-gradient(circle at 89% 39%, rgb(255 255 255 / 0.7) 1.2px, transparent 2.2px),
+    radial-gradient(circle at 96% 68%, rgb(255 255 255 / 0.5) 0.6px, transparent 1.6px);
   opacity: 0.6;
-  animation-duration: calc(var(--effort-particle-duration) * 2.7);
-  animation-delay: -3s;
+  animation-duration: calc(var(--effort-particle-duration) * 2.7), 15.5s;
+  animation-delay: -3s, 0s;
 }
+/* 保留两段动画的当前位置，Fast 切换只暂停/继续；两层漂浮节奏错开。 */
+.reasoning-effort-slider__particles[data-floating="true"]::before,
+.reasoning-effort-slider__particles[data-floating="true"]::after { animation-play-state: paused, running; }
 .reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__particles::before,
 .reasoning-effort-slider[data-selected="false"] .reasoning-effort-slider__particles::after { animation-play-state: paused; }
 /* 禁用光标只给滑轨；档位圆点在保存 busy 的一瞬也会短暂禁用，标 not-allowed 会让点击处闪红色光标。 */
@@ -969,6 +983,13 @@ body:has(.app-dialog-overlay) .window-control-button {
    瞬态禁用一律不显示禁用光标；浮卡之外真正禁用的场景不受影响。 */
 .profile-model-popover[aria-busy="true"] :is(button:disabled, [aria-disabled="true"]) { cursor: pointer; }
 @keyframes effort-particle-drift { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(calc(-1 * var(--effort-particle-span)), 0, 0); } }
+@keyframes effort-particle-float {
+  0%, 100% { translate: 0 0; }
+  13% { translate: 2px -3px; }
+  37% { translate: -1px 3px; }
+  58% { translate: 2px 1px; }
+  79% { translate: -2px -2px; }
+}
 @keyframes effort-gradient-flow { from { background-position: -100% 0; } to { background-position: 100% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .reasoning-effort-slider__thumb-rail, .reasoning-effort-slider__thumb, .reasoning-effort-slider__fill, .reasoning-effort-slider__quota-hint { transition: none; }

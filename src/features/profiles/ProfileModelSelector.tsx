@@ -138,7 +138,8 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
         {supportsFastMode && fast && <Zap size={14} fill="currentColor" className="shrink-0" role="img" aria-label={t("modelSelection.fastMode")} />}
         <span className="profile-card-action-meta__model">{modelLabel(savedSelection.model || (supportsFastMode ? "" : t("modelSelection.default")), formatModelLabel)}</span>
         {(!supportsFastMode || (savedSelection.model && savedSelection.effort)) && <span aria-hidden="true">·</span>}
-        <span>{savedSelection.effort || (supportsFastMode ? "" : t("modelSelection.default"))}</span>
+        <span style={{ color: savedSelection.effort === "ultra" ? "var(--reasoning-ultra)" : undefined }}>
+          {savedSelection.effort || (supportsFastMode ? "" : t("modelSelection.default"))}</span>
         {view && <span className="profile-model-trigger__prompt muted">{t("modelSelection.chooseModel")}</span>}
       </button>
       {view && options && createPortal(

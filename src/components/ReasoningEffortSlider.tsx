@@ -23,12 +23,13 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
   const { t } = useTranslation("profiles");
   const labelId = useId();
   const index = levels.indexOf(value);
+  const showParticles = fast || value === "ultra";
   return (
     <div className="reasoning-effort-slider" data-selected={index >= 0} style={{
       "--effort-color": value === "ultra" ? "var(--reasoning-ultra)" : value ? "var(--accent)" : "var(--text-secondary)",
       "--effort-progress": index < 0 ? 0 : index / Math.max(1, levels.length - 1),
       "--effort-energy": index < 0 ? 0 : 0.3 + index / Math.max(1, levels.length - 1) * 0.7,
-      "--effort-particle-duration": value === "ultra" ? "0.5s" : "1s",
+      "--effort-particle-duration": value === "ultra" ? "0.9s" : "1s",
     } as CSSProperties}>
       <div className="reasoning-effort-slider__header">
         <div className="reasoning-effort-slider__leading">{leading}</div>
@@ -54,10 +55,10 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
       }}>
         <span className="reasoning-effort-slider__fill" aria-hidden="true">
           {fast && value === "ultra" && <span className="reasoning-effort-slider__gradient" />}
-          {fast && <span className="reasoning-effort-slider__particles" />}
+          {showParticles && <span className="reasoning-effort-slider__particles" data-floating={!fast} />}
         </span>
         <div className="reasoning-effort-slider__stops">
-          {levels.map((level, stop) => (!fast || stop > index) && (
+          {levels.map((level, stop) => (!showParticles || stop > index) && (
             <button key={level} type="button" className="reasoning-effort-slider__stop" tabIndex={-1} disabled={disabled}
               aria-label={`${t("modelSelection.effort")}: ${level}`} title={level} aria-pressed={value === level}
               data-filled={stop <= index}
