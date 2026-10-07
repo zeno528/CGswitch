@@ -12,6 +12,24 @@ it("只有圆形滑块命中悬停，轨道与滑块外接矩形的角落不命�
   expect(isOverEffortThumb(rect, 100, 20)).toBe(false);
 });
 
+it("滚动文字只有当前档位可见，其他档位分列上下，读屏与原生值保留当前等级", () => {
+  const i18n = createInstance();
+  void i18n.init({ lng: "en", resources: { en: { profiles: { modelSelection: { effort: "Effort", default: "Default" } } } }, initAsync: false });
+  for (const value of ["low", "high", "", "future"]) {
+    const markup = renderToStaticMarkup(<I18nextProvider i18n={i18n}>
+      <ReasoningEffortSlider value={value} levels={["low", "high"]} onChange={() => {}} />
+    </I18nextProvider>);
+    const label = value ? value[0].toUpperCase() + value.slice(1) : "Default";
+    expect(markup).toContain(`<span class="sr-only">Effort: ${label}</span>`);
+    expect(markup).toContain('class="reasoning-effort-slider__label" aria-hidden="true"');
+    expect(markup.match(/data-current="true"/g)).toHaveLength(1);
+    expect(markup).toContain(`data-current="true" style="transform:translateY(0%)">${label}</span>`);
+    expect(markup).toContain(`aria-valuetext="${value || "Default"}"`);
+    if (value === "low") expect(markup).toContain('data-current="false" style="transform:translateY(50%)">High</span>');
+    if (value === "high") expect(markup).toContain('data-current="false" style="transform:translateY(-50%)">Low</span>');
+  }
+});
+
 it("有粒子时只隐藏已滑过的等级圆点，未滑到的圆点与原生滑块保留", () => {
   const i18n = createInstance();
   void i18n.init({ lng: "en", resources: { en: { profiles: {} } }, initAsync: false });

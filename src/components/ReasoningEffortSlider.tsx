@@ -23,6 +23,7 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
   const { t } = useTranslation("profiles");
   const labelId = useId();
   const index = levels.indexOf(value);
+  const labelLevels = [...new Set(["", ...levels, value])];
   const showParticles = fast || value === "ultra";
   return (
     <div className="reasoning-effort-slider" data-selected={index >= 0} style={{
@@ -34,7 +35,17 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
       <div className="reasoning-effort-slider__header">
         <div className="reasoning-effort-slider__leading">{leading}</div>
         <div className="reasoning-effort-slider__heading">
-          <strong id={labelId} className="field-label"><span className="sr-only">{t("modelSelection.effort")}: </span>{value ? value[0].toUpperCase() + value.slice(1) : t("modelSelection.default")}</strong>
+          <strong id={labelId} className="field-label">
+            <span className="sr-only">{t("modelSelection.effort")}: {value ? value[0].toUpperCase() + value.slice(1) : t("modelSelection.default")}</span>
+            <span className="reasoning-effort-slider__label" aria-hidden="true">
+              {labelLevels.map((level) => (
+                <span key={level} className="reasoning-effort-slider__label-step" data-current={level === value}
+                  style={{ transform: `translateY(${(levels.indexOf(level) - index) * 50}%)` }}>
+                  {level ? level[0].toUpperCase() + level.slice(1) : t("modelSelection.default")}
+                </span>
+              ))}
+            </span>
+          </strong>
           {children}
           {fast && value === "ultra" && <span className="reasoning-effort-slider__quota-hint" aria-hidden="true">{t("modelSelection.ultraQuotaHint")}</span>}
         </div>

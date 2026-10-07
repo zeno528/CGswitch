@@ -170,7 +170,6 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
               <span className={effective.model ? undefined : "profile-model-default"}>{modelLabel(effective.model || t("modelSelection.default"), formatModelLabel)}</span><ChevronRight size={14} aria-hidden="true" />
             </button>
           </ReasoningEffortSlider> : <>
-            <div className="profile-model-list-title muted">{t("modelSelection.chooseModel")}</div>
             <div role="listbox" aria-label={t("modelSelection.chooseModel")} onKeyDown={(event) => {
               if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
               event.preventDefault();
