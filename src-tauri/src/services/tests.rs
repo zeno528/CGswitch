@@ -51,6 +51,50 @@ fn chatgpt_auth(account_id: &str, access_token: &str) -> String {
     )
 }
 
+#[tokio::test]
+async fn model_cache_reads_never_fetch_and_are_isolated_by_account_source() {
+    let (_home, context) = chatgpt_test_context();
+    let oauth = crate::auth::codex_oauth::CodexOAuthManager::new(context.database.clone());
+    let models = super::connections::parse_chatgpt_models(serde_json::json!({
+        "models":[{"slug":"fixture", "display_name":"Fixture", "visibility":"list",
+            "supported_reasoning_levels":[{"effort":"low"}], "default_reasoning_level":"low"}]
+    }))
+    .unwrap();
+    context
+        .database
+        .set_chatgpt_models("oauth:row", &models)
+        .unwrap();
+    let cached = context
+        .codex_fetch_chatgpt_models(None, AuthSource::Oauth, Some("row"), &oauth, false)
+        .await
+        .unwrap();
+    assert_eq!(cached[0].slug, "fixture");
+    let desktop = context
+        .codex_fetch_chatgpt_models(None, AuthSource::Desktop, Some("row"), &oauth, false)
+        .await
+        .unwrap();
+    assert!(desktop.is_empty());
+    context
+        .database
+        .set_chatgpt_models("desktop:workspace", &models)
+        .unwrap();
+    let desktop = context
+        .codex_fetch_chatgpt_models(None, AuthSource::Desktop, Some("workspace"), &oauth, false)
+        .await
+        .unwrap();
+    assert_eq!(desktop[0].slug, "fixture");
+    assert!(context
+        .codex_fetch_chatgpt_models(None, AuthSource::Oauth, Some("missing"), &oauth, false)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(context
+        .codex_fetch_chatgpt_models(None, AuthSource::Desktop, None, &oauth, false)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 /// id_token 带官方嵌套套餐 claim 的认证快照（plan_type 徽标链路用）
 fn chatgpt_auth_with_plan(account_id: &str, access_token: &str, plan: &str) -> String {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
@@ -501,6 +545,91 @@ new_field = "accumulated"
             .as_deref(),
         Some(profile_b.id.as_str())
     );
+}
+
+#[test]
+fn card_defaults_use_account_model_cache_and_keep_explicit_and_local_values() {
+    let (_home, context) = chatgpt_test_context();
+    let profile = context
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
+        .unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
+    stored.payload.raw_auth = Some(chatgpt_auth("workspace", "fixture-token"));
+    stored.payload.fetched_models = vec!["obsolete-profile-cache".into()];
+    context
+        .database
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .unwrap();
+    let models = super::connections::parse_chatgpt_models(serde_json::json!({"models": [
+        {"slug": "account-model", "display_name": "Fixture", "visibility": "list",
+         "supported_reasoning_levels": [{"effort": "low"}], "default_reasoning_level": "low"}
+    ]}))
+    .unwrap();
+    context
+        .database
+        .set_chatgpt_models("desktop:workspace", &models)
+        .unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
+    context
+        .codex_set_profile_model(&profile.id, None, Some("high"), None)
+        .unwrap();
+    let check = |model: &str, effort: &str| {
+        let state = context.get_state().unwrap();
+        let summary = state
+            .codex_profiles
+            .iter()
+            .find(|item| item.id == profile.id)
+            .unwrap();
+        assert_eq!(summary.model.as_deref(), Some(model));
+        assert_eq!(summary.reasoning_effort.as_deref(), Some(effort));
+    };
+    check("account-model", "high");
+    let live = std::fs::read_to_string(context.paths.codex_config()).unwrap();
+    assert!(!codex_config::parse_document(&live)
+        .unwrap()
+        .contains_key("model"));
+    context
+        .codex_set_profile_model(&profile.id, None, Some(""), None)
+        .unwrap();
+    check("account-model", "low");
+    context
+        .codex_set_profile_model(&profile.id, Some("manual-model"), Some("high"), None)
+        .unwrap();
+    check("manual-model", "high");
+    context.codex_update_profile_config(&profile.id, "model_catalog_json = \"models.json\"\n",
+        Some(r#"{"models":[{"slug":"local-model","display_name":"Local","visibility":"list","supported_reasoning_levels":[{"effort":"max"}],"default_reasoning_level":"max"}]}"#), None).unwrap();
+    context.codex_apply_profile(&profile.id).unwrap();
+    check("local-model", "max");
+}
+
+#[test]
+fn corrupt_model_cache_row_skips_backfill_without_breaking_state() {
+    let (_home, context) = chatgpt_test_context();
+    let profile = context
+        .codex_add_builtin_profile("chatgpt", None, None, None, None, None)
+        .unwrap();
+    let mut stored = context.database.codex_profile(&profile.id).unwrap();
+    stored.payload.raw_auth = Some(chatgpt_auth("workspace", "fixture-token"));
+    context
+        .database
+        .codex_update_profile(&profile.id, &stored.name, &stored.payload, "2")
+        .unwrap();
+    // 直接写入坏 JSON：坏缓存行只跳过回填，get_state 不失败。
+    rusqlite::Connection::open(&context.paths.database)
+        .unwrap()
+        .execute(
+            "INSERT INTO chatgpt_model_cache(cache_key, models_json, updated_at) \
+             VALUES('desktop:workspace', '{bad', '0')",
+            [],
+        )
+        .unwrap();
+    let state = context.get_state().unwrap();
+    let summary = state
+        .codex_profiles
+        .iter()
+        .find(|item| item.id == profile.id)
+        .unwrap();
+    assert_eq!(summary.model, None);
 }
 
 #[test]
@@ -1483,7 +1612,7 @@ fn add_builtin_profile_creates_snapshot_only() {
         .unwrap();
 
     assert_eq!(profile.name, "DeepSeek");
-    assert_eq!(profile.model.as_deref(), Some("deepseek-flash"));
+    assert_eq!(profile.model, None);
     assert_eq!(profile.provider.as_deref(), Some("deepseek"));
     assert_eq!(profile.reasoning_effort.as_deref(), Some("high"));
     assert_eq!(profile.icon.as_deref(), Some("deepseek"));
@@ -1592,12 +1721,12 @@ async fn chatgpt_models_require_the_profiles_own_credentials() {
     let auth_path = context.paths.codex_home.join("auth.json");
     std::fs::write(&auth_path, &live_auth).unwrap();
     let error = context
-        .codex_fetch_chatgpt_models(Some(&official.id), AuthSource::Desktop, None, &oauth)
+        .codex_fetch_chatgpt_models(Some(&official.id), AuthSource::Desktop, None, &oauth, true)
         .await
         .unwrap_err();
     assert!(error.0.contains("该 Codex 配置尚未保存有效登录"));
     let error = context
-        .codex_fetch_chatgpt_models(Some(&other.id), AuthSource::Desktop, None, &oauth)
+        .codex_fetch_chatgpt_models(Some(&other.id), AuthSource::Desktop, None, &oauth, true)
         .await
         .unwrap_err();
     assert!(error.0.contains("该配置不是 ChatGPT 订阅配置"));
@@ -3539,6 +3668,9 @@ fn update_builtin_profile_writes_key_back_when_active() {
     let profile = context
         .codex_add_builtin_profile("deepseek", None, None, Some("sk-old"), None, None)
         .unwrap();
+    context
+        .codex_set_profile_model(&profile.id, Some("chosen-model"), None, None)
+        .unwrap();
     context.codex_apply_profile(&profile.id).unwrap();
     assert_eq!(
         context
@@ -3562,7 +3694,7 @@ fn update_builtin_profile_writes_key_back_when_active() {
 
     // 使用中改密钥：只就地更新供应商段落，模板其余内容保持不变
     let config = String::from_utf8(std::fs::read(context.paths.codex_config()).unwrap()).unwrap();
-    assert!(config.contains("model = \"deepseek-flash\""));
+    assert!(config.contains("model = \"chosen-model\""));
     assert!(config.contains("experimental_bearer_token = \"sk-real\""));
     assert!(!config.contains("sk-old"));
     assert!(!config.contains("<YOUR_API_KEY>"));

@@ -13,7 +13,7 @@ pub struct ChatgptModel {
     pub supported_reasoning_levels: Vec<ChatgptReasoningLevel>,
     #[serde(default)]
     pub default_reasoning_level: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing)]
     visibility: String,
     #[serde(default, skip_serializing)]
     priority: i64,
@@ -24,7 +24,22 @@ pub struct ChatgptReasoningLevel {
     pub effort: String,
 }
 
+pub(super) fn chatgpt_model_cache_key(source: AuthSource, account_id: Option<&str>) -> String {
+    let source = match source {
+        AuthSource::Desktop => "desktop",
+        AuthSource::Oauth => "oauth",
+    };
+    format!("{source}:{}", account_id.unwrap_or(""))
+}
+
 pub(crate) fn parse_chatgpt_models(value: serde_json::Value) -> AppResult<Vec<ChatgptModel>> {
+    // 缓存反序列化可省略 visibility；接口响应仍须提供这个必需字段。
+    if value["models"]
+        .as_array()
+        .is_some_and(|models| models.iter().any(|model| !model["visibility"].is_string()))
+    {
+        return Err(app_err!("ChatGPT 模型目录格式无效"));
+    }
     #[derive(serde::Deserialize)]
     struct Catalog {
         models: Vec<ChatgptModel>,
@@ -111,6 +126,15 @@ mod tests {
         );
         assert_eq!(models[0].supported_reasoning_levels[0].effort, "high");
         assert_eq!(models[0].default_reasoning_level.as_deref(), Some("high"));
+        let mut missing_visibility = entry("invalid", "list", 0);
+        missing_visibility
+            .as_object_mut()
+            .unwrap()
+            .remove("visibility");
+        assert!(
+            super::parse_chatgpt_models(serde_json::json!({"models": [missing_visibility]}))
+                .is_err()
+        );
         assert!(super::parse_chatgpt_models(serde_json::json!({"data": []})).is_err());
         assert!(
             super::parse_chatgpt_models(serde_json::json!({"models": [{"slug": "invalid"}]}))
@@ -1526,49 +1550,70 @@ impl AppContext {
         Ok(result)
     }
 
-    /// 用指定配置或编辑草稿绑定的账号获取 Codex 模型目录，不切换实时认证。
+    /// 只读数据库缓存；只有显式刷新才请求网络。
     pub async fn codex_fetch_chatgpt_models(
         &self,
         id: Option<&str>,
         source: AuthSource,
         account_id: Option<&str>,
         oauth: &CodexOAuthManager,
+        refresh: bool,
     ) -> AppResult<Vec<ChatgptModel>> {
-        let credentials = if let Some(id) = id {
-            let stored = self.database.codex_profile(id)?;
-            if stored.kind != CodexProfileKind::Official {
-                return Err(app_err!("该配置不是 ChatGPT 订阅配置"));
-            }
-            match stored
+        let stored = id.map(|id| self.database.codex_profile(id)).transpose()?;
+        if stored
+            .as_ref()
+            .is_some_and(|profile| profile.kind != CodexProfileKind::Official)
+        {
+            return Err(app_err!("该配置不是 ChatGPT 订阅配置"));
+        }
+        let source = match &stored {
+            Some(profile) => profile
                 .payload
-                .effective_auth_source(stored.kind, stored.account_id.as_deref())
-            {
-                Some(AuthSource::Desktop) => {
-                    let auth = stored
-                        .payload
-                        .raw_auth
-                        .as_deref()
-                        .and_then(parse_external_auth_json)
-                        .ok_or_else(|| app_err!("该 Codex 配置尚未保存有效登录"))?;
-                    (
-                        auth.access_token,
-                        Some(auth.account_id),
-                        format!("profile_id={id}"),
-                    )
-                }
-                Some(AuthSource::Oauth) => {
-                    self.auth_account_credentials(
-                        AuthSource::Oauth,
-                        stored.account_id.as_deref(),
-                        oauth,
-                    )
-                    .await?
-                }
-                None => return Err(app_err!("官方配置缺少登录方式")),
-            }
+                .effective_auth_source(profile.kind, profile.account_id.as_deref())
+                .ok_or_else(|| app_err!("官方配置缺少登录方式"))?,
+            None => source,
+        };
+        let account_id = match &stored {
+            Some(profile) => profile.account_id.as_deref(),
+            None => account_id,
+        };
+        let desktop = if source == AuthSource::Desktop {
+            stored.as_ref().and_then(|profile| {
+                profile
+                    .payload
+                    .raw_auth
+                    .as_deref()
+                    .and_then(parse_external_auth_json)
+            })
         } else {
-            self.auth_account_credentials(source, account_id, oauth)
-                .await?
+            None
+        };
+        let account_id = desktop
+            .as_ref()
+            .map(|auth| auth.account_id.as_str())
+            .or(account_id);
+        let live = if source == AuthSource::Desktop && account_id.is_none() {
+            self.read_external_codex_auth()
+        } else {
+            None
+        };
+        let account_id = account_id.or_else(|| live.as_ref().map(|auth| auth.account_id.as_str()));
+        let cache_key = chatgpt_model_cache_key(source, account_id);
+        if !refresh {
+            return Ok(self
+                .database
+                .chatgpt_models(&cache_key)?
+                .unwrap_or_default());
+        }
+        if source == AuthSource::Desktop && stored.is_some() && desktop.is_none() {
+            return Err(app_err!("该 Codex 配置尚未保存有效登录"));
+        }
+        let credentials = match desktop {
+            Some(auth) => (auth.access_token, Some(auth.account_id), String::new()),
+            None => {
+                self.auth_account_credentials(source, account_id, oauth)
+                    .await?
+            }
         };
         let (token, workspace, _) = credentials;
         let network = Network::current()
@@ -1616,7 +1661,13 @@ impl AppContext {
             .json()
             .await
             .map_err(|_| app_err!("ChatGPT 模型目录格式无效"))?;
-        parse_chatgpt_models(value)
+        let models = parse_chatgpt_models(value)?;
+        self.database.set_chatgpt_models(&cache_key, &models)?;
+        tauri_plugin_log::log::info!(
+            "[chatgpt.models] model_count={} outcome=success msg=\"ChatGPT 账号模型缓存已更新\"",
+            models.len()
+        );
+        Ok(models)
     }
 
     /// 验证 ChatGPT 订阅认证连通性（Codex CLI 后台轮询同一个用量端点）。

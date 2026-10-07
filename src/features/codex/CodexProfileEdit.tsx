@@ -22,6 +22,7 @@ import {
   codexCustomConfigTemplate,
 } from "../../presets";
 import {
+  chatgptModelOptions,
   patchModelValue,
   patchProviderFields,
   readCatalogOptions,
@@ -267,9 +268,11 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
           setBaseUrl(loaded.base_url ?? "");
           setApiKey(loaded.api_key ?? "");
           setModelValue(readModelValue(loadedConfigText) ?? "");
-          setFetchedModels(loaded.fetched_models);
-          fetchedModelEfforts.current = loaded.fetched_model_efforts ?? {};
-          fetchedModelDefaults.current = loaded.fetched_model_defaults ?? {};
+          if (loaded.provider !== null) {
+            setFetchedModels(loaded.fetched_models);
+            fetchedModelEfforts.current = loaded.fetched_model_efforts ?? {};
+            fetchedModelDefaults.current = loaded.fetched_model_defaults ?? {};
+          }
           setAdminUrl(loaded.admin_url ?? "");
           setSelectedIcon(loaded.icon);
           setBoundAccountId(loaded.account_id);
@@ -441,17 +444,40 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
     try {
       const catalog = isOfficial
         ? await api.codexFetchChatgptModels(!create && boundAccountId === detail?.account_id ? profile!.id : null, authSource ?? "desktop", boundAccountId) : null;
-      const models = catalog ? catalog.map((model) => model.slug) : await api.codexFetchProviderModels(baseUrl.trim(), apiKey.trim());
+      const options = chatgptModelOptions(catalog ?? []);
+      const models = catalog ? options.models : await api.codexFetchProviderModels(baseUrl.trim(), apiKey.trim());
       if (request !== modelListRequest.current) return;
       setFetchedModels(models);
-      fetchedModelEfforts.current = catalog ? Object.fromEntries(catalog.map((model) => [model.slug, model.supported_reasoning_levels.map((level) => level.effort)])) : {};
-      fetchedModelDefaults.current = catalog ? Object.fromEntries(catalog.map((model) => [model.slug, model.default_reasoning_level ?? "none"])) : {};
-      if (!create && profile && (!isOfficial || boundAccountId === detail?.account_id)) await api.codexSetProfileFetchedModels(profile.id, models, fetchedModelEfforts.current, fetchedModelDefaults.current);
+      fetchedModelEfforts.current = options.efforts;
+      fetchedModelDefaults.current = options.defaults;
+      if (!create && profile && !isOfficial) await api.codexSetProfileFetchedModels(profile.id, models, fetchedModelEfforts.current, fetchedModelDefaults.current);
       if (models.length === 0) feedback.info(t("edit.noModelsReturned"));
       else feedback.success(t("edit.modelsFetched", { count: models.length }));
-    } catch (error) { feedback.error(t("edit.fetchFailed", { error: connectionExceptionMessage(error, t) })); }
-    finally { setFetchingModels(false); }
+    } catch (error) {
+      if (request === modelListRequest.current) feedback.error(t("edit.fetchFailed", { error: connectionExceptionMessage(error, t) }));
+    }
+    finally { if (request === modelListRequest.current) setFetchingModels(false); }
   };
+
+  useEffect(() => {
+    if (!isOfficial || useLocalCatalog || (!create && !detail) || (authSource === "desktop" && authDirty)) return;
+    setFetchedModels([]);
+    fetchedModelEfforts.current = {};
+    fetchedModelDefaults.current = {};
+    const request = ++modelListRequest.current;
+    void api.codexFetchChatgptModels(!create && boundAccountId === detail?.account_id ? profile!.id : null, authSource ?? "desktop", boundAccountId, false).then((catalog) => {
+      if (request !== modelListRequest.current) return;
+      const options = chatgptModelOptions(catalog);
+      setFetchedModels(options.models);
+      fetchedModelEfforts.current = options.efforts;
+      fetchedModelDefaults.current = options.defaults;
+    }).catch((error: unknown) => {
+      if (request === modelListRequest.current) feedback.error(t("edit.fetchFailed", { error: connectionExceptionMessage(error, t) }));
+    });
+    return () => { modelListRequest.current++; setFetchingModels(false); };
+    // 认证归属变化时只读缓存，缓存为空不联网补取。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOfficial, useLocalCatalog, boundAccountId, detail?.id, authSource]);
 
   const saveIcon = async (icon: string | null) => {
     if (saving) return;
@@ -511,7 +537,7 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
         if (configTouched || catalogTouched || authTextToSave !== null) {
           await api.codexUpdateProfileConfig(created.id, configText, liveCatalogPath ? catalogText || null : null, authTextToSave);
         }
-        if (fetchedModels.length && !(isOfficial && authSource === "desktop" && authDirty)) await api.codexSetProfileFetchedModels(created.id, fetchedModels, fetchedModelEfforts.current, fetchedModelDefaults.current);
+        if (!isOfficial && fetchedModels.length) await api.codexSetProfileFetchedModels(created.id, fetchedModels, fetchedModelEfforts.current, fetchedModelDefaults.current);
         if (showBalance) await api.codexSetProfileShowBalance(created.id, true);
         notifySaved(t("edit.builtinProviderAdded"));
       } else {
@@ -524,7 +550,6 @@ export default function CodexProfileEdit({ profile, create = false, initialDetai
           if (!boundAccountId) throw new Error(t("edit.oauthAccountRequired"));
           await api.codexSetProfileAccount(profile!.id, boundAccountId);
         }
-        if (isOfficial && authSource === "oauth" && fetchedModels.length) await api.codexSetProfileFetchedModels(profile!.id, fetchedModels, fetchedModelEfforts.current, fetchedModelDefaults.current);
         notifySaved(t("edit.providerUpdated"));
       }
       onChanged();

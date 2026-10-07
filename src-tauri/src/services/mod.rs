@@ -134,6 +134,7 @@ impl AppContext {
                             live.description = stored.payload.description.clone();
                             live.admin_url = stored.payload.admin_url.clone();
                             live.show_balance = stored.payload.show_balance;
+                            live.raw_catalog = stored.payload.raw_catalog.clone();
                             live.fetched_models = stored.payload.fetched_models.clone();
                             live.fetched_model_efforts =
                                 stored.payload.fetched_model_efforts.clone();
@@ -150,6 +151,45 @@ impl AppContext {
                             .as_deref()
                             .and_then(parse_external_auth_json)
                             .map(|auth| auth.account_id);
+                    }
+                    // 默认模型与编辑页共用账号缓存；显式配置和本地目录仍优先。
+                    let values = &stored.payload.model_values;
+                    let missing_model = !values.contains_key("model");
+                    let missing_effort = !values.contains_key("model_reasoning_effort");
+                    if summary.kind == CodexProfileKind::Official
+                        && !values.contains_key("model_catalog_json")
+                        && (missing_model || missing_effort)
+                    {
+                        let key = summary.auth_source.and_then(|source| {
+                            let account_id = match source {
+                                AuthSource::Desktop => summary.auth_account_id.as_deref(),
+                                AuthSource::Oauth => summary.account_id.as_deref(),
+                            }?;
+                            Some(connections::chatgpt_model_cache_key(
+                                source,
+                                Some(account_id),
+                            ))
+                        });
+                        // 缓存行读不了只跳过回填，不让展示默认值拖垮 get_state。
+                        let models = key
+                            .and_then(|key| self.database.chatgpt_models(&key).ok())
+                            .flatten();
+                        if let Some(models) = models {
+                            if missing_model {
+                                summary.model = models.first().map(|model| model.slug.clone());
+                            }
+                            if missing_effort {
+                                summary.reasoning_effort = models
+                                    .iter()
+                                    .find(|model| Some(&model.slug) == summary.model.as_ref())
+                                    .map(|model| {
+                                        model
+                                            .default_reasoning_level
+                                            .clone()
+                                            .unwrap_or_else(|| "none".into())
+                                    });
+                            }
+                        }
                     }
                     summary.plan_type = match summary.auth_source {
                         Some(AuthSource::Oauth) => summary

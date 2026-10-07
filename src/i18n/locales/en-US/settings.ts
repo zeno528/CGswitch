@@ -158,6 +158,7 @@ export default {
     weeklyLimit: "Weekly limit",
     usageLimit: "{{label}} limit",
     refreshQuota: "Refresh status",
+    fetchModels: "Fetch models",
     more: "More actions",
     warmup: "Warm up account",
     warmupHint: "Send one short request with gpt-6-luna at low reasoning effort, using subscription quota. Window reset times come from OpenAI",

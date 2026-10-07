@@ -4,6 +4,13 @@ import { extractClaudeCommonSettings, fillClaudeCommonSettings } from "../featur
 import type { AppState, ClaudeProfileDetail, ClaudeProfileSummary, MarketplacePlugin, McpServerSpec, PluginMarketplace, PluginSkill, PluginSummary, PluginUpdate, CodexProfileDetail, CodexProfileSummary, SkillSummary, CliStatus, CliUpdate } from "../types";
 
 describe("web mock", () => {
+  it("新建预设的配置文本不生成预填或空字符串模型 ID", async () => {
+    for (const kind of ["chatgpt", "deepseek", "zhipu", "minimax"]) {
+      const config = await webInvoke<string>("codex_get_builtin_config", { kind });
+      expect(config).not.toMatch(/^model\s*=/m);
+    }
+  });
+
   it("自定义目录覆盖官方卡片的远程默认模型，Desktop 认证更新明确交给桌面版", async () => {
     const profile = await webInvoke<CodexProfileSummary>("codex_add_builtin_profile", { kind: "chatgpt" });
     try {

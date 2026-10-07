@@ -1,4 +1,4 @@
-import { CircleAlert, CreditCard, Flame, LogIn, MoreHorizontal, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { CircleAlert, CreditCard, Download, Flame, LogIn, MoreHorizontal, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -14,6 +14,7 @@ import { useMenuDismiss } from "../../components/useMenuDismiss";
 import { chatgptLogo } from "../../icons";
 import { balanceChipClass } from "../../presets";
 import { isWeeklyWindowLabel, localizeBalanceLabel } from "../profiles/balanceLabel";
+import { connectionExceptionMessage } from "../profiles/connectionText";
 import type { AuthStatus, BrowserLoginStart, ChatgptResetCredit, ProfileBalanceInfo } from "../../types";
 import { AddAccountDialog } from "./AddAccountDialog";
 
@@ -177,6 +178,21 @@ function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance,
     await refresh(true);
   };
 
+  const fetchModels = async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      const models = await api.codexFetchChatgptModels(null, source, accountId);
+      feedback.success(tBalance("edit.modelsFetched", { count: models.length }));
+    } catch (cause) {
+      feedback.error(tBalance("edit.fetchFailed", { error: connectionExceptionMessage(cause, tBalance) }));
+    } finally {
+      loadingRef.current = false;
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const knownError = getAuthQuotaError(cacheKey);
     const nextQuota = getAuthQuotaBalance(cacheKey) ?? cachedBalance ?? null;
@@ -209,6 +225,9 @@ function AccountCard({ source, accountId, login, plan, expiresAt, cachedBalance,
         <div ref={menuRef} className="app-select-menu app-popover" data-open="true" data-popover-in role="menu" aria-label={t("account.more")} style={{ ...menuStyle, minWidth: "10rem" }}>
           <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={loading} onClick={() => { setMenuOpen(false); void refresh(true); }}>
             <span className="flex items-center gap-2"><RefreshCw size={16} strokeWidth={2} aria-hidden="true" />{t("account.refreshQuota")}</span>
+          </button>
+          <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={loading} onClick={() => { setMenuOpen(false); void fetchModels(); }}>
+            <span className="flex items-center gap-2"><Download size={16} strokeWidth={2} aria-hidden="true" />{t("account.fetchModels")}</span>
           </button>
           <button type="button" role="menuitem" className="app-select-option app-selection-state disabled:cursor-not-allowed disabled:opacity-40" disabled={loading || loginExpired} title={t("account.warmupHint")} onClick={() => { setMenuOpen(false); void warmup(); }}>
             <span className="flex items-center gap-2"><Flame size={16} strokeWidth={2} aria-hidden="true" />{t("account.warmup")}</span>

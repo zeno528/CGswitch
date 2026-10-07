@@ -3,6 +3,12 @@ import i18next from "i18next";
 import { codexPresets, claudePresets, clientPresets, codexCustomCatalogTemplate, providerPresets, type ProviderPreset } from "./presets";
 
 describe("供应商目录的客户端边界", () => {
+  it("支持获取模型列表的四个 Codex 预设不预填模型 ID", () => {
+    for (const kind of ["chatgpt", "deepseek", "zhipu", "minimax"]) {
+      expect(codexPresets.find((preset) => preset.kind === kind)?.model).toBe("");
+    }
+  });
+
   it("双客户端各用自己的配置，单客户端条目只出现在对应列表", () => {
     const providers: ProviderPreset[] = [
       { kind: "both", name: "Both", icon: "custom",

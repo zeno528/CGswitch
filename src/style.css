@@ -1256,6 +1256,8 @@ body.drag-active * {
 }
 
 .apple-edit-toolbar--footer {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
   gap: var(--gap-actions);
@@ -1294,6 +1296,8 @@ body.drag-active * {
   padding-bottom: var(--gap-section);
   padding-top: var(--gap-page);
   position: relative;
+  /* 将编辑器的定位图层限制在正文叠层内，避免滚动时代码盖过底部操作栏。 */
+  isolation: isolate;
   scrollbar-gutter: stable;
   /* 滚到边界不向 main/窗口传导（滚动链阻断），窗口级滚动条不会被动触发 */
   overscroll-behavior: contain;
@@ -2829,7 +2833,9 @@ button:focus-visible {
 .app-select:disabled { cursor: not-allowed; opacity: 0.5; }
 .app-select__label { display: flex; min-width: 0; min-height: 1.6em; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-select-wrap[data-open="true"] { z-index: 30; }
-.app-select-wrap[data-open="true"] .app-select__icon { color: var(--accent); transform: rotate(180deg); }
+.app-select-wrap[data-open="true"] .app-select__icon { color: var(--accent); }
+/* 展开时只旋转下拉箭头，三点菜单图标保持原方向。 */
+.app-select-wrap:not(.app-select-wrap--icon)[data-open="true"] .app-select__icon { transform: rotate(180deg); }
 
 /* 浮层进场：等比 scale + 淡入。变换原点由 useFixedMenuPosition 通过
    --app-popover-origin 注入（贴触发按钮那一侧的角），此处只给不注入时的兜底值。

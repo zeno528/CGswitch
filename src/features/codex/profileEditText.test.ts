@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { patchModelValue, patchProviderFields, readCatalogOptions, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
+import { chatgptModelOptions, patchModelValue, patchProviderFields, readCatalogOptions, readModelValue, readProviderFields, resolveAuthSource, withMcpSection } from "./profileEditText";
+
+it("远程模型和账号缓存保留顺序、空档位以及默认档位兜底", () => {
+  expect(chatgptModelOptions([
+    { slug: "second", display_name: "Second", supported_reasoning_levels: [], default_reasoning_level: null },
+    { slug: "first", display_name: "First", supported_reasoning_levels: [{ effort: "low" }], default_reasoning_level: "low" },
+  ])).toEqual({ models: ["second", "first"], efforts: { second: [], first: ["low"] }, defaults: { second: "none", first: "low" } });
+  expect(chatgptModelOptions([])).toEqual({ models: [], efforts: {}, defaults: {} });
+});
 
 describe("model value read/patch", () => {
   it("reads and patches effort only at the top level, including configs without a provider", () => {

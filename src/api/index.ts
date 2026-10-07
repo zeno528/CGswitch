@@ -73,8 +73,8 @@ export const api = {
   getCodexStatus: () => call<CodexAppStatus>("get_codex_status"),
   codexFetchProviderModels: (baseUrl: string, apiKey: string) =>
     call<string[]>("codex_fetch_provider_models", { baseUrl, apiKey }),
-  codexFetchChatgptModels: (id: string | null, source: "desktop" | "oauth", accountId: string | null) =>
-    call<ChatgptModel[]>("codex_fetch_chatgpt_models", { id, source, accountId }),
+  codexFetchChatgptModels: (id: string | null, source: "desktop" | "oauth", accountId: string | null, refresh = true) =>
+    call<ChatgptModel[]>("codex_fetch_chatgpt_models", { id, source, accountId, refresh }),
   codexCaptureProfile: (name: string) => call<CodexProfileSummary>("codex_capture_profile", { name }),
   codexAddBuiltinProfile: (
     kind: string,

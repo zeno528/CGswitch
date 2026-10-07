@@ -154,6 +154,13 @@ fn migrations() -> Migrations<'static> {
         ),
         // Claude 卡片终端入口的最近工作目录（全局一份）；历史迁移只能在末尾追加。
         M::up("ALTER TABLE app_state ADD COLUMN claude_terminal_dirs TEXT"),
+        M::up(
+            "CREATE TABLE chatgpt_model_cache (
+               cache_key TEXT PRIMARY KEY,
+               models_json TEXT NOT NULL,
+               updated_at TEXT NOT NULL
+             )",
+        ),
     ])
 }
 
@@ -445,6 +452,40 @@ impl Database {
             accounts.push(row.map_err(|error| app_err!("订阅账号数据无效: {error}"))?);
         }
         Ok(accounts)
+    }
+
+    pub fn chatgpt_models(
+        &self,
+        key: &str,
+    ) -> AppResult<Option<Vec<crate::services::ChatgptModel>>> {
+        let text: Option<String> = self
+            .lock()?
+            .query_row(
+                "SELECT models_json FROM chatgpt_model_cache WHERE cache_key=?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| app_err!("读取账号模型缓存失败: {error}"))?;
+        text.map(|text| serde_json::from_str(&text).map_err(|_| app_err!("账号模型缓存格式无效")))
+            .transpose()
+    }
+
+    pub fn set_chatgpt_models(
+        &self,
+        key: &str,
+        models: &[crate::services::ChatgptModel],
+    ) -> AppResult<()> {
+        if models.is_empty() {
+            return Err(app_err!("ChatGPT 未返回可用模型，保留原有缓存"));
+        }
+        let text = serde_json::to_string(models).map_err(|_| app_err!("序列化账号模型缓存失败"))?;
+        self.lock()?.execute(
+            "INSERT INTO chatgpt_model_cache(cache_key, models_json, updated_at) VALUES(?1, ?2, ?3)
+             ON CONFLICT(cache_key) DO UPDATE SET models_json=excluded.models_json, updated_at=excluded.updated_at",
+            params![key, text, crate::paths::now_ms().to_string()],
+        ).map_err(|error| app_err!("保存账号模型缓存失败: {error}"))?;
+        Ok(())
     }
 
     pub fn upsert_account(&self, account: &StoredAccount) -> AppResult<()> {
@@ -1067,6 +1108,7 @@ impl Database {
             .and_then(|_| transaction.execute("DELETE FROM app_state", []))
             .and_then(|_| transaction.execute("DELETE FROM mcp_servers", []))
             .and_then(|_| transaction.execute("DELETE FROM claude_profiles", []))
+            .and_then(|_| transaction.execute("DELETE FROM chatgpt_model_cache", []))
             .map_err(|error| app_err!("恢复前清理数据失败: {error}"))?;
 
         // 旧 schema 备份没有身份两列/套餐列：按旧列复制后回填；新备份带列复制
@@ -1118,6 +1160,19 @@ impl Database {
                 .map_err(|error| app_err!("回填账号身份失败: {error}"))?;
             backfill_account_plan_type(&transaction)
                 .map_err(|error| app_err!("回填账号套餐失败: {error}"))?;
+        }
+        // 旧备份没有账号模型缓存；恢复后保持空缓存，不混入恢复前的账号数据。
+        let has_model_cache: i64 = source.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chatgpt_model_cache'",
+            [], |row| row.get(0),
+        ).map_err(|error| app_err!("读取备份模型缓存失败: {error}"))?;
+        if has_model_cache > 0 {
+            copy_intersected_columns(
+                &source,
+                &transaction,
+                "chatgpt_model_cache",
+                &["cache_key", "models_json", "updated_at"],
+            )?;
         }
         // app_state 按列交集复制：旧 schema 备份缺 active_claude_profile_id 时落列默认 NULL
         copy_intersected_columns(
@@ -1515,6 +1570,37 @@ mod tests {
     use super::*;
 
     #[test]
+    fn account_models_preserve_valid_cache_and_survive_backup_and_legacy_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::from_home(dir.path()).unwrap();
+        let db = Database::open(&paths).unwrap();
+        let models: Vec<crate::services::ChatgptModel> = serde_json::from_value(serde_json::json!([
+            {"slug":"fixture", "display_name":"Fixture", "visibility":"list",
+                "supported_reasoning_levels":[{"effort":"low"}], "default_reasoning_level":"low"}]
+        )).unwrap();
+        db.set_chatgpt_models("account-a", &models).unwrap();
+        assert!(db.set_chatgpt_models("account-a", &[]).is_err());
+        assert_eq!(
+            db.chatgpt_models("account-a").unwrap().unwrap()[0].slug,
+            "fixture"
+        );
+        assert!(db.chatgpt_models("account-b").unwrap().is_none());
+        let backup = dir.path().join("models.db");
+        db.export_database(&backup).unwrap();
+        db.set_chatgpt_models("account-b", &models).unwrap();
+        db.restore_from_backup(&backup).unwrap();
+        let cached = db.chatgpt_models("account-a").unwrap().unwrap();
+        assert_eq!(cached[0].supported_reasoning_levels[0].effort, "low");
+        assert!(db.chatgpt_models("account-b").unwrap().is_none());
+        let legacy = dir.path().join("legacy-models.db");
+        let mut old = Connection::open(&legacy).unwrap();
+        migrations().to_version(&mut old, 21).unwrap();
+        drop(old);
+        db.restore_from_backup(&legacy).unwrap();
+        assert!(db.chatgpt_models("account-a").unwrap().is_none());
+    }
+
+    #[test]
     fn rename_profile_only_changes_target_clients_name_and_timestamp() {
         let dir = tempfile::tempdir().unwrap();
         let paths = crate::paths::from_home(dir.path()).unwrap();
@@ -1692,7 +1778,7 @@ mod tests {
             connection
                 .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            21
+            22
         );
     }
 
@@ -1829,7 +1915,7 @@ mod tests {
         let version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 21);
+        assert_eq!(version, 22);
         let show_balance: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM pragma_table_info('claude_profiles') WHERE name = 'show_balance'",

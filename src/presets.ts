@@ -116,7 +116,7 @@ export const providerPresets: ProviderPreset[] = [
       provider: null,
       base_url: "",
       admin_url: "https://openai.com/chatgpt/pricing",
-      model: "gpt-5.6",
+      model: "",
     },
   },
   { kind: "deepseek", name: "DeepSeek", icon: "deepseek",
@@ -124,7 +124,7 @@ export const providerPresets: ProviderPreset[] = [
       provider: "deepseek",
       base_url: "https://api.deepseek.com/",
       admin_url: "https://platform.deepseek.com",
-      model: "deepseek-flash",
+      model: "",
     },
     claude: {
       provider: "deepseek",
@@ -138,7 +138,7 @@ export const providerPresets: ProviderPreset[] = [
       provider: "minimax",
       base_url: "https://api.minimax.cn/v1",
       admin_url: "https://platform.minimax.cn",
-      model: "MiniMax-M3",
+      model: "",
       endpoints: [
         { region: "cn", base_url: "https://api.minimax.cn/v1", admin_url: "https://platform.minimax.cn" },
         { region: "global", base_url: "https://api.minimax.io/v1", admin_url: "https://platform.minimax.io" },
@@ -160,7 +160,7 @@ export const providerPresets: ProviderPreset[] = [
       provider: "ZAI",
       base_url: "https://open.bigmodel.cn/api/v1",
       admin_url: "https://open.bigmodel.cn",
-      model: "glm-5.3",
+      model: "",
       endpoints: [
         { region: "cn", base_url: "https://open.bigmodel.cn/api/v1", admin_url: "https://open.bigmodel.cn" },
         { region: "global", base_url: "https://api.z.ai/api/v1", admin_url: "https://z.ai/model-api" },

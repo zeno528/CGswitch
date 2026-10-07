@@ -561,11 +561,18 @@ pub async fn codex_fetch_chatgpt_models(
     id: Option<String>,
     source: AuthSource,
     account_id: Option<String>,
+    refresh: bool,
     state: State<'_, AppContext>,
     oauth: State<'_, CodexOAuthState>,
 ) -> AppResult<Vec<crate::services::ChatgptModel>> {
     state
-        .codex_fetch_chatgpt_models(id.as_deref(), source, account_id.as_deref(), &oauth.0)
+        .codex_fetch_chatgpt_models(
+            id.as_deref(),
+            source,
+            account_id.as_deref(),
+            &oauth.0,
+            refresh,
+        )
         .await
 }
 
@@ -1198,12 +1205,25 @@ pub fn open_url(url: String) -> AppResult<()> {
         let result =
             unsafe { ShellExecuteW(None, &operation, &url_wide, None, None, SW_SHOWNORMAL) };
         if result.0 as usize <= 32 {
+            if url.starts_with("https://auth.openai.com/oauth/authorize?") {
+                tauri_plugin_log::log::warn!(
+                    "[auth.login.browser] stage=browser_open outcome=failure failure_kind=io_error shell_code={} msg=\"OAuth 授权浏览器打开失败\"",
+                    result.0 as usize
+                );
+            }
             return Err(app_err!("无法打开系统浏览器"));
         }
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = std::process::Command::new("open").arg(&url).spawn();
+        if let Err(error) = std::process::Command::new("open").arg(&url).spawn() {
+            if url.starts_with("https://auth.openai.com/oauth/authorize?") {
+                tauri_plugin_log::log::warn!(
+                    "[auth.login.browser] stage=browser_open outcome=failure failure_kind=io_error error_kind={:?} msg=\"OAuth 授权浏览器打开失败\"",
+                    error.kind()
+                );
+            }
+        }
     }
     Ok(())
 }

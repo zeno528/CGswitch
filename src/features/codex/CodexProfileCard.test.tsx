@@ -18,6 +18,28 @@ vi.mock("../profiles/ProfileModelSelector", () => ({ default: ({ onLoad }: { onL
 } }));
 afterEach(() => vi.restoreAllMocks());
 
+it("官方卡片共用账号缓存，刷新只更新账号而不另存配置模型列表", async () => {
+  setupI18n("zh-CN");
+  const profile = await webInvoke<CodexProfileSummary>("codex_add_builtin_profile", { kind: "chatgpt" });
+  try {
+    const detail = await webInvoke<CodexProfileDetail>("codex_get_profile", { id: profile.id });
+    detail.fetched_models = ["outdated-profile-cache"];
+    vi.spyOn(api, "codexGetProfile").mockResolvedValue(detail);
+    const fetch = vi.spyOn(api, "codexFetchChatgptModels").mockResolvedValue([
+      { slug: "account-model", display_name: "Account model", supported_reasoning_levels: [{ effort: "low" }], default_reasoning_level: "low" },
+    ]);
+    const persist = vi.spyOn(api, "codexSetProfileFetchedModels").mockResolvedValue();
+    renderToStaticMarkup(createElement(CodexProfileCard, { profile, active: false, busy: false,
+      activationEpoch: 0, coldStart: false, onApply: () => {}, onRename: () => {}, onEdit: () => {},
+      onRemove: () => {}, onDuplicate: () => {}, onChanged: async () => {} }));
+    for (const refresh of [false, true]) {
+      expect(await loader.current!(refresh)).toMatchObject({ models: ["account-model"], defaults: { "account-model": "low" } });
+      expect(fetch).toHaveBeenLastCalledWith(profile.id, detail.auth_source ?? "desktop", detail.account_id, refresh);
+    }
+    expect(persist).not.toHaveBeenCalled();
+  } finally { await webInvoke("codex_delete_profile", { id: profile.id }); }
+});
+
 it("官方卡片打开和恢复默认都使用自定义目录，无需访问远程接口或写入远程缓存", async () => {
   setupI18n("zh-CN");
   const profile = await webInvoke<CodexProfileSummary>("codex_add_builtin_profile", { kind: "chatgpt" });

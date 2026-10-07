@@ -35,6 +35,7 @@ it("浏览器 mock 明确说明模型列表需要在桌面版获取", async () =
   })).rejects.toThrow("请在桌面版获取供应商模型列表");
   await expect(webInvoke("codex_fetch_chatgpt_models", { id: "fixture-profile", source: "desktop", accountId: null }))
     .rejects.toThrow("请在桌面版获取 ChatGPT 模型列表");
+  expect(await webInvoke("codex_fetch_chatgpt_models", { source: "desktop", refresh: false })).toEqual([]);
 });
 
 it("ChatGPT 模型目录命令传递指定配置与账号身份", async () => {
@@ -46,7 +47,11 @@ it("ChatGPT 模型目录命令传递指定配置与账号身份", async () => {
   const { api } = await import("./index");
   expect(await api.codexFetchChatgptModels("fixture-profile", "oauth", "fixture-account")).toEqual([]);
   expect(mocks.invoke).toHaveBeenLastCalledWith("codex_fetch_chatgpt_models", {
-    id: "fixture-profile", source: "oauth", accountId: "fixture-account",
+    id: "fixture-profile", source: "oauth", accountId: "fixture-account", refresh: true,
+  });
+  await api.codexFetchChatgptModels(null, "oauth", "fixture-account", false);
+  expect(mocks.invoke).toHaveBeenLastCalledWith("codex_fetch_chatgpt_models", {
+    id: null, source: "oauth", accountId: "fixture-account", refresh: false,
   });
 });
 

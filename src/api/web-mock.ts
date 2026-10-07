@@ -761,9 +761,10 @@ function parseClaudeMcpEntryWeb(name: string, text: string): McpServerSpec {
 // 浏览器调试模式不查后端命令，用预设的展示元数据合成最小 config 模板
 // （正式运行时由后端 builtin 模板给出完整原文）
 function mockBuiltinFragment(preset: ClientPreset, apiKey: string): string {
+  const modelLine = preset.model ? `model = "${preset.model}"\n` : "";
   return preset.provider
-    ? `model = "${preset.model}"\nmodel_provider = "${preset.provider}"\nmodel_reasoning_effort = "high"\n\n[model_providers.${preset.provider}]\nname = "${preset.provider}"\nbase_url = "${preset.base_url}"\nwire_api = "responses"\nexperimental_bearer_token = "${apiKey || "<YOUR_API_KEY>"}"`
-    : `model = "${preset.model}"\nmodel_reasoning_effort = "high"`;
+    ? `${modelLine}model_provider = "${preset.provider}"\nmodel_reasoning_effort = "high"\n\n[model_providers.${preset.provider}]\nname = "${preset.provider}"\nbase_url = "${preset.base_url}"\nwire_api = "responses"\nexperimental_bearer_token = "${apiKey || "<YOUR_API_KEY>"}"`
+    : `${modelLine}model_reasoning_effort = "high"`;
 }
 
 // 与后端 profile_copy_plan 一致，两端 mock 共用复制命名和插入位置。
@@ -921,6 +922,8 @@ export async function webInvoke<T>(command: string, args?: Record<string, unknow
     case "codex_fetch_provider_models":
       throw new Error("请在桌面版获取供应商模型列表");
     case "codex_fetch_chatgpt_models":
+      // 浏览器没有桌面账号缓存；只读返回空，联网仍明确失败。
+      if (args?.refresh === false) return [] as T;
       throw new Error("请在桌面版获取 ChatGPT 模型列表");
     case "codex_test_provider_connection": {
       const apiKey = String(args?.apiKey ?? "");

@@ -292,30 +292,55 @@ impl CodexOAuthManager {
             let retry_prefix = if retried { " 代理重试" } else { " " };
             let network = crate::network::Network::current()
                 .await
-                .map_err(|error| CodexOAuthError::NetworkError(error.to_string()))?;
+                .map_err(|error| {
+                    tauri_plugin_log::log::warn!(
+                        "[auth.request] op={operation:?} subject={context:?} stage=network_setup outcome=failure failure_kind={} error={:?} msg=\"OAuth 网络设置读取失败\"",
+                        error.kind,
+                        error.message
+                    );
+                    CodexOAuthError::NetworkError(error.to_string())
+                })?;
+            if context == "login" {
+                tauri_plugin_log::log::info!(
+                    "[auth.request] op={operation:?} subject={context:?} stage=token_exchange retry={retried} route={}{} outcome=success msg=\"OAuth 开始换取 Token\"",
+                    network.mode(),
+                    crate::network::proxy_note(&network.proxy)
+                );
+            }
             let client = {
                 let mut cached = self.client.lock().await;
                 if cached
                     .as_ref()
                     .is_none_or(|(proxy, _)| *proxy != network.proxy)
                 {
-                    *cached = Some((network.proxy.clone(), Self::build_client(&network)?));
+                    let client = Self::build_client(&network).inspect_err(|_| {
+                        tauri_plugin_log::log::warn!(
+                            "[auth.request] op={operation:?} subject={context:?} stage=client_setup outcome=failure failure_kind=internal msg=\"OAuth HTTP 客户端创建失败\""
+                        );
+                    })?;
+                    *cached = Some((network.proxy.clone(), client));
                 }
                 cached.as_ref().expect("HTTP 客户端已初始化").1.clone()
             };
+            let started = std::time::Instant::now();
             let response = make(client).send().await.map_err(|error| {
                 tauri_plugin_log::log::warn!(
-                    "[auth.request] op={:?} subject={context:?} outcome=failure failure_kind=network_error error={error:?} msg=\"网络请求失败\"",
-                    format!("{operation}{retry_prefix}")
+                    "[auth.request] op={:?} subject={context:?} stage=request outcome=failure failure_kind={} connect={} latency_ms={} msg=\"OAuth 网络请求失败\"",
+                    format!("{operation}{retry_prefix}"),
+                    if error.is_timeout() { "timeout" } else { "network_error" },
+                    error.is_connect(),
+                    started.elapsed().as_millis()
                 );
                 CodexOAuthError::from(error)
             })?;
             let status = response.status();
             let text = response.text().await.map_err(|error| {
                 tauri_plugin_log::log::warn!(
-                    "[auth.request] op={:?} subject={context:?} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"响应读取失败\"",
+                    "[auth.request] op={:?} subject={context:?} stage=response_body outcome=failure failure_kind={} status_code={} latency_ms={} msg=\"OAuth 响应读取失败\"",
                     format!("{operation}{retry_prefix}"),
-                    status.as_u16()
+                    if error.is_timeout() { "timeout" } else { "io_error" },
+                    status.as_u16(),
+                    started.elapsed().as_millis()
                 );
                 CodexOAuthError::from(error)
             })?;
@@ -323,6 +348,9 @@ impl CodexOAuthManager {
                 && status == reqwest::StatusCode::FORBIDDEN
                 && text.contains(REGION_BLOCKED_MARKER)
             {
+                tauri_plugin_log::log::info!(
+                    "[auth.request] op={operation:?} subject={context:?} outcome=skipped reason=region_blocked retry=true msg=\"OAuth 地区限制触发代理重试\""
+                );
                 *self.client.lock().await = None;
                 retried = true;
                 continue;
@@ -421,7 +449,12 @@ impl CodexOAuthManager {
             id_token,
         };
 
-        let account = self.add_account_internal(credentials).await?;
+        let account = self.add_account_internal(credentials).await.inspect_err(|error| {
+            tauri_plugin_log::log::warn!(
+                "[auth.login.account] stage=persist outcome=failure failure_kind={} msg=\"OAuth 登录账号保存失败\"",
+                if matches!(error, CodexOAuthError::IoError(_)) { "io_error" } else { "internal" }
+            );
+        })?;
         // 登录响应自带的 access_token 按"本地行 id"入缓存（行 id 与 workspace 解耦后两者不同）
         self.access_tokens.write().await.insert(
             account.id.clone(),
@@ -469,7 +502,7 @@ impl CodexOAuthManager {
                 }
                 Err(error) => {
                     tauri_plugin_log::log::warn!(
-                        "[auth.login.browser.start] outcome=failure failure_kind=io_error error={error:?} msg=\"浏览器登录回调端口绑定失败\""
+                    "[auth.login.browser] stage=listener_setup outcome=failure failure_kind=io_error error={error:?} msg=\"浏览器登录回调端口绑定失败\""
                     );
                     return Err(CodexOAuthError::RequestFailed(format!(
                         "本地端口 {BROWSER_CALLBACK_PORT} 绑定失败: {error}"
@@ -479,7 +512,7 @@ impl CodexOAuthManager {
         }
         let listener = listener.ok_or_else(|| {
             tauri_plugin_log::log::warn!(
-                "[auth.login.browser.start] outcome=failure failure_kind=io_error msg=\"浏览器登录回调端口持续被占用\""
+                "[auth.login.browser] stage=listener_setup outcome=failure failure_kind=io_error reason=port_in_use callback_port={BROWSER_CALLBACK_PORT} msg=\"浏览器登录回调端口持续被占用\""
             );
             CodexOAuthError::RequestFailed(format!(
                 "本地端口 {BROWSER_CALLBACK_PORT} 被占用（可能其他程序正在登录），请稍后重试"
@@ -499,7 +532,7 @@ impl CodexOAuthManager {
         });
         let authorize_url = build_authorize_url(&state, &pkce_code_challenge(&code_verifier));
         tauri_plugin_log::log::info!(
-            "[auth.login.browser.start] outcome=success msg=\"浏览器登录已启动，等待授权回调\""
+            "[auth.login.browser] stage=awaiting_callback callback_port={BROWSER_CALLBACK_PORT} timeout_secs={BROWSER_LOGIN_TIMEOUT_SECS} outcome=success msg=\"浏览器登录已启动，等待授权回调\""
         );
         Ok(BrowserLoginStart {
             authorize_url,
@@ -515,6 +548,9 @@ impl CodexOAuthManager {
                 .as_mut()
                 .and_then(|slot| slot.code_rx.take())
                 .ok_or_else(|| {
+                    tauri_plugin_log::log::warn!(
+                        "[auth.login.browser] stage=awaiting_callback outcome=failure failure_kind=internal reason=missing_receiver msg=\"OAuth 登录等待上下文不存在或正在被其他请求使用\""
+                    );
                     CodexOAuthError::RequestFailed(
                         "没有进行中的浏览器登录，请重新启动登录".to_string(),
                     )
@@ -537,15 +573,15 @@ impl CodexOAuthManager {
             // 发送端已丢弃：登录被取消
             Ok(Err(_cancelled)) => {
                 self.clear_pending_browser_login();
+                tauri_plugin_log::log::info!(
+                    "[auth.login.browser] stage=awaiting_callback outcome=denied reason=listener_closed msg=\"OAuth 回调监听已结束，未取得授权码\""
+                );
                 return Err(CodexOAuthError::RequestFailed(
                     "浏览器登录已取消".to_string(),
                 ));
             }
             Ok(Ok(BrowserCallback::Timeout)) => {
                 self.clear_pending_browser_login();
-                tauri_plugin_log::log::warn!(
-                    "[auth.login.browser.failure] outcome=failure failure_kind=timeout msg=\"浏览器登录等待超时\""
-                );
                 return Err(CodexOAuthError::RequestFailed(
                     "浏览器登录等待超时，请重试".to_string(),
                 ));
@@ -553,7 +589,7 @@ impl CodexOAuthManager {
             Ok(Ok(BrowserCallback::Denied(message))) => {
                 self.clear_pending_browser_login();
                 tauri_plugin_log::log::info!(
-                    "[auth.login.browser.denied] outcome=denied error={message:?} msg=\"浏览器授权被拒绝或中断\""
+                    "[auth.login.browser] stage=callback outcome=denied reason=authorization_denied msg=\"OAuth 浏览器授权被拒绝或中断\""
                 );
                 return Err(CodexOAuthError::RequestFailed(format!(
                     "浏览器授权未完成: {message}"
@@ -561,20 +597,29 @@ impl CodexOAuthManager {
             }
             Ok(Ok(BrowserCallback::Code(code))) => code,
         };
+        tauri_plugin_log::log::info!(
+            "[auth.login.browser] stage=callback outcome=success msg=\"OAuth 已收到有效授权回调\""
+        );
         let code_verifier = {
             let mut pending = self.browser_pending_lock();
             match pending.take() {
                 Some(slot) => slot.code_verifier,
                 None => {
+                    tauri_plugin_log::log::warn!(
+                        "[auth.login.browser] stage=callback outcome=failure failure_kind=internal reason=missing_pending_login msg=\"OAuth 收到回调后登录上下文已失效\""
+                    );
                     return Err(CodexOAuthError::RequestFailed(
                         "没有进行中的浏览器登录，请重新启动登录".to_string(),
-                    ))
+                    ));
                 }
             }
         };
         let tokens = self
             .exchange_code_for_tokens(&code, &code_verifier, BROWSER_REDIRECT_URI)
             .await?;
+        tauri_plugin_log::log::info!(
+            "[auth.login.token] outcome=success msg=\"OAuth 换取 Token 成功，开始保存账号\""
+        );
         let account = self.complete_login(tokens).await?;
         let email = self
             .accounts
@@ -583,7 +628,7 @@ impl CodexOAuthManager {
             .get(&account.id)
             .and_then(|data| data.email.clone());
         tauri_plugin_log::log::info!(
-            "[auth.login.browser.success] {} source=oauth outcome=success msg=\"浏览器授权完成\"",
+            "[auth.login.browser] {} source=oauth stage=complete outcome=success msg=\"浏览器授权完成\"",
             account_subject(&account.id, email.as_deref())
         );
         Ok(Some(account))
@@ -593,7 +638,7 @@ impl CodexOAuthManager {
     pub fn cancel_browser_login(&self) {
         if self.clear_pending_browser_login() {
             tauri_plugin_log::log::info!(
-                "[auth.login.browser.cancel] outcome=denied msg=\"已取消浏览器登录等待\""
+                "[auth.login.browser] stage=awaiting_callback outcome=denied reason=user_cancelled msg=\"OAuth 等待已取消，尚未取得有效授权回调\""
             );
         }
     }
@@ -1567,6 +1612,9 @@ fn serve_browser_callback(
             return;
         }
         if std::time::Instant::now() >= deadline {
+            tauri_plugin_log::log::warn!(
+                "[auth.login.browser] stage=awaiting_callback outcome=failure failure_kind=timeout reason=no_valid_callback msg=\"OAuth 等待超时，未收到有效授权回调\""
+            );
             let _ = code_tx.send(BrowserCallback::Timeout);
             return;
         }
@@ -1575,6 +1623,9 @@ fn serve_browser_callback(
                 let _ = stream.set_nonblocking(false);
                 let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
                 let Some(target) = read_request_target(&stream) else {
+                    tauri_plugin_log::log::warn!(
+                        "[auth.login.browser] stage=callback outcome=skipped reason=request_unreadable msg=\"OAuth 本地回调请求读取失败，继续等待\""
+                    );
                     continue;
                 };
                 match parse_callback_query(&target) {
@@ -1588,6 +1639,9 @@ fn serve_browser_callback(
                     }
                     // state 不匹配/缺参：可能是残留的旧标签页，回 400 继续等真正的回调
                     Some(_) => {
+                        tauri_plugin_log::log::warn!(
+                            "[auth.login.browser] stage=callback outcome=skipped reason=state_mismatch msg=\"OAuth 回调不属于本次登录，继续等待\""
+                        );
                         let _ = write_http_response(&stream, 400, "Bad Request", "");
                     }
                     None => {
@@ -1601,6 +1655,11 @@ fn serve_browser_callback(
                                 BROWSER_DENIED_HTML,
                             );
                             return;
+                        }
+                        if target.split('?').next() == Some("/auth/callback") {
+                            tauri_plugin_log::log::warn!(
+                                "[auth.login.browser] stage=callback outcome=skipped reason=missing_parameters msg=\"OAuth 回调缺少必要参数，继续等待\""
+                            );
                         }
                         let _ = write_http_response(&stream, 404, "Not Found", "");
                     }
@@ -2362,6 +2421,37 @@ mod tests {
         assert!(url.contains("code_challenge_method=S256"));
         assert!(url.contains("prompt=login"));
         assert!(url.contains("codex_cli_simplified_flow=true"));
+    }
+
+    #[test]
+    fn browser_callback_ignores_invalid_requests_and_accepts_current_login() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let server = std::thread::spawn(move || {
+            serve_browser_callback(listener, "current".into(), tx);
+        });
+        for (target, status) in [
+            ("/auth/callback?code=secret&state=old", "400"),
+            ("/auth/callback?state=current", "404"),
+            ("/auth/callback?code=secret&state=current", "200"),
+        ] {
+            let mut stream = std::net::TcpStream::connect(address).unwrap();
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            write!(stream, "GET {target} HTTP/1.1\r\n\r\n").unwrap();
+            let mut response = String::new();
+            stream.read_to_string(&mut response).unwrap();
+            assert!(response.starts_with(&format!("HTTP/1.1 {status}")));
+            assert!(!response.contains("secret"));
+        }
+        assert!(
+            matches!(rx.blocking_recv().unwrap(), BrowserCallback::Code(code) if code == "secret")
+        );
+        server.join().unwrap();
     }
 
     #[test]

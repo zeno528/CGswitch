@@ -1,3 +1,14 @@
+import type { ChatgptModel } from "../../types";
+
+/** 远程获取和账号缓存共用同一份模型选项转换。 */
+export function chatgptModelOptions(catalog: ChatgptModel[]) {
+  return {
+    models: catalog.map((model) => model.slug),
+    efforts: Object.fromEntries(catalog.map((model) => [model.slug, model.supported_reasoning_levels.map((level) => level.effort)])),
+    defaults: Object.fromEntries(catalog.map((model) => [model.slug, model.default_reasoning_level ?? "none"])),
+  };
+}
+
 export interface ProviderFields {
   base_url: string;
   experimental_bearer_token: string;
