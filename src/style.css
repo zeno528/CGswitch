@@ -2766,7 +2766,7 @@ button:focus-visible {
   min-width: 0;
 }
 
-/* 模型映射表的选择器只保留箭头；展开菜单固定为宽卡片，避免长模型 ID 被按钮截断。 */
+/* 方形触发器：模型映射表的选择器只保留箭头；复选菜单语义下显示 ⋯（更多操作），展开菜单固定为箭头卡片。 */
 .app-select-wrap--icon {
   width: 2.5rem;
   min-width: 2.5rem;

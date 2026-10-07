@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown, MoreHorizontal, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -112,6 +112,9 @@ export function AppSelect<T extends string | number>({
     if (!checkedValues) setOpen(false);
   };
 
+  // iconOnly 触发器图标跟随语义：复选菜单（⋯ 更多操作）用 MoreHorizontal，列表选择用箭头
+  const TriggerGlyph = iconOnly && checkedValues ? MoreHorizontal : ChevronDown;
+
   const menu = (
     <div ref={menuRef} className={`app-select-menu app-popover ${iconOnly ? "app-select-menu--arrow" : ""} ${searchable ? "app-select-menu--searchable" : ""}`} data-open={open} data-popover-in={open ? "" : undefined} style={menuStyle} role={searchable ? undefined : checkedValues ? "menu" : "listbox"} aria-label={placeholder ?? t("select.optionsLabel")} aria-hidden={!open}>
       {searchable ? <div className="app-select-search">
@@ -181,7 +184,7 @@ export function AppSelect<T extends string | number>({
         }}
       >
         {iconOnly ? <span className="sr-only">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span> : <span className="app-select__label">{selected ? renderLabel?.(selected) ?? selected.label : placeholder ?? t("select.placeholder")}</span>}
-        <ChevronDown className="app-select__icon" size={compact ? 14 : 16} strokeWidth={2} aria-hidden="true" />
+        <TriggerGlyph className="app-select__icon" size={compact ? 14 : 16} strokeWidth={2} aria-hidden="true" />
       </button>
       {menuContent}
     </div>

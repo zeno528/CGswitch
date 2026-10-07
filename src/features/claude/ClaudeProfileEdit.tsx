@@ -520,7 +520,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                       </div>
                     </div>
                   </div>
-                  <div className="editor-ghost--format bg-transparent! w-20 shrink-0 rounded-md" onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}>
+                  <div className="shrink-0" onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}>
                     <AppSelect
                       value={null}
                       options={[
@@ -550,7 +550,7 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                       )}
                       placeholder={t("advanced.moreLabel")}
                       disabled={saving}
-                      menuAlign="end"
+                      iconOnly
                       compact
                     />
                   </div>
