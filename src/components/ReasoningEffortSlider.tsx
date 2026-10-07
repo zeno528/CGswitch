@@ -58,11 +58,8 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
         const thumb = track.querySelector<HTMLElement>(".reasoning-effort-slider__thumb")!;
         track.toggleAttribute("data-thumb-hover", event.pointerType === "mouse"
           && isOverEffortThumb(thumb.getBoundingClientRect(), event.clientX, event.clientY));
-        // 仅按住主键且在移动（真拖动）才算抓紧；单击、长按不动不显示。
-        track.toggleAttribute("data-thumb-drag", !disabled && (event.buttons & 1) === 1);
       }} onPointerLeave={(event) => {
         event.currentTarget.removeAttribute("data-thumb-hover");
-        event.currentTarget.removeAttribute("data-thumb-drag");
       }}>
         <span className="reasoning-effort-slider__fill" aria-hidden="true">
           {fast && value === "ultra" && <span className="reasoning-effort-slider__gradient" />}
@@ -86,7 +83,6 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
         onKeyDown={(event) => { if (disabled && event.key !== "Tab") event.preventDefault(); }}
         onChange={(event) => { if (!disabled && levels.length) onChange(levels[Number(event.target.value)]); }}
         onPointerUp={(event) => {
-          event.currentTarget.closest<HTMLElement>(".reasoning-effort-slider__track")?.removeAttribute("data-thumb-drag");
           if (!disabled && levels.length) {
             const next = levels[Number(event.currentTarget.value)];
             onChange(next);

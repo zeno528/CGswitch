@@ -917,8 +917,6 @@ body:has(.app-dialog-overlay) .window-control-button {
   opacity: 0;
   cursor: pointer;
 }
-/* 真拖动（按住且移动）才显示抓紧光标；单击、长按不动不算，悬停不改光标。 */
-.reasoning-effort-slider__track[data-thumb-drag] input { cursor: grabbing; }
 .reasoning-effort-slider__track input::-webkit-slider-thumb { appearance: none; width: var(--effort-thumb-size); height: var(--effort-thumb-size); }
 .reasoning-effort-slider__track input::-moz-range-thumb { width: var(--effort-thumb-size); height: var(--effort-thumb-size); border: 0; }
 .reasoning-effort-slider__thumb-rail {
@@ -941,7 +939,8 @@ body:has(.app-dialog-overlay) .window-control-button {
 .reasoning-effort-slider__stop[data-filled="true"] span { background: #fff; }
 .reasoning-effort-slider__stop:is(:hover, :focus-visible) span { transform: scale(1.75); opacity: 1; }
 .reasoning-effort-slider__stop:focus-visible { outline: 2px solid var(--accent); }
-.reasoning-effort-slider__stop[aria-pressed="true"] { visibility: hidden; pointer-events: none; }
+/* 选中不提前隐藏圆点，由移动中的圆头自然盖住；仅让出原生拖动事件。 */
+.reasoning-effort-slider__stop[aria-pressed="true"] { pointer-events: none; }
 .reasoning-effort-slider__gradient { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.04) 22%, rgb(255 255 255 / 0.14) 50%, rgb(255 255 255 / 0.04) 78%, transparent 100%); background-size: 220% 100%; filter: blur(1px); animation: effort-gradient-flow 1.6s linear infinite; pointer-events: none; }
 .reasoning-effort-slider__particles { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; opacity: var(--effort-energy); }
 .reasoning-effort-slider__particles::before, .reasoning-effort-slider__particles::after {
@@ -2907,7 +2906,8 @@ button:focus-visible {
   border-radius: var(--radius-control);
   background: var(--panel-bg);
   padding: 0.3rem;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), 0 0 0 1px var(--panel-ring);
+  /* 菜单浮卡复用浅深主题的卡片描边，内描边叠在自身底色上。 */
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12), inset var(--card-edge-shadow);
   opacity: 0;
   pointer-events: none;
   /* 进场走 .app-popover 的 app-popover-in 关键帧（等比缩放 + 淡入）。
