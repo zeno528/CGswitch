@@ -56,6 +56,7 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
   const [triggerWidth, setTriggerWidth] = useState<number | null>(null);
   const [options, setOptions] = useState<ModelSelectionOptions | null>(null);
   const [draft, setDraft] = useState<ModelSelection>({ model: "", effort: "" });
+  const [pendingSelection, setPendingSelection] = useState<ModelSelection | null>(null);
   const [busy, setBusy] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,6 +71,7 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
   const open = async () => {
     if (view) { close(); return; }
     const width = triggerRef.current?.getBoundingClientRect().width ?? null;
+    setOptions(null);
     setBusy(true);
     try {
       const loaded = await onLoad();
@@ -84,7 +86,7 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
     if (!options || disabled) return;
     setDraft(next);
   };
-  // 关闭浮卡的一瞬间才真正保存：交互期间只更新 draft 供浮卡内预览，一次会话只写一次库和实时文件。
+  // 交互期间用 draft 预览，关闭浮卡时才保存；一次会话只写一次库和实时文件。
   const flush = async () => {
     if (!options || busy) return;
     const changes = {
@@ -93,11 +95,12 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
       ...(supportsFastMode && draft.fast !== options.fast ? { fast: draft.fast } : {}),
     };
     if (!Object.keys(changes).length) return;
+    setPendingSelection(resolveModelSelection(draft, options));
     setBusy(true);
     try {
       await onSave(changes);
       setOptions({ ...options, ...draft });
-    } catch (error) { feedback.error(String(error)); }
+    } catch (error) { setPendingSelection(null); feedback.error(String(error)); }
     finally { setBusy(false); }
   };
   const flushRef = useRef(flush);
@@ -127,7 +130,15 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
     setView((current) => current === "models" ? "effort" : current);
   };
   const effective = resolveModelSelection(draft, options);
-  const savedSelection = resolveModelSelection({ model: model ?? "", effort: effort ?? "" }, options);
+  const savedSelection = resolveModelSelection({ model: model ?? "", effort: effort ?? "", fast }, options);
+  // 保存结束不代表父级已更新：显示新值直到回传匹配，避免旧文字与宽度闪回。
+  useLayoutEffect(() => {
+    if (pendingSelection && savedSelection.model === pendingSelection.model
+      && savedSelection.effort === pendingSelection.effort && !!savedSelection.fast === !!pendingSelection.fast) {
+      setPendingSelection(null);
+    }
+  }, [pendingSelection, savedSelection.model, savedSelection.effort, savedSelection.fast]);
+  const displayedSelection = view ? effective : pendingSelection ?? savedSelection;
   const availableLevels = resolveEffortLevels(effective.model, options?.efforts, levels);
   const models = getModelChoices(options?.model ?? "", options?.models ?? [], formatModelLabel);
   return (
@@ -135,11 +146,11 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
       onKeyDown={(event) => { if (event.key === "Enter") event.stopPropagation(); }}>
       <button ref={triggerRef} type="button" className="profile-card-action-meta profile-model-trigger" style={view && triggerWidth ? { width: `${triggerWidth}px` } : undefined} disabled={disabled || busy}
         title={t("modelSelection.title")} aria-haspopup="dialog" aria-expanded={view !== null} aria-busy={busy} onClick={() => void open()}>
-        {supportsFastMode && fast && <Zap size={14} fill="currentColor" className="shrink-0" role="img" aria-label={t("modelSelection.fastMode")} />}
-        <span className="profile-card-action-meta__model">{modelLabel(savedSelection.model || (supportsFastMode ? "" : t("modelSelection.default")), formatModelLabel)}</span>
-        {(!supportsFastMode || (savedSelection.model && savedSelection.effort)) && <span aria-hidden="true">·</span>}
-        <span style={{ color: savedSelection.effort === "ultra" ? "var(--reasoning-ultra)" : undefined }}>
-          {savedSelection.effort || (supportsFastMode ? "" : t("modelSelection.default"))}</span>
+        {supportsFastMode && displayedSelection.fast && <Zap size={14} fill="currentColor" className="shrink-0" role="img" aria-label={t("modelSelection.fastMode")} />}
+        <span className="profile-card-action-meta__model">{modelLabel(displayedSelection.model || (supportsFastMode ? "" : t("modelSelection.default")), formatModelLabel)}</span>
+        {(!supportsFastMode || (displayedSelection.model && displayedSelection.effort)) && <span aria-hidden="true">·</span>}
+        <span style={{ textTransform: "capitalize", color: displayedSelection.effort === "ultra" ? "var(--reasoning-ultra)" : undefined }}>
+          {displayedSelection.effort || (supportsFastMode ? "" : t("modelSelection.default"))}</span>
         {view && <span className="profile-model-trigger__prompt muted">{t("modelSelection.chooseModel")}</span>}
       </button>
       {view && options && createPortal(
