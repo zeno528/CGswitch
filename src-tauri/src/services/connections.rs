@@ -525,14 +525,16 @@ pub(crate) struct MiniMaxModelRemains {
 /// 缓存条目：键 = 检测到的代理地址，值 = 按它构建的 Client。
 type CachedHttpclient = (Option<String>, reqwest::Client);
 
-pub(super) fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
+pub(super) async fn http_client() -> AppResult<(reqwest::Client, Option<String>)> {
+    let network = Network::current()
+        .await
+        .map_err(|error| app_err!("{error}"))?;
     static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<CachedHttpclient>>> =
         std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(None));
     let mut cached = cache
         .lock()
         .map_err(|_| app_err!("HTTP 客户端缓存锁已损坏"))?;
-    let network = Network::detect().map_err(|error| app_err!("{error}"))?;
     let proxy = network.proxy.clone();
     if let Some((key, client)) = cached.as_ref() {
         if *key == proxy {
@@ -591,7 +593,7 @@ async fn test_opencode_connection(
     key: &str,
     context: &str,
 ) -> AppResult<CodexProfileConnectionResult> {
-    let (client, proxy) = http_client()?;
+    let (client, proxy) = http_client().await?;
     let request = client
         .post(format!("{}/responses", base_url.trim_end_matches('/')))
         .bearer_auth(key);
@@ -718,7 +720,7 @@ fn log_provider_connect_success(
     tauri_plugin_log::log::info!(
         "[provider.connect.test] {context} outcome=success status_code={} latency_ms={latency_ms} proxy={} msg=\"测试连通成功\"",
         status.as_u16(),
-        proxy.as_deref().unwrap_or("None")
+        proxy.as_deref().unwrap_or("-")
     );
 }
 
@@ -846,7 +848,7 @@ async fn test_models_endpoint(
     }
 
     let models_url = format!("{}/models", base_url.trim_end_matches('/'));
-    let (client, proxy) = http_client()?;
+    let (client, proxy) = http_client().await?;
 
     let start = std::time::Instant::now();
     match client.get(&models_url).bearer_auth(api_key).send().await {
@@ -986,7 +988,7 @@ async fn query_supported_provider_balance(
     base: &str,
     api_key: &str,
 ) -> AppResult<ProfileBalance> {
-    let (client, _proxy) = http_client()?;
+    let (client, _proxy) = http_client().await?;
     let start = std::time::Instant::now();
     match provider {
         "deepseek" => query_deepseek_balance(&client, base, api_key, start).await,
@@ -1423,9 +1425,9 @@ async fn query_chatgpt_quota(
     account_id: Option<&str>,
     context: &str,
 ) -> AppResult<ProfileBalance> {
-    let (client, proxy) = http_client().map_err(|error| {
+    let (client, proxy) = http_client().await.map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=internal error={error:?} msg=\"用量查询客户端初始化失败\""
+            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=internal error={error} msg=\"用量查询客户端初始化失败\""
         );
         error
     })?;
@@ -1442,7 +1444,9 @@ async fn query_chatgpt_quota(
         // 超时落 timeout 枚举，其余网络故障才是 network_error
         let kind = if error.is_timeout() { "timeout" } else { "network_error" };
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind={kind} proxy={} error={:?} msg=\"用量查询网络错误\"",
+            "[chatgpt.quota.query] client=\"Codex\" {context} stage=request outcome=failure failure_kind={kind} connect={} latency_ms={} proxy={} error={:?} msg=\"用量查询网络错误\"",
+            error.is_connect(),
+            start.elapsed().as_millis(),
             proxy.as_deref().unwrap_or("-"),
             reqwest_error_message(&error),
         );
@@ -1453,8 +1457,10 @@ async fn query_chatgpt_quota(
     let status = response.status();
     let body = response.text().await.map_err(|error| {
         tauri_plugin_log::log::warn!(
-            "[chatgpt.quota.query] client=\"Codex\" {context} outcome=failure failure_kind=io_error status_code={} error={error:?} msg=\"用量接口响应读取失败\"",
-            status.as_u16()
+            "[chatgpt.quota.query] client=\"Codex\" {context} stage=response_body outcome=failure failure_kind=io_error status_code={} latency_ms={} error={:?} msg=\"用量接口响应读取失败\"",
+            status.as_u16(),
+            start.elapsed().as_millis(),
+            reqwest_error_message(&error)
         );
         app_err!("用量接口响应读取失败: {error}")
     })?;
@@ -1678,9 +1684,9 @@ impl AppContext {
         access_token: &str,
         context: &str,
     ) -> AppResult<CodexProfileConnectionResult> {
-        let (client, proxy) = http_client().map_err(|error| {
+        let (client, proxy) = http_client().await.map_err(|error| {
             tauri_plugin_log::log::warn!(
-                "[chatgpt.connect.test] {context} outcome=failure failure_kind=internal error={error:?} msg=\"测试连通客户端初始化失败\""
+                "[chatgpt.connect.test] {context} outcome=failure failure_kind=internal error={error} msg=\"测试连通客户端初始化失败\""
             );
             error
         })?;
@@ -1854,7 +1860,9 @@ impl AppContext {
                         "ChatGPT 账号认证不可用，请检查登录状态或网络后重试".to_string(),
                     )
                 })?;
-            let (client, _) = http_client().map_err(|error| ("internal", error.to_string()))?;
+            let (client, _) = http_client()
+                .await
+                .map_err(|error| ("internal", error.to_string()))?;
             send_chatgpt_warmup(chatgpt_request(
                 client.post("https://chatgpt.com/backend-api/codex/responses"),
                 &token,

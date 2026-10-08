@@ -1318,8 +1318,10 @@ struct ClaudeModelEntry {
 /// Anthropic 兼容请求共用的 HTTP 客户端：复用 connections 的统一出口（显式系统代理、
 /// 环回直连、按代理缓存的连接池）。该客户端默认 8 秒超时，Claude 侧的模型拉取与
 /// 判活按请求覆盖为 FETCH_TIMEOUT_SECS，保持原超时语义。
-fn anthropic_client() -> AppResult<reqwest::Client> {
-    super::connections::http_client().map(|(client, _proxy)| client)
+async fn anthropic_client() -> AppResult<reqwest::Client> {
+    super::connections::http_client()
+        .await
+        .map(|(client, _proxy)| client)
 }
 
 /// 拉取 Anthropic 兼容端点的模型列表：base_url 无版本段 → `{base}/v1/models`；
@@ -1357,7 +1359,7 @@ async fn query_claude_models(
         urls
     };
 
-    let client = anthropic_client()?;
+    let client = anthropic_client().await?;
     let mut last_error = String::new();
     let started = std::time::Instant::now();
     for url in candidate_urls {

@@ -411,7 +411,7 @@ impl AppContext {
             .codex_cli_operation
             .try_lock()
             .map_err(|_| failure("guard", "validation_error", "已有 CLI 操作正在执行"))?;
-        let network = Network::detect()?;
+        let network = Network::current().await?;
         let codex_home = self.paths.codex_home.clone();
         let home = codex_home
             .parent()

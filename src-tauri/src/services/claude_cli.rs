@@ -282,7 +282,7 @@ impl AppContext {
             .claude_cli_operation
             .try_lock()
             .map_err(|_| failure("guard", "validation_error", "已有 CLI 操作正在执行"))?;
-        let network = Network::detect()?;
+        let network = Network::current().await?;
         let home = self
             .paths
             .claude_home

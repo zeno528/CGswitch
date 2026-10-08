@@ -90,10 +90,10 @@ impl Network {
     fn selected(
         mode: &ProxyMode,
         url: &str,
-        automatic: impl FnOnce() -> Option<String>,
+        automatic: impl FnOnce() -> Result<Option<String>, NetworkError>,
     ) -> Result<Self, NetworkError> {
         Self::new(match mode {
-            ProxyMode::Auto => automatic(),
+            ProxyMode::Auto => automatic()?,
             ProxyMode::Off => None,
             ProxyMode::Custom => Some(url.trim().to_owned()),
         })
@@ -176,7 +176,7 @@ pub(crate) fn proxy_note(proxy: &Option<String>) -> String {
 }
 
 /// 沿用现有识别顺序：环境变量优先，其次 Windows/macOS 系统代理。
-pub(crate) fn detect_system_proxy() -> Option<String> {
+pub(crate) fn detect_system_proxy() -> Result<Option<String>, NetworkError> {
     for key in [
         "https_proxy",
         "HTTPS_PROXY",
@@ -187,25 +187,30 @@ pub(crate) fn detect_system_proxy() -> Option<String> {
     ] {
         if let Ok(value) = std::env::var(key) {
             if !value.trim().is_empty() {
-                return Some(value.trim().to_string());
+                return Ok(Some(value.trim().to_string()));
             }
         }
     }
     #[cfg(target_os = "macos")]
     {
         // scutil --proxy 输出 "  HTTPSProxy : 127.0.0.1" 形式的键值行
-        if let Ok(output) = std::process::Command::new("scutil").arg("--proxy").output() {
-            let text = String::from_utf8_lossy(&output.stdout);
-            for (prefix, scheme) in [("HTTPS", "http"), ("HTTP", "http"), ("SOCKS", "socks5")] {
-                if scutil_value(&text, &format!("{prefix}Enable")).as_deref() == Some("1") {
-                    if let (Some(host), Some(port)) = (
-                        scutil_value(&text, &format!("{prefix}Proxy")),
-                        scutil_value(&text, &format!("{prefix}Port")),
-                    ) {
-                        return Some(format!("{scheme}://{host}:{port}"));
-                    }
-                    return Some(String::new()); // 已启用但配置损坏，调用方报错，不当成直连。
+        let output = std::process::Command::new("scutil")
+            .arg("--proxy")
+            .output()
+            .map_err(|_| SYSTEM_PROXY_READ_ERROR)?;
+        if !output.status.success() {
+            return Err(SYSTEM_PROXY_READ_ERROR);
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        for (prefix, scheme) in [("HTTPS", "http"), ("HTTP", "http"), ("SOCKS", "socks5")] {
+            if scutil_value(&text, &format!("{prefix}Enable")).as_deref() == Some("1") {
+                if let (Some(host), Some(port)) = (
+                    scutil_value(&text, &format!("{prefix}Proxy")),
+                    scutil_value(&text, &format!("{prefix}Port")),
+                ) {
+                    return Ok(Some(format!("{scheme}://{host}:{port}")));
                 }
+                return Err(SYSTEM_PROXY_READ_ERROR);
             }
         }
     }
@@ -216,28 +221,53 @@ pub(crate) fn detect_system_proxy() -> Option<String> {
         // 否则插件页每次 CLI 调用都会闪出 reg.exe 黑窗
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         let settings = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings";
-        let reg_value = |name: &str| {
-            std::process::Command::new("reg")
-                .args(["query", settings, "/v", name])
-                .creation_flags(CREATE_NO_WINDOW)
-                .output()
-                .ok()
-                .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
-        };
-        if reg_value("ProxyEnable").is_some_and(|text| text.contains("0x1")) {
-            return Some(
-                reg_value("ProxyServer")
-                    .and_then(|text| {
-                        text.lines().find_map(|line| {
-                            let value = line.split("REG_SZ").nth(1)?.trim();
-                            windows_proxy_address(value)
-                        })
-                    })
-                    .unwrap_or_default(),
-            );
+        // 一次读取整个键：缺少 ProxyEnable 是未配置，命令失败才是读取故障。
+        let output = std::process::Command::new("reg")
+            .args(["query", settings])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|_| SYSTEM_PROXY_READ_ERROR)?;
+        if !output.status.success() {
+            return Err(SYSTEM_PROXY_READ_ERROR);
+        }
+        windows_system_proxy(&String::from_utf8_lossy(&output.stdout))
+    }
+    #[cfg(not(windows))]
+    Ok(None)
+}
+
+#[cfg(any(windows, target_os = "macos", test))]
+const SYSTEM_PROXY_READ_ERROR: NetworkError = NetworkError {
+    kind: "io_error",
+    message: "读取系统代理设置失败，请检查系统代理设置后重试",
+};
+
+#[cfg(any(windows, test))]
+fn windows_system_proxy(text: &str) -> Result<Option<String>, NetworkError> {
+    let value = |name| {
+        text.lines().find_map(|line| {
+            let (key, value) = line.trim().split_once(char::is_whitespace)?;
+            (key == name).then_some(value.trim())
+        })
+    };
+    match value("ProxyEnable") {
+        None => Ok(None),
+        Some(enabled) => {
+            let enabled = enabled
+                .strip_prefix("REG_DWORD")
+                .map(str::trim)
+                .ok_or(SYSTEM_PROXY_READ_ERROR)?;
+            match enabled {
+                "0x0" => Ok(None),
+                "0x1" => value("ProxyServer")
+                    .and_then(|value| value.strip_prefix("REG_SZ"))
+                    .and_then(windows_proxy_address)
+                    .map(Some)
+                    .ok_or(SYSTEM_PROXY_READ_ERROR),
+                _ => Err(SYSTEM_PROXY_READ_ERROR),
+            }
         }
     }
-    None
 }
 
 #[cfg(any(windows, test))]
@@ -291,11 +321,11 @@ mod tests {
 
     #[test]
     fn three_modes_choose_one_route_and_only_auto_reads_system_proxy() {
-        let automatic = || Some("http://user:fixture-secret@127.0.0.1:12345".into());
+        let automatic = || Ok(Some("http://user:fixture-secret@127.0.0.1:12345".into()));
         let auto = Network::selected(&ProxyMode::Auto, "ignored", automatic).unwrap();
-        assert_eq!(auto.proxy, automatic());
+        assert_eq!(auto.proxy, automatic().unwrap());
         assert_eq!(auto.display.as_deref(), Some("http://127.0.0.1:12345"));
-        assert!(Network::selected(&ProxyMode::Auto, "ignored", || None)
+        assert!(Network::selected(&ProxyMode::Auto, "ignored", || Ok(None))
             .unwrap()
             .proxy
             .is_none());
@@ -314,9 +344,44 @@ mod tests {
             .iter()
             .all(|key| custom.env()[key] == "http://127.0.0.1:23456"));
         assert!(Network::selected(&ProxyMode::Custom, "", automatic).is_err());
-        assert!(Network::selected(&ProxyMode::Auto, "", || Some("invalid".into())).is_err());
+        assert!(Network::selected(&ProxyMode::Auto, "", || Ok(Some("invalid".into()))).is_err());
         // 新的选择不会更改已构造的操作快照。
-        assert_eq!(auto.proxy, automatic());
+        assert_eq!(auto.proxy, automatic().unwrap());
+    }
+
+    #[test]
+    fn automatic_detection_failure_does_not_become_direct() {
+        let error = Network::selected(&ProxyMode::Auto, "", || Err(SYSTEM_PROXY_READ_ERROR))
+            .err()
+            .unwrap();
+        assert_eq!(error.kind, "io_error");
+        assert_eq!(error.message, SYSTEM_PROXY_READ_ERROR.message);
+    }
+
+    #[test]
+    fn windows_system_proxy_distinguishes_unconfigured_disabled_and_broken_settings() {
+        assert!(windows_system_proxy("HKEY_CURRENT_USER\\fixture")
+            .unwrap()
+            .is_none());
+        assert!(windows_system_proxy("    ProxyEnable    REG_DWORD    0x0")
+            .unwrap()
+            .is_none());
+        let enabled = "    ProxyEnable    REG_DWORD    0x1\n";
+        assert_eq!(
+            windows_system_proxy(&format!(
+                "{enabled}    ProxyServer    REG_SZ    fixture.invalid:23456"
+            ))
+            .unwrap(),
+            Some("http://fixture.invalid:23456".into())
+        );
+        for text in [
+            enabled,
+            "    ProxyEnable    REG_SZ    0x1",
+            "    ProxyEnable    REG_DWORD    invalid",
+            "    ProxyEnable    REG_DWORD    0x1\n    ProxyServer    REG_SZ    ",
+        ] {
+            assert_eq!(windows_system_proxy(text).unwrap_err().kind, "io_error");
+        }
     }
 
     fn respond(listener: TcpListener, body: &'static str) -> std::thread::JoinHandle<String> {
