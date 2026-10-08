@@ -178,15 +178,23 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
               buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
                 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
             }}>
-              {["", ...models].map((value) => (
-                <button key={value} type="button" role="option" aria-selected={draft.model === value} disabled={busy || disabled}
-                  className="app-select-option app-selection-state profile-model-option" onClick={() => pickModel(value)}>
-                  <span className="min-w-0"><span className="block truncate">{modelLabel(value || t("modelSelection.default"), formatModelLabel)}</span>
-                    {!value && options.defaults && <span className="meta-xs muted">{t("modelSelection.recommendedModels")}</span>}
-                  </span>
-                  {draft.model === value && <Check size={18} strokeWidth={2.5} className="text-(--text-primary)" aria-hidden="true" />}
-                </button>
-              ))}
+              {["", ...models].map((value) => {
+                const name = value.replace(/\[1m\]\s*$/i, "");
+                return (
+                  <button key={value} type="button" role="option" aria-selected={draft.model === value} disabled={busy || disabled}
+                    className="app-select-option app-selection-state profile-model-option" onClick={() => pickModel(value)}>
+                    {/* 选中与保存用原值（所选即所写）；显示层把 [1M] 尾缀从名字里拆成右侧小标签，只改排版。 */}
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5">
+                        <span className="min-w-0 truncate">{modelLabel(name || t("modelSelection.default"))}</span>
+                        {name !== value && <span className="meta-xs muted shrink-0">1M</span>}
+                      </span>
+                      {!value && options.defaults && <span className="meta-xs muted">{t("modelSelection.recommendedModels")}</span>}
+                    </span>
+                    {draft.model === value && <Check size={18} strokeWidth={2.5} className="text-(--text-primary)" aria-hidden="true" />}
+                  </button>
+                );
+              })}
             </div>
           </>}
           </div>

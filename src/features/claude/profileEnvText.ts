@@ -65,6 +65,15 @@ export function setOneMillionModelSuffix(value: string, enabled: boolean) {
   return enabled && base ? `${base}[1M]` : base;
 }
 
+/** 卡片选主会话模型时按本配置的既有声明决定 1M 后缀：任一映射槽（含主模型自身）为同 base
+ * 模型声明过 [1M] 就带上；悬浮卡不展示该开关，声明是用户意图的唯一真源。 */
+export function resolveOneMillionByDeclaration(text: string, next: string) {
+  const base = setOneMillionModelSuffix(next, false);
+  const declared = Object.values(readModelMappings(text))
+    .some((value) => hasOneMillionModelSuffix(value) && setOneMillionModelSuffix(value, false) === base);
+  return setOneMillionModelSuffix(next, declared);
+}
+
 const MANAGED_KEY_SET = new Set<string>(CLAUDE_MANAGED_ENV_KEYS);
 const CLAUDE_API_KEY_KINDS = new Set(["anthropic", "kimi-code", "siliconflow"]);
 

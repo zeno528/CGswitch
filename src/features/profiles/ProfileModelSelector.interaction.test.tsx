@@ -1,7 +1,8 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import ProfileModelSelector from "./ProfileModelSelector";
+import ProfileModelSelector, { type ModelSelectionOptions } from "./ProfileModelSelector";
 import { ReasoningEffortSlider } from "../../components/ReasoningEffortSlider";
+import { setOneMillionModelSuffix } from "../claude/profileEnvText";
 
 // 沿用仓库的 Node hook 调度方式，执行真实组件回调；不模拟浏览器排版。
 const hooks = vi.hoisted(() => ({ cells: [] as unknown[], index: 0, effects: [] as (() => void)[], changed: false, close: () => {}, error: vi.fn() }));
@@ -48,7 +49,8 @@ afterEach(() => vi.unstubAllGlobals());
 function setup(onSave: (changes: unknown) => Promise<void>) {
   const props = { model: "old-model", effort: "high", fast: false, supportsFastMode: true,
     levels: ["low", "high"], disabled: false, onSave,
-    onLoad: async () => ({ model: "old-model", effort: "high", fast: false, models: ["recommended", "longer-new-model"],
+    formatModelLabel: undefined as ((value: string) => string) | undefined,
+    onLoad: async (): Promise<ModelSelectionOptions> => ({ model: "old-model", effort: "high", fast: false, models: ["recommended", "longer-new-model"],
       defaults: { recommended: "low" }, efforts: { "longer-new-model": ["low", "high"] } }),
   };
   const render = () => {
@@ -99,6 +101,23 @@ it.each(["longer-new-model", ""])("浮卡宽度固定，关闭同步显示新值
   expect(label(render())).toBe(expected);
   props.model = "external-model";
   expect(label(render())).toBe("external-model"); // 确认后释放预览，后续外部更新照常显示。
+});
+
+it("模型列表名字与 1M 标签拆开展示，选中保存仍用原值", async () => {
+  const { props, render, open } = setup(vi.fn(async () => {}));
+  props.onLoad = async () => ({ model: "fixture[1M]", effort: "high", fast: false, models: ["fixture[1M]", "plain"] });
+  props.formatModelLabel = (value: string) => setOneMillionModelSuffix(value, false);
+  const tree = await open();
+  (find(tree, (node) => node.props.className === "profile-model-current field-label").props.onClick as () => void)();
+  const list = render();
+  const optionPart = (key: string, className: string) => find(
+    find(list, (node) => node.props.role === "option" && node.key === key),
+    (node) => node.props.className === className,
+  ).props.children;
+  expect(optionPart("fixture[1M]", "min-w-0 truncate")).toBe("fixture");
+  expect(optionPart("fixture[1M]", "meta-xs muted shrink-0")).toBe("1M");
+  expect(optionPart("plain", "min-w-0 truncate")).toBe("plain");
+  expect(label(list)).toBe("fixture");
 });
 
 it("保存失败回退父级值并保留错误反馈", async () => {

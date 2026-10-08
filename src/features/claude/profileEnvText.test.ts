@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { patchBypassPermissions } from "./profileEnvText";
 import { CLAUDE_MANAGED_ENV_KEYS, CLAUDE_MODEL_MAPPING_KEYS, CLAUDE_MODEL_DISPLAY_KEYS, extractClaudeCommonSettings, fillClaudeCommonSettings } from "./profileEnvText";
-import { buildSettingsText, formatJsonText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, setOneMillionModelSuffix, splitEnvExtras } from "./profileEnvText";
+import { buildSettingsText, formatJsonText, hasOneMillionModelSuffix, patchEnvFields, patchEnvValue, patchGitAttribution, patchModelDisplayNames, patchModelMappings, readAdvancedSettings, readEnvFields, readEnvValue, readGitAttributionDisabled, readModelDisplayNames, readModelMappings, resolveOneMillionByDeclaration, setOneMillionModelSuffix, splitEnvExtras } from "./profileEnvText";
 
 describe("排版按钮的四种结局", () => {
   it("空文本、坏 JSON、已排好、需要写回各自可辨", () => {
@@ -261,6 +261,16 @@ describe("settings.json 全文与表单同步", () => {
     expect(setOneMillionModelSuffix("glm-5.3-flash", true)).toBe("glm-5.3-flash[1M]");
     expect(setOneMillionModelSuffix("glm-5.3-flash[1m]", false)).toBe("glm-5.3-flash");
     expect(setOneMillionModelSuffix("", true)).toBe("");
+  });
+
+  it("卡片选主会话模型按本配置既有声明决定 1M 后缀", () => {
+    const text = '{"env":{"ANTHROPIC_MODEL":"glm-5.3[1M]","ANTHROPIC_DEFAULT_OPUS_MODEL":"m3[1M]","ANTHROPIC_DEFAULT_SONNET_MODEL":"glm-5.3-flash"}}';
+    expect(resolveOneMillionByDeclaration(text, "m3")).toBe("m3[1M]");
+    expect(resolveOneMillionByDeclaration(text, "glm-5.3")).toBe("glm-5.3[1M]");
+    expect(resolveOneMillionByDeclaration(text, "glm-5.3-flash")).toBe("glm-5.3-flash");
+    expect(resolveOneMillionByDeclaration(text, "glm-4.6")).toBe("glm-4.6");
+    expect(resolveOneMillionByDeclaration(text, "")).toBe("");
+    expect(resolveOneMillionByDeclaration("not json", "m3")).toBe("m3");
   });
 
   it("读取和保存模型选择器显示名称，保留其他 env", () => {

@@ -20,7 +20,7 @@ import ClaudeProfileEdit from "./ClaudeProfileEdit";
 import type { ClaudeProfileDetail, ClaudeProfileSummary, ProfileBalanceInfo } from "../../types";
 import ProfileModelSelector from "../profiles/ProfileModelSelector";
 import { claudeEffortLevels } from "../../components/ReasoningEffortSlider";
-import { buildSettingsText, patchEnvValue, readAdvancedSettings, readEnvValue, setOneMillionModelSuffix } from "./profileEnvText";
+import { buildSettingsText, patchEnvValue, readAdvancedSettings, readEnvValue, readModelMappings, resolveOneMillionByDeclaration, setOneMillionModelSuffix } from "./profileEnvText";
 
 function cardProfile(profile: ClaudeProfileSummary) {
   return {
@@ -81,12 +81,19 @@ function ClaudeProfileCard({ profile, active, busy, testing, activationEpoch, co
           onLoad={async () => {
             const detail = await api.claudeGetProfile(profile.id);
             const text = buildSettingsText(detail);
-            return { model: readEnvValue(text, "ANTHROPIC_MODEL"), effort: readAdvancedSettings(text).effortLevel, models: detail.fetched_models };
+            // 对齐编辑页：映射里在用的自定义 id 也进列表；每个候选按 1M 声明解析成最终形态，
+            // 列表所见即所选所写，未声明 1M 的模型一眼可辨（要开就回编辑页）。
+            const mappings = Object.values(readModelMappings(text)).map((value) => value.trim()).filter(Boolean);
+            const models = [...detail.fetched_models, ...mappings].map((value) => resolveOneMillionByDeclaration(text, value));
+            return { model: readEnvValue(text, "ANTHROPIC_MODEL"), effort: readAdvancedSettings(text).effortLevel, models };
           }}
           onSave={async (changes) => {
             const detail = await api.claudeGetProfile(profile.id);
             let rawSettings = buildSettingsText(detail);
-            if (changes.model !== undefined) rawSettings = patchEnvValue(rawSettings, "ANTHROPIC_MODEL", changes.model || null);
+            if (changes.model !== undefined) {
+              const model = resolveOneMillionByDeclaration(rawSettings, changes.model);
+              rawSettings = patchEnvValue(rawSettings, "ANTHROPIC_MODEL", model || null);
+            }
             if (changes.effort !== undefined) rawSettings = patchEnvValue(rawSettings, "CLAUDE_CODE_EFFORT_LEVEL", changes.effort || null, "effortLevel");
             await api.claudeSaveProfile({ id: detail.id, name: detail.name, baseUrl: detail.base_url, authToken: detail.auth_token,
               model: detail.model, description: detail.description, fetchedModels: detail.fetched_models, kind: detail.kind,
