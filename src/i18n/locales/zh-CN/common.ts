@@ -48,7 +48,7 @@ export default {
   },
   preset: {
     custom: "自定义",
-    zhipu: "智谱（Z.AI）",
+    zhipu: "智谱 GLM",
     qwen: "通义千问",
     hunyuan: "腾讯混元",
     doubao: "火山方舟豆包",

@@ -78,7 +78,7 @@ export default {
   },
   connection: {
     reachable: "Endpoint responded; credentials and model calls remain unverified",
-    test: "Test connectivity",
+    test: "Test connection",
     missingApiEndpointWarning: "Enter the API endpoint before testing",
     missingApiKeyWarning: "Enter the API Key before testing",
     ok: "Connection OK{{latency}}",
@@ -111,7 +111,7 @@ export default {
     inUse: "In use",
     switch: "Use",
     more: "More actions",
-    duplicate: "Duplicate provider",
+    duplicate: "Duplicate",
     delete: "Delete",
   },
   terminal: {

@@ -78,7 +78,7 @@ export default {
   },
   connection: {
     reachable: "端点已响应，未验证密钥有效性或模型调用",
-    test: "测试连通性",
+    test: "测试连通",
     missingApiEndpointWarning: "请先填写 API 端点后再测试",
     missingApiKeyWarning: "请先填写 API Key 后再测试",
     ok: "连接正常{{latency}}",
@@ -111,7 +111,7 @@ export default {
     inUse: "使用中",
     switch: "使用",
     more: "更多操作",
-    duplicate: "复制供应商",
+    duplicate: "复制",
     delete: "删除",
   },
   terminal: {

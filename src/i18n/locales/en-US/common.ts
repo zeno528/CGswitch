@@ -49,6 +49,7 @@ export default {
   },
   preset: {
     custom: "Custom",
+    // 中文显示「智谱 GLM」；英文刻意保留国际品牌 Z.ai，不随中文改名。
     zhipu: "Z.ai",
     qwen: "Qwen",
     hunyuan: "Tencent Hunyuan",
