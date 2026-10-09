@@ -1591,7 +1591,7 @@ fn icon_ids_are_validated() {
 }
 
 #[test]
-fn add_builtin_profile_creates_snapshot_only() {
+fn add_builtin_profile_creates_snapshot_without_activating() {
     let home = tempfile::tempdir().unwrap();
     let paths = crate::paths::from_home(home.path()).unwrap();
     paths.ensure().unwrap();
@@ -1646,6 +1646,9 @@ fn add_builtin_profile_creates_snapshot_only() {
         std::fs::read_to_string(context.paths.codex_config()).unwrap(),
         original
     );
+    let state = context.get_state().unwrap();
+    assert_eq!(state.active_codex_profile_id, None);
+    assert_eq!(state.codex_profiles.len(), 1);
 
     // 同名模板允许重复添加，名字相同，靠 ID 区分
     let duplicate = context
@@ -2139,24 +2142,6 @@ fn show_balance_toggle_survives_live_sync() {
     assert!(!summary.show_balance);
     let stored = context.database.codex_profile(&profile.id).unwrap();
     assert!(!stored.payload.show_balance);
-}
-
-#[test]
-fn adding_preset_does_not_activate() {
-    let home = tempfile::tempdir().unwrap();
-    let paths = crate::paths::from_home(home.path()).unwrap();
-    paths.ensure().unwrap();
-    std::fs::create_dir_all(&paths.codex_home).unwrap();
-    std::fs::write(paths.codex_config(), "model = \"glm-5.3\"\n").unwrap();
-
-    let context = AppContext::new(paths).unwrap();
-    // 添加供应商是纯入库动作，绝不激活（只有手动应用才建立使用中）
-    context
-        .codex_add_builtin_profile("deepseek", None, None, Some("sk-test"), None, None)
-        .unwrap();
-    let state = context.get_state().unwrap();
-    assert_eq!(state.active_codex_profile_id, None);
-    assert_eq!(state.codex_profiles.len(), 1);
 }
 
 #[test]

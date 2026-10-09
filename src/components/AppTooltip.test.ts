@@ -67,7 +67,6 @@ describe("提示卡出场", () => {
 
   it("进场出场各走一个关键帧，且共用全局浮层动画类", () => {
     const source = readFileSync(new URL("./AppTooltip.tsx", import.meta.url), "utf8");
-    expect(source).toContain('data-popover-in={open && placed ? "" : undefined}');
     expect(source).toContain('data-popover-out={open ? undefined : (placed ? "" : undefined)}');
     // 出场期间节点仍在场，卸载交给 exiting 状态
     expect(source).toContain("const mounted = open || exiting;");

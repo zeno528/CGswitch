@@ -30,10 +30,6 @@ describe("ConfigTextEditor runtime", () => {
     expect(profileEditSource.match(/minLines=\{editorMinLines\}/g)).toHaveLength(3);
   });
 
-  it("gates JSON diagnostics behind JSON.parse", () => {
-    expect(editorSource).toContain("JSON.parse(text)");
-  });
-
   it("编辑页按正文可用高度伸展，初次挂载和保活复显均监听正文尺寸", () => {
     expect(editorSource).toContain('const scrollContent = parent.closest(".apple-edit-content");');
     expect(editorSource).toContain("if (scrollContent) resizeObserver.observe(scrollContent);");

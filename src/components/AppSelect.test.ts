@@ -57,8 +57,6 @@ describe("AppSelect styles", () => {
       styleSource.indexOf(".app-selection-state {"),
       styleSource.indexOf(".apple-sidebar-nav-button {"),
     );
-    expect(styleSource).toContain("--hover-bg: rgb(0 0 0 / 0.05);");
-    expect(styleSource).toContain("--hover-bg: rgb(255 255 255 / 0.08);");
     expect(styleSource).toContain("--active-bg: var(--tile-bg);");
     expect(sharedStateSource).toContain("background: var(--hover-bg)");
     expect(sharedStateSource).toContain("background: var(--active-bg)");

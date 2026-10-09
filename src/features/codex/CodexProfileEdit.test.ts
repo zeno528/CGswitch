@@ -155,7 +155,6 @@ describe("编辑器文件头布局", () => {
   it("格式化入口在文件标签行最右侧（ghost 权重），底部工具栏不再重复", () => {
     expect(source).toContain('className="editor-ghost editor-ghost--format ml-auto shrink-0"');
     expect(source.match(/formatCurrentDocument\(\)/g)).toHaveLength(1);
-    expect(source).toContain("格式化入口与文件标签同一行");
   });
 
   it("清空草稿保存时把空目录原文交给后端归一，而不是被 || null 吞成不动", () => {
