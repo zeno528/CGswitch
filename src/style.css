@@ -932,6 +932,10 @@ body:has(.app-dialog-overlay) .window-control-button {
 .reasoning-effort-slider__thumb { display: block; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; background: #fff; box-shadow: var(--card-edge-shadow); transition: transform var(--motion-segment-slide); }
 /* 悬停圆头或拖动时保持放大，结束后沿同一过渡回落；不拦截原生 range 的拖动。 */
 .reasoning-effort-slider__track:is([data-thumb-hover], :has(input:active)):not(:has(input[aria-disabled="true"])) .reasoning-effort-slider__thumb { transform: scale(1.1); }
+/* 仅在拖动直写期间（track 带内联 --effort-progress）停播过渡，圆头逐帧贴住指针；
+   按下原生跳档、点击圆点与松手滑入都不带内联变量，照常平滑。 */
+.reasoning-effort-slider__track[style*="--effort-progress"] .reasoning-effort-slider__thumb-rail,
+.reasoning-effort-slider__track[style*="--effort-progress"] .reasoning-effort-slider__fill { transition: none; }
 /* 等级圆点可直接点选；当前圆点让出事件，使白色圆头仍由原生 range 拖动。 */
 .reasoning-effort-slider__stops { position: absolute; inset: 0; pointer-events: none; }
 .reasoning-effort-slider__stop { position: absolute; top: calc((var(--effort-track-height) - var(--effort-thumb-size)) / 2); left: calc(var(--effort-progress) * (100cqw - var(--effort-thumb-size))); z-index: 2; display: grid; place-items: center; width: var(--effort-thumb-size); height: var(--effort-thumb-size); border-radius: 50%; pointer-events: auto; cursor: pointer; }

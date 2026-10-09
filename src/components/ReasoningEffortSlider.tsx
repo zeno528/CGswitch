@@ -1,9 +1,13 @@
 import { RotateCcw } from "lucide-react";
-import { useId, type CSSProperties, type ReactNode } from "react";
+import { useId, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 export const claudeEffortLevels = ["low", "medium", "high", "xhigh", "max"] as const;
 export const codexEffortLevels = [...claudeEffortLevels, "ultra"] as const;
+
+/** 拨动手感：指针拉过档距的 0.45 倍才改目标；圆头按 40ms 时间常数自己滑到目标档位。 */
+const DETENT_RELEASE = 0.45;
+const CHASE_TAU = 0.04;
 
 export function isOverEffortThumb(rect: Pick<DOMRect, "left" | "top" | "width" | "height">, x: number, y: number) {
   return Math.hypot(x - rect.left - rect.width / 2, y - rect.top - rect.height / 2) <= rect.width / 2;
@@ -25,6 +29,45 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
   const index = levels.indexOf(value);
   const labelLevels = [...new Set(["", ...levels, value])];
   const showParticles = fast || value === "ultra";
+  // 拖动是「拨动」模型：圆头永远只落在档位上，不贴指针落点。锚定在当前档位时指针拉不动它
+  // （橡皮筋）；拉过释放半径就把目标设为指针最近的档位，圆头按时间常数自己滑过去，
+  // 途中指针继续拨动会平滑改目标。位置由 rAF 循环直写内联变量，不经 React 状态
+  // （值仍由原生 range 按档位离散提交；释放半径小于 0.5 档，圆头先动、值后跨档）。
+  const dragGeometry = useRef<{ track: HTMLElement; rect: DOMRect; thumbWidth: number; target: number; visual: number; frame: number } | null>(null);
+  const dragToPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const geometry = dragGeometry.current;
+    if (!geometry) return;
+    const span = geometry.rect.width - geometry.thumbWidth;
+    const stops = Math.max(1, levels.length - 1);
+    const pointer = span > 0 ? Math.min(1, Math.max(0, (event.clientX - geometry.rect.left - geometry.thumbWidth / 2) / span)) * stops : 0;
+    if (Math.abs(pointer - geometry.target) > DETENT_RELEASE) {
+      geometry.target = Math.min(stops, Math.max(0, Math.round(pointer)));
+    }
+  };
+  const startChase = () => {
+    const geometry = dragGeometry.current!;
+    let last = performance.now();
+    const step = (now: number) => {
+      const g = dragGeometry.current;
+      if (g !== geometry) return;
+      if (g.visual !== g.target) {
+        g.visual += (g.target - g.visual) * (1 - Math.exp(-Math.min(0.05, (now - last) / 1000) / CHASE_TAU));
+        if (Math.abs(g.visual - g.target) < 0.002) g.visual = g.target;
+        g.track.style.setProperty("--effort-progress", (g.visual / Math.max(1, levels.length - 1)).toFixed(4));
+      }
+      last = now;
+      g.frame = requestAnimationFrame(step);
+    };
+    geometry.frame = requestAnimationFrame(step);
+  };
+  const endDrag = () => {
+    const geometry = dragGeometry.current;
+    dragGeometry.current = null;
+    if (!geometry) return;
+    cancelAnimationFrame(geometry.frame);
+    // :active 在松手帧结束后失效，过渡恢复；此刻移除内联变量，圆头从当前位置平滑滑到档位中心。
+    requestAnimationFrame(() => geometry.track.style.removeProperty("--effort-progress"));
+  };
   return (
     <div className="reasoning-effort-slider" data-selected={index >= 0} style={{
       "--effort-color": value === "ultra" ? "var(--reasoning-ultra)" : value ? "var(--accent)" : "var(--text-secondary)",
@@ -53,14 +96,39 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
           title={t("modelSelection.resetEffort")} aria-label={t("modelSelection.resetEffort")}
           onClick={() => { if (onReset) onReset(); else { onChange(""); onCommit?.(""); } }}><RotateCcw size={16} aria-hidden="true" /></button>
       </div>
-      <div className="reasoning-effort-slider__track" onPointerMove={(event) => {
-        const track = event.currentTarget;
-        const thumb = track.querySelector<HTMLElement>(".reasoning-effort-slider__thumb")!;
-        track.toggleAttribute("data-thumb-hover", event.pointerType === "mouse"
-          && isOverEffortThumb(thumb.getBoundingClientRect(), event.clientX, event.clientY));
-      }} onPointerLeave={(event) => {
-        event.currentTarget.removeAttribute("data-thumb-hover");
-      }}>
+      <div className="reasoning-effort-slider__track"
+        onPointerDown={(event) => {
+          const track = event.currentTarget;
+          track.style.removeProperty("--effort-progress");
+          // 只有按在隐形原生 range（圆头拖动）才连续跟踪；点圆点/轨道跳档不写内联变量，
+          // 始终走 CSS 过渡，避免闪跳。
+          if (disabled || !levels.length || !(event.target instanceof HTMLInputElement)) return;
+          const thumb = track.querySelector<HTMLElement>(".reasoning-effort-slider__thumb");
+          const rect = track.getBoundingClientRect();
+          const thumbWidth = thumb?.getBoundingClientRect().width ?? 0;
+          const stops = Math.max(1, levels.length - 1);
+          const span = rect.width - thumbWidth;
+          const pointer = span > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left - thumbWidth / 2) / span)) * stops : 0;
+          const anchor = Math.max(0, levels.indexOf(value));
+          const target = Math.abs(pointer - anchor) > DETENT_RELEASE ? Math.min(stops, Math.max(0, Math.round(pointer))) : anchor;
+          // 立即以内联变量接管渲染：压住原生按下的跳档，远按由追逐循环弹过去，近按锚住不动。
+          dragGeometry.current = { track, rect, thumbWidth, target, visual: anchor, frame: 0 };
+          track.style.setProperty("--effort-progress", (anchor / stops).toFixed(4));
+          startChase();
+        }}
+        onPointerMove={(event) => {
+          if (dragGeometry.current) { dragToPointer(event); return; }
+          // 非拖动的悬停探测：只读圆头几何，拖动中完全跳过（放大态已由 input:active 提供）。
+          const track = event.currentTarget;
+          const thumb = track.querySelector<HTMLElement>(".reasoning-effort-slider__thumb")!;
+          track.toggleAttribute("data-thumb-hover", event.pointerType === "mouse"
+            && isOverEffortThumb(thumb.getBoundingClientRect(), event.clientX, event.clientY));
+        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onPointerLeave={(event) => {
+          event.currentTarget.removeAttribute("data-thumb-hover");
+        }}>
         <span className="reasoning-effort-slider__fill" aria-hidden="true">
           {fast && value === "ultra" && <span className="reasoning-effort-slider__gradient" />}
           {showParticles && <span className="reasoning-effort-slider__particles" data-floating={!fast} />}
