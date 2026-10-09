@@ -116,8 +116,8 @@ export default {
   terminal: {
     open: "打开终端",
     menuLabel: "终端工作目录",
-    new: "新建项目",
-    empty: "还没有目录，点「新建项目」选一个",
+    new: "添加项目",
+    empty: "还没有目录，点「添加项目」选一个",
     remove: "移除该目录",
     pickDir: "选择工作目录",
     desktopOnly: "启动终端需要桌面版，浏览器预览不支持",

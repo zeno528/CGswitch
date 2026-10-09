@@ -48,7 +48,7 @@ describe("SettingsSections", () => {
   it("备份管理为外围大卡嵌三张小卡：操作、自动备份、备份记录", () => {
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
-      <FeedbackProvider><SettingsAdvanced form={form} onPatch={() => undefined} paths={[]} backupsEpoch={0} onOpenPath={() => undefined} onRefresh={() => Promise.resolve()} /></FeedbackProvider>,
+      <FeedbackProvider><SettingsAdvanced form={form} onPatch={() => undefined} paths={[]} backupsEpoch={0} onOpenPath={() => undefined} openingPath={null} onRefresh={() => Promise.resolve()} /></FeedbackProvider>,
     );
     expect(html).toContain("数据备份");
     expect(html).toContain("备份记录");
@@ -98,7 +98,7 @@ describe("SettingsSections", () => {
   it("provides a manual app update check in the about section", () => {
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
-      <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout paths={[]} onOpenPath={() => undefined} openingPath={null} /></AppUpdateProvider></FeedbackProvider>,
+      <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout /></AppUpdateProvider></FeedbackProvider>,
     );
     expect(html).toContain("检查更新");
     expect(html).not.toContain("检查 GitHub 正式发布版本");
@@ -106,12 +106,13 @@ describe("SettingsSections", () => {
     expect(styles).toContain(".settings-about__actions > .apple-action-button");
   });
 
-  it("应用信息和数据路径分别成卡，版本号位于应用名下方", () => {
+  it("关于仅展示应用信息，版本号位于应用名下方", () => {
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
-      <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout paths={[]} onOpenPath={() => undefined} openingPath={null} /></AppUpdateProvider></FeedbackProvider>,
+      <FeedbackProvider><AppUpdateProvider enabled={false}><SettingsAbout /></AppUpdateProvider></FeedbackProvider>,
     );
-    expect(html.match(/class="apple-group /g)).toHaveLength(2);
+    expect(html.match(/class="apple-group /g)).toHaveLength(1);
+    expect(html).not.toContain("数据与路径");
     expect(html).toContain("app-version");
     expect(html).toContain('class="apple-wordmark">Bifria</span><span class="flex items-center gap-2"><span class="app-version">v');
     expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
@@ -128,24 +129,28 @@ describe("SettingsSections", () => {
     expect(html).toContain("点个 Star");
   });
 
-  it("does not show the backup directory in the about paths", () => {
+  it("数据管理同时展示备份与数据路径，路径列表不重复展示备份目录", () => {
     setupI18n("zh-CN");
     const html = renderToStaticMarkup(
       <FeedbackProvider>
-        <AppUpdateProvider enabled={false}>
-          <SettingsAbout
-            paths={[
-              { label: "about.paths.appData", path: "C:\\Users\\<user>\\.budtty" },
-              { label: "about.paths.backups", path: "C:\\Users\\<user>\\.budtty\\backups\\database" },
-              { label: "about.paths.logs", path: "C:\\Users\\<user>\\.budtty\\logs" },
-              { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
-            ]}
-            onOpenPath={() => undefined}
-            openingPath={null}
-          />
-        </AppUpdateProvider>
+        <SettingsAdvanced
+          form={form}
+          onPatch={() => undefined}
+          backupsEpoch={0}
+          onRefresh={() => Promise.resolve()}
+          paths={[
+            { label: "about.paths.appData", path: "C:\\Users\\<user>\\.budtty" },
+            { label: "about.paths.backups", path: "C:\\Users\\<user>\\.budtty\\backups\\database" },
+            { label: "about.paths.logs", path: "C:\\Users\\<user>\\.budtty\\logs" },
+            { label: "about.paths.codexConfig", path: "C:\\Users\\<user>\\.codex\\config.toml" },
+          ]}
+          onOpenPath={() => undefined}
+          openingPath={null}
+        />
       </FeedbackProvider>,
     );
+    expect(html).toContain("备份与恢复");
+    expect(html).toContain("数据与路径");
     expect(html).toContain("应用数据目录");
     expect(html).toContain("日志目录");
     expect(html).toContain("存放 Budtty 的应用数据");
@@ -153,10 +158,10 @@ describe("SettingsSections", () => {
     expect(html).toContain("查看 Codex 的配置文件");
     expect(html).not.toContain(".budtty");
     expect(html).not.toContain("config.toml");
-    expect(html).not.toContain("备份目录");
-    // 路径行与 About 行统一为「整行可点 + 箭头」（共用 SettingsRowLink）：无「打开」按钮
+    expect(html.match(/备份目录/g)).toHaveLength(1);
+    // 三条路径统一为整行可点的链接。
     expect(html).not.toContain("打开</button>");
-    expect(html.match(/lucide-chevron-right/g)).toHaveLength(5);
+    expect(html.slice(html.indexOf("数据与路径")).match(/lucide-chevron-right/g)).toHaveLength(3);
   });
 
   it("检测到更新后将动作和版本号合并到同一个升级药丸", () => {
@@ -320,7 +325,6 @@ describe("SettingsSections", () => {
     expect(settingsViewSource).not.toContain('tab("account"');
     expect(settingsViewSource).not.toContain('account.sectionTitle');
     expect(settingsViewSource).toContain('label={t("codex.sectionTitle")}');
-    expect(settingsViewSource).toContain('label={t("backup.sectionTitle")}');
     expect(settingsViewSource).toContain('<SettingsPanelSection id="about" label={t("about.sectionTitle")}>');
   });
 

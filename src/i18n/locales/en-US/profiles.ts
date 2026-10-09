@@ -116,8 +116,8 @@ export default {
   terminal: {
     open: "Open terminal",
     menuLabel: "Terminal working directory",
-    new: "New project",
-    empty: "No directory yet — use New project to pick one",
+    new: "Add project",
+    empty: "No directory yet — use Add project to pick one",
     remove: "Remove this directory",
     pickDir: "Choose a working directory",
     desktopOnly: "Launching a terminal needs the desktop app; the browser preview can't do it",

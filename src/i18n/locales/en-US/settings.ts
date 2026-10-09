@@ -56,7 +56,7 @@ export default {
     sectionsLabel: "Settings sections",
     tabGeneral: "General",
     tabApp: "App",
-    tabAdvanced: "Advanced",
+    tabAdvanced: "Data management",
     tabAbout: "About",
   },
   cli: {
@@ -186,7 +186,7 @@ export default {
     quotaLoading: "Checking usage...",
   },
   backup: {
-    sectionTitle: "Backup management",
+    sectionTitle: "Backup & restore",
     title: "Data backup",
     description: "Create local database backups, export them to a file, or restore from one",
     createNow: "Back up now",

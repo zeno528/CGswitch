@@ -3,9 +3,9 @@ import {
   ArrowUpCircle,
   Info,
   Cog,
+  Database,
   MousePointerClick,
   RotateCw,
-  Wrench,
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -70,7 +70,7 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
       {indicator && <span className="settings-tab-indicator" style={{ transform: `translateX(${indicator.left}px)`, width: indicator.width }} aria-hidden="true" />}
       {tab("general", t("view.tabGeneral"), Cog)}
       {tab("codex", t("view.tabApp"), AppWindow)}
-      {tab("advanced", t("view.tabAdvanced"), Wrench)}
+      {tab("advanced", t("view.tabAdvanced"), Database)}
       {tab("about", t("view.tabAbout"), Info)}
     </nav>
     <div key={section} className="apple-edit-content">
@@ -144,13 +144,11 @@ export default function SettingsView({ state, onPreviewTheme, onRefresh, onSaved
       </SettingsPanelSection>
     ) : null}
     {section === "advanced" ? (
-      <SettingsPanelSection id="advanced" label={t("backup.sectionTitle")}>
-        <SettingsAdvanced form={form} onPatch={(patch) => void saveGeneral(patch)} paths={state.paths} backupsEpoch={backupsEpoch} onOpenPath={openPath} onRefresh={onRefresh} />
-      </SettingsPanelSection>
+      <SettingsAdvanced form={form} onPatch={(patch) => void saveGeneral(patch)} paths={state.paths} backupsEpoch={backupsEpoch} onOpenPath={openPath} openingPath={openingPath} onRefresh={onRefresh} />
     ) : null}
     {section === "about" ? (
       <SettingsPanelSection id="about" label={t("about.sectionTitle")}>
-        <SettingsAbout paths={state.paths} onOpenPath={openPath} openingPath={openingPath} />
+        <SettingsAbout />
       </SettingsPanelSection>
     ) : null}
     </div>

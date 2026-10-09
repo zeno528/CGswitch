@@ -56,7 +56,7 @@ export default {
     sectionsLabel: "设置分区",
     tabGeneral: "常规",
     tabApp: "应用",
-    tabAdvanced: "高级",
+    tabAdvanced: "数据管理",
     tabAbout: "关于",
   },
   cli: {
@@ -186,7 +186,7 @@ export default {
     quotaLoading: "正在查询用量…",
   },
   backup: {
-    sectionTitle: "备份管理",
+    sectionTitle: "备份与恢复",
     title: "数据备份",
     description: "创建本地数据库备份，支持导出到文件或从文件恢复",
     createNow: "立即备份",

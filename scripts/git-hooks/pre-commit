@@ -4,7 +4,7 @@
 #   - 暂存含 src-tauri/ 代码/配置 → 全量 pnpm check（含 cargo fmt/clippy/测试，较慢）
 #   - 暂存含前端代码或其配置（src/ scripts/ package.json lockfile tsconfig vite.config index.html）
 #     → 前端链（样式 + i18n + typecheck + 单测，约 6 秒）
-#   - 其余（纯文档/忽略规则/资源，如 README、.gitignore、docs/、归档/、public/、.github/、图片资产）
+#   - 其余（纯文档/忽略规则/资源，如 README、.gitignore、docs/、work/、public/、.github/、图片资产）
 #     → 检查链覆盖不到，直接放行
 # 图片资产（src-tauri/icons 等 *.svg *.png *.bmp *.ico *.icns）不进 Rust 编译，
 # 单独提交时不触发全量检查；与代码混合提交时仍命中最重的一档。--no-verify 仍是逃生门。

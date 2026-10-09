@@ -2221,14 +2221,14 @@ button:focus-visible {
   justify-content: center;
   gap: 9px;
   /* 升级弹窗专用渐变：新 logo 图标底紫渐变的满铺放大（电紫深空），底部淡紫光晕托住 logo，
-     白色手绘涂鸦在深底上更清晰；深底白字，深浅主题保持同一配色。demo：归档/update-hero-gradient-demo.html 方案 B */
+     白色手绘涂鸦在深底上更清晰；深底白字，深浅主题保持同一配色。demo：work/update-hero-gradient-demo.html 方案 B */
   background:
     radial-gradient(85% 115% at 50% 120%, rgb(197 130 252 / 0.38), transparent 62%),
     linear-gradient(120deg, #1c0cba 0%, #4520e6 46%, #7a3cf4 80%, #a468fb 100%);
 }
 
 /* 头部装饰涂鸦平铺（关于页头部、升级弹窗头部）：白描边手绘图案铺满宿主，opacity 低速纹理，
-   单色白在深浅主题的渐变底上都作装饰；demo 源：归档/update-hero-doodle-demo.html */
+   单色白在深浅主题的渐变底上都作装饰；demo 源：work/update-hero-doodle-demo.html */
 .hero-doodles {
   position: absolute;
   inset: 0;
@@ -2296,7 +2296,7 @@ button:focus-visible {
   padding: 1rem var(--gap-card-inline) var(--dialog-pad-bottom);
 }
 
-/* ChatGPT 添加账号弹窗（卡片式 OAuth 登录，视觉源：归档/demo1.html 一比一复刻）。
+/* ChatGPT 添加账号弹窗（卡片式 OAuth 登录，视觉源：work/demo1.html 一比一复刻）。
    按钮与文字色直接复用全局 token（demo 与主题同源）；弹窗专属的表面/描边/阴影/图标色按浅深两套定义在自身作用域。 */
 .oauth-modal {
   --oauth-modal-surface: rgba(255, 255, 255, 0.82);
