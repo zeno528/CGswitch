@@ -5,9 +5,11 @@ import { useTranslation } from "react-i18next";
 export const claudeEffortLevels = ["low", "medium", "high", "xhigh", "max"] as const;
 export const codexEffortLevels = [...claudeEffortLevels, "ultra"] as const;
 
-/** 拨动手感：指针拉过档距的 0.45 倍才改目标；圆头按 40ms 时间常数自己滑到目标档位。 */
+/** 拨动手感：指针拉过档距的 0.45 倍才改目标；圆头按 40ms 时间常数自己滑到目标档位。
+ * 拉伸未过释放半径时圆头以 0.15 的弹性系数向指针轻微倾斜，松手弹回原档。 */
 const DETENT_RELEASE = 0.45;
 const CHASE_TAU = 0.04;
+const RUBBER_GIVE = 0.15;
 
 export function isOverEffortThumb(rect: Pick<DOMRect, "left" | "top" | "width" | "height">, x: number, y: number) {
   return Math.hypot(x - rect.left - rect.width / 2, y - rect.top - rect.height / 2) <= rect.width / 2;
@@ -29,19 +31,24 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
   const index = levels.indexOf(value);
   const labelLevels = [...new Set(["", ...levels, value])];
   const showParticles = fast || value === "ultra";
-  // 拖动是「拨动」模型：圆头永远只落在档位上，不贴指针落点。锚定在当前档位时指针拉不动它
-  // （橡皮筋）；拉过释放半径就把目标设为指针最近的档位，圆头按时间常数自己滑过去，
-  // 途中指针继续拨动会平滑改目标。位置由 rAF 循环直写内联变量，不经 React 状态
-  // （值仍由原生 range 按档位离散提交；释放半径小于 0.5 档，圆头先动、值后跨档）。
-  const dragGeometry = useRef<{ track: HTMLElement; rect: DOMRect; thumbWidth: number; target: number; visual: number; frame: number } | null>(null);
+  // 拖动是「拨动」模型：圆头永远只落在档位上，不贴指针落点。锚定在当前档位时指针拉不动它，
+  // 只以弹性系数微微倾斜（皮筋拉伸）；拉过释放半径就把目标设为指针最近的档位，圆头按时间
+  // 常数自己滑过去，途中指针继续拨动会平滑改目标。位置由 rAF 循环直写内联变量，不经 React
+  // 状态（值仍由原生 range 按档位离散提交；释放半径小于 0.5 档，圆头先动、值后跨档；
+  // 拉伸中松手时值未跨档，移除内联变量即由 CSS 过渡弹回原档）。
+  const dragGeometry = useRef<{ track: HTMLElement; rect: DOMRect; thumbWidth: number; target: number; lean: number; visual: number; frame: number } | null>(null);
   const dragToPointer = (event: ReactPointerEvent<HTMLDivElement>) => {
     const geometry = dragGeometry.current;
     if (!geometry) return;
     const span = geometry.rect.width - geometry.thumbWidth;
     const stops = Math.max(1, levels.length - 1);
     const pointer = span > 0 ? Math.min(1, Math.max(0, (event.clientX - geometry.rect.left - geometry.thumbWidth / 2) / span)) * stops : 0;
-    if (Math.abs(pointer - geometry.target) > DETENT_RELEASE) {
+    const stretch = pointer - geometry.target;
+    if (Math.abs(stretch) > DETENT_RELEASE) {
       geometry.target = Math.min(stops, Math.max(0, Math.round(pointer)));
+      geometry.lean = 0;
+    } else {
+      geometry.lean = stretch * RUBBER_GIVE;
     }
   };
   const startChase = () => {
@@ -50,9 +57,10 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
     const step = (now: number) => {
       const g = dragGeometry.current;
       if (g !== geometry) return;
-      if (g.visual !== g.target) {
-        g.visual += (g.target - g.visual) * (1 - Math.exp(-Math.min(0.05, (now - last) / 1000) / CHASE_TAU));
-        if (Math.abs(g.visual - g.target) < 0.002) g.visual = g.target;
+      const goal = g.target + g.lean;
+      if (g.visual !== goal) {
+        g.visual += (goal - g.visual) * (1 - Math.exp(-Math.min(0.05, (now - last) / 1000) / CHASE_TAU));
+        if (Math.abs(g.visual - goal) < 0.002) g.visual = goal;
         g.track.style.setProperty("--effort-progress", (g.visual / Math.max(1, levels.length - 1)).toFixed(4));
       }
       last = now;
@@ -110,9 +118,10 @@ export function ReasoningEffortSlider({ value, levels, onChange, onCommit, onRes
           const span = rect.width - thumbWidth;
           const pointer = span > 0 ? Math.min(1, Math.max(0, (event.clientX - rect.left - thumbWidth / 2) / span)) * stops : 0;
           const anchor = Math.max(0, levels.indexOf(value));
-          const target = Math.abs(pointer - anchor) > DETENT_RELEASE ? Math.min(stops, Math.max(0, Math.round(pointer))) : anchor;
-          // 立即以内联变量接管渲染：压住原生按下的跳档，远按由追逐循环弹过去，近按锚住不动。
-          dragGeometry.current = { track, rect, thumbWidth, target, visual: anchor, frame: 0 };
+          const near = Math.abs(pointer - anchor) <= DETENT_RELEASE;
+          const target = near ? anchor : Math.min(stops, Math.max(0, Math.round(pointer)));
+          // 立即以内联变量接管渲染：压住原生按下的跳档，远按由追逐循环弹过去，近按锚住并随拉伸微倾。
+          dragGeometry.current = { track, rect, thumbWidth, target, lean: near ? (pointer - anchor) * RUBBER_GIVE : 0, visual: anchor, frame: 0 };
           track.style.setProperty("--effort-progress", (anchor / stops).toFixed(4));
           startChase();
         }}
