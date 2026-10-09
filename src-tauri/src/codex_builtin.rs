@@ -223,7 +223,7 @@ impl BuiltinTemplate {
     pub fn render_config(&self, api_key: Option<&str>) -> AppResult<Vec<u8>> {
         let mut bytes = self.substitute_key(self.config.to_vec(), api_key)?;
         if self.insert_catalog_line {
-            let needle = b"model_context_window = 1000000\n";
+            let needle = b"model_context_window = 524288\n";
             let start = find_subslice(&bytes, needle)
                 .ok_or_else(|| app_err!("{} 模板缺少插入位置", self.name))?;
             let line = b"model_catalog_json = \"~/.codex/model-catalogs/custom-catalog.json\"\n";
@@ -259,7 +259,7 @@ mod tests {
         );
         assert_eq!(
             MINIMAX_CONFIG,
-            b"model_provider = \"minimax\"\nmodel_context_window = 1000000\n\n[model_providers.minimax]\nname = \"MiniMax\"\nbase_url = \"https://api.minimax.cn/v1\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\"\nwire_api = \"responses\""
+            b"model_provider = \"minimax\"\nmodel_context_window = 524288\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\n\n[model_providers.minimax]\nname = \"MiniMax\"\nbase_url = \"https://api.minimax.cn/v1\"\nexperimental_bearer_token = \"<YOUR_API_KEY>\"\nwire_api = \"responses\""
         );
         assert_eq!(
             ZHIPU_CONFIG,
@@ -286,8 +286,8 @@ mod tests {
         assert_eq!(count(DEEPSEEK_MODELS, b"\r\n"), 139);
         assert_eq!(ZHIPU_MODELS.len(), 4061);
         assert_eq!(count(ZHIPU_MODELS, b"\r\n"), 114);
-        assert_eq!(MINIMAX_CATALOG.len(), 953);
-        assert_eq!(count(MINIMAX_CATALOG, b"\r\n"), 25);
+        assert_eq!(MINIMAX_CATALOG.len(), 1710);
+        assert_eq!(count(MINIMAX_CATALOG, b"\r\n"), 41);
         // OpenCode 目录为构造产物（无官方文件），不做字节级快照；
         // 内容由下方 opencode_catalog 结构断言覆盖
     }
@@ -354,6 +354,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn minimax_catalog_follows_official_shape() {
+        let catalog: serde_json::Value = serde_json::from_slice(MINIMAX_CATALOG).unwrap();
+        let models = catalog["models"].as_array().unwrap();
+        assert_eq!(models.len(), 1);
+        let model = &models[0];
+        assert_eq!(model["slug"], "MiniMax-M3.1-Flash-Preview");
+        assert_eq!(model["default_reasoning_level"], "max");
+        let efforts: Vec<&str> = model["supported_reasoning_levels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|level| level["effort"].as_str().unwrap())
+            .collect();
+        assert_eq!(efforts, ["low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(model["supports_reasoning_summaries"], true);
+        assert_eq!(model["default_reasoning_summary"], "none");
+        assert_eq!(model["truncation_policy"]["mode"], "tokens");
+        assert_eq!(model["context_window"], 524_288);
+        assert_eq!(model["max_context_window"], 524_288);
+        assert_eq!(model["apply_patch_tool_type"], "freeform");
+        assert_eq!(model["tool_mode"], "code_mode_only");
+        assert_eq!(model["supports_search_tool"], true);
     }
 
     #[test]

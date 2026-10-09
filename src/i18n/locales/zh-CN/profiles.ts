@@ -5,7 +5,6 @@ export default {
     chooseModel: "选择模型",
     effort: "推理强度",
     default: "默认",
-    recommendedModels: "推荐模型集",
     noModels: "未获取到可用模型，请重新获取模型列表",
     resetEffort: "重置为默认",
     ultraQuotaHint: "更快消耗使用额度",

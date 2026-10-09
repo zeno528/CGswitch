@@ -189,7 +189,6 @@ export default function ProfileModelSelector({ model, effort, levels, disabled, 
                         <span className="min-w-0 truncate">{modelLabel(name || t("modelSelection.default"))}</span>
                         {name !== value && <span className="meta-xs muted shrink-0">1M</span>}
                       </span>
-                      {!value && options.defaults && <span className="meta-xs muted">{t("modelSelection.recommendedModels")}</span>}
                     </span>
                     {draft.model === value && <Check size={18} strokeWidth={2.5} className="text-(--text-primary)" aria-hidden="true" />}
                   </button>

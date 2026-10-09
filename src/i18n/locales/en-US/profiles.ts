@@ -5,7 +5,6 @@ export default {
     chooseModel: "Choose model",
     effort: "Reasoning effort",
     default: "Default",
-    recommendedModels: "Recommended models",
     noModels: "No available models. Fetch the model list again.",
     resetEffort: "Restore default reasoning effort",
     ultraQuotaHint: "Uses your quota faster",
