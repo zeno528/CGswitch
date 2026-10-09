@@ -439,9 +439,9 @@ export function SettingsAbout({ paths, onOpenPath, openingPath }: SettingsAboutP
       <div className="apple-group divide-y divide-[var(--panel-divider)] px-[var(--gap-card-inline)]">
         <div className="relative flex flex-wrap items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-3">
-            <img src="/logo.svg" alt="Budtty" className="app-logo h-12 w-12 shrink-0" />
+            <img src="/logo.svg" alt="Bifria" className="app-logo h-12 w-12 shrink-0" />
             <div className="flex flex-col items-start gap-1">
-              <span className="apple-wordmark">Budtty</span>
+              <span className="apple-wordmark">Bifria</span>
               <span className="flex items-center gap-2">
                 <span className="app-version">v{version.trim()}</span>
                 {update ? <span className="apple-chip apple-chip--success" style={{ color: "var(--text-primary)" }}>{t("about.updateAvailable")}</span> : null}

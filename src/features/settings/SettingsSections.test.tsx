@@ -113,7 +113,7 @@ describe("SettingsSections", () => {
     );
     expect(html.match(/class="apple-group /g)).toHaveLength(2);
     expect(html).toContain("app-version");
-    expect(html).toContain('class="apple-wordmark">Budtty</span><span class="flex items-center gap-2"><span class="app-version">v');
+    expect(html).toContain('class="apple-wordmark">Bifria</span><span class="flex items-center gap-2"><span class="app-version">v');
     expect(html.indexOf("app-version")).toBeLessThan(html.indexOf("更新日志"));
     expect(html).not.toContain("当前版本");
     expect(html).not.toContain("版本更新");
