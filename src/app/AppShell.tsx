@@ -435,7 +435,7 @@ export default function AppShell() {
                 className="apple-sidebar-brand flex w-fit cursor-pointer items-center"
                 role="button"
                 tabIndex={0}
-                aria-label="Budtty"
+                aria-label="Bifria"
                 onClick={sidebar.toggleSidebar}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") sidebar.toggleSidebar();
@@ -443,8 +443,8 @@ export default function AppShell() {
                 onMouseEnter={() => sidebar.setSidebarFlyoutArmed(true)}
                 onMouseLeave={() => sidebar.setSidebarFlyoutArmed(false)}
               >
-                <img src="/logo.svg" alt="Budtty" className="app-logo" draggable="false" />
-                <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">Budtty</span>
+                <img src="/logo.svg" alt="Bifria" className="app-logo" draggable="false" />
+                <span className="apple-sidebar-label apple-wordmark whitespace-nowrap">Bifria</span>
               </div>
               {sidebar.sidebarFlyoutArmed ? (
                 <span className="apple-sidebar-flyout" aria-hidden="true">{t(sidebar.sidebarCollapsed ? "sidebar.expand" : "sidebar.collapse")}</span>
