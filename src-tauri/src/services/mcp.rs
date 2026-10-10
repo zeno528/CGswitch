@@ -330,8 +330,9 @@ impl AppContext {
             .map(|record| record.toml))
     }
 
-    /// 对比 live config.toml 与数据库镜像的 MCP 差异（只读，不写任何一侧），
-    /// 供同步前人工裁决。live 无法解析时返回错误，前端进入“仅可从数据库恢复”降级模式。
+    /// 对比 live config.toml 与数据库镜像的 MCP 差异，供同步前人工裁决。
+    /// 首次进入（该端在镜像里没有基线）时先把现场静默导入镜像。
+    /// live 无法解析时返回错误，前端进入“仅可从数据库恢复”降级模式。
     pub fn codex_mcp_sync_preview(&self) -> AppResult<McpSyncPreview> {
         self.mcp_sync_preview(SkillTool::Codex)
     }
@@ -341,7 +342,11 @@ impl AppContext {
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
-        let records = self.database.mcp_server_records()?;
+        let mut records = self.database.mcp_server_records()?;
+        // 首次进入该端：现场静默成为基线，避免"库为空 ⇒ 全是新增"的必然差异。
+        if self.establish_mcp_baseline(tool, &records)? {
+            records = self.database.mcp_server_records()?;
+        }
         // 每侧只保存一份名称 -> (展示片段, 建模字段, Claude JSON)，不另建索引。
         let (live, db) = match tool {
             SkillTool::Codex => {
@@ -442,6 +447,94 @@ impl AppContext {
             live_count: live.len(),
             db_count: db.len(),
         })
+    }
+
+    /// 首次进入某端 MCP 页（该端在镜像里没有任何安装行）时，把现场静默导入为基线：
+    /// 只写镜像、不碰 live，避免"库为空 ⇒ 全是新增"的必然差异。残缺条目跳过，
+    /// 留给随后的正常差异计算暴露。返回是否建立了基线。
+    fn establish_mcp_baseline(
+        &self,
+        tool: SkillTool,
+        records: &[McpServerRecord],
+    ) -> AppResult<bool> {
+        if !records.iter().all(|record| match tool {
+            SkillTool::Codex => !record.codex_installed,
+            SkillTool::Claude => !record.claude_installed,
+        }) {
+            return Ok(false);
+        }
+        let (imported, skipped) = match tool {
+            SkillTool::Codex => {
+                let document = codex_config::parse_document(&self.read_live_config()?)?;
+                let (fragments, invalid): (Vec<_>, Vec<_>) =
+                    codex_config::mcp_server_fragments_from_document(&document)
+                        .into_iter()
+                        .filter(|(name, _)| !codex_config::is_managed_mcp_name(name))
+                        .partition(|(name, fragment)| {
+                            codex_config::spec_from_fragment(name, fragment)
+                                .is_some_and(|spec| validate_mcp_connection(&spec).is_ok())
+                        });
+                let imported = fragments.len();
+                if imported > 0 {
+                    self.replace_mcp_mirror(&fragments)?;
+                }
+                (imported, invalid.len())
+            }
+            SkillTool::Claude => {
+                let document = self.read_claude_mcp_document()?;
+                let Some(servers) = document
+                    .get("mcpServers")
+                    .and_then(serde_json::Value::as_object)
+                else {
+                    return Ok(false);
+                };
+                let mut imported = 0;
+                let mut skipped = 0;
+                for (name, entry) in servers {
+                    if codex_config::is_managed_mcp_name(name) {
+                        continue;
+                    }
+                    if super::claude::claude_entry_to_spec(name, entry).is_err() {
+                        skipped += 1;
+                        continue;
+                    }
+                    let mut record =
+                        self.database
+                            .mcp_server_record(name)?
+                            .unwrap_or_else(|| McpServerRecord {
+                                name: name.clone(),
+                                toml: String::new(),
+                                codex_enabled: false,
+                                claude_enabled: false,
+                                codex_installed: false,
+                                claude_installed: false,
+                                claude_json: None,
+                            });
+                    record.claude_json = Some(entry.to_string());
+                    record.claude_installed = true;
+                    record.claude_enabled = true;
+                    self.database.save_mcp_server_record(
+                        Some(name),
+                        &record,
+                        &now_ms().to_string(),
+                        SkillTool::Claude,
+                    )?;
+                    imported += 1;
+                }
+                (imported, skipped)
+            }
+        };
+        if imported == 0 {
+            return Ok(false);
+        }
+        tauri_plugin_log::log::info!(
+            "[mcp.baseline] client={} count={imported} skipped={skipped} outcome=success msg=\"首次进入，现场 MCP 已导入为镜像基线\"",
+            match tool {
+                SkillTool::Codex => "Codex",
+                SkillTool::Claude => "Claude Code",
+            }
+        );
+        Ok(true)
     }
 
     /// 用户显式操作：数据库镜像写回 live config.toml（配置损坏/段丢失后的恢复）。

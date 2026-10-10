@@ -3597,6 +3597,79 @@ fn mcp_preview_empty_when_mirror_matches_live() {
     assert_eq!(preview.db_count, 1);
 }
 
+/// 首次进入：现场静默成为基线，不产生"全是新增"的差异；另一端基线独立建立。
+#[test]
+fn mcp_first_entry_imports_live_as_baseline_without_diff() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
+    );
+    std::fs::write(
+        context.paths.claude_mcp_config(),
+        r#"{"mcpServers":{"c":{"type":"http","url":"https://c/mcp"}}}"#,
+    )
+    .unwrap();
+
+    let preview = context.codex_mcp_sync_preview().unwrap();
+    assert!(preview.entries.is_empty(), "{:?}", preview.entries);
+    assert_eq!(preview.live_count, 2);
+    assert_eq!(preview.db_count, 2);
+    // Claude 端尚未建立基线：镜像里只有 Codex 两行
+    let records = context.database.mcp_server_records().unwrap();
+    assert_eq!(records.len(), 2);
+    assert!(records.iter().all(|record| record.codex_installed));
+    assert!(records.iter().all(|record| !record.claude_installed));
+
+    // 之后首次进 Claude 端：同样静默建基线，Codex 字段原样保留
+    let claude_preview = context.mcp_sync_preview(SkillTool::Claude).unwrap();
+    assert!(
+        claude_preview.entries.is_empty(),
+        "{:?}",
+        claude_preview.entries
+    );
+    let records = context.database.mcp_server_records().unwrap();
+    let c = records.iter().find(|record| record.name == "c").unwrap();
+    assert!(c.claude_installed);
+    assert!(c.claude_json.is_some());
+    assert!(!c.codex_installed);
+    assert!(records
+        .iter()
+        .filter(|record| record.name != "c")
+        .all(|record| record.codex_installed));
+}
+
+/// 基线建立后，外部改动照常报差异：差异语义只属于漂移。
+#[test]
+fn mcp_drift_after_baseline_still_reports_diff() {
+    let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");
+    let preview = context.mcp_sync_preview(SkillTool::Codex).unwrap();
+    assert!(preview.entries.is_empty(), "{:?}", preview.entries);
+
+    std::fs::write(
+        context.paths.codex_config(),
+        "[mcp_servers.a]\nurl = \"https://a/v2\"\n",
+    )
+    .unwrap();
+    let preview = context.mcp_sync_preview(SkillTool::Codex).unwrap();
+    assert_eq!(preview.entries.len(), 1, "{:?}", preview.entries);
+    assert_eq!(preview.entries[0].name, "a");
+    assert_eq!(preview.entries[0].kind, McpSyncEntryKind::Changed);
+}
+
+/// 残缺条目导不进基线，留在差异页等人工处理。
+#[test]
+fn mcp_baseline_skips_unparseable_live_entries() {
+    let (context, _home) = mcp_test_context(
+        "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.broken]\ncustom = \"keep\"\n",
+    );
+    let preview = context.mcp_sync_preview(SkillTool::Codex).unwrap();
+    assert_eq!(preview.entries.len(), 1, "{:?}", preview.entries);
+    assert_eq!(preview.entries[0].name, "broken");
+    assert_eq!(preview.entries[0].kind, McpSyncEntryKind::LiveOnly);
+    let records = context.database.mcp_server_records().unwrap();
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].name, "a");
+}
+
 #[test]
 fn mcp_preview_fails_when_live_unparseable() {
     let (context, _home) = mcp_test_context("[mcp_servers.a]\nurl = \"https://a/mcp\"\n");

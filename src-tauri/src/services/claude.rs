@@ -1511,7 +1511,16 @@ mod tests {
     #[test]
     fn claude_mcp_diff_empty_database_adopt_and_revert_preserve_native_json() {
         let (home, context) = test_context();
-        let external = r#"{"mcpServers":{"native":{"type":"sse","url":"https://example.test/mcp","custom":1}},"projects":{"keep":true}}"#;
+        // 先让 seed 静默建立基线，native 才能以"外部新增"的身份进入差异页
+        let seed =
+            r#"{"mcpServers":{"seed":{"type":"http","url":"https://seed.example.test/mcp"}}}"#;
+        std::fs::write(context.paths.claude_mcp_config(), seed).unwrap();
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+        let external = r#"{"mcpServers":{"native":{"type":"sse","url":"https://example.test/mcp","custom":1},"seed":{"type":"http","url":"https://seed.example.test/mcp"}},"projects":{"keep":true}}"#;
         std::fs::write(context.paths.claude_mcp_config(), external).unwrap();
         let preview = context.mcp_sync_preview(SkillTool::Claude).unwrap();
         assert_eq!(preview.entries.len(), 1);
@@ -1519,7 +1528,11 @@ mod tests {
             preview.entries[0].kind,
             crate::models::McpSyncEntryKind::LiveOnly
         );
-        assert!(context.database.mcp_server_records().unwrap().is_empty());
+        assert!(context
+            .database
+            .mcp_server_record("native")
+            .unwrap()
+            .is_none());
         let adopt = crate::models::McpDiffEntryAction {
             name: "native".into(),
             fragment: preview.entries[0].live_toml.clone(),
@@ -1574,10 +1587,16 @@ mod tests {
         );
         context
             .claude_resolve_mcp_entries(
-                &[crate::models::McpDiffEntryAction {
-                    name: "native".into(),
-                    fragment: None,
-                }],
+                &[
+                    crate::models::McpDiffEntryAction {
+                        name: "native".into(),
+                        fragment: None,
+                    },
+                    crate::models::McpDiffEntryAction {
+                        name: "seed".into(),
+                        fragment: None,
+                    },
+                ],
                 true,
             )
             .unwrap();
