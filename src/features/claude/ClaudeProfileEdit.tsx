@@ -524,12 +524,12 @@ export default function ClaudeProfileEdit({ profile, create = false, initialDeta
                     <AppSelect
                       value={null}
                       options={[
-                        { value: "autoMemory", label: t("advanced.autoMemoryLabel") },
-                        { value: "bashEditDiff", label: t("advanced.bashEditDiffLabel") },
                         { value: "bypassPermissions", label: t("advanced.bypassPermissionsLabel") },
+                        { value: "bashEditDiff", label: t("advanced.bashEditDiffLabel") },
+                        { value: "autoMemory", label: t("advanced.autoMemoryLabel") },
                       ]}
                       checkedValues={[
-                        ...(autoMemoryEnabled ? ["autoMemory"] : []),
+                        ...(!autoMemoryEnabled ? ["autoMemory"] : []),
                         ...(bashEditDiffEnabled ? ["bashEditDiff"] : []),
                         ...(bypassPermissionsEnabled ? ["bypassPermissions"] : []),
                       ]}
