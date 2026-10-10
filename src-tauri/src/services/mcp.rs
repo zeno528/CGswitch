@@ -25,6 +25,29 @@ fn read_live_config(paths: &AppPaths) -> AppResult<String> {
     }
 }
 
+pub(super) fn validate_mcp_connection(spec: &McpServerSpec) -> AppResult<()> {
+    let url = spec
+        .url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let command = spec
+        .command
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    match (url, command) {
+        (Some(_), Some(_)) => Err(app_err!("不能同时填写启动命令和服务地址")),
+        (None, None) => Err(app_err!(
+            "必须填写启动命令（stdio）或服务地址（http）其中之一"
+        )),
+        (Some(url), None) if !url.starts_with("http://") && !url.starts_with("https://") => {
+            Err(app_err!("服务地址必须以 http:// 或 https:// 开头"))
+        }
+        _ => Ok(()),
+    }
+}
+
 /// 首次操作从现场读取两端快照，保留另一端的原生配置与状态。
 fn mcp_record_from_live(paths: &AppPaths, name: &str) -> AppResult<McpServerRecord> {
     let codex_fragment = read_live_config(paths)
@@ -44,21 +67,12 @@ fn mcp_record_from_live(paths: &AppPaths, name: &str) -> AppResult<McpServerReco
                 .and_then(|servers| servers.get(name))
                 .cloned()
         });
-    let toml = match &codex_fragment {
-        Some(fragment) => fragment.clone(),
-        None => {
-            let entry = claude_entry
-                .as_ref()
-                .ok_or_else(|| app_err!("MCP 服务器不存在: {name}"))?;
-            codex_config::patch_mcp_fragment(
-                "",
-                &super::claude::claude_entry_to_spec(name, entry)?,
-            )?
-        }
-    };
+    if codex_fragment.is_none() && claude_entry.is_none() {
+        return Err(app_err!("MCP 服务器不存在: {name}"));
+    }
     Ok(McpServerRecord {
         name: name.to_string(),
-        toml,
+        toml: codex_fragment.clone().unwrap_or_default(),
         codex_enabled: codex_fragment.is_some(),
         claude_enabled: claude_entry.is_some(),
         codex_installed: codex_fragment.is_some(),
@@ -139,7 +153,7 @@ pub(super) fn uninstall_mcp_server(
             atomic_write(&path, text.as_bytes())?;
         }
         // 保留卸载状态，避免空镜像的首次导入重新分发到已卸载的客户端。
-        database.save_mcp_server_record(Some(name), &record, &now_ms().to_string())
+        database.save_mcp_server_record(Some(name), &record, &now_ms().to_string(), tool)
     })
 }
 
@@ -161,25 +175,25 @@ impl AppContext {
     pub(super) fn replace_mcp_mirror(&self, fragments: &[(String, String)]) -> AppResult<()> {
         let previous_records = self.database.mcp_server_records()?;
         if Self::codex_active_fragments(&previous_records) != fragments {
-            crate::fsutil::with_file_rollback(&[self.paths.claude_mcp_config()], || {
-                self.database.replace_mcp_server_fragments_with(
-                    fragments,
-                    &now_ms().to_string(),
-                    |records| {
-                        let live = self.read_claude_mcp_document()?;
-                        for record in records
-                            .iter_mut()
-                            .filter(|record| record.claude_json.is_none())
+            self.database.replace_mcp_server_fragments_with(
+                fragments,
+                &now_ms().to_string(),
+                |records| {
+                    for record in records
+                        .iter_mut()
+                        .filter(|record| record.claude_installed && record.claude_json.is_none())
+                    {
+                        if let Some(previous) =
+                            previous_records.iter().find(|old| old.name == record.name)
                         {
-                            record.claude_json = live
-                                .get("mcpServers")
-                                .and_then(|servers| servers.get(&record.name))
-                                .map(serde_json::Value::to_string);
+                            // 旧库尚无原生 JSON 时，先冻结旧快照，避免 Codex 更新改掉 Claude 基准。
+                            record.claude_json =
+                                Some(super::claude::claude_mcp_entry(previous, None)?.to_string());
                         }
-                        self.sync_claude_mcp_projection(&previous_records, records)
-                    },
-                )
-            })?;
+                    }
+                    Ok(())
+                },
+            )?;
         }
         Ok(())
     }
@@ -352,8 +366,7 @@ impl AppContext {
                 let convert = |name: &str, entry: &serde_json::Value| -> AppResult<_> {
                     let spec = super::claude::claude_entry_to_spec(name, entry)?;
                     // 复用投影规则比较 JSON，键顺序和缺省字段不会产生伪差异。
-                    let normalized =
-                        super::claude::claude_mcp_entry_from_spec(spec.clone(), entry.clone())?;
+                    let normalized = super::claude::normalize_claude_mcp_entry(name, entry)?;
                     let raw = serde_json::to_string_pretty(entry)
                         .map_err(|error| app_err!("Claude MCP JSON 序列化失败: {error}"))?;
                     Ok((name.to_owned(), (raw, Some(spec), Some(normalized))))
@@ -433,8 +446,6 @@ impl AppContext {
 
     /// 用户显式操作：数据库镜像写回 live config.toml（配置损坏/段丢失后的恢复）。
     /// 返回恢复的服务器数量。
-    /// 命名保留不带前缀：它写 Codex 配置的同时会调用 Claude 投影同步（共享镜像工作流），
-    /// 不是纯 Codex 私有操作。
     pub fn restore_mcp_from_database(&self) -> AppResult<usize> {
         let _guard = self
             .operation
@@ -446,13 +457,7 @@ impl AppContext {
         }
         let fragments = Self::codex_active_fragments(&records);
         let count = fragments.len();
-        crate::fsutil::with_file_rollback(
-            &[self.paths.codex_config(), self.paths.claude_mcp_config()],
-            || {
-                self.write_mcp_section_to_live(&fragments)?;
-                self.sync_claude_mcp_projection(&[], &records)
-            },
-        )?;
+        self.write_mcp_section_to_live(&fragments)?;
         tauri_plugin_log::log::info!(
             "[mcp.config.restore] outcome=success count={count} msg=\"已从数据库恢复 MCP 配置\""
         );
@@ -476,36 +481,24 @@ impl AppContext {
         original_name: Option<&str>,
         spec: McpServerSpec,
     ) -> AppResult<()> {
-        self.save_mcp_server_with_fragment(original_name, spec, None, SkillTool::Codex)
+        self.save_mcp_server_with_fragment(original_name, spec, None)
     }
 
     /// 编辑页保存：fragment = 编辑器当前片段。有片段时以它整表替换 live 里的该服务器
     /// （未建模键、注释与编辑器所见一致——所见即所得），建模字段先按 spec 补齐兜底；
     /// 无片段（纯表单路径）退回就地 upsert。
-    /// 按引擎区分：在保存方引擎上编辑已关闭条目等同重新启用；另一引擎的开关与 live 文件不动。
+    /// 编辑已关闭的 Codex 条目等同重新启用；Claude 的快照、开关与 live 文件不动。
     pub fn save_mcp_server_with_fragment(
         &self,
         original_name: Option<&str>,
         spec: McpServerSpec,
         fragment: Option<&str>,
-        tool: SkillTool,
     ) -> AppResult<()> {
         let _guard = self
             .operation
             .lock()
             .map_err(|_| app_err!("操作锁已损坏"))?;
 
-        self.save_mcp_server_unlocked(original_name, spec, fragment, tool, None)
-    }
-
-    pub(super) fn save_mcp_server_unlocked(
-        &self,
-        original_name: Option<&str>,
-        spec: McpServerSpec,
-        fragment: Option<&str>,
-        tool: SkillTool,
-        claude_json: Option<String>,
-    ) -> AppResult<()> {
         let name = spec.name.trim().to_string();
         if name.is_empty() {
             return Err(app_err!("MCP 名称不能为空"));
@@ -534,88 +527,31 @@ impl AppContext {
         if spec.tool_timeout_sec.is_some_and(|timeout| timeout <= 0) {
             return Err(app_err!("工具调用超时必须为正数（秒）"));
         }
-        let url = spec.url.as_deref().map(str::trim).filter(|v| !v.is_empty());
-        let command = spec
-            .command
-            .as_deref()
-            .map(str::trim)
-            .filter(|v| !v.is_empty());
-        match (url, command) {
-            (Some(_), Some(_)) => return Err(app_err!("不能同时填写启动命令和服务地址")),
-            (None, None) => {
-                return Err(app_err!(
-                    "必须填写启动命令（stdio）或服务地址（http）其中之一"
-                ))
-            }
-            (Some(url), None) if !url.starts_with("http://") && !url.starts_with("https://") => {
-                return Err(app_err!("服务地址必须以 http:// 或 https:// 开头"));
-            }
-            _ => {}
-        }
+        validate_mcp_connection(&spec)?;
 
         let mut spec = spec;
         spec.name = name;
         let existing = self
             .database
             .mcp_server_record(original_name.unwrap_or(spec.name.as_str()))?;
-        let codex_off = existing
-            .as_ref()
-            .is_some_and(|record| !record.codex_enabled);
         if existing
             .as_ref()
-            .is_some_and(|record| !record.codex_enabled || !record.claude_enabled)
+            .is_some_and(|record| !record.codex_enabled)
         {
-            // 任一引擎关闭时都不落 Codex 原生 enabled 键，避免 enabled=false 把恢复的条目再次停用
+            // 编辑关闭条目等同重新启用，不把列表开关写成 Codex 原生 enabled 键。
             spec.enabled = None;
         }
         let mut document = codex_config::parse_document(&self.read_live_config()?)?;
-        if tool == SkillTool::Claude {
-            let codex_spec = codex_config::mcp_servers_from_document(&document)
-                .into_iter()
-                .find(|server| server.name == original_name.unwrap_or(&spec.name))
-                .or_else(|| {
-                    existing.as_ref().and_then(|record| {
-                        codex_config::spec_from_fragment(&record.name, &record.toml)
-                    })
-                });
-            if let Some(codex_spec) = codex_spec {
-                // Claude 编辑器不表达 Codex 的启用键和超时，不能借保存清掉这些字段。
-                spec.startup_timeout_sec = codex_spec.startup_timeout_sec;
-                spec.tool_timeout_sec = codex_spec.tool_timeout_sec;
-                if !codex_off {
-                    spec.enabled = codex_spec.enabled;
-                }
-            }
-        }
         let name_taken = document
             .as_table()
             .get("mcp_servers")
             .and_then(toml_edit::Item::as_table)
             .is_some_and(|servers| servers.contains_key(&spec.name));
-        let claude_document = self.read_claude_mcp_document()?;
-        let claude_taken = claude_document
-            .get("mcpServers")
-            .and_then(serde_json::Value::as_object)
-            .is_some_and(|servers| servers.contains_key(&spec.name));
-        let target_taken = match tool {
-            SkillTool::Codex => {
-                name_taken
-                    || existing
-                        .as_ref()
-                        .is_some_and(|record| record.codex_installed)
-            }
-            SkillTool::Claude => {
-                claude_taken
-                    || existing
-                        .as_ref()
-                        .is_some_and(|record| record.claude_installed)
-            }
-        };
-        let name_conflict = if original_name.is_none() {
-            target_taken
-        } else {
-            name_taken || claude_taken || self.database.mcp_server_record(&spec.name)?.is_some()
-        };
+        let destination = self.database.mcp_server_record(&spec.name)?;
+        let name_conflict = name_taken
+            || destination
+                .as_ref()
+                .is_some_and(|record| record.codex_installed);
         if original_name != Some(spec.name.as_str()) && name_conflict {
             return Err(app_err!("已存在同名 MCP 服务器"));
         }
@@ -630,11 +566,9 @@ impl AppContext {
                     servers.insert(&spec.name, table);
                 }
             }
-            // Codex 关闭的共享条目可以只存在于镜像或 Claude 现场。
-            if existing.is_none()
-                && claude_document
-                    .get("mcpServers")
-                    .is_none_or(|servers| servers.get(original).is_none())
+            if existing
+                .as_ref()
+                .is_none_or(|record| !record.codex_installed)
                 && document
                     .get("mcp_servers")
                     .and_then(|servers| servers.get(&spec.name))
@@ -644,87 +578,60 @@ impl AppContext {
             }
         }
 
-        // Codex 端已关闭且本次保存来自 Claude 页：不动 config.toml，只把片段更新进镜像
-        let write_codex_live = !codex_off || tool == SkillTool::Codex;
-        if write_codex_live {
-            if let Some(fragment) = fragment {
-                // 片段路径：把建模字段补进片段后整表搬进 live，编辑器所见 = 保存所写
-                let patched = codex_config::patch_mcp_fragment(fragment, &spec)?;
-                let mut fragment_doc = codex_config::parse_document(&patched)?;
-                let table = fragment_doc
-                    .as_table_mut()
-                    .get_mut("mcp_servers")
-                    .and_then(toml_edit::Item::as_table_mut)
-                    .and_then(|servers| servers.remove(spec.name.as_str()))
-                    .ok_or_else(|| app_err!("片段中没有可保存的服务器 {}", spec.name))?;
-                document
-                    .as_table_mut()
-                    .entry("mcp_servers")
-                    .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()))
-                    .as_table_mut()
-                    .ok_or_else(|| app_err!("mcp_servers 不是 TOML table"))?
-                    .insert(spec.name.as_str(), table);
-            } else {
-                codex_config::upsert_mcp_server(&mut document, &spec)?;
-            }
-        }
-        let toml = if write_codex_live {
-            codex_config::mcp_server_fragments_from_document(&document)
-                .into_iter()
-                .find(|(name, _)| name == &spec.name)
-                .map(|(_, toml)| toml)
-                .ok_or_else(|| app_err!("MCP 片段不存在"))?
+        if let Some(fragment) = fragment {
+            // 片段路径：把建模字段补进片段后整表搬进 live，编辑器所见 = 保存所写
+            let patched = codex_config::patch_mcp_fragment(fragment, &spec)?;
+            let mut fragment_doc = codex_config::parse_document(&patched)?;
+            let table = fragment_doc
+                .as_table_mut()
+                .get_mut("mcp_servers")
+                .and_then(toml_edit::Item::as_table_mut)
+                .and_then(|servers| servers.remove(spec.name.as_str()))
+                .ok_or_else(|| app_err!("片段中没有可保存的服务器 {}", spec.name))?;
+            document
+                .as_table_mut()
+                .entry("mcp_servers")
+                .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()))
+                .as_table_mut()
+                .ok_or_else(|| app_err!("mcp_servers 不是 TOML table"))?
+                .insert(spec.name.as_str(), table);
         } else {
-            codex_config::patch_mcp_fragment(
-                fragment
-                    .or_else(|| existing.as_ref().map(|record| record.toml.as_str()))
-                    .unwrap_or(""),
-                &spec,
-            )?
-        };
+            codex_config::upsert_mcp_server(&mut document, &spec)?;
+        }
+        let toml = codex_config::mcp_server_fragments_from_document(&document)
+            .into_iter()
+            .find(|(name, _)| name == &spec.name)
+            .map(|(_, toml)| toml)
+            .ok_or_else(|| app_err!("MCP 片段不存在"))?;
+        let mut destination = destination;
+        if let Some(record) = destination
+            .as_mut()
+            .filter(|record| record.claude_installed && record.claude_json.is_none())
+        {
+            record.claude_json = Some(super::claude::claude_mcp_entry(record, None)?.to_string());
+        }
         let record = McpServerRecord {
             name: spec.name.clone(),
             toml,
-            codex_enabled: tool == SkillTool::Codex
-                || existing.as_ref().is_none_or(|record| record.codex_enabled),
-            claude_enabled: tool == SkillTool::Claude
-                || existing.as_ref().is_none_or(|record| record.claude_enabled),
-            codex_installed: tool == SkillTool::Codex
-                || existing
-                    .as_ref()
-                    .is_none_or(|record| record.codex_installed),
-            claude_installed: tool == SkillTool::Claude
-                || existing
-                    .as_ref()
-                    .is_none_or(|record| record.claude_installed),
-            claude_json: claude_json
-                .or_else(|| {
-                    existing
-                        .as_ref()
-                        .and_then(|record| record.claude_json.clone())
-                })
-                .or_else(|| {
-                    claude_document
-                        .get("mcpServers")
-                        .and_then(|servers| servers.get(original_name.unwrap_or(&spec.name)))
-                        .map(serde_json::Value::to_string)
-                }),
+            codex_enabled: true,
+            claude_enabled: destination
+                .as_ref()
+                .is_some_and(|record| record.claude_enabled),
+            codex_installed: true,
+            claude_installed: destination
+                .as_ref()
+                .is_some_and(|record| record.claude_installed),
+            claude_json: destination.and_then(|record| record.claude_json),
         };
-        crate::fsutil::with_file_rollback(
-            &[self.paths.codex_config(), self.paths.claude_mcp_config()],
-            || {
-                if write_codex_live {
-                    self.write_live_config_document(&document)?;
-                }
-                if let Some(original) = original_name.filter(|original| *original != record.name) {
-                    self.remove_claude_mcp_entry(original)?;
-                }
-                // 仅投影本条，其他服务器的外部修改保持原样。
-                self.sync_claude_mcp_projection(&[], std::slice::from_ref(&record))?;
-                self.database
-                    .save_mcp_server_record(original_name, &record, &now_ms().to_string())
-            },
-        )?;
+        crate::fsutil::with_file_rollback(&[self.paths.codex_config()], || {
+            self.write_live_config_document(&document)?;
+            self.database.save_mcp_server_record(
+                original_name,
+                &record,
+                &now_ms().to_string(),
+                SkillTool::Codex,
+            )
+        })?;
         tauri_plugin_log::log::info!(
             "[mcp.config.save] server={:?} outcome=success msg=\"MCP 配置已保存\"",
             spec.name
@@ -775,8 +682,14 @@ impl AppContext {
             // 用户在客户端外重新添加后，以该端现场为准；过期 UI 不能恢复已卸载条目。
             let live = mcp_record_from_live(&self.paths, name)?;
             match tool {
-                SkillTool::Codex if live.codex_installed => record.codex_installed = true,
-                SkillTool::Claude if live.claude_installed => record.claude_installed = true,
+                SkillTool::Codex if live.codex_installed => {
+                    record.codex_installed = true;
+                    record.toml = live.toml;
+                }
+                SkillTool::Claude if live.claude_installed => {
+                    record.claude_installed = true;
+                    record.claude_json = live.claude_json;
+                }
                 _ => return Err(app_err!("MCP 服务器已在该客户端卸载: {name}")),
             }
         }
@@ -834,7 +747,7 @@ impl AppContext {
                 SkillTool::Claude => record.claude_enabled = enabled,
             }
             self.database
-                .save_mcp_server_record(Some(name), &record, &now_ms().to_string())
+                .save_mcp_server_record(Some(name), &record, &now_ms().to_string(), tool)
         })?;
         tauri_plugin_log::log::info!(
             "[mcp.config.toggle] server={name:?} tool={:?} enabled={enabled} outcome=success msg=\"MCP 引擎开关已更新\"",
@@ -854,7 +767,7 @@ impl AppContext {
 
     /// 差异处理"同步"原语：把若干条目一次写进数据库镜像——fragment=Some 用 live 片段覆盖该条，
     /// fragment=None 删除该条（"外部已删除"的同步）。整批校验通过才落一次盘，任一条非法整批不写。
-    /// 不改 Codex live；Claude 投影跟随共享镜像。不能用 codex_save_mcp_server / codex_delete_mcp_server
+    /// 不改任何 live 文件或 Claude 快照。不能用 codex_save_mcp_server / codex_delete_mcp_server
     /// 代替，因为它们会同时修改 live，无法表达仅采纳外部差异。
     pub fn set_mcp_mirror_entries(&self, actions: &[McpDiffEntryAction]) -> AppResult<usize> {
         let _guard = self
@@ -889,6 +802,7 @@ impl AppContext {
                     Some(&action.name),
                     &record,
                     &now_ms().to_string(),
+                    SkillTool::Codex,
                 )?;
             }
         }
@@ -1007,13 +921,11 @@ mod uninstall_tests {
                     std::fs::write(paths.claude_mcp_config(), json).unwrap();
                     if mirrored {
                         database
-                            .replace_mcp_server_fragments(
-                                &[(
-                                    "fixture".into(),
-                                    "[mcp_servers.fixture]\ncommand=\"fixture\"\ncustom=\"keep\"\n"
-                                        .into(),
-                                )],
+                            .save_mcp_server_record(
+                                None,
+                                &mcp_record_from_live(&paths, "fixture").unwrap(),
                                 "1",
+                                tool,
                             )
                             .unwrap();
                     }
@@ -1092,13 +1004,22 @@ mod uninstall_tests {
             paths.ensure().unwrap();
             std::fs::create_dir_all(&paths.codex_home).unwrap();
             let database = Database::open(&paths).unwrap();
+            std::fs::write(
+                paths.codex_config(),
+                "[mcp_servers.fixture]\ncommand=\"fixture\"\n",
+            )
+            .unwrap();
+            std::fs::write(
+                paths.claude_mcp_config(),
+                r#"{"mcpServers":{"fixture":{"command":"fixture"}}}"#,
+            )
+            .unwrap();
             database
-                .replace_mcp_server_fragments(
-                    &[(
-                        "fixture".into(),
-                        "[mcp_servers.fixture]\ncommand=\"fixture\"\n".into(),
-                    )],
+                .save_mcp_server_record(
+                    None,
+                    &mcp_record_from_live(&paths, "fixture").unwrap(),
                     "1",
+                    tool,
                 )
                 .unwrap();
             let (target, other, source) = match tool {

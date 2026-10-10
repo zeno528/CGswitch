@@ -14,7 +14,7 @@ use crate::paths::AppPaths;
 use crate::services::codex_profile_config::{parse_provider_detail, stored_provider_api_key};
 use crate::services::SkillTool;
 
-/// MCP 镜像行：共享片段 + 每引擎独立安装状态与开关（卸载不等同于禁用）。
+/// MCP 镜像行：Codex TOML 与 Claude JSON 各自独立，卸载不等同于禁用。
 pub struct McpServerRecord {
     pub name: String,
     pub toml: String,
@@ -642,6 +642,7 @@ impl Database {
         original_name: Option<&str>,
         record: &McpServerRecord,
         timestamp: &str,
+        tool: SkillTool,
     ) -> AppResult<()> {
         let mut connection = self.lock()?;
         let transaction = connection
@@ -657,8 +658,18 @@ impl Database {
             params![record.name, record.toml, timestamp, record.codex_enabled, record.claude_enabled, record.claude_json, old_name, record.codex_installed, record.claude_installed],
         ).map_err(|error| app_err!("无法保存 MCP 服务器: {error}"))?;
         if old_name != record.name {
+            let columns = match tool {
+                SkillTool::Codex => "codex_installed=0, codex_enabled=0",
+                SkillTool::Claude => "claude_installed=0, claude_enabled=0",
+            };
             transaction
-                .execute("DELETE FROM mcp_servers WHERE name=?1", params![old_name])
+                .execute(
+                    &format!("UPDATE mcp_servers SET {columns} WHERE name=?1"),
+                    params![old_name],
+                )
+                .map_err(|error| app_err!("无法更新旧 MCP 名称: {error}"))?;
+            transaction
+                .execute("DELETE FROM mcp_servers WHERE name=?1 AND codex_installed=0 AND claude_installed=0", params![old_name])
                 .map_err(|error| app_err!("无法删除旧 MCP 名称: {error}"))?;
         }
         transaction
@@ -667,7 +678,7 @@ impl Database {
     }
 
     /// 全量替换 Codex 活跃片段集：管理规模小，整表重写最简单。
-    /// 已知行的引擎开关原样带过；不在新集合里的 Codex 关闭行保留（片段还要喂 Claude 端与恢复）。
+    /// 已知行的另一端快照和状态原样保留，新增 Codex 条目不安装到 Claude。
     pub fn replace_mcp_server_fragments(
         &self,
         fragments: &[(String, String)],
@@ -692,10 +703,10 @@ impl Database {
                     name: name.clone(),
                     toml: toml.clone(),
                     codex_enabled: existing.is_none_or(|record| record.codex_enabled),
-                    claude_enabled: existing.is_none_or(|record| record.claude_enabled),
+                    claude_enabled: existing.is_some_and(|record| record.claude_enabled),
                     claude_json: existing.and_then(|record| record.claude_json.clone()),
                     codex_installed: true,
-                    claude_installed: existing.is_none_or(|record| record.claude_installed),
+                    claude_installed: existing.is_some_and(|record| record.claude_installed),
                 }
             })
             .collect();

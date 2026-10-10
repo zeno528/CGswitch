@@ -2672,6 +2672,9 @@ fn mcp_app_operations_leave_no_sync_diff() {
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\nenabled = false\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
     import_mcp_from_live(&context);
+    context
+        .claude_save_mcp_server(None, "b", r#"{"url":"https://claude.example.test/mcp"}"#)
+        .unwrap();
     assert!(context.codex_mcp_sync_preview().unwrap().entries.is_empty());
 
     context
@@ -2821,7 +2824,6 @@ fn mcp_save_with_fragment_is_wysiwyg() {
                 ..Default::default()
             },
             Some(fragment),
-            SkillTool::Codex,
         )
         .unwrap();
 
@@ -3156,6 +3158,11 @@ fn mcp_engine_toggle_only_touches_its_own_live_file() {
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
     import_mcp_from_live(&context);
+    for name in ["a", "b"] {
+        context
+            .claude_save_mcp_server(None, name, r#"{"url":"https://claude.example.test/mcp"}"#)
+            .unwrap();
+    }
 
     // Codex 关：config.toml 删条目；.claude.json 原样保留，Claude 开关仍是开
     context
@@ -3230,6 +3237,11 @@ fn mcp_mirror_rewrite_preserves_engine_flags_across_saves() {
         "[mcp_servers.a]\nurl = \"https://a/mcp\"\n\n[mcp_servers.b]\nurl = \"https://b/mcp\"\n",
     );
     import_mcp_from_live(&context);
+    for name in ["a", "b"] {
+        context
+            .claude_save_mcp_server(None, name, r#"{"url":"https://claude.example.test/mcp"}"#)
+            .unwrap();
+    }
     context
         .set_mcp_server_enabled("a", SkillTool::Codex, false)
         .unwrap();
@@ -3261,7 +3273,7 @@ fn mcp_mirror_rewrite_preserves_engine_flags_across_saves() {
     let claude = std::fs::read_to_string(context.paths.claude_mcp_config()).unwrap();
     assert!(claude.contains("\"a\""), "{claude}");
     assert!(!claude.contains("\"b\""), "{claude}");
-    assert!(claude.contains("\"c\""), "{claude}");
+    assert!(!claude.contains("\"c\""), "{claude}");
 }
 
 #[test]

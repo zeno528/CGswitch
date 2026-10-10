@@ -1846,7 +1846,7 @@ body.drag-active * {
 /* MCP 差异页：行级 diff 的代码区域容器——背景/描边对齐编辑页输入框（.app-input），把变更代码块与卡片头部区分开 */
 .mcp-diff-block {
   display: grid;
-  gap: 2px;
+  gap: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-control);
@@ -1854,12 +1854,19 @@ body.drag-active * {
 }
 
 /* 变更行——红/绿只做背景高亮，行内文字保持正文同色（VS Code 变更行语义）。
-   负外边距抵消水平内边距：高亮圈外扩 6px，文字仍与未变更行同列，不产生伪缩进 */
+   高亮向两侧外扩 6px；同色连续行合成色块，块间保留 1.5px 间距 */
 .mcp-diff-line--del,
 .mcp-diff-line--add {
   margin-inline: -6px;
-  border-radius: var(--radius-control-sm);
+  border-radius: 0;
   padding: 2px 6px;
+}
+
+.mcp-diff-block > div + div { margin-top: 1.5px; }
+
+.mcp-diff-block > .mcp-diff-line--del + .mcp-diff-line--del,
+.mcp-diff-block > .mcp-diff-line--add + .mcp-diff-line--add {
+  margin-top: 0;
 }
 
 .mcp-diff-line--del { background: color-mix(in srgb, var(--danger) 18%, transparent); }

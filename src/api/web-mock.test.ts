@@ -140,31 +140,42 @@ describe("web mock", () => {
     expect(patched).toContain('url = "https://example.test/updated"');
   });
 
-  it("MCP 开关与卸载只影响所选客户端，共用编辑不重新安装另一端", async () => {
+  it.each(["codex", "claude"] as const)("MCP 保存、开关与卸载只影响所选客户端 %s", async (tool) => {
     const fixture = (await webInvoke<McpServerSpec[]>("codex_list_mcp_servers"))[0];
-    for (const tool of ["codex", "claude"] as const) {
-      const name = `uninstall-${tool}`;
-      const list = tool === "codex" ? "codex_list_mcp_servers" : "claude_list_mcp_servers";
-      const otherList = tool === "codex" ? "claude_list_mcp_servers" : "codex_list_mcp_servers";
-      try {
-        await webInvoke("codex_save_mcp_server", { spec: { ...fixture, name } });
-        const other = await webInvoke<McpServerSpec[]>(otherList);
-        await webInvoke("set_mcp_server_enabled", { name, tool, enabled: false });
-        expect((await webInvoke<McpServerSpec[]>(list)).find((server) => server.name === name)?.enabled).toBe(false);
-        expect(await webInvoke(otherList)).toEqual(other);
-        await webInvoke(tool === "codex" ? "codex_delete_mcp_server" : "claude_delete_mcp_server", { name });
-        expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
-        expect(await webInvoke(otherList)).toEqual(other);
-        if (tool === "claude") {
-          await webInvoke("codex_save_mcp_server", { originalName: name, spec: { ...fixture, name, command: "updated" } });
-        } else {
-          await webInvoke("claude_save_mcp_server", { originalName: name, name, json: '{"type":"stdio","command":"updated"}' });
-        }
-        expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
-      } finally {
-        await webInvoke("codex_delete_mcp_server", { name });
-        await webInvoke("claude_delete_mcp_server", { name });
+    const name = `uninstall-${tool}`;
+    const list = tool === "codex" ? "codex_list_mcp_servers" : "claude_list_mcp_servers";
+    const otherList = tool === "codex" ? "claude_list_mcp_servers" : "codex_list_mcp_servers";
+    try {
+      await webInvoke("codex_save_mcp_server", { spec: { ...fixture, name } });
+      expect((await webInvoke<McpServerSpec[]>("claude_list_mcp_servers")).some((server) => server.name === name)).toBe(false);
+      const codex = await webInvoke("codex_list_mcp_servers");
+      await webInvoke("claude_save_mcp_server", { name, json: '{"type":"stdio","command":"claude-fixture"}' });
+      expect(await webInvoke("codex_list_mcp_servers")).toEqual(codex);
+      const other = await webInvoke<McpServerSpec[]>(otherList);
+      await webInvoke("set_mcp_server_enabled", { name, tool, enabled: false });
+      expect((await webInvoke<McpServerSpec[]>(list)).find((server) => server.name === name)?.enabled).toBe(false);
+      expect(await webInvoke(otherList)).toEqual(other);
+      await webInvoke(tool === "codex" ? "codex_delete_mcp_server" : "claude_delete_mcp_server", { name });
+      expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
+      expect(await webInvoke(otherList)).toEqual(other);
+      if (tool === "claude") {
+        await webInvoke("codex_save_mcp_server", { originalName: name, spec: { ...fixture, name, command: "updated" } });
+      } else {
+        await webInvoke("claude_save_mcp_server", { originalName: name, name, json: '{"type":"stdio","command":"updated"}' });
       }
+      expect((await webInvoke<McpServerSpec[]>(list)).some((server) => server.name === name)).toBe(false);
+      const beforeRename = await webInvoke(list);
+      if (tool === "claude") {
+        await webInvoke("codex_save_mcp_server", { originalName: name, spec: { ...fixture, name: `${name}-renamed` } });
+      } else {
+        await webInvoke("claude_save_mcp_server", { originalName: name, name: `${name}-renamed`, json: '{"command":"claude-renamed"}' });
+      }
+      expect(await webInvoke(list)).toEqual(beforeRename);
+    } finally {
+      await webInvoke("codex_delete_mcp_server", { name });
+      await webInvoke("claude_delete_mcp_server", { name });
+      await webInvoke("codex_delete_mcp_server", { name: `${name}-renamed` });
+      await webInvoke("claude_delete_mcp_server", { name: `${name}-renamed` });
     }
   });
 

@@ -4,10 +4,12 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { EmptyStateCard } from "../../components/EmptyStateCard";
 import { AppTooltip } from "../../components/AppTooltip";
+import { SkillTargetLogo } from "../../components/SkillTargetLogo";
 import type { McpSyncDiffEntry, McpSyncPreview } from "../../types";
-import type { McpDiffVerb } from "./McpView";
+import type { McpDiffVerb, McpTarget } from "./McpView";
 
 interface McpDiffPageProps {
+  target: McpTarget;
   preview: McpSyncPreview | null;
   previewError: string;
   resolving: boolean;
@@ -105,7 +107,7 @@ function McpDiffRow({ entry, busy, onResolve }: McpDiffRowProps) {
   );
 }
 
-export default function McpDiffPage({ preview, previewError, resolving, onBack, onResolve, onResolveAll, onRebuild }: McpDiffPageProps) {
+export default function McpDiffPage({ target, preview, previewError, resolving, onBack, onResolve, onResolveAll, onRebuild }: McpDiffPageProps) {
   const { t } = useTranslation("mcp");
   const entries = preview?.entries ?? [];
   return (
@@ -114,6 +116,7 @@ export default function McpDiffPage({ preview, previewError, resolving, onBack, 
         <div className="flex min-w-0 items-center gap-2">
           <button type="button" className="apple-page-header apple-back-button" onClick={onBack}>
             <ArrowLeft className="h-4 w-4 shrink-0 text-accent" />
+            <SkillTargetLogo target={target} variant="title" />
             <span className="apple-title">{t("diff.title")}</span>
             {!previewError ? <span className="apple-chip">{entries.length}</span> : null}
           </button>

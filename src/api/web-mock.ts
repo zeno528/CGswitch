@@ -601,21 +601,13 @@ let webClaudeMcpServers = structuredClone(webMcpServers);
 function saveWebMcpServer(original: string | null, spec: McpServerSpec, tool: "codex" | "claude") {
   const name = original ?? spec.name;
   const current = tool === "codex" ? webMcpServers : webClaudeMcpServers;
-  const other = tool === "codex" ? webClaudeMcpServers : webMcpServers;
-  const firstInstall = !current.some((server) => server.name === name) && !other.some((server) => server.name === name);
-  const update = (servers: McpServerSpec[], enable: boolean) => {
-    const previous = servers.find((server) => server.name === name);
-    const next = servers.filter((server) => server.name !== name);
-    if (enable || previous || firstInstall) next.push({ ...structuredClone(spec), enabled: enable ? null : previous?.enabled ?? null });
-    return next;
-  };
-  if (tool === "codex") {
-    webMcpServers = update(current, true);
-    webClaudeMcpServers = update(other, false);
-  } else {
-    webClaudeMcpServers = update(current, true);
-    webMcpServers = update(other, false);
+  if (name !== spec.name || original === null) {
+    if (current.some((server) => server.name === spec.name)) throw new Error("已存在同名 MCP 服务器");
   }
+  const next = current.filter((server) => server.name !== name);
+  next.push({ ...structuredClone(spec), enabled: null });
+  if (tool === "codex") webMcpServers = next;
+  else webClaudeMcpServers = next;
 }
 
 // 与后端一致：激活状态只由“使用”显式建立，添加/捕获供应商不激活

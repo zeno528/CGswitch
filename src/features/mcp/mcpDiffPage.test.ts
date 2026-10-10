@@ -1,7 +1,11 @@
 // @ts-expect-error 测试运行于 Node，但应用的浏览器 tsconfig 不加载 Node 类型。
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { mcpDiffLines } from "./McpDiffPage";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SkillTargetLogo } from "../../components/SkillTargetLogo";
+import { setupI18n } from "../../i18n";
+import McpDiffPage, { mcpDiffLines } from "./McpDiffPage";
 import { mcpEntryAction } from "./McpView";
 import type { McpSyncDiffEntry } from "../../types";
 
@@ -83,6 +87,16 @@ describe("MCP 差异行级对比", () => {
 });
 
 describe("MCP 差异二级页", () => {
+  it.each(["codex", "claude"] as const)("%s 差异标题复用对应客户端编辑页的标识", (target) => {
+    setupI18n("zh-CN");
+    const html = renderToStaticMarkup(createElement(McpDiffPage, {
+      target, preview: null, previewError: "", resolving: false,
+      onBack: () => undefined, onResolve: () => undefined, onResolveAll: () => undefined,
+    }));
+    const logo = renderToStaticMarkup(createElement(SkillTargetLogo, { target, variant: "title" }));
+    expect(html).toContain(`${logo}<span class="apple-title">`);
+  });
+
   it("有差异才显示列表提示，数字显示在客户端切换器", () => {
     // 入口条件与角标文本都走共享规则（见 managementDataCache），页面不再自己判一遍
     expect(viewSource).toContain("!header?.editing && mcpDiffBadgeText(targetBadge)");

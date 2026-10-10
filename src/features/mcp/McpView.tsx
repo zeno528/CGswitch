@@ -526,6 +526,7 @@ function McpClientView({ target, activationEpoch, onHeaderChange }: McpClientVie
   if (diffOpen) {
     return (
       <McpDiffPage
+        target={target}
         preview={syncPreview}
         previewError={previewError}
         resolving={resolving}

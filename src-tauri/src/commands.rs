@@ -902,12 +902,7 @@ pub fn codex_save_mcp_server(
     fragment: Option<String>,
     state: State<'_, AppContext>,
 ) -> AppResult<()> {
-    state.save_mcp_server_with_fragment(
-        original_name.as_deref(),
-        spec,
-        fragment.as_deref(),
-        SkillTool::Codex,
-    )
+    state.save_mcp_server_with_fragment(original_name.as_deref(), spec, fragment.as_deref())
 }
 
 #[tauri::command]

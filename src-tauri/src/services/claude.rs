@@ -1,8 +1,8 @@
 //! Claude Code 供应商：独立小引擎，把 base_url / token / model 注入 ~/.claude/settings.json 的 env。
 //!
 //! 供应商 env 与 Codex 的 config.toml 管线并行：不把 Claude 供应商字段塞进 Codex TOML，
-//! 只复用 fsutil 的备份与原子写原语。MCP 是应用级共享配置，另投影到 Claude Code 的
-//! 用户范围 ~/.claude.json。settings.json 的写回分两条路：非平凡快照（捕获/全文编辑过的）
+//! 只复用 fsutil 的备份与原子写原语。MCP 独立保存在用户范围 ~/.claude.json。
+//! settings.json 的写回分两条路：非平凡快照（捕获/全文编辑过的）
 //! 整文件替换；平凡快照与存量行走 merge——只整体替换托管 env 键（MANAGED_ENV_KEYS，
 //! token 按 kind 写 ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN），其余顶层键与 env 键原样保留。
 
@@ -356,17 +356,23 @@ pub(super) fn claude_mcp_entry(
     record: &crate::database::McpServerRecord,
     fallback: Option<&Value>,
 ) -> AppResult<Value> {
+    if let Some(raw) = &record.claude_json {
+        let entry: Value =
+            serde_json::from_str(raw).map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?;
+        claude_entry_to_spec(&record.name, &entry)?;
+        return Ok(entry);
+    }
+    // 兼容尚未保存原生 JSON 的旧备份，正常记录不再从 Codex TOML 投影。
     let spec = codex_config::spec_from_fragment(&record.name, &record.toml)
         .ok_or_else(|| app_err!("MCP 服务器 {} 的共享片段无法解析", record.name))?;
-    let entry = match &record.claude_json {
-        Some(raw) => {
-            serde_json::from_str(raw).map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?
-        }
-        None => fallback
-            .cloned()
-            .unwrap_or_else(|| Value::Object(Map::new())),
-    };
+    let entry = fallback
+        .cloned()
+        .unwrap_or_else(|| Value::Object(Map::new()));
     claude_mcp_entry_from_spec(spec, entry)
+}
+
+pub(super) fn normalize_claude_mcp_entry(name: &str, entry: &Value) -> AppResult<Value> {
+    claude_mcp_entry_from_spec(claude_entry_to_spec(name, entry)?, entry.clone())
 }
 
 fn claude_string_map(
@@ -526,6 +532,7 @@ impl AppContext {
             })
             .filter_map(|record| {
                 claude_mcp_entry(record, None)
+                    .and_then(|entry| normalize_claude_mcp_entry(&record.name, &entry))
                     .ok()
                     .map(|entry| (record.name.clone(), entry))
             })
@@ -559,7 +566,13 @@ impl AppContext {
             .ok_or_else(|| app_err!(".claude.json 的 mcpServers 不是对象，拒绝写入"))?;
         let mut changed = false;
         for (name, expected) in &previous {
-            if !current.contains_key(name) && mcp_servers.get(name) == Some(expected) {
+            if !current.contains_key(name)
+                && mcp_servers
+                    .get(name)
+                    .and_then(|entry| normalize_claude_mcp_entry(name, entry).ok())
+                    .as_ref()
+                    == Some(expected)
+            {
                 mcp_servers.remove(name);
                 changed = true;
             }
@@ -594,58 +607,6 @@ impl AppContext {
         Ok(())
     }
 
-    /// 读取 .claude.json 用户范围条目并转为共享片段（滤除托管名与解析失败项）。
-    pub(super) fn claude_mcp_fragments_from_live(&self) -> AppResult<Vec<(String, String)>> {
-        let document = self.read_claude_mcp_document()?;
-        let Some(servers) = document.get("mcpServers").and_then(Value::as_object) else {
-            return Ok(Vec::new());
-        };
-        Ok(servers
-            .iter()
-            .filter(|(name, _)| !codex_config::is_managed_mcp_name(name))
-            .filter_map(|(name, value)| {
-                let spec = claude_entry_to_spec(name, value).ok()?;
-                let fragment = codex_config::patch_mcp_fragment("", &spec).ok()?;
-                Some((name.clone(), fragment))
-            })
-            .collect())
-    }
-
-    /// DB 镜像为空时首次从 Codex live MCP 导入；之后始终以数据库镜像为共享源。
-    /// 投影只含 Claude 开关打开的条目；Claude 关闭的条目从 .claude.json 撤下、片段留在镜像。
-    pub(super) fn ensure_claude_mcp_projection(&self) -> AppResult<()> {
-        let records = self.database.mcp_server_records()?;
-        if !records.is_empty() {
-            return self.sync_claude_mcp_projection(&[], &records);
-        }
-        if let Ok(document) = codex_config::parse_document(&self.read_live_config()?) {
-            let live = codex_config::mcp_server_fragments_from_document(&document);
-            if !live.is_empty() {
-                return self.replace_mcp_mirror(&live);
-            }
-        }
-        let document = self.read_claude_mcp_document()?;
-        for (name, toml) in self.claude_mcp_fragments_from_live()? {
-            self.database.save_mcp_server_record(
-                None,
-                &crate::database::McpServerRecord {
-                    claude_json: document
-                        .get("mcpServers")
-                        .and_then(|servers| servers.get(&name))
-                        .map(Value::to_string),
-                    name,
-                    toml,
-                    codex_enabled: false,
-                    claude_enabled: true,
-                    codex_installed: true,
-                    claude_installed: true,
-                },
-                &now_ms().to_string(),
-            )?;
-        }
-        Ok(())
-    }
-
     /// 差异处理：采纳只写镜像，撤销只写 Claude live；整批校验后一次提交。
     pub fn claude_resolve_mcp_entries(
         &self,
@@ -674,9 +635,8 @@ impl AppContext {
                     .map(|raw| {
                         let entry: Value = serde_json::from_str(raw)
                             .map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?;
-                        let spec = claude_entry_to_spec(&action.name, &entry)?;
-                        let toml = codex_config::patch_mcp_fragment("", &spec)?;
-                        Ok((entry, toml))
+                        claude_entry_to_spec(&action.name, &entry)?;
+                        Ok(entry)
                     })
                     .transpose()?;
                 Ok((action.name.clone(), entry))
@@ -704,8 +664,7 @@ impl AppContext {
                 let record = &mut records[index];
                 record.claude_enabled = entry.is_some();
                 record.claude_installed = entry.is_some();
-                if let Some((json, toml)) = entry {
-                    record.toml = toml;
+                if let Some(json) = entry {
                     record.claude_json = Some(json.to_string());
                 }
             }
@@ -724,7 +683,7 @@ impl AppContext {
                 .as_object_mut()
                 .ok_or_else(|| app_err!(".claude.json 的 mcpServers 不是对象"))?;
             for (name, entry) in entries {
-                if let Some((json, _)) = entry {
+                if let Some(json) = entry {
                     servers.insert(name, json);
                 } else {
                     servers.remove(&name);
@@ -761,10 +720,9 @@ impl AppContext {
                 server.enabled = Some(false);
                 continue;
             }
-            if let Some(mut server) = codex_config::spec_from_fragment(&record.name, &record.toml) {
-                server.enabled = Some(false);
-                result.push(server);
-            }
+            let mut server = claude_entry_to_spec(&record.name, &claude_mcp_entry(&record, None)?)?;
+            server.enabled = Some(false);
+            result.push(server);
         }
         result.sort_by(|left, right| left.name.cmp(&right.name));
         Ok(result)
@@ -817,30 +775,80 @@ impl AppContext {
                 "MCP 名称只能包含字母、数字、下划线和连字符，且最多 64 字符"
             ));
         }
-        if codex_config::is_managed_mcp_name(name) {
+        if codex_config::is_managed_mcp_name(name)
+            || original_name.is_some_and(codex_config::is_managed_mcp_name)
+        {
             return Err(app_err!(
                 "「{name}」由 Codex 官方应用自动管理，不能在本应用中创建或编辑"
             ));
         }
         let entry: Value = serde_json::from_str(json)
             .map_err(|error| app_err!("Claude MCP JSON 无效: {error}"))?;
-        let spec = claude_entry_to_spec(name, &entry)?;
-        let before = self.read_claude_mcp_document()?;
-        let servers = before
+        super::mcp::validate_mcp_connection(&claude_entry_to_spec(name, &entry)?)?;
+        let mut document = self.read_claude_mcp_document()?;
+        let servers = document
             .as_object()
             .and_then(|object| object.get("mcpServers"))
             .and_then(Value::as_object);
-        if original_name != Some(name) && servers.is_some_and(|servers| servers.contains_key(name))
+        let destination = self.database.mcp_server_record(name)?;
+        if original_name != Some(name)
+            && (servers.is_some_and(|servers| servers.contains_key(name))
+                || destination
+                    .as_ref()
+                    .is_some_and(|record| record.claude_installed))
         {
             return Err(app_err!("已存在同名 Claude MCP 服务器"));
         }
-        self.save_mcp_server_unlocked(
-            original_name,
-            spec,
-            None,
-            SkillTool::Claude,
-            Some(entry.to_string()),
-        )
+        if let Some(original) = original_name.filter(|original| *original != name) {
+            if !servers.is_some_and(|servers| servers.contains_key(original))
+                && self
+                    .database
+                    .mcp_server_record(original)?
+                    .is_none_or(|record| !record.claude_installed)
+            {
+                return Err(app_err!("MCP 服务器 {original} 不存在"));
+            }
+        }
+        let record = crate::database::McpServerRecord {
+            name: name.to_string(),
+            toml: destination
+                .as_ref()
+                .map(|record| record.toml.clone())
+                .unwrap_or_default(),
+            codex_enabled: destination
+                .as_ref()
+                .is_some_and(|record| record.codex_enabled),
+            codex_installed: destination
+                .as_ref()
+                .is_some_and(|record| record.codex_installed),
+            claude_enabled: true,
+            claude_installed: true,
+            claude_json: Some(entry.to_string()),
+        };
+        let servers = document
+            .as_object_mut()
+            .expect("已验证 JSON 对象")
+            .entry("mcpServers")
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+            .expect("已验证 mcpServers 对象");
+        if let Some(original) = original_name.filter(|original| *original != name) {
+            servers.remove(original);
+        }
+        servers.insert(name.to_string(), entry);
+        crate::fsutil::with_file_rollback(&[self.paths.claude_mcp_config()], || {
+            self.write_claude_mcp_document(&document)?;
+            self.database.save_mcp_server_record(
+                original_name,
+                &record,
+                &now_ms().to_string(),
+                SkillTool::Claude,
+            )
+        })?;
+        tauri_plugin_log::log::info!(
+            "[mcp.config.save] client=\"Claude Code\" server={name:?} outcome=success msg=\"Claude Code MCP 配置已保存\""
+        );
+        Ok(())
     }
 
     pub fn claude_delete_mcp_server(&self, name: &str) -> AppResult<()> {
@@ -1203,18 +1211,10 @@ impl AppContext {
             ),
             _ => Vec::new(),
         };
-        // MCP 是全局用户范围配置，应用供应商时确保共享镜像已投影到 ~/.claude.json。
-        // 顺序固定为先写 settings.json 再做 MCP 投影/首导入：首导入逐条落库不在文件
-        // 回滚范围内，后置保证 settings 写失败时不留半套镜像；反之导入或落库失败时
-        // 两个 live 文件整体回滚（已导入的镜像行残留无害：下次应用走 sync 投影收敛）。
-        crate::fsutil::with_file_rollback(
-            &[self.claude_settings_path(), self.paths.claude_mcp_config()],
-            || {
-                self.write_claude_settings(Some(&stored), &stale_extra_keys)?;
-                self.ensure_claude_mcp_projection()?;
-                self.database.set_active_claude_profile(Some(id))
-            },
-        )?;
+        crate::fsutil::with_file_rollback(&[self.claude_settings_path()], || {
+            self.write_claude_settings(Some(&stored), &stale_extra_keys)?;
+            self.database.set_active_claude_profile(Some(id))
+        })?;
         self.database.record_event(
             None,
             "apply_claude",
@@ -1673,6 +1673,248 @@ mod tests {
     }
 
     #[test]
+    fn mcp_client_snapshots_stay_independent_through_edits_adoption_and_restore() {
+        let (_home, context) = test_context();
+        context
+            .codex_save_mcp_server(
+                None,
+                McpServerSpec {
+                    name: "native".into(),
+                    url: Some("https://codex.example.test/mcp".into()),
+                    http_headers: std::collections::BTreeMap::from([(
+                        "Authorization".into(),
+                        "Bearer codex-fixture".into(),
+                    )]),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let codex = std::fs::read(context.paths.codex_config()).unwrap();
+        let codex_snapshot = context
+            .database
+            .mcp_server_record("native")
+            .unwrap()
+            .unwrap()
+            .toml;
+        let raw = r#"{"type":"sse","url":"https://claude.example.test/mcp","headers":{"Authorization":"claude-fixture"},"custom":1}"#;
+        context
+            .claude_save_mcp_server(Some("native"), "native", raw)
+            .unwrap();
+        assert_eq!(std::fs::read(context.paths.codex_config()).unwrap(), codex);
+        assert_eq!(
+            context
+                .database
+                .mcp_server_record("native")
+                .unwrap()
+                .unwrap()
+                .toml,
+            codex_snapshot
+        );
+        assert!(context.codex_mcp_sync_preview().unwrap().entries.is_empty());
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+
+        let changed = raw.replace("claude-fixture", "claude-updated");
+        std::fs::write(
+            context.paths.claude_mcp_config(),
+            format!("{{\"mcpServers\":{{\"native\":{changed}}}}}"),
+        )
+        .unwrap();
+        let preview = context.mcp_sync_preview(SkillTool::Claude).unwrap();
+        context
+            .claude_resolve_mcp_entries(
+                &[crate::models::McpDiffEntryAction {
+                    name: "native".into(),
+                    fragment: preview.entries[0].live_toml.clone(),
+                }],
+                true,
+            )
+            .unwrap();
+        assert_eq!(
+            context
+                .database
+                .mcp_server_record("native")
+                .unwrap()
+                .unwrap()
+                .toml,
+            codex_snapshot
+        );
+        assert!(context.codex_mcp_sync_preview().unwrap().entries.is_empty());
+        let claude = std::fs::read(context.paths.claude_mcp_config()).unwrap();
+        let claude_snapshot = context
+            .database
+            .mcp_server_record("native")
+            .unwrap()
+            .unwrap()
+            .claude_json;
+        let claude_source = context.claude_get_mcp_server_json("native").unwrap();
+        let edited_codex = codex_snapshot.replace("Bearer codex-fixture", "codex-fixture");
+        for revert in [false, true] {
+            if revert {
+                context
+                    .revert_mcp_live_entries(&[crate::models::McpDiffEntryAction {
+                        name: "native".into(),
+                        fragment: Some(codex_snapshot.clone()),
+                    }])
+                    .unwrap();
+            } else {
+                context
+                    .save_mcp_server_with_fragment(
+                        Some("native"),
+                        codex_config::spec_from_fragment("native", &edited_codex).unwrap(),
+                        Some(&edited_codex),
+                    )
+                    .unwrap();
+            }
+            assert_eq!(
+                std::fs::read(context.paths.claude_mcp_config()).unwrap(),
+                claude
+            );
+            assert_eq!(
+                context.claude_get_mcp_server_json("native").unwrap(),
+                claude_source
+            );
+            assert_eq!(
+                context
+                    .database
+                    .mcp_server_record("native")
+                    .unwrap()
+                    .unwrap()
+                    .claude_json,
+                claude_snapshot
+            );
+            assert!(context
+                .mcp_sync_preview(SkillTool::Claude)
+                .unwrap()
+                .entries
+                .is_empty());
+        }
+        context
+            .set_mcp_mirror_entries(&[crate::models::McpDiffEntryAction {
+                name: "native".into(),
+                fragment: Some(codex_snapshot.replace("codex-fixture", "codex-updated")),
+            }])
+            .unwrap();
+        assert_eq!(
+            std::fs::read(context.paths.claude_mcp_config()).unwrap(),
+            claude
+        );
+        assert_eq!(
+            context
+                .database
+                .mcp_server_record("native")
+                .unwrap()
+                .unwrap()
+                .claude_json,
+            claude_snapshot
+        );
+        assert!(context
+            .mcp_sync_preview(SkillTool::Claude)
+            .unwrap()
+            .entries
+            .is_empty());
+        context.restore_mcp_from_database().unwrap();
+        assert_eq!(
+            std::fs::read(context.paths.claude_mcp_config()).unwrap(),
+            claude
+        );
+
+        for tool in [SkillTool::Codex, SkillTool::Claude] {
+            context
+                .set_mcp_server_enabled("native", tool, false)
+                .unwrap();
+            context
+                .set_mcp_server_enabled("native", tool, true)
+                .unwrap();
+        }
+        assert!(context
+            .read_live_config()
+            .unwrap()
+            .contains("Bearer codex-updated"));
+        let entry: Value = serde_json::from_str(
+            &context
+                .claude_get_mcp_server_json("native")
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(entry["headers"]["Authorization"], "claude-updated");
+        let backup = context.export_database().unwrap();
+        context.codex_delete_mcp_server("native").unwrap();
+        context.claude_delete_mcp_server("native").unwrap();
+        context.import_database(backup.to_str().unwrap()).unwrap();
+        assert!(context
+            .read_live_config()
+            .unwrap()
+            .contains("Bearer codex-updated"));
+        let restored: Value = serde_json::from_str(
+            &context
+                .claude_get_mcp_server_json("native")
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(restored, entry);
+    }
+
+    #[test]
+    fn legacy_mcp_without_claude_json_keeps_its_snapshot_when_codex_changes() {
+        for adopt in [false, true] {
+            let (_home, context) = test_context();
+            context
+                .codex_save_mcp_server(
+                    None,
+                    McpServerSpec {
+                        name: "legacy".into(),
+                        url: Some("https://legacy.example.test/mcp".into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+            rusqlite::Connection::open(&context.paths.database).unwrap().execute(
+                "UPDATE mcp_servers SET claude_installed=1, claude_enabled=1, claude_json=NULL WHERE name='legacy'", []
+            ).unwrap();
+            if adopt {
+                context
+                    .set_mcp_mirror_entries(&[crate::models::McpDiffEntryAction {
+                        name: "legacy".into(),
+                        fragment: Some(
+                            "[mcp_servers.legacy]\nurl=\"https://codex.example.test/changed\"\n"
+                                .into(),
+                        ),
+                    }])
+                    .unwrap();
+            } else {
+                context
+                    .codex_save_mcp_server(
+                        Some("legacy"),
+                        McpServerSpec {
+                            name: "legacy".into(),
+                            url: Some("https://codex.example.test/changed".into()),
+                            ..Default::default()
+                        },
+                    )
+                    .unwrap();
+            }
+            let record = context
+                .database
+                .mcp_server_record("legacy")
+                .unwrap()
+                .unwrap();
+            assert!(record.claude_json.is_some());
+            assert_eq!(
+                claude_mcp_entry(&record, None).unwrap()["url"],
+                "https://legacy.example.test/mcp"
+            );
+            assert!(record.toml.contains("https://codex.example.test/changed"));
+            assert!(!context.paths.claude_mcp_config().exists());
+        }
+    }
+
+    #[test]
     fn native_mcp_json_survives_reads_toggles_edits_and_backup_restore() {
         let (home, context) = test_context();
         let raw = r#"{"type":"sse","url":"https://example.test/mcp","custom":{"keep":true}}"#;
@@ -1690,12 +1932,6 @@ mod tests {
             external
         );
         assert!(context.database.mcp_server_records().unwrap().is_empty());
-        // 首次应用才初始化共享镜像，也必须保留已有 Claude 原生字段。
-        context.ensure_claude_mcp_projection().unwrap();
-        assert_eq!(
-            read_claude_mcp(&home)["mcpServers"]["native"]["type"],
-            "sse"
-        );
         context
             .claude_save_mcp_server(Some("native"), "native", raw)
             .unwrap();
@@ -1718,7 +1954,7 @@ mod tests {
         context.save_mcp_server_with_fragment(Some("native"), McpServerSpec {
             name: "native".into(), url: Some("https://example.test/mcp".into()),
             startup_timeout_sec: Some(120), ..Default::default()
-        }, Some("[mcp_servers.native]\nurl=\"https://example.test/mcp\"\nstartup_timeout_sec=120\ncodex_only=\"keep\"\n"), SkillTool::Codex).unwrap();
+        }, Some("[mcp_servers.native]\nurl=\"https://example.test/mcp\"\nstartup_timeout_sec=120\ncodex_only=\"keep\"\n")).unwrap();
         context
             .set_mcp_server_enabled("native", SkillTool::Codex, false)
             .unwrap();
@@ -1754,7 +1990,7 @@ mod tests {
         context.import_database(backup.to_str().unwrap()).unwrap();
         let entry = &read_claude_mcp(&home)["mcpServers"]["native"];
         assert_eq!(entry["type"], "sse");
-        assert_eq!(entry["url"], "https://example.test/changed");
+        assert_eq!(entry["url"], "https://example.test/mcp");
         assert_eq!(entry["custom"]["keep"], true);
         let external = r#"{"mcpServers":{"native":{"type":"sse","url":"https://example.test/external","extra":1}}}"#;
         std::fs::write(context.paths.claude_mcp_config(), external).unwrap();
@@ -1770,6 +2006,16 @@ mod tests {
     fn mcp_rename_collision_is_read_only_and_success_preserves_other_engine_flag() {
         let (home, context) = test_context();
         for name in ["a", "b"] {
+            context
+                .codex_save_mcp_server(
+                    None,
+                    McpServerSpec {
+                        name: name.into(),
+                        command: Some("echo".into()),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
             context
                 .claude_save_mcp_server(None, name, r#"{"command":"echo"}"#)
                 .unwrap();
@@ -1810,7 +2056,8 @@ mod tests {
             .unwrap();
         assert!(!record.codex_enabled);
         assert!(record.claude_enabled);
-        assert!(context.database.mcp_server_record("b").unwrap().is_none());
+        let old = context.database.mcp_server_record("b").unwrap().unwrap();
+        assert!(old.codex_installed && !old.codex_enabled && !old.claude_installed);
         assert_eq!(std::fs::read(context.paths.codex_config()).unwrap(), codex);
         assert_eq!(
             read_claude_mcp(&home)["mcpServers"]["claude_renamed"]["custom"],
@@ -1836,11 +2083,12 @@ mod tests {
             .unwrap();
         assert!(record.codex_enabled);
         assert!(!record.claude_enabled);
-        assert!(context.database.mcp_server_record("a").unwrap().is_none());
+        let old = context.database.mcp_server_record("a").unwrap().unwrap();
+        assert!(old.claude_installed && !old.claude_enabled && !old.codex_installed);
         assert!(read_claude_mcp(&home)["mcpServers"]
             .get("renamed")
             .is_none());
-        // 数据库写入在两个 live 文件之后失败，也必须撤回改名造成的文件变更。
+        // 数据库写入失败必须撤回当前端改名，另一端文件与快照保持原样。
         let codex = std::fs::read(context.paths.codex_config()).unwrap();
         let claude = std::fs::read(context.paths.claude_mcp_config()).unwrap();
         rusqlite::Connection::open(&context.paths.database).unwrap().execute_batch(
@@ -1848,7 +2096,7 @@ mod tests {
         ).unwrap();
         assert!(context
             .codex_save_mcp_server(
-                Some("claude_renamed"),
+                Some("renamed"),
                 McpServerSpec {
                     name: "blocked".into(),
                     command: Some("echo".into()),
@@ -1858,9 +2106,25 @@ mod tests {
             .is_err());
         assert!(context
             .database
-            .mcp_server_record("claude_renamed")
+            .mcp_server_record("renamed")
             .unwrap()
             .is_some());
+        assert!(context
+            .database
+            .mcp_server_record("blocked")
+            .unwrap()
+            .is_none());
+        assert!(context
+            .claude_save_mcp_server(Some("claude_renamed"), "blocked", r#"{"command":"echo"}"#)
+            .is_err());
+        assert!(
+            context
+                .database
+                .mcp_server_record("claude_renamed")
+                .unwrap()
+                .unwrap()
+                .claude_installed
+        );
         assert!(context
             .database
             .mcp_server_record("blocked")
@@ -1871,11 +2135,47 @@ mod tests {
             std::fs::read(context.paths.claude_mcp_config()).unwrap(),
             claude
         );
+        let snapshot = context
+            .database
+            .mcp_server_record("renamed")
+            .unwrap()
+            .unwrap()
+            .toml;
+        context
+            .claude_save_mcp_server(
+                Some("claude_renamed"),
+                "renamed",
+                r#"{"command":"claude-only","custom":2}"#,
+            )
+            .unwrap();
+        let merged = context
+            .database
+            .mcp_server_record("renamed")
+            .unwrap()
+            .unwrap();
+        assert!(merged.codex_installed && merged.claude_installed);
+        assert_eq!(merged.toml, snapshot);
+        assert_eq!(std::fs::read(context.paths.codex_config()).unwrap(), codex);
+        assert!(context
+            .database
+            .mcp_server_record("claude_renamed")
+            .unwrap()
+            .is_none());
     }
 
     #[test]
     fn toggling_external_claude_mcp_preserves_unrelated_mirror_and_native_json() {
         let (_home, context) = test_context();
+        context
+            .codex_save_mcp_server(
+                None,
+                McpServerSpec {
+                    name: "a".into(),
+                    command: Some("echo".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         context
             .claude_save_mcp_server(None, "a", r#"{"command":"echo"}"#)
             .unwrap();
@@ -1908,14 +2208,13 @@ mod tests {
         .unwrap();
         assert_eq!(entry["type"], "sse");
         assert_eq!(entry["custom"], 1);
-        assert!(
-            !context
-                .database
-                .mcp_server_record("external")
-                .unwrap()
-                .unwrap()
-                .codex_enabled
-        );
+        let record = context
+            .database
+            .mcp_server_record("external")
+            .unwrap()
+            .unwrap();
+        assert!(!record.codex_installed && !record.codex_enabled);
+        assert!(record.toml.is_empty());
     }
 
     #[test]
@@ -1953,6 +2252,8 @@ mod tests {
     fn import_and_restore_reconcile_claude_mcp_including_empty_backups_and_rollback() {
         for import in [true, false] {
             let (home, context) = test_context();
+            std::fs::create_dir_all(&context.paths.codex_home).unwrap();
+            std::fs::write(context.paths.codex_config(), "").unwrap();
             let a = context
                 .claude_save(None, draft("A", Some("https://a.example.test"), None, None))
                 .unwrap();
@@ -2475,7 +2776,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_projects_global_mcp_and_keeps_unmanaged_claude_config() {
+    fn apply_preserves_both_clients_mcp_and_unmanaged_claude_config() {
         let (home, context) = test_context();
         std::fs::create_dir_all(&context.paths.codex_home).unwrap();
         std::fs::write(
@@ -2501,6 +2802,8 @@ API_KEY = "secret"
             r#"{"other":"keep","mcpServers":{"unmanaged":{"type":"stdio","command":"keep"}},"projects":{"/p":{"mcpServers":{"local-only":{"type":"stdio","command":"local"}}}}}"#,
         )
         .unwrap();
+        let codex_before = std::fs::read(context.paths.codex_config()).unwrap();
+        let claude_before = std::fs::read(context.paths.claude_mcp_config()).unwrap();
         let stored = context
             .database
             .insert_claude_profile(
@@ -2514,17 +2817,15 @@ API_KEY = "secret"
         let doc = read_claude_mcp(&home);
         assert_eq!(doc["other"], "keep");
         assert_eq!(doc["mcpServers"]["unmanaged"]["command"], "keep");
-        assert_eq!(doc["mcpServers"]["remote"]["type"], "http");
         assert_eq!(
-            doc["mcpServers"]["remote"]["url"],
-            "https://mcp.example.com/mcp"
+            std::fs::read(context.paths.codex_config()).unwrap(),
+            codex_before
         );
         assert_eq!(
-            doc["mcpServers"]["remote"]["headers"]["Authorization"],
-            "Bearer token"
+            std::fs::read(context.paths.claude_mcp_config()).unwrap(),
+            claude_before
         );
-        assert_eq!(doc["mcpServers"]["local"]["type"], "stdio");
-        assert_eq!(doc["mcpServers"]["local"]["args"][0], "server.js");
+        assert!(context.database.mcp_server_records().unwrap().is_empty());
         assert_eq!(
             doc["projects"]["/p"]["mcpServers"]["local-only"]["command"],
             "local"
@@ -2532,14 +2833,13 @@ API_KEY = "secret"
 
         context.codex_delete_mcp_server("remote").unwrap();
         let doc = read_claude_mcp(&home);
-        assert!(doc["mcpServers"].get("remote").is_some());
+        assert!(doc["mcpServers"].get("remote").is_none());
         assert!(doc["mcpServers"].get("unmanaged").is_some());
     }
 
-    /// .claude.json 损坏 / 顶层或 mcpServers 不是对象：投影一律拒绝写入，原文件字节不动。
-    /// 保存失败时 Codex 文件与数据库镜像也保持原样。
+    /// 一端配置损坏时拒绝该端保存，但不能阻止另一端独立编辑。
     #[test]
-    fn claude_mcp_projection_refuses_malformed_claude_json() {
+    fn mcp_save_rejects_own_malformed_config_without_blocking_other_client() {
         fn stdio_spec(name: &str) -> McpServerSpec {
             McpServerSpec {
                 name: name.to_string(),
@@ -2552,50 +2852,57 @@ API_KEY = "secret"
         std::fs::write(context.paths.codex_config(), "").unwrap();
         let claude_json = home.path().join(".claude.json");
 
-        std::fs::write(&claude_json, "not json {").unwrap();
-        assert!(context
-            .codex_save_mcp_server(None, stdio_spec("srv1"))
-            .is_err());
-        assert_eq!(std::fs::read_to_string(&claude_json).unwrap(), "not json {");
+        for invalid in [
+            r#"{"command":" "}"#,
+            r#"{"url":""}"#,
+            r#"{"url":"ftp://example.test"}"#,
+        ] {
+            assert!(context
+                .claude_save_mcp_server(None, "invalid", invalid)
+                .is_err());
+            assert!(context
+                .database
+                .mcp_server_record("invalid")
+                .unwrap()
+                .is_none());
+            assert!(!claude_json.exists());
+        }
 
-        std::fs::write(&claude_json, "[1,2]").unwrap();
-        assert!(context
-            .codex_save_mcp_server(None, stdio_spec("srv2"))
-            .is_err());
-        assert_eq!(std::fs::read_to_string(&claude_json).unwrap(), "[1,2]");
-
-        std::fs::write(&claude_json, r#"{"mcpServers":[]}"#).unwrap();
-        assert!(context
-            .codex_save_mcp_server(None, stdio_spec("srv3"))
-            .is_err());
-        assert_eq!(
-            std::fs::read_to_string(&claude_json).unwrap(),
-            r#"{"mcpServers":[]}"#
-        );
-        assert!(context.database.mcp_server_records().unwrap().is_empty());
-        assert_eq!(
-            std::fs::read_to_string(context.paths.codex_config()).unwrap(),
-            ""
-        );
-        // 整段采纳失败同样不能留下已提交的镜像，修复现场后可以重试同一名称。
-        let fragment = "[mcp_servers.retry]\ncommand=\"echo\"\n".to_string();
-        assert!(context
-            .replace_mcp_mirror(&[("retry".into(), fragment.clone())])
-            .is_err());
-        assert!(context.database.mcp_server_records().unwrap().is_empty());
+        for (index, invalid) in ["not json {", "[1,2]", r#"{"mcpServers":[]}"#]
+            .iter()
+            .enumerate()
+        {
+            std::fs::write(&claude_json, invalid).unwrap();
+            let before = context.read_live_config().unwrap();
+            assert!(context
+                .claude_save_mcp_server(None, "retry", r#"{"command":"echo"}"#)
+                .is_err());
+            assert_eq!(context.read_live_config().unwrap(), before);
+            assert!(context
+                .database
+                .mcp_server_record("retry")
+                .unwrap()
+                .is_none());
+            context
+                .codex_save_mcp_server(None, stdio_spec(&format!("srv{index}")))
+                .unwrap();
+            assert_eq!(std::fs::read_to_string(&claude_json).unwrap(), *invalid);
+        }
         std::fs::write(&claude_json, "{}").unwrap();
+        std::fs::write(context.paths.codex_config(), "malformed [").unwrap();
         context
-            .replace_mcp_mirror(&[("retry".into(), fragment)])
+            .claude_save_mcp_server(None, "retry", r#"{"command":"echo"}"#)
             .unwrap();
+        assert_eq!(context.read_live_config().unwrap(), "malformed [");
         assert_eq!(
             read_claude_mcp(&home)["mcpServers"]["retry"]["command"],
             "echo"
         );
     }
 
-    /// 共享 MCP 的保存与重命名投影到 .claude.json：旧名随重命名消失，用户自建条目与顶层字段保留。
+    /// Codex MCP 保存与改名不创建或改写 Claude 条目。
     #[test]
-    fn claude_mcp_save_and_rename_project_to_claude_json() {
+    fn codex_mcp_save_and_rename_do_not_project_to_claude_json() {
         let (home, context) = test_context();
         std::fs::create_dir_all(&context.paths.codex_home).unwrap();
         std::fs::write(
@@ -2625,12 +2932,8 @@ API_KEY = "secret"
             .unwrap();
 
         let doc = read_claude_mcp(&home);
-        assert_eq!(doc["mcpServers"]["shared"]["type"], "http");
-        assert_eq!(
-            doc["mcpServers"]["shared"]["url"],
-            "https://mcp.example/mcp"
-        );
-        assert_eq!(doc["mcpServers"]["shared"]["headers"]["X-Fixed"], "v");
+        let before = doc.clone();
+        assert!(doc["mcpServers"].get("shared").is_none());
         assert_eq!(doc["mcpServers"]["hand_made"]["command"], "uvx");
         assert_eq!(doc["other"], "keep");
 
@@ -2647,10 +2950,7 @@ API_KEY = "secret"
 
         let doc = read_claude_mcp(&home);
         assert!(doc["mcpServers"].get("shared").is_none());
-        assert_eq!(
-            doc["mcpServers"]["renamed"]["url"],
-            "https://mcp.example/mcp"
-        );
+        assert_eq!(doc, before);
         assert!(doc["mcpServers"].get("hand_made").is_some());
         let config = std::fs::read_to_string(context.paths.codex_config()).unwrap();
         assert!(config.contains("renamed"), "{config}");
